@@ -2,7 +2,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { runLanguageWasmBuild } from "../../../scripts/build-language-wasm.js";
+import { runLanguageWasmBuild } from "../../../scripts/build/build-language-wasm.js";
 
 const pscadDir = new URL("..", import.meta.url).pathname;
 

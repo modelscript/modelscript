@@ -123,7 +123,7 @@ export const Playground: CommandModule = {
         .map((r) => join(r, "scripts", "language-playground.ts"))
         .find((p) => existsSync(p));
       if (!scriptPath) {
-        console.error("Error: Could not locate scripts/language-playground.ts in workspace.");
+        console.error("Error: Could not locate scripts/tools/language-playground.ts in workspace.");
         process.exit(1);
       }
       const forwardArgs = ["tsx", scriptPath, langArg];

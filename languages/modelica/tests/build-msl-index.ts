@@ -189,9 +189,9 @@ if (!libDir) {
   console.error(`[build-msl-index] Library ${rootPkgName} ${version} directory not found! Checked:`);
   for (const c of candidatePaths) if (c) console.error("  " + c);
   if (isMsl) {
-    console.error(`Please run: node scripts/download-msl.cjs --version=${version} --extract`);
+    console.error(`Please run: node scripts/build/download-msl.cjs --version=${version} --extract`);
   } else {
-    console.error(`Please run: npx tsx scripts/sync-stdlibs.ts --lang=modelica`);
+    console.error(`Please run: npx tsx scripts/build/sync-stdlibs.ts --lang=modelica`);
   }
   process.exit(1);
 }

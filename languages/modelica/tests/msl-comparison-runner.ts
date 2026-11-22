@@ -857,9 +857,9 @@ async function main() {
     console.error(`[lib-runner] Library ${rootPkgName} ${options.version} directory not found! Checked:`);
     for (const c of candidatePaths) if (c) console.error("  " + c);
     if (isMsl) {
-      console.error(`Run: node scripts/download-msl.cjs --version=${options.version} --extract`);
+      console.error(`Run: node scripts/build/download-msl.cjs --version=${options.version} --extract`);
     } else {
-      console.error(`Run: npx tsx scripts/sync-stdlibs.ts --lang=modelica`);
+      console.error(`Run: npx tsx scripts/build/sync-stdlibs.ts --lang=modelica`);
     }
     process.exit(1);
   }

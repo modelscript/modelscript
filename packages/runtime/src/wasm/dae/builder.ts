@@ -143,21 +143,60 @@ export class DaeBuilder {
   @inline getVarAttrData(): ChunkedInt32Array { return this.varAttrData; }
   @inline getVarShapes(): ChunkedInt32Array { return this.varShapes; }
   @inline getVarSymbolicShapes(): ChunkedInt32Array { return this.varSymbolicShapes; }
-  @inline getClocksData(): ChunkedInt32Array { return this.clocksData; }
+  @inline getClocksData(): ChunkedInt32Array {
+    if (changetype<usize>(this.clocksData) == 0) this.clocksData = createChunkedInt32Array(32 * CLOCK_STRIDE);
+    return this.clocksData;
+  }
   @inline getVarClockMap(): ChunkedInt32Array { return this.varClockMap; }
   @inline getEqClockMap(): ChunkedInt32Array { return this.eqClockMap; }
-  @inline getWhenMeta(): ChunkedInt32Array { return this.whenMeta; }
-  @inline getWhenBodyEqs(): ChunkedInt32Array { return this.whenBodyEqs; }
-  @inline getForMeta(): ChunkedInt32Array { return this.forMeta; }
-  @inline getForBodyEqs(): ChunkedInt32Array { return this.forBodyEqs; }
-  @inline getIfMeta(): ChunkedInt32Array { return this.ifMeta; }
-  @inline getIfBranchEqs(): ChunkedInt32Array { return this.ifBranchEqs; }
-  @inline getStateMachines(): ChunkedInt32Array { return this.stateMachines; }
-  @inline getStateData(): ChunkedInt32Array { return this.stateData; }
-  @inline getStateEqs(): ChunkedInt32Array { return this.stateEqs; }
-  @inline getStateVars(): ChunkedInt32Array { return this.stateVars; }
-  @inline getTransitions(): ChunkedInt32Array { return this.transitions; }
-  @inline getEventIndicators(): ChunkedInt32Array { return this.eventIndicators; }
+  @inline getWhenMeta(): ChunkedInt32Array {
+    if (changetype<usize>(this.whenMeta) == 0) this.whenMeta = createChunkedInt32Array(128 * WHEN_STRIDE);
+    return this.whenMeta;
+  }
+  @inline getWhenBodyEqs(): ChunkedInt32Array {
+    if (changetype<usize>(this.whenBodyEqs) == 0) this.whenBodyEqs = createChunkedInt32Array(256 * EQ_STRIDE);
+    return this.whenBodyEqs;
+  }
+  @inline getForMeta(): ChunkedInt32Array {
+    if (changetype<usize>(this.forMeta) == 0) this.forMeta = createChunkedInt32Array(128 * FOR_STRIDE);
+    return this.forMeta;
+  }
+  @inline getForBodyEqs(): ChunkedInt32Array {
+    if (changetype<usize>(this.forBodyEqs) == 0) this.forBodyEqs = createChunkedInt32Array(256 * EQ_STRIDE);
+    return this.forBodyEqs;
+  }
+  @inline getIfMeta(): ChunkedInt32Array {
+    if (changetype<usize>(this.ifMeta) == 0) this.ifMeta = createChunkedInt32Array(128 * IF_STRIDE);
+    return this.ifMeta;
+  }
+  @inline getIfBranchEqs(): ChunkedInt32Array {
+    if (changetype<usize>(this.ifBranchEqs) == 0) this.ifBranchEqs = createChunkedInt32Array(256 * EQ_STRIDE);
+    return this.ifBranchEqs;
+  }
+  @inline getStateMachines(): ChunkedInt32Array {
+    if (changetype<usize>(this.stateMachines) == 0) this.stateMachines = createChunkedInt32Array(16 * SM_STRIDE);
+    return this.stateMachines;
+  }
+  @inline getStateData(): ChunkedInt32Array {
+    if (changetype<usize>(this.stateData) == 0) this.stateData = createChunkedInt32Array(64 * STATE_STRIDE);
+    return this.stateData;
+  }
+  @inline getStateEqs(): ChunkedInt32Array {
+    if (changetype<usize>(this.stateEqs) == 0) this.stateEqs = createChunkedInt32Array(128 * 4);
+    return this.stateEqs;
+  }
+  @inline getStateVars(): ChunkedInt32Array {
+    if (changetype<usize>(this.stateVars) == 0) this.stateVars = createChunkedInt32Array(128 * 4);
+    return this.stateVars;
+  }
+  @inline getTransitions(): ChunkedInt32Array {
+    if (changetype<usize>(this.transitions) == 0) this.transitions = createChunkedInt32Array(64 * TRANSITION_STRIDE);
+    return this.transitions;
+  }
+  @inline getEventIndicators(): ChunkedInt32Array {
+    if (changetype<usize>(this.eventIndicators) == 0) this.eventIndicators = createChunkedInt32Array(128);
+    return this.eventIndicators;
+  }
 
   /**
    * Initializes chunked memory arrays and hash structures.
@@ -187,38 +226,39 @@ export class DaeBuilder {
     this.varShapes = createChunkedInt32Array(512 * 4);
     this.varSymbolicShapes = createChunkedInt32Array(512 * 4);
 
-    this.clocksData = createChunkedInt32Array(32 * CLOCK_STRIDE);
+    // Optional side-tables are lazily allocated on first use in their `get*()` accessors
+    this.clocksData = changetype<ChunkedInt32Array>(0);
     this.clockCount = 0;
     this.varClockMap = createChunkedInt32Array(512);
     this.eqClockMap = createChunkedInt32Array(1024);
 
-    this.whenMeta = createChunkedInt32Array(128 * WHEN_STRIDE);
+    this.whenMeta = changetype<ChunkedInt32Array>(0);
     this.whenCount = 0;
-    this.whenBodyEqs = createChunkedInt32Array(256 * EQ_STRIDE);
+    this.whenBodyEqs = changetype<ChunkedInt32Array>(0);
     this.whenBodyEqCount = 0;
 
-    this.forMeta = createChunkedInt32Array(128 * FOR_STRIDE);
+    this.forMeta = changetype<ChunkedInt32Array>(0);
     this.forCount = 0;
-    this.forBodyEqs = createChunkedInt32Array(256 * EQ_STRIDE);
+    this.forBodyEqs = changetype<ChunkedInt32Array>(0);
     this.forBodyEqCount = 0;
 
-    this.ifMeta = createChunkedInt32Array(128 * IF_STRIDE);
+    this.ifMeta = changetype<ChunkedInt32Array>(0);
     this.ifCount = 0;
-    this.ifBranchEqs = createChunkedInt32Array(256 * EQ_STRIDE);
+    this.ifBranchEqs = changetype<ChunkedInt32Array>(0);
     this.ifBranchEqCount = 0;
 
-    this.stateMachines = createChunkedInt32Array(16 * SM_STRIDE);
+    this.stateMachines = changetype<ChunkedInt32Array>(0);
     this.smCount = 0;
-    this.stateData = createChunkedInt32Array(64 * STATE_STRIDE);
+    this.stateData = changetype<ChunkedInt32Array>(0);
     this.stateCount = 0;
-    this.stateEqs = createChunkedInt32Array(128 * 4);
+    this.stateEqs = changetype<ChunkedInt32Array>(0);
     this.stateEqCount = 0;
-    this.stateVars = createChunkedInt32Array(128 * 4);
+    this.stateVars = changetype<ChunkedInt32Array>(0);
     this.stateVarCount = 0;
-    this.transitions = createChunkedInt32Array(64 * TRANSITION_STRIDE);
+    this.transitions = changetype<ChunkedInt32Array>(0);
     this.transitionCount = 0;
 
-    this.eventIndicators = createChunkedInt32Array(128);
+    this.eventIndicators = changetype<ChunkedInt32Array>(0);
     this.eventIndicatorCount = 0;
     this.objectiveExprId = 0xffffffff;
     this.objectiveIntegrandExprId = 0xffffffff;

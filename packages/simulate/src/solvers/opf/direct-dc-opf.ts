@@ -249,43 +249,52 @@ export function solveDirectSimplex(lp: DirectLpData): DirectLpResult {
     const artBytes = totalCols;
     const totalBytes = tabBytes + bvBytes + artBytes + 16;
 
-    const ptr = wasm.__new(totalBytes, 0);
-    if (typeof wasm.__pin === "function") wasm.__pin(ptr);
-    const tabPtr = ptr;
-    const bvPtr = ptr + tabBytes;
-    const artPtr = bvPtr + bvBytes;
+    const chunkWasm = wasm as typeof wasm & {
+      atomicChunkAlloc?: (size: number) => number;
+      atomicChunkFree?: (ptr: number) => void;
+    };
+    const useChunk = typeof chunkWasm.atomicChunkAlloc === "function";
+    const ptr = useChunk ? chunkWasm.atomicChunkAlloc!(totalBytes) >>> 0 : wasm.__new(totalBytes, 0);
+    if (!useChunk && typeof wasm.__pin === "function") wasm.__pin(ptr);
+    let resIters: number;
+    try {
+      const tabPtr = ptr;
+      const bvPtr = ptr + tabBytes;
+      const artPtr = bvPtr + bvBytes;
 
-    const buf = wasm.memory.buffer;
-    const flatTab = new Float64Array(buf, tabPtr, tabLen);
-    for (let i = 0; i < totalRows; i++) {
-      flatTab.set(tab[i]!, i * totalCols);
+      const buf = wasm.memory.buffer;
+      const flatTab = new Float64Array(buf, tabPtr, tabLen);
+      for (let i = 0; i < totalRows; i++) {
+        flatTab.set(tab[i]!, i * totalCols);
+      }
+      const bvView = new Int32Array(buf, bvPtr, numRows);
+      for (let i = 0; i < numRows; i++) bvView[i] = basicVars[i]!;
+      const artView = new Uint8Array(buf, artPtr, totalCols);
+      artView.fill(0);
+      for (const c of artificialCols) artView[c] = 1;
+
+      resIters = wasm.simplexTwoPhaseTableauWasm(
+        tabPtr,
+        bvPtr,
+        artPtr,
+        numRows,
+        totalCols,
+        n + numSlacks,
+        numArtificials,
+        maxIters,
+      );
+
+      const outBuf = wasm.memory.buffer;
+      const outTab = new Float64Array(outBuf, tabPtr, tabLen);
+      for (let i = 0; i < totalRows; i++) {
+        tab[i]!.set(outTab.subarray(i * totalCols, (i + 1) * totalCols));
+      }
+      const outBv = new Int32Array(outBuf, bvPtr, numRows);
+      for (let i = 0; i < numRows; i++) basicVars[i] = outBv[i]!;
+    } finally {
+      if (useChunk) chunkWasm.atomicChunkFree?.(ptr);
+      else if (typeof wasm.__unpin === "function") wasm.__unpin(ptr);
     }
-    const bvView = new Int32Array(buf, bvPtr, numRows);
-    for (let i = 0; i < numRows; i++) bvView[i] = basicVars[i]!;
-    const artView = new Uint8Array(buf, artPtr, totalCols);
-    artView.fill(0);
-    for (const c of artificialCols) artView[c] = 1;
-
-    const resIters = wasm.simplexTwoPhaseTableauWasm(
-      tabPtr,
-      bvPtr,
-      artPtr,
-      numRows,
-      totalCols,
-      n + numSlacks,
-      numArtificials,
-      maxIters,
-    );
-
-    const outBuf = wasm.memory.buffer;
-    const outTab = new Float64Array(outBuf, tabPtr, tabLen);
-    for (let i = 0; i < totalRows; i++) {
-      tab[i]!.set(outTab.subarray(i * totalCols, (i + 1) * totalCols));
-    }
-    const outBv = new Int32Array(outBuf, bvPtr, numRows);
-    for (let i = 0; i < numRows; i++) basicVars[i] = outBv[i]!;
-
-    if (typeof wasm.__unpin === "function") wasm.__unpin(ptr);
 
     if (resIters < 0) {
       return { optimal: false, x: [], duals: [], obj: 0, iterations: -(resIters + 1) };

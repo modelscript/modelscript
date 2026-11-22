@@ -10,6 +10,7 @@ import {
   VarType,
   Variability,
   WasmEventDetectorBridge,
+  analyzeLinearSccBlock,
   causalizeVectorArena,
   convertArenaToMicroModelica,
   eliminateArenaAliases,
@@ -27,9 +28,11 @@ import {
   pantelidesIndexReductionArena,
   performBltTransformationArena,
   scalarizeArena,
+  solveLinearSccBlockDirect,
   tryOptimizeLoopWithGroebner,
   type ArenaStateMachine,
   type DAEPassManager,
+  type LinearSccPlan,
 } from "@modelscript/runtime";
 import { bdf } from "@modelscript/runtime/wasm_bdf.js";
 import { dopri5 } from "@modelscript/runtime/wasm_dopri5.js";
@@ -53,6 +56,7 @@ import { kencarp4 } from "../solvers/imex-kencarp4.js";
 import { qssSolve } from "../solvers/qss-solver.js";
 import { solveRadauIIA } from "../solvers/radau-iia.js";
 import { rodas4p } from "../solvers/rodas4p.js";
+import { autoCompositeSolve, rodas5p } from "../solvers/rodas5p.js";
 import { solveSPRK } from "../solvers/sprk.js";
 import { trbdf2 } from "../solvers/trbdf2.js";
 import { tsit5 } from "../solvers/tsit5.js";
@@ -157,6 +161,8 @@ type ArenaCpuSolver =
   | "tsit5"
   | "bdf"
   | "rodas4p"
+  | "rodas5p"
+  | "auto-composite"
   | "trbdf2"
   | "radau5"
   | "radau9"
@@ -2984,8 +2990,7 @@ export class ArenaSimulator {
         }
       } else if (eqKind === EqKind.If) {
         const meta = this.arena.getIfEquationMeta?.(eqIdx) as
-          | { branches?: { conditionExprId?: number | undefined }[] | undefined }
-          | undefined;
+          { branches?: { conditionExprId?: number | undefined }[] | undefined } | undefined;
         if (meta?.branches) {
           for (const branch of meta.branches) {
             if (typeof branch.conditionExprId === "number" && branch.conditionExprId >= 0) {
@@ -3966,9 +3971,21 @@ export class ArenaSimulator {
     const m = block.vars.length;
     if (m === 0) return;
 
-    const sysBlock = block as SystemExecutionBlock;
+    const sysBlock = block as SystemExecutionBlock & { _linearSccPlan?: LinearSccPlan | null };
     if (this.trySolveTornBlock(sysBlock, valuesByStringId)) {
       return;
+    }
+    if (m <= 16) {
+      if (sysBlock._linearSccPlan === undefined) {
+        const plan = analyzeLinearSccBlock(this.arena, block.eqIdxs as number[], block.vars as number[]);
+        sysBlock._linearSccPlan = plan.isLinear ? plan : null;
+      }
+      if (
+        sysBlock._linearSccPlan &&
+        solveLinearSccBlockDirect(this.arena, sysBlock._linearSccPlan, valuesByStringId).solved
+      ) {
+        return;
+      }
     }
 
     this.ensureNewtonCapacity(m);
@@ -6162,6 +6179,8 @@ export class ArenaSimulator {
         | "tsit5"
         | "bdf"
         | "rodas4p"
+        | "rodas5p"
+        | "auto-composite"
         | "trbdf2"
         | "radau5"
         | "radau9"
@@ -6188,8 +6207,7 @@ export class ArenaSimulator {
       earlyTerminateOnViolation?: boolean | undefined;
       intervalBarrierCheck?: boolean | undefined;
       onStepViolation?:
-        | ((t: number, y: Float64Array, monitor: OnlineSTLMonitor, stepResult: STLStepResult) => void)
-        | undefined;
+        ((t: number, y: Float64Array, monitor: OnlineSTLMonitor, stepResult: STLStepResult) => void) | undefined;
       callbacks?: IntegratorCallback[] | undefined;
     },
   ) {
@@ -6245,6 +6263,8 @@ export class ArenaSimulator {
       solver === "tsit5" ||
       solver === "bdf" ||
       solver === "rodas4p" ||
+      solver === "rodas5p" ||
+      solver === "auto-composite" ||
       solver === "trbdf2" ||
       solver === "radau5" ||
       solver === "radau9" ||
@@ -6605,6 +6625,8 @@ export class ArenaSimulator {
       | "tsit5"
       | "bdf"
       | "rodas4p"
+      | "rodas5p"
+      | "auto-composite"
       | "trbdf2"
       | "radau5"
       | "radau9"
@@ -6636,8 +6658,7 @@ export class ArenaSimulator {
       earlyTerminateOnViolation?: boolean | undefined;
       intervalBarrierCheck?: boolean | undefined;
       onStepViolation?:
-        | ((t: number, y: Float64Array, monitor: OnlineSTLMonitor, stepResult: STLStepResult) => void)
-        | undefined;
+        ((t: number, y: Float64Array, monitor: OnlineSTLMonitor, stepResult: STLStepResult) => void) | undefined;
     },
   ) {
     const n = stateStringIds.length;
@@ -6785,6 +6806,26 @@ export class ArenaSimulator {
         };
       }
       rawResult = tsit5(rhsFn, startTime, y0, stopTime, outputTimes, {
+        atol,
+        rtol,
+        initialStep: step,
+        maxStep: Math.abs(stopTime - startTime),
+        eventFunctions: eventFns.length > 0 ? eventFns : undefined,
+        eventCallback: eventCb,
+        eventDirections: eventDirs,
+      });
+    } else if (solver === "rodas5p") {
+      rawResult = rodas5p(rhsFn, startTime, y0, stopTime, outputTimes, {
+        atol,
+        rtol,
+        initialStep: step,
+        maxStep: Math.abs(stopTime - startTime),
+        eventFunctions: eventFns.length > 0 ? eventFns : undefined,
+        eventCallback: eventCb,
+        eventDirections: eventDirs,
+      });
+    } else if (solver === "auto-composite") {
+      rawResult = autoCompositeSolve(rhsFn, startTime, y0, stopTime, outputTimes, {
         atol,
         rtol,
         initialStep: step,
@@ -7672,6 +7713,8 @@ export class ArenaSimulator {
         | "tsit5"
         | "bdf"
         | "rodas4p"
+        | "rodas5p"
+        | "auto-composite"
         | "trbdf2"
         | "radau5"
         | "radau9"
@@ -7757,6 +7800,8 @@ export class ArenaSimulator {
       solver === "tsit5" ||
       solver === "bdf" ||
       solver === "rodas4p" ||
+      solver === "rodas5p" ||
+      solver === "auto-composite" ||
       solver === "trbdf2" ||
       solver === "radau5" ||
       solver === "radau9" ||
@@ -8355,6 +8400,8 @@ export interface ArenaSimulateOptions {
     | "tsit5"
     | "bdf"
     | "rodas4p"
+    | "rodas5p"
+    | "auto-composite"
     | "trbdf2"
     | "radau5"
     | "radau9"
@@ -8405,8 +8452,7 @@ export interface ArenaSimulateOptions {
   intervalBarrierCheck?: boolean | undefined;
   /** Callback invoked on safety violation. */
   onStepViolation?:
-    | ((t: number, y: Float64Array, monitor: OnlineSTLMonitor, stepResult: STLStepResult) => void)
-    | undefined;
+    ((t: number, y: Float64Array, monitor: OnlineSTLMonitor, stepResult: STLStepResult) => void) | undefined;
   /** Dynamic simulation callbacks (continuous root-crossings, discrete stepping, manifold projections). */
   callbacks?: IntegratorCallback[] | undefined;
   /** Optional pre-simulation compiler pass pipeline to execute before solving. */

@@ -782,8 +782,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       const diagnostics = rawLints
         .map((d) => {
           const sym = (d.symbolId != null ? symbols.get(d.symbolId) : undefined) as
-            | IndexedSymbolWithLocation
-            | undefined;
+            IndexedSymbolWithLocation | undefined;
           const file = d.file ?? sym?.resourceId ?? "<unknown>";
           return {
             file,
@@ -3296,9 +3295,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
               label: `${c.clause} ${c.title}`,
               value: `${c.measuredValue} (${c.requiredLimit})`,
               status: (c.status === "PASS" ? "pass" : c.status === "WARN" ? "info" : "fail") as
-                | "pass"
-                | "info"
-                | "fail",
+                "pass" | "info" | "fail",
             })),
             verdict: `IEEE 2800-2022 Clause 7.2.2.3 & 9.2 LVRT audit ${compliance.overallStatus} (${compliance.summary}).`,
           };
@@ -4682,8 +4679,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     async ({ ssdPath, communicationStepSec, connections }) => {
       // Parse <ssd:Connection> entries from ssdPath if provided and no explicit connections were passed
       let parsedSsdConnections:
-        | { fromFmu: string; fromPort: string; toFmu: string; toPort: string; directFeedthrough?: boolean }[]
-        | undefined;
+        { fromFmu: string; fromPort: string; toFmu: string; toPort: string; directFeedthrough?: boolean }[] | undefined;
       if (!connections && ssdPath) {
         let xmlText = "";
         if (ssdPath.includes("<") && ssdPath.includes("Connection")) {
@@ -9209,6 +9205,168 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         } finally {
           parsedTree?.delete?.();
         }
+      },
+      () => ctx.sandboxLimits,
+    ),
+  );
+
+  // ── ECAD Tools: KiCad, atopile, and Bidirectional IPC-2581 / Specctra ──
+
+  server.tool(
+    "ecad_kicad_analyze",
+    "Analyze a KiCad .kicad_pcb or .kicad_sch file: run ECAD/ERC lints, extract netlist & RLGC/Z0/IPC-2221 parasitics, optionally check schematic-to-PCB consistency, or export IPC-2581C XML.",
+    {
+      source: z.string().describe("KiCad .kicad_pcb or .kicad_sch S-expression source"),
+      pairedSource: z
+        .string()
+        .optional()
+        .describe("Optional paired .kicad_sch or .kicad_pcb source for cross-file consistency verification"),
+      includeParasitics: z.boolean().default(true).describe("Include per-net RLGC, Z0, and IPC-2221 ampacity"),
+      exportIpc2581: z.boolean().default(false).describe("Include IPC-2581C XML export for .kicad_pcb inputs"),
+    },
+    withSandbox(
+      "ecad_kicad_analyze",
+      async ({
+        source,
+        pairedSource,
+        includeParasitics,
+        exportIpc2581,
+      }: {
+        source: string;
+        pairedSource?: string | undefined;
+        includeParasitics: boolean;
+        exportIpc2581: boolean;
+      }) => {
+        const {
+          parseKiCadDocument,
+          lintKiCadBoard,
+          lintKiCadSchematic,
+          extractBoardParasitics,
+          extractSchematicNetlist,
+          kicadBoardToPcbLayout,
+          verifySchematicPcbConsistency,
+        } = await import("@modelscript/kicad");
+        const { compileToIPC2581 } = await import("@modelscript/cad/ecad");
+
+        const doc = parseKiCadDocument(source);
+        const diagnostics =
+          doc.kind === "kicad_pcb"
+            ? lintKiCadBoard(doc)
+            : doc.kind === "kicad_sch"
+              ? lintKiCadSchematic(doc)
+              : doc.diagnostics;
+
+        let consistencyDiagnostics: unknown[] | undefined;
+        if (pairedSource) {
+          const paired = parseKiCadDocument(pairedSource);
+          if (doc.kind === "kicad_sch" && paired.kind === "kicad_pcb") {
+            consistencyDiagnostics = verifySchematicPcbConsistency(doc, paired);
+          } else if (doc.kind === "kicad_pcb" && paired.kind === "kicad_sch") {
+            consistencyDiagnostics = verifySchematicPcbConsistency(paired, doc);
+          }
+        }
+
+        const payload: Record<string, unknown> = {
+          kind: doc.kind,
+          diagnostics,
+          ...(consistencyDiagnostics ? { consistencyDiagnostics } : {}),
+        };
+
+        if (doc.kind === "kicad_pcb") {
+          const layout = kicadBoardToPcbLayout(doc);
+          payload["summary"] = {
+            footprints: doc.footprints.length,
+            nets: doc.nets.length,
+            segments: doc.segments.length,
+            vias: doc.vias.length,
+            zones: doc.zones.length,
+          };
+          if (includeParasitics) payload["parasitics"] = extractBoardParasitics(doc);
+          if (exportIpc2581) payload["ipc2581Xml"] = compileToIPC2581(layout);
+        } else if (doc.kind === "kicad_sch") {
+          const netRes = extractSchematicNetlist(doc);
+          payload["netlist"] = netRes.netlist;
+        }
+
+        return { content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }] };
+      },
+      () => ctx.sandboxLimits,
+    ),
+  );
+
+  server.tool(
+    "ecad_atopile_analyze",
+    "Analyze an atopile (.ato) code-first hardware design: run static & worst-case tolerance assert lints, elaborate NetlistGraph + BOM, and report linear-memory MNA DAE balance.",
+    {
+      source: z.string().describe("atopile (.ato) source code"),
+      entryModule: z.string().optional().describe("Optional entry module name"),
+    },
+    withSandbox(
+      "ecad_atopile_analyze",
+      async ({ source, entryModule }: { source: string; entryModule?: string | undefined }) => {
+        const { parseAtopile, lintAtopile, lowerAtopileToDAE } = await import("@modelscript/atopile");
+        const parsed = parseAtopile(source);
+        const diagnostics = lintAtopile(parsed);
+        const dae = lowerAtopileToDAE(parsed, entryModule);
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  entryModule: dae.elaboration.entryModule,
+                  diagnostics,
+                  netlist: dae.elaboration.netlist,
+                  bom: dae.elaboration.bom,
+                  dae: {
+                    groundNet: dae.groundNet,
+                    nodeCount: dae.nodeCount,
+                    loweredComponentCount: dae.loweredComponentCount,
+                    varCount: dae.arena.varCount,
+                    eqCount: dae.arena.eqCount,
+                  },
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      },
+      () => ctx.sandboxLimits,
+    ),
+  );
+
+  server.tool(
+    "ecad_ipc2581_convert",
+    "Import an IPC-2581B/C XML board (Altium, Cadence, Siemens, KiCad) and convert to KiCad 8 (.kicad_pcb) or Specctra autorouter (.dsn) format.",
+    {
+      xml: z.string().describe("IPC-2581B/C XML document"),
+      target: z.enum(["kicad_pcb", "specctra_dsn", "summary"]).default("summary").describe("Target output format"),
+    },
+    withSandbox(
+      "ecad_ipc2581_convert",
+      async ({ xml, target }: { xml: string; target: "kicad_pcb" | "specctra_dsn" | "summary" }) => {
+        const { parseIPC2581, exportToSpecctraDsn } = await import("@modelscript/cad/ecad");
+        const { exportToKiCadPcb } = await import("@modelscript/kicad");
+        const parsed = parseIPC2581(xml);
+
+        const result: Record<string, unknown> = {
+          metadata: parsed.metadata,
+          diagnostics: parsed.diagnostics,
+          summary: {
+            components: parsed.layout.netlist.components.length,
+            nets: parsed.layout.netlist.nets.length,
+            traces: parsed.layout.traces.length,
+            pads: parsed.layout.pads.length,
+            vias: parsed.layout.vias.length,
+          },
+        };
+        if (target === "kicad_pcb") result["kicadPcb"] = exportToKiCadPcb(parsed.layout);
+        if (target === "specctra_dsn") result["specctraDsn"] = exportToSpecctraDsn(parsed.layout);
+
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
       },
       () => ctx.sandboxLimits,
     ),

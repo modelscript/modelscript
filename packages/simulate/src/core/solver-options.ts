@@ -29,6 +29,10 @@ export type IntegratorMethod =
   | "bdf"
   /** 4th-order Rosenbrock-W method (stiff DAEs with mass matrix, zero event-restart stall). */
   | "rodas4p"
+  /** 8-stage 5th-order L-stable Rosenbrock-W method (Steinebach 2023, stiff DAEs). */
+  | "rodas5p"
+  /** Auto-stiffness composite solver: starts Tsit5, switches seamlessly to Rodas5P on stiffness. */
+  | "auto-composite"
   /** 2nd-order L-stable composite Trapezoidal-BDF2 method (robust stiff solver for switching circuits). */
   | "trbdf2"
   /** High-order 5th-order fully implicit Runge-Kutta Radau IIA (stiff DAEs, symplectic). */
@@ -87,7 +91,13 @@ export type NonlinearMethod =
   /** Try Newton first, fall back to KINSOL on failure. */
   | "hybrid"
   /** Matrix-free Jacobian-Free Newton-Krylov (GMRES directional derivatives). */
-  | "jfnk";
+  | "jfnk"
+  /** Powell Dogleg Trust-Region globalized nonlinear solver. */
+  | "trust-region"
+  /** Good Broyden quasi-Newton nonlinear solver. */
+  | "broyden"
+  /** Cascading polyalgorithm: Trust-Region → Broyden → JFNK. */
+  | "polyalgorithm";
 
 // ── Linear Solver ──
 

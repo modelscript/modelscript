@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { runLanguageWasmBuild } from "../../../scripts/build-language-wasm.js";
+import { runLanguageWasmBuild } from "../../../scripts/build/build-language-wasm.js";
 
 runLanguageWasmBuild({
   langName: "relap5",

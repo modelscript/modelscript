@@ -6,10 +6,13 @@
  * structural analysis, numerical integrators, and symbolic solvers.
  */
 
+export * from "./analysis/lgg09_and_nn_reach.js";
+export * from "./analysis/linear_tearing_and_dummy_der.js";
 export * from "./analysis/monomial_basis.js";
 export * from "./analysis/octagon_dbm.js";
 export * from "./analysis/outward_rounding.js";
 export * from "./analysis/parametric_verifier.js";
+export * from "./analysis/polynomial_zonotope.js";
 export * from "./analysis/register-runtime-solvers.js";
 export * from "./analysis/stl_robustness.js";
 export * from "./analysis/wasm_blt.js";
@@ -23,6 +26,7 @@ export * from "./analysis/wasm_hybrid_flowpipe.js";
 export * from "./analysis/wasm_interval.js";
 export * from "./analysis/wasm_kernels_bridge.js";
 export * from "./analysis/wasm_pantelides.js";
+export * from "./analysis/wasm_pbox.js";
 export * from "./analysis/wasm_polynomial_abstraction.js";
 export * from "./analysis/wasm_sbg.js";
 export * from "./analysis/wasm_sos_barrier.js";
@@ -31,6 +35,7 @@ export * from "./analysis/wasm_stochastic_barrier.js";
 export * from "./analysis/wasm_taylor_model.js";
 export * from "./analysis/wasm_zonotope.js";
 export * from "./analysis/wasm_zonotope_reach.js";
+export * from "./autodiff/sparse_hessian_coloring.js";
 export * from "./autodiff/wasm-adjoint-synthesizer.js";
 export * from "./autodiff/wasm-cfg.js";
 export * from "./autodiff/wasm_event_relaxer.js";
@@ -58,6 +63,7 @@ export * from "./formal/cdcl_sat.js";
 export * from "./formal/chc/index.js";
 export * from "./formal/craig_interpolator.js";
 export * from "./formal/dae/hybrid_mode_verifier.js";
+export * from "./formal/dae/pbox_arena.js";
 export * from "./formal/dpll_t_solver.js";
 export * from "./formal/event_grammar.js";
 export * from "./formal/hc4_contractor.js";
@@ -125,6 +131,7 @@ export {
   type SimulationResult as VerifierSimulationResult,
 } from "./simulation/wasm_verifier.js";
 export * from "./solvers/krylov.js";
+export * from "./solvers/nonlinear_polyalgorithm.js";
 export * from "./solvers/solvers_bridge.js";
 export * from "./solvers/sparse_lu.js";
 export * from "./solvers/wasm_bdf.js";

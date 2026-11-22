@@ -103,7 +103,6 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "src/**",
     "dist/**",
     "build/*.wasm"
   ],
@@ -113,15 +112,15 @@
     "build": "npm run asbuild && tsc && node scripts/copy-wasm.js",
     "clean": "rimraf dist build",
     "lint": "eslint src tests --no-warn-ignored",
-    "test": "node ../../scripts/test-runner.js --timeout=180000",
+    "test": "node ../../scripts/ci/test-runner.js --timeout=180000",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@modelscript/cfd": "*",
-    "@modelscript/dsl": "*",
-    "@modelscript/fea": "*",
-    "@modelscript/runtime": "*",
-    "@modelscript/solve": "*"
+    "@modelscript/cfd": "workspace:*",
+    "@modelscript/dsl": "workspace:*",
+    "@modelscript/fea": "workspace:*",
+    "@modelscript/runtime": "workspace:*",
+    "@modelscript/solve": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.3.2",

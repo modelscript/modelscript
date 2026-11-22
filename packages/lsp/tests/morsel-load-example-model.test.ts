@@ -161,7 +161,7 @@ test("Morsel double-click example simulation model: fast standalone extraction, 
   if (!fs.existsSync(path.join(scriptsDir, "ModelicaStandardLibrary_v4.1.0.zip"))) {
     try {
       const { execSync } = await import("node:child_process");
-      execSync("node scripts/download-msl.cjs --version=4.1.0", { cwd: repoRoot, stdio: "pipe" });
+      execSync("node scripts/build/download-msl.cjs --version=4.1.0", { cwd: repoRoot, stdio: "pipe" });
       if (fs.existsSync(path.join(repoRoot, "scripts/ModelicaStandardLibrary_v4.1.0.zip"))) {
         scriptsDir = path.resolve(repoRoot, "scripts");
       }

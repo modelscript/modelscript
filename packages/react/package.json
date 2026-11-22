@@ -33,26 +33,25 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "src/**",
     "dist/**"
   ],
   "scripts": {
     "build": "tsc",
     "clean": "rimraf dist tsconfig.tsbuildinfo",
     "lint": "eslint src tests --no-warn-ignored",
-    "test": "node ../../scripts/test-runner.js",
+    "test": "node ../../scripts/ci/test-runner.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@modelscript/design-tokens": "*",
-    "@modelscript/embed": "*",
-    "@modelscript/exchange": "*",
-    "@modelscript/runtime": "*"
+    "@modelscript/design-tokens": "workspace:*",
+    "@modelscript/embed": "workspace:*",
+    "@modelscript/exchange": "workspace:*",
+    "@modelscript/runtime": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.3.2",
-    "@types/react": "^19.0.10",
-    "@types/react-dom": "^19.0.4",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "typescript": "^5.9.3"

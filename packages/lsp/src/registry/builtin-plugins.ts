@@ -28,6 +28,7 @@ import {
   getAspenHover,
   validateAspen,
 } from "@modelscript/aspen";
+import { atopileLanguage, lintAtopile, parseAtopile } from "@modelscript/atopile";
 import { atpLanguage, getAtpDiagnostics, getAtpDocumentSymbols } from "@modelscript/atp";
 import {
   automationMLLanguage,
@@ -160,6 +161,13 @@ import {
   jsbsimLanguage,
   validateJsbsim,
 } from "@modelscript/jsbsim";
+import {
+  kicadLanguage,
+  lintKiCadBoard,
+  lintKiCadSchematic,
+  parseKiCadDocument,
+  resolveKiCadHover,
+} from "@modelscript/kicad";
 import { getLandgemDocumentSymbols, getLandgemHover, landgemLanguage, validateLandgem } from "@modelscript/landgem";
 import lasLangFallback from "@modelscript/las/language";
 import { getLpsDocumentSymbols, getLpsHover, lpsActionHandlers, lpsLanguage, validateLps } from "@modelscript/lps";
@@ -2151,6 +2159,53 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     languageDef: atpLanguage,
     symbols: getAtpDocumentSymbols,
     validate: getAtpDiagnostics,
+  });
+
+  // KiCad ECAD (.kicad_pcb, .kicad_sch, .kicad_sym, .kicad_mod)
+  registerStandardPlugin({
+    id: "kicad",
+    name: "KiCad ECAD",
+    extensions: [".kicad_pcb", ".kicad_sch", ".kicad_sym", ".kicad_mod"],
+    languageDef: kicadLanguage,
+    validate: (text: string) => {
+      const doc = parseKiCadDocument(text);
+      const diags =
+        doc.kind === "kicad_pcb"
+          ? lintKiCadBoard(doc)
+          : doc.kind === "kicad_sch"
+            ? lintKiCadSchematic(doc)
+            : doc.diagnostics;
+      return diags.map((d) => ({
+        message: `[${d.code}] ${d.message}`,
+        severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
+        startOffset: d.span?.startOffset ?? 0,
+        endOffset: d.span?.endOffset ?? 0,
+      }));
+    },
+    customHandlers: {
+      hover: (offset: number, text: string) => {
+        const doc = parseKiCadDocument(text);
+        const h = resolveKiCadHover(doc, offset);
+        return h ? { contents: { kind: "markdown", value: h.markdown } } : null;
+      },
+    },
+  });
+
+  // atopile (.ato) Code-First Hardware DSL
+  registerStandardPlugin({
+    id: "atopile",
+    name: "atopile",
+    extensions: [".ato"],
+    languageDef: atopileLanguage,
+    validate: (text: string) => {
+      const diags = lintAtopile(parseAtopile(text));
+      return diags.map((d) => ({
+        message: `[${d.code}] ${d.message}`,
+        severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
+        startOffset: d.span?.startOffset ?? 0,
+        endOffset: d.span?.endOffset ?? 0,
+      }));
+    },
   });
 
   // 76. COMTRADE

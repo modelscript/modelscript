@@ -9,7 +9,19 @@
     "strict": false,
     "exactOptionalPropertyTypes": false,
     "noPropertyAccessFromIndexSignature": false,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "composite": false
   },
-  "include": ["docs/**/*", "docs/.vitepress/**/*", "scripts/**/*", "tests/**/*"]
+  "include": ["docs/**/*", "docs/.vitepress/**/*", "scripts/**/*", "tests/**/*"],
+  "references": [
+    {
+      "path": "../../packages/cad"
+    },
+    {
+      "path": "../../packages/design-tokens"
+    },
+    {
+      "path": "../../packages/diagram"
+    }
+  ]
 }

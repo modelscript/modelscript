@@ -74,9 +74,9 @@ TypeScript interfaces, AST node structures, and simulation results share exact d
 Architectural separation is enforced automatically in CI:
 
 1. **Nx Project Graph Verification (`npm run lint:repo`):**
-   - The dependency graph is inspected by `scripts/check-nx-cycles.js`.
+   - The dependency graph is inspected by `scripts/lint/check-nx-cycles.js`.
    - Core engine packages (`packages/*`) and languages (`languages/*`) are verified to have zero imports from `apps/*` or `ee/`.
 2. **One-Way Open-Core Boundary:**
-   - ESLint and `scripts/lint-package-manifests.ts` verify that open-core packages never declare dependencies on `@modelscript/ee`.
+   - ESLint and `scripts/lint/lint-package-manifests.ts` verify that open-core packages never declare dependencies on `@modelscript/ee`.
 3. **Hardware-Aware Testing:**
-   - Dynamic resource management in `scripts/test-coordinator.js` partitions tests based on CPU and memory availability.
+   - Dynamic resource management in `scripts/ci/test-coordinator.js` partitions tests based on CPU and memory availability.

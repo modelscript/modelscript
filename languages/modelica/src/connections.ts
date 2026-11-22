@@ -20,6 +20,7 @@ import {
   stripArraySubscripts,
   tokenizeCommentStrippedWords,
 } from "./flattener/expressions/cst-utils.js";
+import { getSymbolQualifiedName } from "./flattener/expressions/functions.js";
 import { getFlatteningState } from "./flattener/support/state.js";
 
 function parseLeadingIndexedMember(name: string): { base: string; index: number; rest: string } | null {
@@ -1818,46 +1819,77 @@ export class ModelicaPortBalancer {
           }
         }
       } else if (eqKind === EqKind.If) {
-        const rewriteIfMeta = (meta: any) => {
+        const pruneAndRewriteEqList = (list: any[], rootMeta: any) => {
+          for (let bi = list.length - 1; bi >= 0; bi--) {
+            const bEq = list[bi]!;
+            const origLhs = bEq.lhsExprId;
+            bEq.lhsExprId = rewriteStreamExpr(bEq.lhsExprId);
+            bEq.rhsExprId = rewriteStreamExpr(bEq.rhsExprId);
+            if (
+              (bEq.kind === EqKind.FunctionCall || bEq.kind === EqKind.InitialFunctionCall) &&
+              dae.getExprKind(bEq.lhsExprId) === ExprKind.Call &&
+              dae.interner.resolve(dae.getExprData1(bEq.lhsExprId)) === "assert"
+            ) {
+              const condVal = evaluateConstantArenaExpression(dae, dae.getExprLeft(bEq.lhsExprId));
+              if (condVal === true) {
+                list.splice(bi, 1);
+                continue;
+              }
+            }
+            if (bEq.kind === EqKind.If) {
+              if ((bEq as any).ifMeta) {
+                rewriteIfMeta((bEq as any).ifMeta, rootMeta);
+              } else if (Array.isArray((bEq as any).thenEquations)) {
+                if (bEq.lhsExprId !== origLhs && rootMeta) {
+                  rootMeta.hasResolvedConnectionQuery = true;
+                }
+                pruneAndRewriteEqList((bEq as any).thenEquations, rootMeta);
+                for (const ei of (bEq as any).elseIfClauses ?? []) {
+                  const origEiCond = ei.conditionExprId;
+                  ei.conditionExprId = rewriteStreamExpr(ei.conditionExprId);
+                  if (ei.conditionExprId !== origEiCond && rootMeta) {
+                    rootMeta.hasResolvedConnectionQuery = true;
+                  }
+                  if (Array.isArray(ei.bodyEquations)) {
+                    pruneAndRewriteEqList(ei.bodyEquations, rootMeta);
+                  }
+                  for (const e2 of ei.equations ?? []) {
+                    e2.lhs = rewriteStreamExpr(e2.lhs);
+                    e2.rhs = rewriteStreamExpr(e2.rhs);
+                  }
+                }
+                if (Array.isArray((bEq as any).elseEquations)) {
+                  pruneAndRewriteEqList((bEq as any).elseEquations, rootMeta);
+                }
+              }
+            }
+          }
+        };
+        const rewriteIfMeta = (meta: any, rootMeta?: any) => {
           if (!meta) return;
+          const targetRoot = rootMeta ?? meta;
           const origCond = meta.conditionExprId;
           meta.conditionExprId = rewriteStreamExpr(meta.conditionExprId);
           if (meta.conditionExprId !== origCond) {
             meta.hasResolvedConnectionQuery = true;
+            if (targetRoot !== meta) targetRoot.hasResolvedConnectionQuery = true;
           }
-          for (const bEq of meta.thenEquations) {
-            bEq.lhsExprId = rewriteStreamExpr(bEq.lhsExprId);
-            bEq.rhsExprId = rewriteStreamExpr(bEq.rhsExprId);
-            if (bEq.kind === EqKind.If && (bEq as any).ifMeta) {
-              rewriteIfMeta((bEq as any).ifMeta);
-            }
-          }
+          pruneAndRewriteEqList(meta.thenEquations, targetRoot);
           for (const ei of meta.elseIfClauses) {
             const origEiCond = ei.conditionExprId;
             ei.conditionExprId = rewriteStreamExpr(ei.conditionExprId);
             if (ei.conditionExprId !== origEiCond) {
               meta.hasResolvedConnectionQuery = true;
+              if (targetRoot !== meta) targetRoot.hasResolvedConnectionQuery = true;
             }
-            for (const bEq of ei.bodyEquations) {
-              bEq.lhsExprId = rewriteStreamExpr(bEq.lhsExprId);
-              bEq.rhsExprId = rewriteStreamExpr(bEq.rhsExprId);
-              if (bEq.kind === EqKind.If && (bEq as any).ifMeta) {
-                rewriteIfMeta((bEq as any).ifMeta);
-              }
-            }
+            pruneAndRewriteEqList(ei.bodyEquations, targetRoot);
             for (const bEq of ei.equations) {
               bEq.lhs = rewriteStreamExpr(bEq.lhs);
               bEq.rhs = rewriteStreamExpr(bEq.rhs);
             }
           }
           if (meta.elseEquations) {
-            for (const bEq of meta.elseEquations) {
-              bEq.lhsExprId = rewriteStreamExpr(bEq.lhsExprId);
-              bEq.rhsExprId = rewriteStreamExpr(bEq.rhsExprId);
-              if (bEq.kind === EqKind.If && (bEq as any).ifMeta) {
-                rewriteIfMeta((bEq as any).ifMeta);
-              }
-            }
+            pruneAndRewriteEqList(meta.elseEquations, targetRoot);
           }
         };
         const meta = dae.getIfEquationMeta(i);
@@ -2519,7 +2551,11 @@ export class ModelicaPortBalancer {
             ((minDots === 1 && maxDots > 1) ||
               (minDots < maxDots && group.some((vIdx) => enclosingBoundaryVars.has(vIdx))) ||
               group.some((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx), vIdx))));
+        const groupHasIntermediateOutside = group.some(
+          (vIdx) => outsideVarSet.has(vIdx) && outerConnectedVars.has(vIdx),
+        );
         const isWorldGroup =
+          !groupHasIntermediateOutside &&
           options?.omcCompatibility &&
           ((group.length > 2 && group.some((vIdx) => dae.getVarName(vIdx).startsWith("world."))) ||
             (brokenOverconstrainedConnections.length > 0 &&
@@ -3307,42 +3343,51 @@ export class ModelicaPortBalancer {
 
     // 6. Emit equalityConstraint(u, v) = {0.0, ...} equations for broken overconstrained loops (MLS §9.4.2):
     //    For every non-spanning-tree connection edge (u, v) broken during loop breaking in Step 2.5,
-    //    resolve the connector class's `equalityConstraint` function, inspect its output dimension `residueLen`,
-    //    and emit `equalityConstraint(u, v) = {0.0, ..., 0.0}` when `residueLen > 0`.
+    //    For each broken overconstrained branch `{u, v}`, resolve the connector class's `equalityConstraint` function,
+    //    inspect its output dimension `residueLen`, and emit `equalityConstraint(u, v) = {0.0, ..., 0.0}` when `residueLen > 0`.
     if (brokenOverconstrainedConnections.length > 0) {
       const db = state.db;
       const flattener = state.flattener;
-      let eqConstraintName = "equalityConstraint";
-      let residueLen = 0;
+      const eqSyms =
+        db && typeof db.byName === "function"
+          ? (db.byName("equalityConstraint") ?? []).filter((s: any) => s.kind === "Class" || s.kind === "Function")
+          : [];
+      const eqCache = new Map<string, { eqConstraintName: string; residueLen: number }>();
 
-      if (db && typeof db.byName === "function") {
-        const eqSyms = (db.byName("equalityConstraint") ?? []).filter(
-          (s: any) => s.kind === "Class" || s.kind === "Function",
-        );
-        let eqSym = eqSyms[0];
-        if (eqSyms.length > 1 && brokenOverconstrainedConnections.length > 0) {
-          const sampleNode = brokenOverconstrainedConnections[0]!.u;
-          const rawLeaf = sampleNode.split(".").pop();
-          const bIdxLeaf = rawLeaf ? rawLeaf.indexOf("[") : -1;
-          const leafName = rawLeaf ? (bIdxLeaf >= 0 ? rawLeaf.slice(0, bIdxLeaf) : rawLeaf) : undefined;
-          if (leafName) {
-            const compCandidates = (db.byName(leafName) ?? []).filter((s: any) => s.kind === "Component");
-            for (const comp of compCandidates) {
-              const typeClassId = db.query?.("classInstance", comp.id);
-              if (typeClassId) {
-                const matched = eqSyms.find((s: any) => s.parentId === typeClassId);
-                if (matched) {
-                  eqSym = matched;
-                  break;
-                }
+      const resolveForNode = (sampleNode: string): { eqConstraintName: string; residueLen: number } => {
+        if (!db || eqSyms.length === 0) {
+          return { eqConstraintName: "equalityConstraint", residueLen: 0 };
+        }
+        const rawLeaf = sampleNode.split(".").pop();
+        const bIdxLeaf = rawLeaf ? rawLeaf.indexOf("[") : -1;
+        const leafName = rawLeaf ? (bIdxLeaf >= 0 ? rawLeaf.slice(0, bIdxLeaf) : rawLeaf) : undefined;
+        let eqSym = eqSyms.length === 1 ? eqSyms[0] : undefined;
+        let cacheKey = "__default__";
+        if (leafName) {
+          const compCandidates = (db.byName(leafName) ?? []).filter((s: any) => s.kind === "Component");
+          for (const comp of compCandidates) {
+            const typeClassId = db.query?.("classInstance", comp.id);
+            if (typeClassId) {
+              const matched = eqSyms.find((s: any) => s.parentId === typeClassId);
+              if (matched) {
+                eqSym = matched;
+                cacheKey = String(typeClassId);
+                break;
               }
             }
           }
         }
+        eqSym ??= eqSyms[0];
+        if (eqSym?.parentId) cacheKey = String(eqSym.parentId);
+        const cached = eqCache.get(cacheKey);
+        if (cached) return cached;
+
+        let eqConstraintName = "equalityConstraint";
+        let residueLen = 0;
         if (eqSym) {
           const parentSym = eqSym.parentId ? db.symbol(eqSym.parentId) : null;
-          if (parentSym?.name) {
-            eqConstraintName = `${parentSym.name}.equalityConstraint`;
+          if (parentSym) {
+            eqConstraintName = `${getSymbolQualifiedName(db, parentSym.id)}.equalityConstraint`;
           }
           let fnDae = dae.getFunction(eqConstraintName) ?? dae.getFunction("equalityConstraint");
           if (!fnDae && flattener && typeof flattener.flattenFunction === "function") {
@@ -3363,10 +3408,14 @@ export class ModelicaPortBalancer {
             }
           }
         }
-      }
+        const res = { eqConstraintName, residueLen };
+        eqCache.set(cacheKey, res);
+        return res;
+      };
 
-      if (residueLen > 0) {
-        for (const br of brokenOverconstrainedConnections) {
+      for (const br of brokenOverconstrainedConnections) {
+        const { eqConstraintName, residueLen } = resolveForNode(br.u);
+        if (residueLen > 0) {
           const uExpr = dae.addName(dae.interner.intern(br.u));
           const vExpr = dae.addName(dae.interner.intern(br.v));
           const callExpr = dae.addCallExpr(eqConstraintName, [uExpr, vExpr]);

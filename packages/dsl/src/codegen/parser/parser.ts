@@ -180,6 +180,16 @@ export function generateParserTables(
   }
   const startSymName = Object.keys(originalGrammar.rules ?? {})[0] || "Program";
   const startSymId = symToInt.get(startSymName) || 1;
+  let maxTerminalId = 0;
+  for (const term of grammar.terminals) {
+    if (term !== "EOF" && term !== "ERROR") {
+      const id = symToInt.get(term);
+      if (id !== undefined && id > maxTerminalId) {
+        maxTerminalId = id;
+      }
+    }
+  }
+  const eofSymId = symToInt.get("EOF") ?? 1023;
   code += `export const SYMBOL_COUNT = ${maxSymbolId};\n`;
   code += `export const STATE_COUNT = ${table.actionTable.size};\n`;
   code += `export const START_SYMBOL_ID = ${startSymId};\n\n`;
@@ -191,6 +201,7 @@ export function generateParserTables(
   const actionData: number[] = [];
   const actionEntryOffsets: number[] = [];
   const actionEntryData: number[] = [];
+  const actionDispRows: Array<[number, number][]> = [];
 
   const prodById = new Map<number, (typeof grammar.productions)[0]>(grammar.productions.map((p) => [p.id, p]));
 
@@ -222,9 +233,15 @@ export function generateParserTables(
 
     entries.sort((a, b) => a.symId - b.symId);
 
+    const dispRow: [number, number][] = [];
     actionData.push(entries.length);
     for (const entry of entries) {
-      actionEntryData.push(actionData.length);
+      const matchIdx = actionData.length;
+      actionEntryData.push(matchIdx);
+      const dispSym = entry.symId === eofSymId ? maxTerminalId + 1 : entry.symId;
+      if (dispSym >= 0 && dispSym <= maxTerminalId + 1) {
+        dispRow.push([dispSym, matchIdx]);
+      }
       actionData.push(entry.symId);
       actionData.push(entry.acts.length);
       for (const act of entry.acts) {
@@ -232,7 +249,47 @@ export function generateParserTables(
         actionData.push(act.target || 0);
       }
     }
+    actionDispRows.push(dispRow);
   }
+
+  // Tarjan-Yao comb-compressed row-displacement builder for O(1) 2-load ACTION & GOTO tables.
+  const buildRowDisplacement = (rows: Array<[number, number][]>) => {
+    const numStates = rows.length;
+    const base = new Array<number>(numStates).fill(-1);
+    const check: number[] = [];
+    const val: number[] = [];
+    const order = Array.from({ length: numStates }, (_, i) => i).sort((a, b) => rows[b]!.length - rows[a]!.length);
+    let minFree = 0;
+    for (const stateId of order) {
+      const row = rows[stateId]!;
+      if (row.length === 0) continue;
+      let offset = minFree;
+      while (true) {
+        let fits = true;
+        for (let k = 0; k < row.length; k++) {
+          const slot = offset + row[k]![0];
+          if (slot < check.length && check[slot] !== -1) {
+            fits = false;
+            break;
+          }
+        }
+        if (fits) break;
+        offset++;
+      }
+      base[stateId] = offset;
+      for (let k = 0; k < row.length; k++) {
+        const slot = offset + row[k]![0];
+        while (check.length <= slot) {
+          check.push(-1);
+          val.push(-1);
+        }
+        check[slot] = stateId;
+        val[slot] = row[k]![1];
+      }
+      while (minFree < check.length && check[minFree] !== -1) minFree++;
+    }
+    return { base, check, val };
+  };
 
   // Emit static binary WASM data segments (`memory.data<i32>`) for normal-sized tables
   // (4x smaller than UTF-16 hex strings, zero startup allocation/decoding), falling back
@@ -302,11 +359,16 @@ export function generateParserTables(
   code += generateStaticArray(actionData, "action_data");
   code += generateStaticArray(actionEntryOffsets, "action_entry_offsets");
   code += generateStaticArray(actionEntryData, "action_entry_data");
+  const actionDisp = buildRowDisplacement(actionDispRows);
+  code += generateStaticArray(actionDisp.base, "action_disp_base");
+  code += generateStaticArray(actionDisp.check, "action_disp_check");
+  code += generateStaticArray(actionDisp.val, "action_disp_val");
 
   // Section 3: Flatten GLR GOTO Table
   // Entries are sorted by non-terminal symbol ID to allow binary search during `constructReducedParentNode` / GOTO lookup.
   const gotoOffsets: number[] = [];
   const gotoData: number[] = [];
+  const gotoDispRows: Array<[number, number][]> = [];
 
   for (let stateId = 0; stateId < table.gotoTable.size; stateId++) {
     gotoOffsets.push(gotoData.length);
@@ -315,28 +377,27 @@ export function generateParserTables(
     const sortedGotos = Array.from(gotos.entries())
       .map(([sym, target]) => [symToInt.get(sym)!, target] as const)
       .sort((a, b) => a[0] - b[0]);
+    const gRow: [number, number][] = [];
     for (const [symId, target] of sortedGotos) {
       gotoData.push(symId);
       gotoData.push(target);
+      if (symId >= 0 && symId <= maxSymbolId) {
+        gRow.push([symId, target]);
+      }
     }
+    gotoDispRows.push(gRow);
   }
 
   code += generateStaticArray(gotoOffsets, "goto_offsets");
   code += generateStaticArray(gotoData, "goto_data");
+  const gotoDisp = buildRowDisplacement(gotoDispRows);
+  code += generateStaticArray(gotoDisp.base, "goto_disp_base");
+  code += generateStaticArray(gotoDisp.check, "goto_disp_check");
+  code += generateStaticArray(gotoDisp.val, "goto_disp_val");
 
   // Section 4: Error Recovery Cost & Reachability Tables
   const mrd = table.automaton.computeMRD().map((v) => Math.min(255, v));
   code += generateStaticByteArray(mrd, "mrd_data");
-
-  let maxTerminalId = 0;
-  for (const term of grammar.terminals) {
-    if (term !== "EOF" && term !== "ERROR") {
-      const id = symToInt.get(term);
-      if (id !== undefined && id > maxTerminalId) {
-        maxTerminalId = id;
-      }
-    }
-  }
 
   const defaultBracketsForCosts: [string, string][] = [
     ["{", "}"],
@@ -1083,14 +1144,16 @@ export function generateParserTables(
   const openBracketChars: number[] = [];
   const closeBracketChars: number[] = [];
 
-  for (const [open, close] of declaredBrackets) {
+  for (let bi = 0; bi < declaredBrackets.length; bi++) {
+    const [open, close] = declaredBrackets[bi]!;
+    const kind = (bi % 3) + 1; // 1, 2, or 3 (2-bit packed bracket kind)
     const openTokenId = symToInt.get(open) ?? symToInt.get(`"${open}"`);
     if (openTokenId !== undefined && openTokenId <= maxTerminalId) {
-      tokenBracketDeltas[openTokenId] = 1;
+      tokenBracketDeltas[openTokenId] = kind;
     }
     const closeTokenId = symToInt.get(close) ?? symToInt.get(`"${close}"`);
     if (closeTokenId !== undefined && closeTokenId <= maxTerminalId) {
-      tokenBracketDeltas[closeTokenId] = -1;
+      tokenBracketDeltas[closeTokenId] = -kind;
     }
     if (open.length === 1) {
       const codePoint = open.charCodeAt(0);
@@ -1169,11 +1232,17 @@ export function generateParserTables(
       "action_data",
       "action_entry_offsets",
       "action_entry_data",
+      "action_disp_base",
+      "action_disp_check",
+      "action_disp_val",
       "token_bracket_deltas",
       "open_bracket_chars",
       "close_bracket_chars",
       "goto_offsets",
       "goto_data",
+      "goto_disp_base",
+      "goto_disp_check",
+      "goto_disp_val",
       "mrd_data",
       "token_insert_costs",
       "type_is_structural",

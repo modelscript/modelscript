@@ -84,35 +84,44 @@ export class BoundaryLayerExtruder {
       const elementsBytes = elements.length * 4;
       const totalBytes = surfCoordsBytes + surfTrisBytes + normalsBytes + nodeCoordsBytes + elementsBytes + 32;
 
-      const ptr = wasm.__new(totalBytes, 0);
-      if (typeof wasm.__pin === "function") wasm.__pin(ptr);
-      const surfCoordsPtr = (ptr + 3) & ~3;
-      const surfTrisPtr = surfCoordsPtr + surfCoordsBytes;
-      const normalsPtr = surfTrisPtr + surfTrisBytes;
-      const nodeCoordsOutPtr = normalsPtr + normalsBytes;
-      const elementsOutPtr = nodeCoordsOutPtr + nodeCoordsBytes;
+      const wasmAny = wasm as unknown as {
+        atomicChunkAlloc?: (size: number) => number;
+        atomicChunkFree?: (ptr: number) => void;
+      };
+      const useChunk = typeof wasmAny.atomicChunkAlloc === "function";
+      const ptr = useChunk ? wasmAny.atomicChunkAlloc!(totalBytes) >>> 0 : wasm.__new(totalBytes, 0);
+      if (!useChunk && typeof wasm.__pin === "function") wasm.__pin(ptr);
+      try {
+        const surfCoordsPtr = (ptr + 3) & ~3;
+        const surfTrisPtr = surfCoordsPtr + surfCoordsBytes;
+        const normalsPtr = surfTrisPtr + surfTrisBytes;
+        const nodeCoordsOutPtr = normalsPtr + normalsBytes;
+        const elementsOutPtr = nodeCoordsOutPtr + nodeCoordsBytes;
 
-      const buf = wasm.memory.buffer;
-      new Float32Array(buf, surfCoordsPtr, surfaceCoords.length).set(surfaceCoords);
-      new Uint32Array(buf, surfTrisPtr, surfaceTriangles.length).set(surfaceTriangles);
+        const buf = wasm.memory.buffer;
+        new Float32Array(buf, surfCoordsPtr, surfaceCoords.length).set(surfaceCoords);
+        new Uint32Array(buf, surfTrisPtr, surfaceTriangles.length).set(surfaceTriangles);
 
-      wasm.extrudeBoundaryLayersWasm(
-        surfCoordsPtr,
-        surfTrisPtr,
-        numBaseNodes,
-        numBaseTriangles,
-        numLayers,
-        h1,
-        r,
-        normalsPtr,
-        nodeCoordsOutPtr,
-        elementsOutPtr,
-      );
+        wasm.extrudeBoundaryLayersWasm(
+          surfCoordsPtr,
+          surfTrisPtr,
+          numBaseNodes,
+          numBaseTriangles,
+          numLayers,
+          h1,
+          r,
+          normalsPtr,
+          nodeCoordsOutPtr,
+          elementsOutPtr,
+        );
 
-      const outBuf = wasm.memory.buffer;
-      nodeCoords.set(new Float32Array(outBuf, nodeCoordsOutPtr, nodeCoords.length));
-      elements.set(new Uint32Array(outBuf, elementsOutPtr, elements.length));
-      if (typeof wasm.__unpin === "function") wasm.__unpin(ptr);
+        const outBuf = wasm.memory.buffer;
+        nodeCoords.set(new Float32Array(outBuf, nodeCoordsOutPtr, nodeCoords.length));
+        elements.set(new Uint32Array(outBuf, elementsOutPtr, elements.length));
+      } finally {
+        if (useChunk) wasmAny.atomicChunkFree?.(ptr);
+        else if (typeof wasm.__unpin === "function") wasm.__unpin(ptr);
+      }
 
       return {
         nodeCoords,

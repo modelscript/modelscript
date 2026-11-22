@@ -224,11 +224,9 @@ export interface StlWasmExports {
   __new?: ((size: number, id: number) => number) | undefined;
   alloc?: ((size: number) => number) | undefined;
   stl_eval_always?:
-    | ((timePtr: number, valPtr: number, n: number, a: number, b: number, outPtr: number) => void)
-    | undefined;
+    ((timePtr: number, valPtr: number, n: number, a: number, b: number, outPtr: number) => void) | undefined;
   stl_eval_eventually?:
-    | ((timePtr: number, valPtr: number, n: number, a: number, b: number, outPtr: number) => void)
-    | undefined;
+    ((timePtr: number, valPtr: number, n: number, a: number, b: number, outPtr: number) => void) | undefined;
   stl_eval_until?:
     | ((timePtr: number, lPtr: number, rPtr: number, n: number, a: number, b: number, outPtr: number) => void)
     | undefined;
@@ -250,10 +248,28 @@ export function evaluateFormulaSignalWasm(
   const N = samples.length;
   if (N === 0) return [];
 
-  const allocate = (size: number): number => {
-    if (typeof wasm.__new === "function") return wasm.__new(size, 0);
-    if (typeof wasm.alloc === "function") return wasm.alloc(size);
-    return 0;
+  const allocWasm = wasm as StlWasmExports & {
+    atomicChunkAlloc?: (size: number) => number;
+    atomicChunkFree?: (ptr: number) => void;
+    __pin?: (ptr: number) => void;
+    __unpin?: (ptr: number) => void;
+    free?: (ptr: number) => void;
+  };
+  const allocate = (size: number): { ptr: number; free: () => void } => {
+    if (typeof allocWasm.atomicChunkAlloc === "function") {
+      const p = allocWasm.atomicChunkAlloc(size) >>> 0;
+      return { ptr: p, free: () => p && allocWasm.atomicChunkFree?.(p) };
+    }
+    if (typeof wasm.__new === "function") {
+      const p = wasm.__new(size, 0) >>> 0;
+      if (p && typeof allocWasm.__pin === "function") allocWasm.__pin(p);
+      return { ptr: p, free: () => p && allocWasm.__unpin?.(p) };
+    }
+    if (typeof wasm.alloc === "function") {
+      const p = wasm.alloc(size) >>> 0;
+      return { ptr: p, free: () => p && allocWasm.free?.(p) };
+    }
+    return { ptr: 0, free: () => {} };
   };
 
   if (formula.op === "globally" || formula.op === "eventually") {
@@ -261,32 +277,39 @@ export function evaluateFormulaSignalWasm(
     const [a, b] = formula.tInterval ?? [0, Infinity];
     const bFinite = isFinite(b) ? b : childSig[N - 1]!.t - childSig[0]!.t;
     const bytes = N * 8;
-    const timePtr = allocate(bytes);
-    const valPtr = allocate(bytes);
-    const outPtr = allocate(bytes);
-    if (!timePtr || !valPtr || !outPtr) return null;
+    const timeAlloc = allocate(bytes);
+    const valAlloc = allocate(bytes);
+    const outAlloc = allocate(bytes);
+    try {
+      if (!timeAlloc.ptr || !valAlloc.ptr || !outAlloc.ptr) return null;
 
-    const memory = wasm.memory as WebAssembly.Memory;
-    const timeView = new Float64Array(memory.buffer, timePtr, N);
-    const valView = new Float64Array(memory.buffer, valPtr, N);
-    const outView = new Float64Array(memory.buffer, outPtr, N);
+      const memory = wasm.memory as WebAssembly.Memory;
+      const timeView = new Float64Array(memory.buffer, timeAlloc.ptr, N);
+      const valView = new Float64Array(memory.buffer, valAlloc.ptr, N);
 
-    for (let i = 0; i < N; i++) {
-      timeView[i] = childSig[i]!.t;
-      valView[i] = childSig[i]!.v;
+      for (let i = 0; i < N; i++) {
+        timeView[i] = childSig[i]!.t;
+        valView[i] = childSig[i]!.v;
+      }
+
+      if (formula.op === "globally") {
+        wasm.stl_eval_always(timeAlloc.ptr, valAlloc.ptr, N, a, bFinite, outAlloc.ptr);
+      } else {
+        wasm.stl_eval_eventually!(timeAlloc.ptr, valAlloc.ptr, N, a, bFinite, outAlloc.ptr);
+      }
+
+      const outTimeView = new Float64Array(memory.buffer, timeAlloc.ptr, N);
+      const outResView = new Float64Array(memory.buffer, outAlloc.ptr, N);
+      const res: SignalPoint[] = new Array(N);
+      for (let i = 0; i < N; i++) {
+        res[i] = { t: outTimeView[i]!, v: outResView[i]! };
+      }
+      return res;
+    } finally {
+      outAlloc.free();
+      valAlloc.free();
+      timeAlloc.free();
     }
-
-    if (formula.op === "globally") {
-      wasm.stl_eval_always(timePtr, valPtr, N, a, bFinite, outPtr);
-    } else {
-      wasm.stl_eval_eventually!(timePtr, valPtr, N, a, bFinite, outPtr);
-    }
-
-    const res: SignalPoint[] = new Array(N);
-    for (let i = 0; i < N; i++) {
-      res[i] = { t: timeView[i]!, v: outView[i]! };
-    }
-    return res;
   }
 
   if (formula.op === "until") {
@@ -295,31 +318,39 @@ export function evaluateFormulaSignalWasm(
     const [a, b] = formula.tInterval ?? [0, Infinity];
     const bFinite = isFinite(b) ? b : leftSig[N - 1]!.t - leftSig[0]!.t;
     const bytes = N * 8;
-    const timePtr = allocate(bytes);
-    const lPtr = allocate(bytes);
-    const rPtr = allocate(bytes);
-    const outPtr = allocate(bytes);
-    if (!timePtr || !lPtr || !rPtr || !outPtr) return null;
+    const timeAlloc = allocate(bytes);
+    const lAlloc = allocate(bytes);
+    const rAlloc = allocate(bytes);
+    const outAlloc = allocate(bytes);
+    try {
+      if (!timeAlloc.ptr || !lAlloc.ptr || !rAlloc.ptr || !outAlloc.ptr) return null;
 
-    const memory = wasm.memory as WebAssembly.Memory;
-    const timeView = new Float64Array(memory.buffer, timePtr, N);
-    const lView = new Float64Array(memory.buffer, lPtr, N);
-    const rView = new Float64Array(memory.buffer, rPtr, N);
-    const outView = new Float64Array(memory.buffer, outPtr, N);
+      const memory = wasm.memory as WebAssembly.Memory;
+      const timeView = new Float64Array(memory.buffer, timeAlloc.ptr, N);
+      const lView = new Float64Array(memory.buffer, lAlloc.ptr, N);
+      const rView = new Float64Array(memory.buffer, rAlloc.ptr, N);
 
-    for (let i = 0; i < N; i++) {
-      timeView[i] = leftSig[i]!.t;
-      lView[i] = leftSig[i]!.v;
-      rView[i] = rightSig[i]!.v;
+      for (let i = 0; i < N; i++) {
+        timeView[i] = leftSig[i]!.t;
+        lView[i] = leftSig[i]!.v;
+        rView[i] = rightSig[i]!.v;
+      }
+
+      wasm.stl_eval_until!(timeAlloc.ptr, lAlloc.ptr, rAlloc.ptr, N, a, bFinite, outAlloc.ptr);
+
+      const outTimeView = new Float64Array(memory.buffer, timeAlloc.ptr, N);
+      const outResView = new Float64Array(memory.buffer, outAlloc.ptr, N);
+      const res: SignalPoint[] = new Array(N);
+      for (let i = 0; i < N; i++) {
+        res[i] = { t: outTimeView[i]!, v: outResView[i]! };
+      }
+      return res;
+    } finally {
+      outAlloc.free();
+      rAlloc.free();
+      lAlloc.free();
+      timeAlloc.free();
     }
-
-    wasm.stl_eval_until!(timePtr, lPtr, rPtr, N, a, bFinite, outPtr);
-
-    const res: SignalPoint[] = new Array(N);
-    for (let i = 0; i < N; i++) {
-      res[i] = { t: timeView[i]!, v: outView[i]! };
-    }
-    return res;
   }
 
   return null;

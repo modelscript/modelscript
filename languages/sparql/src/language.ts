@@ -55,7 +55,8 @@ export const sparqlLanguage = language({
           $["AskQuery"]!,
           $["InsertDataUpdate"]!,
           $["DeleteDataUpdate"]!,
-          $["ModifyUpdate"]!,
+          $["DeleteInsertUpdate"]!,
+          $["InsertWhereUpdate"]!,
         ),
       ),
 
@@ -140,12 +141,18 @@ export const sparqlLanguage = language({
         "}",
       ),
 
-    ModifyUpdate: ($) =>
+    DeleteInsertUpdate: ($) =>
       seq(
-        optional(seq(semanticToken("keyword", kw("DELETE")), "{", optional($["TriplesBlock"]!), "}")),
+        semanticToken("keyword", kw("DELETE")),
+        "{",
+        optional($["TriplesBlock"]!),
+        "}",
         optional(seq(semanticToken("keyword", kw("INSERT")), "{", optional($["TriplesBlock"]!), "}")),
         $["WhereClause"]!,
       ),
+
+    InsertWhereUpdate: ($) =>
+      seq(semanticToken("keyword", kw("INSERT")), "{", optional($["TriplesBlock"]!), "}", $["WhereClause"]!),
 
     SubSelect: ($) => seq($["SelectClause"]!, $["WhereClause"]!, $["SolutionModifier"]!, optional($["ValuesClause"]!)),
 
@@ -230,7 +237,7 @@ export const sparqlLanguage = language({
 
     // ── Triples & Property Paths ─────────────────────────────────────────────
 
-    TriplesBlock: ($) => repeat1(choice($["TriplesSameSubject"]!, ".")),
+    TriplesBlock: ($) => seq($["TriplesSameSubject"]!, repeat(seq(".", optional($["TriplesSameSubject"]!)))),
 
     TriplesSameSubject: ($) => seq(field("subject", $["VarOrTerm"]!), $["PropertyListNotEmpty"]!),
 

@@ -3,7 +3,7 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
-import { buildCleanroomStdLib } from "../../../scripts/build-cleanroom-stdlib.js";
+import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildEclipseCleanroomSchemas } from "../src/catalog/eclipse-std-schemas.ts";
 
 const eclipseDir = new URL("..", import.meta.url).pathname;

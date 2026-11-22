@@ -29,6 +29,41 @@ export interface SparqlTripleSource {
     object?: Exclude<SparqlTerm, { termType: "Variable" }> | null,
     graph?: { termType: "NamedNode"; value: string } | null,
   ): Iterable<SparqlQuad>;
+  /**
+   * Optional zero-copy fast path for evaluating multi-pattern BGPs (without property paths)
+   * directly inside the underlying engine (e.g., WASM integer-ID Leapfrog Triejoin).
+   * Returns `null` to fall back to generic `match()`-based Leapfrog Triejoin.
+   */
+  evalBgpFast?(
+    triples: readonly SparqlTriplePattern[],
+    graph: { termType: "NamedNode"; value: string } | null,
+    maxBindings?: number,
+  ): SparqlBindingRow[] | null;
+  /**
+   * Optional O(log N + K) index range scan for numeric object literals constrained by FILTER bounds
+   * (e.g., `FILTER(?v >= 10 && ?v <= 50)` pushed down to a B+Tree POS index).
+   */
+  matchNumericRange?(
+    subject: Exclude<SparqlTerm, { termType: "Variable" }> | null,
+    predicate: { termType: "NamedNode"; value: string },
+    min: number,
+    max: number,
+    minInclusive: boolean,
+    maxInclusive: boolean,
+    graph: { termType: "NamedNode"; value: string } | null,
+  ): Iterable<SparqlQuad>;
+  /** Optional helper listing all distinct named graphs present in this dataset (for `GRAPH ?g { ... }`). */
+  listGraphs?(): Iterable<{ termType: "NamedNode"; value: string }>;
+  /**
+   * Optional O(1) cardinality estimator for cost-based join planning & variable ordering.
+   * Returns an estimated upper bound on matching triples for `(subject, predicate, object, graph)`.
+   */
+  estimateCardinality?(
+    subject?: Exclude<SparqlTerm, { termType: "Variable" }> | null,
+    predicate?: { termType: "NamedNode"; value: string } | null,
+    object?: Exclude<SparqlTerm, { termType: "Variable" }> | null,
+    graph?: { termType: "NamedNode"; value: string } | null,
+  ): number;
 }
 
 /**
@@ -232,93 +267,186 @@ export function createArrayTripleSource(initialQuads: readonly SparqlQuad[]): Sp
       }
       return out;
     },
+    estimateCardinality(subject, predicate, object) {
+      let best = quads.length;
+      if (subject) best = Math.min(best, bySubject.get(subject.value)?.length ?? 0);
+      if (object) best = Math.min(best, byObject.get(object.value)?.length ?? 0);
+      if (predicate) best = Math.min(best, byPredicate.get(predicate.value)?.length ?? 0);
+      return best;
+    },
+  };
+}
+
+function stringToSparqlObjectTerm(o: string): Exclude<SparqlTerm, { termType: "Variable" }> {
+  const isIri = o.includes(":") || o.startsWith("http://") || o.startsWith("https://") || o.startsWith("urn:");
+  if (isIri) return { termType: "NamedNode", value: o };
+  return {
+    termType: "Literal",
+    value: o,
+    datatype: !Number.isNaN(Number(o)) && o.trim() !== "" ? `${XSD_NS}double` : `${XSD_NS}string`,
   };
 }
 
 /**
  * Adapts a `WasmOntologyReasoner` (including inferred taxonomy, types, and property assertions)
- * into a `SparqlTripleSource`.
+ * into a live, zero-snapshot `SparqlTripleSource`.
+ *
+ * Subsequent `reasoner.applyDelta(...)` mutations are reflected immediately on the next query
+ * without recreating the source or snapshotting triples into JS arrays.
  */
 export function createOntologyReasonerSource(reasoner: WasmOntologyReasoner): SparqlTripleSource {
-  reasoner.classify();
-  const quads: SparqlQuad[] = [];
-  const seen = new Set<string>();
-  const pushQuad = (s: string, p: string, o: Exclude<SparqlTerm, { termType: "Variable" }>): void => {
-    const q: SparqlQuad = {
-      subject: { termType: "NamedNode", value: s },
-      predicate: { termType: "NamedNode", value: p },
-      object: o,
-    };
-    const k = `${s}\0${p}\0${termKey(o)}`;
-    if (!seen.has(k)) {
-      seen.add(k);
-      quads.push(q);
-    }
+  return {
+    *match(subject, predicate, object, graph) {
+      if (graph) return;
+      for (const t of reasoner.matchTriplesLive(
+        subject?.value ?? null,
+        predicate?.value ?? null,
+        object?.value ?? null,
+      )) {
+        const oTerm = stringToSparqlObjectTerm(t.o);
+        if (object && !termsEqual(oTerm, object)) continue;
+        yield {
+          subject: { termType: "NamedNode", value: t.s },
+          predicate: { termType: "NamedNode", value: t.p },
+          object: oTerm,
+        };
+      }
+    },
+    estimateCardinality(subject, predicate, object, graph) {
+      if (graph) return 0;
+      return reasoner.estimateTripleCardinality(
+        subject?.value ?? null,
+        predicate?.value ?? null,
+        object?.value ?? null,
+      );
+    },
   };
-
-  for (const node of reasoner.getTaxonomy()) {
-    pushQuad(node.iri, RDF_TYPE, { termType: "NamedNode", value: "http://www.w3.org/2002/07/owl#Class" });
-    for (const sup of node.directSuperClasses) {
-      pushQuad(node.iri, RDFS_SUBCLASS, { termType: "NamedNode", value: sup });
-    }
-  }
-
-  const allBgp = reasoner.queryBgp({ patterns: [{ subject: "?s", predicate: "?p", object: "?o" }] });
-  for (const row of allBgp.bindings) {
-    const s = row["?s"]!;
-    const p = row["?p"]!;
-    const o = row["?o"]!;
-    const isIri = o.includes(":") || o.startsWith("http://") || o.startsWith("https://") || o.startsWith("urn:");
-    pushQuad(
-      s,
-      p === "rdf:type" ? RDF_TYPE : p === "rdfs:subClassOf" ? RDFS_SUBCLASS : p,
-      isIri
-        ? { termType: "NamedNode", value: o }
-        : {
-            termType: "Literal",
-            value: o,
-            datatype: !Number.isNaN(Number(o)) && o.trim() !== "" ? `${XSD_NS}double` : `${XSD_NS}string`,
-          },
-    );
-  }
-
-  return createArrayTripleSource(quads);
 }
 
 /**
- * Adapts a `WasmOntologyStore` (using its WASM RoaringBitmap triple index when attached,
- * or JS axioms otherwise) into a `SparqlTripleSource`.
+ * Adapts a `WasmOntologyStore` into a live `SparqlTripleSource`.
+ *
+ * When a WASM instance is attached, multi-pattern property BGPs are dispatched directly into
+ * WASM linear memory via `evalBgpWasm` (zero-GC integer-ID Leapfrog Triejoin over RoaringBitmaps),
+ * decoding IRIs only for the final matching rows.
  */
 export function createOntologyStoreSource(store: WasmOntologyStore): SparqlTripleSource {
-  const quads: SparqlQuad[] = [];
-  for (const ax of store.axioms) {
-    if (ax.type === "SubClassOf") {
-      quads.push({
-        subject: { termType: "NamedNode", value: ax.subClassIri },
-        predicate: { termType: "NamedNode", value: RDFS_SUBCLASS },
-        object: { termType: "NamedNode", value: ax.superClassIri },
-      });
-    } else if (ax.type === "ClassAssertion") {
-      quads.push({
-        subject: { termType: "NamedNode", value: ax.individualIri },
-        predicate: { termType: "NamedNode", value: RDF_TYPE },
-        object: { termType: "NamedNode", value: ax.classIri },
-      });
-    } else if (ax.type === "ObjectPropertyAssertion") {
-      quads.push({
-        subject: { termType: "NamedNode", value: ax.subjectIri },
-        predicate: { termType: "NamedNode", value: ax.propertyIri },
-        object: { termType: "NamedNode", value: ax.objectIri },
-      });
-    } else if (ax.type === "DataPropertyAssertion") {
-      quads.push({
-        subject: { termType: "NamedNode", value: ax.subjectIri },
-        predicate: { termType: "NamedNode", value: ax.propertyIri },
-        object: { termType: "Literal", value: ax.value, datatype: ax.datatype ?? `${XSD_NS}string` },
-      });
+  let cachedRev = -1;
+  let fallbackIndex: SparqlMutableTripleSource | null = null;
+
+  const ensureFallback = (): SparqlMutableTripleSource => {
+    if (fallbackIndex !== null && cachedRev === store.revision) return fallbackIndex;
+    const quads: SparqlQuad[] = [];
+    for (const ax of store.axioms) {
+      if (ax.type === "SubClassOf") {
+        quads.push({
+          subject: { termType: "NamedNode", value: ax.subClassIri },
+          predicate: { termType: "NamedNode", value: RDFS_SUBCLASS },
+          object: { termType: "NamedNode", value: ax.superClassIri },
+        });
+      } else if (ax.type === "ClassAssertion") {
+        quads.push({
+          subject: { termType: "NamedNode", value: ax.individualIri },
+          predicate: { termType: "NamedNode", value: RDF_TYPE },
+          object: { termType: "NamedNode", value: ax.classIri },
+        });
+      } else if (ax.type === "ObjectPropertyAssertion") {
+        quads.push({
+          subject: { termType: "NamedNode", value: ax.subjectIri },
+          predicate: { termType: "NamedNode", value: ax.propertyIri },
+          object: { termType: "NamedNode", value: ax.objectIri },
+        });
+      } else if (ax.type === "DataPropertyAssertion") {
+        quads.push({
+          subject: { termType: "NamedNode", value: ax.subjectIri },
+          predicate: { termType: "NamedNode", value: ax.propertyIri },
+          object: { termType: "Literal", value: ax.value, datatype: ax.datatype ?? `${XSD_NS}string` },
+        });
+      }
     }
-  }
-  return createArrayTripleSource(quads);
+    fallbackIndex = createArrayTripleSource(quads);
+    cachedRev = store.revision;
+    return fallbackIndex;
+  };
+
+  return {
+    match(subject, predicate, object, graph) {
+      if (graph) return [];
+      // Fast live WASM RoaringBitmap path for property assertions when WASM is attached
+      if (
+        store.wasmInstance?.ontology_queryTriplesBitmap &&
+        predicate &&
+        predicate.value !== RDF_TYPE &&
+        predicate.value !== RDFS_SUBCLASS
+      ) {
+        const views = store.queryTriplesBitmap({
+          subject: subject?.value,
+          predicate: predicate.value,
+          object: object?.value,
+        });
+        const out: SparqlQuad[] = [];
+        for (const v of views) {
+          const sIri = store.getIri(v.subjectId);
+          const pIri = store.getIri(v.predicateId);
+          const oIri = store.getIri(v.objectId);
+          if (!sIri || !pIri || oIri === undefined) continue;
+          const oTerm = stringToSparqlObjectTerm(oIri);
+          if (object && !termsEqual(oTerm, object)) continue;
+          out.push({
+            subject: { termType: "NamedNode", value: sIri },
+            predicate: { termType: "NamedNode", value: pIri },
+            object: oTerm,
+          });
+        }
+        return out;
+      }
+      return ensureFallback().match(subject, predicate, object, graph);
+    },
+    evalBgpFast(triples, graph, maxBindings) {
+      if (graph || !store.wasmInstance?.ontology_evalBgpLeapfrog) return null;
+      const wasmPatterns: { subject: string; predicate: string; object: string }[] = [];
+      for (const tp of triples) {
+        if (tp.predicate.termType !== "NamedNode") return null;
+        if (tp.predicate.value === RDF_TYPE || tp.predicate.value === RDFS_SUBCLASS) return null;
+        const enc = (t: SparqlTerm): string | null => {
+          if (t.termType === "Variable") return `?${t.value}`;
+          if (t.termType === "NamedNode" || t.termType === "Literal") return t.value;
+          return null;
+        };
+        const s = enc(tp.subject);
+        const o = enc(tp.object);
+        if (s === null || o === null) return null;
+        wasmPatterns.push({ subject: s, predicate: tp.predicate.value, object: o });
+      }
+
+      const res = store.evalBgpWasm(wasmPatterns, maxBindings ?? 50000);
+      if (res === null) return null;
+      const out: SparqlBindingRow[] = new Array(res.bindings.length);
+      for (let i = 0; i < res.bindings.length; i++) {
+        const src = res.bindings[i]!;
+        const row: SparqlBindingRow = {};
+        for (const v of res.variables) {
+          const varName = v.startsWith("?") ? v.slice(1) : v;
+          row[varName] = stringToSparqlObjectTerm(src[v]!);
+        }
+        out[i] = row;
+      }
+      return out;
+    },
+    estimateCardinality(subject, predicate, object, graph) {
+      if (graph) return 0;
+      if (store.wasmInstance?.ontology_getRoaringCardinality) {
+        let best = store.size;
+        if (subject) best = Math.min(best, store.getRoaringCardinality(1, subject.value));
+        if (predicate && predicate.value !== RDF_TYPE && predicate.value !== RDFS_SUBCLASS) {
+          best = Math.min(best, store.getRoaringCardinality(2, predicate.value));
+        }
+        if (object) best = Math.min(best, store.getRoaringCardinality(3, object.value));
+        return best;
+      }
+      return ensureFallback().estimateCardinality?.(subject, predicate, object, graph) ?? store.size;
+    },
+  };
 }
 
 /**
@@ -330,45 +458,99 @@ export function createPagedStorageSource(engine: {
     subject?: string | number | undefined;
     predicate?: string | number | undefined;
     object?: string | number | boolean | undefined;
-  }): Array<{ subjectId: number; predicateId: number; objectId: number }>;
+  }): Array<{ subjectId: number; predicateId: number; objectId: number; flags?: number | undefined }>;
+  findQuads?(pattern: {
+    subject?: string | number | undefined;
+    predicate?: string | number | undefined;
+    object?: string | number | boolean | undefined;
+    graph?: string | number | null | undefined;
+  }): Array<{ subjectId: number; predicateId: number; objectId: number; flags?: number | undefined }>;
+  findTriplesNumericRange?(
+    predicate: string | number,
+    minVal: number,
+    maxVal: number,
+    minInclusive?: boolean,
+    maxInclusive?: boolean,
+    subject?: string | number | null,
+    graph?: string | number | null,
+  ): Array<{ subjectId: number; predicateId: number; objectId: number; flags?: number | undefined }>;
+  listGraphs?(): string[];
   decodeTerm(nodeId: number): string | number | boolean | undefined;
 }): SparqlTripleSource {
-  return {
-    match(subject, predicate, object) {
-      const rows = engine.findTriples({
-        subject: subject?.value,
-        predicate: predicate?.value,
-        object: object?.value,
-      });
-      const out: SparqlQuad[] = [];
-      for (const r of rows) {
-        const sVal = engine.decodeTerm(r.subjectId);
-        const pVal = engine.decodeTerm(r.predicateId);
-        const oVal = engine.decodeTerm(r.objectId);
-        if (sVal === undefined || pVal === undefined || oVal === undefined) continue;
-        const oTerm: Exclude<SparqlTerm, { termType: "Variable" }> =
-          typeof oVal === "number"
-            ? {
-                termType: "Literal",
-                value: String(oVal),
-                datatype: Number.isInteger(oVal) ? `${XSD_NS}integer` : `${XSD_NS}double`,
-              }
-            : typeof oVal === "boolean"
-              ? { termType: "Literal", value: String(oVal), datatype: `${XSD_NS}boolean` }
-              : oVal.startsWith("http://") ||
-                  oVal.startsWith("https://") ||
-                  oVal.startsWith("urn:") ||
-                  oVal.includes(":")
-                ? { termType: "NamedNode", value: oVal }
-                : { termType: "Literal", value: oVal, datatype: `${XSD_NS}string` };
-        out.push({
-          subject: { termType: "NamedNode", value: String(sVal) },
-          predicate: { termType: "NamedNode", value: String(pVal) },
-          object: oTerm,
-        });
+  const decodeRows = (
+    rows: Array<{ subjectId: number; predicateId: number; objectId: number; flags?: number | undefined }>,
+  ): SparqlQuad[] => {
+    const out: SparqlQuad[] = [];
+    for (const r of rows) {
+      const sVal = engine.decodeTerm(r.subjectId);
+      const pVal = engine.decodeTerm(r.predicateId);
+      const oVal = engine.decodeTerm(r.objectId);
+      if (sVal === undefined || pVal === undefined || oVal === undefined) continue;
+      const oTerm: Exclude<SparqlTerm, { termType: "Variable" }> =
+        typeof oVal === "number"
+          ? {
+              termType: "Literal",
+              value: String(oVal),
+              datatype: Number.isInteger(oVal) ? `${XSD_NS}integer` : `${XSD_NS}double`,
+            }
+          : typeof oVal === "boolean"
+            ? { termType: "Literal", value: String(oVal), datatype: `${XSD_NS}boolean` }
+            : oVal.startsWith("http://") || oVal.startsWith("https://") || oVal.startsWith("urn:") || oVal.includes(":")
+              ? { termType: "NamedNode", value: oVal }
+              : { termType: "Literal", value: oVal, datatype: `${XSD_NS}string` };
+      const gVal = r.flags ? engine.decodeTerm(r.flags) : undefined;
+      const quad: SparqlQuad = {
+        subject: { termType: "NamedNode", value: String(sVal) },
+        predicate: { termType: "NamedNode", value: String(pVal) },
+        object: oTerm,
+      };
+      if (typeof gVal === "string" && gVal.length > 0) {
+        quad.graph = { termType: "NamedNode", value: gVal };
       }
-      return out;
+      out.push(quad);
+    }
+    return out;
+  };
+
+  return {
+    match(subject, predicate, object, graph) {
+      const rows = engine.findQuads
+        ? engine.findQuads({
+            subject: subject?.value,
+            predicate: predicate?.value,
+            object: object?.value,
+            graph: graph?.value ?? null,
+          })
+        : engine.findTriples({
+            subject: subject?.value,
+            predicate: predicate?.value,
+            object: object?.value,
+          });
+      return decodeRows(rows);
     },
+    ...(engine.findTriplesNumericRange
+      ? {
+          matchNumericRange(subject, predicate, min, max, minInclusive, maxInclusive, graph) {
+            const rows = engine.findTriplesNumericRange!(
+              predicate.value,
+              min,
+              max,
+              minInclusive,
+              maxInclusive,
+              subject?.value ?? null,
+              graph?.value ?? null,
+            );
+            return decodeRows(rows);
+          },
+        }
+      : {}),
+    ...(engine.listGraphs
+      ? {
+          listGraphs() {
+            return engine.listGraphs!().map((g) => ({ termType: "NamedNode" as const, value: g }));
+          },
+        }
+      : {}),
   };
 }
 
@@ -523,6 +705,31 @@ function evalExpr(
   }
 }
 
+/**
+ * Vectorized columnar numeric aggregate kernel operating directly on a `Float64Array` batch
+ * with zero per-row JS object allocations.
+ */
+export function evalColumnarNumericAggregates(values: Float64Array): {
+  count: number;
+  sum: number;
+  avg: number;
+  min: number;
+  max: number;
+} {
+  const n = values.length;
+  if (n === 0) return { count: 0, sum: 0, avg: NaN, min: NaN, max: NaN };
+  let sum = 0;
+  let min = values[0]!;
+  let max = values[0]!;
+  for (let i = 0; i < n; i++) {
+    const v = values[i]!;
+    sum += v;
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  return { count: n, sum, avg: sum / n, min, max };
+}
+
 function evalAggregate(
   fn: string,
   expr: Extract<SparqlExpr, { kind: "call" }>,
@@ -532,36 +739,84 @@ function evalAggregate(
     if (expr.star) {
       return { termType: "Literal", value: String(rows.length), datatype: `${XSD_NS}integer` };
     }
-    const vals = rows.map((r) => evalExpr(expr.args[0]!, r)).filter((v): v is NonNullable<typeof v> => v !== undefined);
-    const count = expr.distinct ? new Set(vals.map(termKey)).size : vals.length;
-    return { termType: "Literal", value: String(count), datatype: `${XSD_NS}integer` };
+    if (!expr.distinct) {
+      let count = 0;
+      for (let i = 0; i < rows.length; i++) {
+        if (evalExpr(expr.args[0]!, rows[i]!) !== undefined) count++;
+      }
+      return { termType: "Literal", value: String(count), datatype: `${XSD_NS}integer` };
+    }
+    const seen = new Set<string>();
+    for (let i = 0; i < rows.length; i++) {
+      const v = evalExpr(expr.args[0]!, rows[i]!);
+      if (v !== undefined) seen.add(termKey(v));
+    }
+    return { termType: "Literal", value: String(seen.size), datatype: `${XSD_NS}integer` };
   }
-  const vals = rows.map((r) => evalExpr(expr.args[0]!, r)).filter((v): v is NonNullable<typeof v> => v !== undefined);
-  const uniq = expr.distinct ? Array.from(new Map(vals.map((v) => [termKey(v), v])).values()) : vals;
-  if (uniq.length === 0) return undefined;
 
-  if (fn === "SAMPLE") return uniq[0];
+  // Vectorized single-pass columnar fast path for non-DISTINCT numeric SUM / AVG
+  if (!expr.distinct && (fn === "SUM" || fn === "AVG")) {
+    let sum = 0;
+    let numCount = 0;
+    for (let i = 0; i < rows.length; i++) {
+      const v = evalExpr(expr.args[0]!, rows[i]!);
+      if (v === undefined) continue;
+      const n = toNumber(v);
+      if (n !== null) {
+        sum += n;
+        numCount++;
+      }
+    }
+    if (fn === "SUM") {
+      return { termType: "Literal", value: String(sum), datatype: `${XSD_NS}double` };
+    }
+    if (numCount === 0) return undefined;
+    return { termType: "Literal", value: String(sum / numCount), datatype: `${XSD_NS}double` };
+  }
+
+  const vals: Exclude<SparqlTerm, { termType: "Variable" }>[] = [];
+  const seen = expr.distinct ? new Set<string>() : null;
+  for (let i = 0; i < rows.length; i++) {
+    const v = evalExpr(expr.args[0]!, rows[i]!);
+    if (v === undefined) continue;
+    if (seen) {
+      const k = termKey(v);
+      if (seen.has(k)) continue;
+      seen.add(k);
+    }
+    vals.push(v);
+  }
+  if (vals.length === 0) return undefined;
+
+  if (fn === "SAMPLE") return vals[0];
   if (fn === "GROUP_CONCAT") {
-    return { termType: "Literal", value: uniq.map((v) => v.value).join(" "), datatype: `${XSD_NS}string` };
+    return { termType: "Literal", value: vals.map((v) => v.value).join(" "), datatype: `${XSD_NS}string` };
   }
-  const nums = uniq.map(toNumber).filter((n): n is number => n !== null);
-  if (fn === "SUM") {
-    const s = nums.reduce((a, b) => a + b, 0);
-    return { termType: "Literal", value: String(s), datatype: `${XSD_NS}double` };
-  }
-  if (fn === "AVG") {
-    if (nums.length === 0) return undefined;
-    const s = nums.reduce((a, b) => a + b, 0) / nums.length;
-    return { termType: "Literal", value: String(s), datatype: `${XSD_NS}double` };
+  if (fn === "SUM" || fn === "AVG") {
+    let sum = 0;
+    let numCount = 0;
+    for (let i = 0; i < vals.length; i++) {
+      const n = toNumber(vals[i]!);
+      if (n !== null) {
+        sum += n;
+        numCount++;
+      }
+    }
+    if (fn === "SUM") return { termType: "Literal", value: String(sum), datatype: `${XSD_NS}double` };
+    if (numCount === 0) return undefined;
+    return { termType: "Literal", value: String(sum / numCount), datatype: `${XSD_NS}double` };
   }
   if (fn === "MIN" || fn === "MAX") {
-    let best = uniq[0]!;
-    for (let i = 1; i < uniq.length; i++) {
-      const cur = uniq[i]!;
-      const bn = toNumber(best);
-      const cn = toNumber(cur);
-      const cmp = bn !== null && cn !== null ? cn - bn : cur.value.localeCompare(best.value);
-      if ((fn === "MIN" && cmp < 0) || (fn === "MAX" && cmp > 0)) best = cur;
+    let best = vals[0]!;
+    let bestNum = toNumber(best);
+    for (let i = 1; i < vals.length; i++) {
+      const cur = vals[i]!;
+      const curNum = toNumber(cur);
+      const cmp = bestNum !== null && curNum !== null ? curNum - bestNum : cur.value.localeCompare(best.value);
+      if ((fn === "MIN" && cmp < 0) || (fn === "MAX" && cmp > 0)) {
+        best = cur;
+        bestNum = curNum;
+      }
     }
     return best;
   }
@@ -764,9 +1019,57 @@ function areCompatible(a: SparqlBindingRow, b: SparqlBindingRow): boolean {
 }
 
 /**
+ * Cost-based variable ordering planner for Generalized Leapfrog Triejoin.
+ * When `source.estimateCardinality` is available, prioritizes variables constrained by the
+ * lowest-cardinality (most selective) triple patterns first, breaking ties by highest
+ * pattern-incidence degree.
+ */
+export function planBgpJoinOrder(
+  triples: readonly SparqlTriplePattern[],
+  source: SparqlTripleSource,
+  graph: { termType: "NamedNode"; value: string } | null = null,
+): Array<{ variable: string; degree: number; minEstCardinality: number }> {
+  const varDegree = new Map<string, number>();
+  const varMinCard = new Map<string, number>();
+
+  for (const tp of triples) {
+    if (tp.predicate.termType === "PropertyPath") continue;
+    const sConst = tp.subject.termType === "Variable" ? null : tp.subject;
+    const pConst = tp.predicate.termType === "NamedNode" ? tp.predicate : null;
+    const oConst = tp.object.termType === "Variable" ? null : tp.object;
+    const estCard = source.estimateCardinality
+      ? source.estimateCardinality(sConst, pConst, oConst, graph)
+      : Number.POSITIVE_INFINITY;
+
+    const record = (t: SparqlTerm): void => {
+      if (t.termType !== "Variable") return;
+      varDegree.set(t.value, (varDegree.get(t.value) ?? 0) + 1);
+      const prev = varMinCard.get(t.value) ?? Number.POSITIVE_INFINITY;
+      if (estCard < prev) varMinCard.set(t.value, estCard);
+    };
+    record(tp.subject);
+    record(tp.predicate);
+    record(tp.object);
+  }
+
+  return [...varDegree.entries()]
+    .map(([variable, degree]) => ({
+      variable,
+      degree,
+      minEstCardinality: varMinCard.get(variable) ?? Number.POSITIVE_INFINITY,
+    }))
+    .sort((a, b) => {
+      if (a.minEstCardinality !== b.minEstCardinality) {
+        return a.minEstCardinality - b.minEstCardinality;
+      }
+      return b.degree - a.degree;
+    });
+}
+
+/**
  * Generalized Leapfrog Triejoin (Worst-Case Optimal Join) for multi-pattern BGPs without
- * property paths. Chooses variables in decreasing incidence-degree order and intersects sorted
- * candidate term arrays via binary-search leapfrogging across all patterns sharing that variable.
+ * property paths. Chooses variables using cost-based cardinality estimation + incidence degree
+ * and intersects sorted candidate term arrays via binary-search leapfrogging.
  */
 function evalBgpLeapfrog(
   triples: SparqlTriplePattern[],
@@ -774,17 +1077,7 @@ function evalBgpLeapfrog(
   source: SparqlTripleSource,
   graph: { termType: "NamedNode"; value: string } | null,
 ): SparqlBindingRow[] {
-  // Collect all variables and their pattern-incidence degree
-  const varDegree = new Map<string, number>();
-  const addVar = (t: SparqlTerm): void => {
-    if (t.termType === "Variable") varDegree.set(t.value, (varDegree.get(t.value) ?? 0) + 1);
-  };
-  for (const tp of triples) {
-    addVar(tp.subject);
-    if (tp.predicate.termType !== "PropertyPath") addVar(tp.predicate);
-    addVar(tp.object);
-  }
-  const orderedVars = [...varDegree.entries()].sort((a, b) => b[1] - a[1]).map(([v]) => v);
+  const orderedVars = planBgpJoinOrder(triples, source, graph).map((entry) => entry.variable);
 
   // Intersect sorted arrays of (key, term) using multi-way leapfrog binary search
   const leapfrogIntersect = (
@@ -922,6 +1215,21 @@ function evalGraphPattern(
   switch (pat.kind) {
     case "bgp": {
       if (pat.triples.length >= 2 && pat.triples.every((t) => t.predicate.termType !== "PropertyPath")) {
+        if (source.evalBgpFast) {
+          const fast = source.evalBgpFast(pat.triples, graph, options.maxBindings);
+          if (fast !== null) {
+            if (envs.length === 1 && Object.keys(envs[0]!).length === 0) {
+              return fast;
+            }
+            const joined: SparqlBindingRow[] = [];
+            for (const l of envs) {
+              for (const r of fast) {
+                if (areCompatible(l, r)) joined.push({ ...l, ...r });
+              }
+            }
+            return joined;
+          }
+        }
         return evalBgpLeapfrog(pat.triples, envs, source, graph);
       }
       let cur = envs;
@@ -943,9 +1251,125 @@ function evalGraphPattern(
       return out;
     }
     case "group": {
+      // Extract numeric FILTER bounds per variable for B+Tree range pushdown when supported
+      const varRanges = new Map<string, { min: number; max: number; minInclusive: boolean; maxInclusive: boolean }>();
+      if (source.matchNumericRange) {
+        const extractConstNum = (e: SparqlExpr): number | null => {
+          if (e.kind === "term") return toNumber(e.term);
+          if (e.kind === "unary" && e.op === "-" && e.arg.kind === "term") {
+            const n = toNumber(e.arg.term);
+            return n !== null ? -n : null;
+          }
+          if (e.kind === "unary" && e.op === "+" && e.arg.kind === "term") {
+            return toNumber(e.arg.term);
+          }
+          return null;
+        };
+
+        const collectBounds = (expr: SparqlExpr): void => {
+          if (expr.kind === "binary" && expr.op === "&&") {
+            collectBounds(expr.left);
+            collectBounds(expr.right);
+            return;
+          }
+          if (expr.kind !== "binary") return;
+          if (expr.op !== "<" && expr.op !== "<=" && expr.op !== ">" && expr.op !== ">=") return;
+
+          let vName: string | null = null;
+          let numVal: number | null = null;
+          let op = expr.op;
+
+          if (expr.left.kind === "term" && expr.left.term.termType === "Variable") {
+            vName = expr.left.term.value;
+            numVal = extractConstNum(expr.right);
+          } else if (expr.right.kind === "term" && expr.right.term.termType === "Variable") {
+            vName = expr.right.term.value;
+            numVal = extractConstNum(expr.left);
+            op = op === "<" ? ">" : op === "<=" ? ">=" : op === ">" ? "<" : "<=";
+          }
+          if (vName === null || numVal === null) return;
+
+          const cur = varRanges.get(vName) ?? {
+            min: -Infinity,
+            max: Infinity,
+            minInclusive: true,
+            maxInclusive: true,
+          };
+          if (op === ">" && (numVal > cur.min || (numVal === cur.min && cur.minInclusive))) {
+            cur.min = numVal;
+            cur.minInclusive = false;
+          } else if (op === ">=" && numVal > cur.min) {
+            cur.min = numVal;
+            cur.minInclusive = true;
+          } else if (op === "<" && (numVal < cur.max || (numVal === cur.max && cur.maxInclusive))) {
+            cur.max = numVal;
+            cur.maxInclusive = false;
+          } else if (op === "<=" && numVal < cur.max) {
+            cur.max = numVal;
+            cur.maxInclusive = true;
+          }
+          varRanges.set(vName, cur);
+        };
+
+        for (const sub of pat.patterns) {
+          if (sub.kind === "filter") collectBounds(sub.expr);
+        }
+      }
+
       let cur = envs;
       for (const sub of pat.patterns) {
-        cur = evalGraphPattern(sub, cur, source, graph, options);
+        if (sub.kind === "bgp" && varRanges.size > 0 && source.matchNumericRange) {
+          // Evaluate any triple pattern whose object variable has a pushed-down numeric range first
+          const remaining: SparqlTriplePattern[] = [];
+          for (const tp of sub.triples) {
+            if (
+              tp.predicate.termType === "NamedNode" &&
+              tp.object.termType === "Variable" &&
+              varRanges.has(tp.object.value)
+            ) {
+              const rng = varRanges.get(tp.object.value)!;
+              if (Number.isFinite(rng.min) || Number.isFinite(rng.max)) {
+                const next: SparqlBindingRow[] = [];
+                for (const env of cur) {
+                  const sVal = resolveTermInEnv(tp.subject, env);
+                  const oVal = resolveTermInEnv(tp.object, env);
+                  if (oVal) {
+                    // Already bound; defer to standard match
+                    for (const q of source.match(sVal, tp.predicate, oVal, graph)) {
+                      const row: SparqlBindingRow = { ...env };
+                      if (tp.subject.termType === "Variable") row[tp.subject.value] = q.subject;
+                      next.push(row);
+                    }
+                  } else {
+                    for (const q of source.matchNumericRange(
+                      sVal,
+                      tp.predicate,
+                      rng.min,
+                      rng.max,
+                      rng.minInclusive,
+                      rng.maxInclusive,
+                      graph,
+                    )) {
+                      const row: SparqlBindingRow = { ...env };
+                      if (tp.subject.termType === "Variable") row[tp.subject.value] = q.subject;
+                      row[tp.object.value] = q.object;
+                      next.push(row);
+                    }
+                  }
+                }
+                cur = next;
+                if (cur.length === 0) break;
+                continue;
+              }
+            }
+            remaining.push(tp);
+          }
+          if (cur.length > 0 && remaining.length > 0) {
+            cur = evalGraphPattern({ kind: "bgp", triples: remaining }, cur, source, graph, options);
+          }
+        } else {
+          cur = evalGraphPattern(sub, cur, source, graph, options);
+        }
         if (cur.length === 0 && sub.kind !== "optional") break;
       }
       return cur;
@@ -981,7 +1405,36 @@ function evalGraphPattern(
       if (pat.graph.termType === "NamedNode") {
         return evalGraphPattern(pat.pattern, envs, source, pat.graph, options);
       }
-      return evalGraphPattern(pat.pattern, envs, source, graph, options);
+      // Variable named graph: `GRAPH ?g { ... }`
+      const varName = pat.graph.value;
+      const graphNodes: Array<{ termType: "NamedNode"; value: string }> = [];
+      if (source.listGraphs) {
+        for (const g of source.listGraphs()) graphNodes.push(g);
+      } else {
+        const seenG = new Set<string>();
+        for (const q of source.match(null, null, null, null)) {
+          if (q.graph && !seenG.has(q.graph.value)) {
+            seenG.add(q.graph.value);
+            graphNodes.push(q.graph);
+          }
+        }
+      }
+      const out: SparqlBindingRow[] = [];
+      for (const env of envs) {
+        const boundG = env[varName];
+        if (boundG) {
+          if (boundG.termType !== "NamedNode") continue;
+          out.push(...evalGraphPattern(pat.pattern, [env], source, boundG, options));
+        } else {
+          for (const g of graphNodes) {
+            const subRows = evalGraphPattern(pat.pattern, [env], source, g, options);
+            for (const r of subRows) {
+              out.push({ ...r, [varName]: g });
+            }
+          }
+        }
+      }
+      return out;
     }
     case "service": {
       if (options.disallowService !== false) {

@@ -3,7 +3,7 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
-import { buildCleanroomStdLib } from "../../../scripts/build-cleanroom-stdlib.js";
+import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildRelap5CleanroomSchemas } from "../src/catalog/relap5-std-schemas.ts";
 
 const relap5Dir = new URL("..", import.meta.url).pathname;

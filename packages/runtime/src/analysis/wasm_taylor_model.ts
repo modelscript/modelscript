@@ -423,6 +423,7 @@ export class TaylorModel {
 
     if (mulTable) {
       const M = this.basis.totalMonomials;
+      let fpErrAcc = 0;
       for (let i = 0; i < M; i++) {
         const c1 = this.coeffs[i]!;
         if (c1 === 0) continue;
@@ -431,20 +432,36 @@ export class TaylorModel {
           const c2 = other.coeffs[j]!;
           if (c2 === 0) continue;
           const coeff = c1 * c2;
+          const absCoeff = Math.abs(coeff);
+          const mulUlp = absCoeff > 0 && Number.isFinite(absCoeff) ? nextUp(absCoeff) - absCoeff : 0;
           const k = mulTable[rowOffset + j]!;
           if (k >= 0) {
-            res.coeffs[k] = res.coeffs[k]! + coeff;
+            const prev = res.coeffs[k]!;
+            const next = prev + coeff;
+            res.coeffs[k] = next;
+            const addErr = prev !== 0 ? Math.max(addUp(prev, coeff) - next, next - addDown(prev, coeff)) : 0;
+            const totalErr = addUp(mulUlp, addErr);
+            if (totalErr > 0) {
+              const mRange = res.evaluateMonomialRangeIndex(k);
+              fpErrAcc = addUp(fpErrAcc, nextUp(totalErr * Math.max(Math.abs(mRange.lo), Math.abs(mRange.hi))));
+            }
           } else {
             const exps1 = this.basis.exponents[i]!;
             const exps2 = this.basis.exponents[j]!;
             const sumExps = new Array(this.numVars);
             for (let v = 0; v < this.numVars; v++) sumExps[v] = exps1[v]! + exps2[v]!;
             const mRange = this.evaluateMonomialRangeExponents(sumExps);
-            excessRemainder = addInterval(excessRemainder, scaleInterval(mRange, coeff));
+            const coeffIv =
+              mulUlp > 0 ? new Interval(subDown(coeff, mulUlp), addUp(coeff, mulUlp)) : new Interval(coeff, coeff);
+            excessRemainder = addInterval(excessRemainder, mulInterval(mRange, coeffIv));
           }
         }
       }
+      if (fpErrAcc > 0) {
+        excessRemainder = addInterval(excessRemainder, new Interval(-fpErrAcc, fpErrAcc));
+      }
     } else {
+      let fpErrAcc = 0;
       for (let i = 0; i < this.basis.totalMonomials; i++) {
         const c1 = this.coeffs[i]!;
         if (c1 === 0) continue;
@@ -453,6 +470,8 @@ export class TaylorModel {
           const c2 = other.coeffs[j]!;
           if (c2 === 0) continue;
           const coeff = c1 * c2;
+          const absCoeff = Math.abs(coeff);
+          const mulUlp = absCoeff > 0 && Number.isFinite(absCoeff) ? nextUp(absCoeff) - absCoeff : 0;
           const exps2 = other.basis.exponents[j]!;
           const sumExps = new Array(this.numVars);
           let sumDeg = 0;
@@ -464,16 +483,31 @@ export class TaylorModel {
           if (sumDeg <= maxOrder) {
             const target = res.basis.indexOf(sumExps);
             if (target >= 0) {
-              res.coeffs[target] = res.coeffs[target]! + coeff;
+              const prev = res.coeffs[target]!;
+              const next = prev + coeff;
+              res.coeffs[target] = next;
+              const addErr = prev !== 0 ? Math.max(addUp(prev, coeff) - next, next - addDown(prev, coeff)) : 0;
+              const totalErr = addUp(mulUlp, addErr);
+              if (totalErr > 0) {
+                const mRange = res.evaluateMonomialRangeIndex(target);
+                fpErrAcc = addUp(fpErrAcc, nextUp(totalErr * Math.max(Math.abs(mRange.lo), Math.abs(mRange.hi))));
+              }
             } else {
               const mRange = this.evaluateMonomialRangeExponents(sumExps);
-              excessRemainder = addInterval(excessRemainder, scaleInterval(mRange, coeff));
+              const coeffIv =
+                mulUlp > 0 ? new Interval(subDown(coeff, mulUlp), addUp(coeff, mulUlp)) : new Interval(coeff, coeff);
+              excessRemainder = addInterval(excessRemainder, mulInterval(mRange, coeffIv));
             }
           } else {
             const mRange = this.evaluateMonomialRangeExponents(sumExps);
-            excessRemainder = addInterval(excessRemainder, scaleInterval(mRange, coeff));
+            const coeffIv =
+              mulUlp > 0 ? new Interval(subDown(coeff, mulUlp), addUp(coeff, mulUlp)) : new Interval(coeff, coeff);
+            excessRemainder = addInterval(excessRemainder, mulInterval(mRange, coeffIv));
           }
         }
+      }
+      if (fpErrAcc > 0) {
+        excessRemainder = addInterval(excessRemainder, new Interval(-fpErrAcc, fpErrAcc));
       }
     }
 
@@ -854,10 +888,171 @@ export interface FlowpipeProblemOptions {
    */
   symbolicCarryOver?: boolean | number | undefined;
   /**
-   * @deprecated Ignored. The previous "QR tightening" only widened the enclosure (union of the
-   * direct and rotated boxes). Proper preconditioned Taylor models are tracked in the hardening plan.
+   * Enable Makino-Berz QR preconditioning at coordinate refresh boundaries to align the
+   * Taylor Model spatial domain with the principal stretching directions of the flow
+   * and suppress the wrapping effect.
    */
   useQrPreconditioning?: boolean | undefined;
+}
+
+/**
+ * Computes an orthonormal basis Q via Modified Gram-Schmidt for an n×n matrix A.
+ * Falls back to canonical basis vectors for rank-deficient columns so Q is always invertible.
+ */
+function modifiedGramSchmidtQR(A: number[][]): number[][] {
+  const n = A.length;
+  const cols: number[][] = Array.from({ length: n }, (_, j) => Array.from({ length: n }, (_, i) => A[i]?.[j] ?? 0));
+  const Qcols: number[][] = [];
+
+  for (let j = 0; j < n; j++) {
+    const v = [...cols[j]!];
+    for (let k = 0; k < Qcols.length; k++) {
+      const qk = Qcols[k]!;
+      let dot = 0;
+      for (let i = 0; i < n; i++) dot += qk[i]! * v[i]!;
+      for (let i = 0; i < n; i++) v[i] = v[i]! - dot * qk[i]!;
+    }
+    let norm = Math.hypot(...v);
+    if (norm < 1e-12) {
+      // Pick canonical basis vector most orthogonal to existing Qcols
+      let bestVec: number[] | null = null;
+      let bestNorm = -1;
+      for (let eIdx = 0; eIdx < n; eIdx++) {
+        const cand = new Array<number>(n).fill(0);
+        cand[eIdx] = 1;
+        for (let k = 0; k < Qcols.length; k++) {
+          const qk = Qcols[k]!;
+          let dot = 0;
+          for (let i = 0; i < n; i++) dot += qk[i]! * cand[i]!;
+          for (let i = 0; i < n; i++) cand[i] = cand[i]! - dot * qk[i]!;
+        }
+        const cn = Math.hypot(...cand);
+        if (cn > bestNorm) {
+          bestNorm = cn;
+          bestVec = cand;
+        }
+      }
+      if (bestVec && bestNorm > 1e-12) {
+        for (let i = 0; i < n; i++) v[i] = bestVec[i]! / bestNorm;
+        norm = 1;
+      } else {
+        for (let i = 0; i < n; i++) v[i] = i === j ? 1 : 0;
+        norm = 1;
+      }
+    } else {
+      for (let i = 0; i < n; i++) v[i] = v[i]! / norm;
+    }
+    Qcols.push(v);
+  }
+
+  // Return row-major n×n matrix Q
+  return Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => Qcols[j]![i]!));
+}
+
+/**
+ * Makino-Berz QR Preconditioning of end-of-step spatial Taylor Models.
+ *
+ * Given spatial Taylor models x_i(s) on domain [0, 0] × spatialDomain, extracts the linear
+ * Jacobian A_{ij} = ∂x_i / ∂s_j, computes an orthonormal basis Q via QR factorization of A,
+ * evaluates u = Q^T (x(s) - c) symbolically (cancelling rotation/shear before interval bounding),
+ * and constructs new linear preconditioned Taylor models:
+ *   x_i(u) = c'_i + Σ_k Q_{ik} u_k + [r_orth,i]
+ * where [r_orth,i] rigorously encloses the orthogonality defect (I - Q Q^T)(x(s) - c).
+ */
+export function qrPreconditionTaylorModels(
+  endTMs: TaylorModel[],
+  stepDomainDt: number,
+  order: number,
+): { stepDomain: Interval[]; stateTMs: TaylorModel[]; spatialDomain: Interval[] } {
+  const n = endTMs.length;
+  const center = endTMs.map((tm) => tm.coeffs[0] ?? 0);
+
+  // Extract linear Jacobian A_{ij} = coeff of spatial variable (j+1) in endTMs[i]
+  const A: number[][] = Array.from({ length: n }, () => new Array<number>(n).fill(0));
+  for (let i = 0; i < n; i++) {
+    const tm = endTMs[i]!;
+    for (let j = 0; j < n; j++) {
+      const exps = new Array<number>(n + 1).fill(0);
+      exps[j + 1] = 1;
+      const idx = tm.basis.indexOf(exps);
+      A[i]![j] = idx >= 0 ? (tm.coeffs[idx] ?? 0) : 0;
+    }
+  }
+
+  const Q = modifiedGramSchmidtQR(A);
+
+  // Subtract constant center from each TM: dx_i(s) = x_i(s) - c_i
+  const dxTMs = endTMs.map((tm, i) => {
+    const shifted = tm.clone();
+    shifted.coeffs[0] = 0;
+    const err = Math.abs(center[i]! - (tm.coeffs[0] ?? 0));
+    if (err > 0) shifted.remainder = addInterval(shifted.remainder, new Interval(-err, err));
+    return shifted;
+  });
+
+  // Symbolically project u_k(s) = Σ_i Q_{ik} dx_i(s) and bound its range
+  const uBounds: Interval[] = [];
+  for (let k = 0; k < n; k++) {
+    let uTM = TaylorModel.constant(0, endTMs[0]!.numVars, endTMs[0]!.domain, order);
+    for (let i = 0; i < n; i++) {
+      const qik = Q[i]![k]!;
+      if (qik !== 0) {
+        uTM = uTM.add(dxTMs[i]!.scale(qik));
+      }
+    }
+    uBounds.push(uTM.evaluateRange());
+  }
+
+  // Bound orthogonality defect (I - Q Q^T) * dxRange rigorously
+  const dxRanges = dxTMs.map((tm) => tm.evaluateRange());
+  const orthRemainders: Interval[] = [];
+  for (let i = 0; i < n; i++) {
+    let rem = new Interval(0, 0);
+    for (let j = 0; j < n; j++) {
+      let qqt = 0;
+      for (let k = 0; k < n; k++) qqt += Q[i]![k]! * Q[j]![k]!;
+      const defect = (i === j ? 1 : 0) - qqt;
+      const defectBound = addUp(Math.abs(defect), nextUp(n * 1e-15));
+      if (defectBound > 0) {
+        rem = addInterval(rem, mulInterval(new Interval(-defectBound, defectBound), dxRanges[j]!));
+      }
+    }
+    orthRemainders.push(rem);
+  }
+
+  // Recenter u_k = uMid_k + tilde_u_k with tilde_u_k ∈ [-halfW_k, halfW_k]
+  const uMid = uBounds.map((iv) => iv.mid);
+  const newSpatialDomain = uBounds.map((iv) => {
+    const halfW = nextUp(0.5 * subUp(iv.hi, iv.lo));
+    return new Interval(-halfW, halfW);
+  });
+  const stepDomain = [new Interval(0, stepDomainDt), ...newSpatialDomain];
+
+  const stateTMs: TaylorModel[] = [];
+  for (let i = 0; i < n; i++) {
+    let cShift = center[i]!;
+    let shiftErr = 0;
+    for (let k = 0; k < n; k++) {
+      const term = Q[i]![k]! * uMid[k]!;
+      const nextC = cShift + term;
+      shiftErr = addUp(shiftErr, Math.max(addUp(cShift, term) - nextC, nextC - addDown(cShift, term)));
+      cShift = nextC;
+    }
+    let tm = TaylorModel.constant(cShift, stepDomain.length, stepDomain, order);
+    for (let k = 0; k < n; k++) {
+      const qik = Q[i]![k]!;
+      if (qik !== 0) {
+        tm = tm.add(TaylorModel.variable(k + 1, stepDomain, order, 0).scale(qik));
+      }
+    }
+    tm.remainder = addInterval(tm.remainder, orthRemainders[i]!);
+    if (shiftErr > 0) {
+      tm.remainder = addInterval(tm.remainder, new Interval(-shiftErr, shiftErr));
+    }
+    stateTMs.push(tm);
+  }
+
+  return { stepDomain, stateTMs, spatialDomain: newSpatialDomain };
 }
 
 /**
@@ -882,6 +1077,7 @@ export class TaylorModelFlowpipeSolver {
       minDt = 1e-6,
       maxDt = 1.0,
       symbolicCarryOver = true,
+      useQrPreconditioning = false,
     } = options;
 
     const carryOverLimit = typeof symbolicCarryOver === "number" ? symbolicCarryOver : symbolicCarryOver ? 20 : 0;
@@ -946,6 +1142,14 @@ export class TaylorModelFlowpipeSolver {
       if (useCarry) {
         stepDomain = [new Interval(0, currentDt), ...spatialDomain];
         stateTMs = currentSpatialTMs!.map((tm) => tm.withDomain(stepDomain));
+      } else if (useQrPreconditioning && currentSpatialTMs !== null && nStates > 1) {
+        const precond = qrPreconditionTaylorModels(currentSpatialTMs, currentDt, order);
+        stepDomain = precond.stepDomain;
+        stateTMs = precond.stateTMs;
+        spatialDomain = precond.spatialDomain;
+        refreshEnclosure = currentEnclosure;
+        refreshNominalInitial = [...currentNominal];
+        stepsSinceRefresh = 0;
       } else {
         refreshEnclosure = currentEnclosure;
         refreshNominalInitial = [...currentNominal];

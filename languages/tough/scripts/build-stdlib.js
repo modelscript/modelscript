@@ -3,7 +3,7 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
-import { buildCleanroomStdLib } from "../../../scripts/build-cleanroom-stdlib.js";
+import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildToughCleanroomSchemas } from "../src/catalog/tough-std-schemas.ts";
 
 const toughDir = new URL("..", import.meta.url).pathname;

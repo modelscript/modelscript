@@ -13,8 +13,13 @@
  *     on failure probability: P(exists t >= 0 : x(t) \in X_u) <= B(x0) / \lambda.
  */
 
-import type { VerificationVerdict } from "../formal/verdict.js";
+import {
+  probabilisticVerdictFromBounds,
+  type ProbabilisticVerdict,
+  type VerificationVerdict,
+} from "../formal/verdict.js";
 import { SdpSolver, type SdpProblem } from "../solvers/wasm_sdp_solver.js";
+import { nextDown, nextUp } from "./outward_rounding.js";
 
 export interface StochasticSystem {
   numVars: number;
@@ -133,7 +138,13 @@ export class StochasticBarrierSynthesizer {
     };
 
     const sdpRes = SdpSolver.solve(sdpProblem);
-    const P = sdpRes.X;
+    let P = sdpRes.X;
+
+    // Guard against non-finite SDP iterates by falling back to identity Lyapunov candidate P = I
+    const pFinite = P.length === n && P.every((row) => row.length === n && row.every((v) => Number.isFinite(v)));
+    if (!pFinite) {
+      P = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (__, j) => (i === j ? 1.0 : 0.0)));
+    }
 
     // Evaluate drift dissipation matrix Q = -(A^T P + P A)
     const Q: number[][] = Array.from({ length: n }, () => new Array<number>(n).fill(0));
@@ -223,6 +234,204 @@ export class StochasticBarrierSynthesizer {
       driftDecayRate: decay,
       diffusionNoiseBound: trSigmaP,
       summary: `Stochastic martingale barrier heuristic (non-rigorous), ${statusStr}: estimated probability of unsafe set entry ${(maxProb * 100).toFixed(2)}% (risk threshold ${(riskTolerance * 100).toFixed(1)}%).`,
+    };
+  }
+
+  /**
+   * Rigorous finite-horizon Kushner–Dynkin supermartingale barrier certification
+   * for linear or bounded-remainder Itô diffusions:
+   *
+   *   dx = (A x + r(x)) dt + sigma(x) dW_t
+   *
+   * with global sector remainder bound ||r(x)|| <= remainderLip * ||x|| and
+   * diffusion covariance envelope sigma(x) sigma(x)^T <= sigmaMax on ||x|| <= unsafeRadius.
+   *
+   * Uses outward-rounded Gershgorin eigenvalue bounds to prove:
+   *   1. P > 0 (lambda_min(P) > 0)
+   *   2. Q = -(A^T P + P A) satisfies lambda_min(Q) >= 2 * remainderLip * lambda_max(P)
+   *      (so the quadratic drift dissipation dominates the nonlinear remainder)
+   *   3. Infinitesimal generator L B(x) <= c = tr(sigmaMax * P) on the safe ball
+   *   4. Kushner's finite-horizon supermartingale inequality:
+   *        P(sup_{0 <= t <= horizon} ||x(t)|| >= unsafeRadius) <= (B(x0) + c * horizon) / (lambda_min(P) * unsafeRadius^2)
+   *
+   * Emits a sound {@link ProbabilisticVerdict} (`rigor: "rigorous"`).
+   */
+  public static verifyFiniteHorizon(spec: {
+    /** Linear drift matrix A (n x n). */
+    driftMatrixA: number[][];
+    /** Upper-bound diffusion covariance matrix Sigma_max >= sigma(x) sigma(x)^T (n x n PSD). */
+    diffusionCovMax: number[][];
+    /** Initial state x0. */
+    initialState: number[];
+    /** Unsafe radius r_u: unsafe set is { ||x|| >= r_u }. */
+    unsafeRadius: number;
+    /** Finite time horizon T >= 0. */
+    horizon: number;
+    /** Maximum acceptable failure probability over [0, T]. */
+    riskTolerance: number;
+    /** Optional global Lipschitz remainder bound ||r(x)|| <= remainderLip * ||x|| (default: 0 for exact linear SDE). */
+    remainderLip?: number | undefined;
+    /** Optional candidate symmetric barrier matrix P; synthesized via SDP if omitted. */
+    candidateP?: number[][] | undefined;
+  }): {
+    verdict: ProbabilisticVerdict;
+    isCertifiedSafe: boolean;
+    maxFailureProbability: number;
+    lambdaMinP: number;
+    lambdaMaxP: number;
+    generatorDriftMargin: number;
+    diffusionGeneratorUpper: number;
+    barrierMatrixP: number[][];
+    summary: string;
+  } {
+    const A = spec.driftMatrixA;
+    const Sigma = spec.diffusionCovMax;
+    const x0 = spec.initialState;
+    const ru = spec.unsafeRadius;
+    const T = spec.horizon;
+    const tol = spec.riskTolerance;
+    const remLip = Math.max(0, spec.remainderLip ?? 0);
+    const n = A.length;
+
+    // Synthesize candidate P if not supplied
+    let P: number[][];
+    if (spec.candidateP) {
+      P = spec.candidateP.map((r) => r.slice());
+    } else {
+      const synth = StochasticBarrierSynthesizer.synthesize(
+        {
+          numVars: n,
+          f: (x) => A.map((row) => row.reduce((acc, aij, j) => acc + aij * (x[j] ?? 0), 0)),
+          sigma: () => Sigma.map((row) => row.map((v) => Math.sqrt(Math.max(0, v)))),
+        },
+        { initialState: x0, unsafeRadius: ru, riskTolerance: tol },
+      );
+      P = Array.from({ length: n }, (_, i) =>
+        Array.from({ length: n }, (__, j) => synth.barrierCoefficients[i * n + j] ?? (i === j ? 1 : 0)),
+      );
+    }
+
+    // Symmetrize P
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const avg = 0.5 * (P[i]![j]! + P[j]![i]!);
+        P[i]![j] = avg;
+        P[j]![i] = avg;
+      }
+    }
+
+    // 1. Outward-rounded Gershgorin eigenvalue bounds on P
+    let lambdaMinP = Infinity;
+    let lambdaMaxP = -Infinity;
+    for (let i = 0; i < n; i++) {
+      let offUp = 0;
+      for (let j = 0; j < n; j++) {
+        if (i !== j) offUp = nextUp(offUp + Math.abs(P[i]![j]!));
+      }
+      const rowLo = nextDown(P[i]![i]! - offUp);
+      const rowHi = nextUp(P[i]![i]! + offUp);
+      if (rowLo < lambdaMinP) lambdaMinP = rowLo;
+      if (rowHi > lambdaMaxP) lambdaMaxP = rowHi;
+    }
+
+    // 2. Compute dissipation matrix Q = -(A^T P + P A) with conservative rounding slack
+    const QLo: number[][] = Array.from({ length: n }, () => new Array<number>(n).fill(0));
+    const QOffUp = new Array<number>(n).fill(0);
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        let sumLo = 0;
+        let sumHi = 0;
+        for (let k = 0; k < n; k++) {
+          const term1 = (A[k]?.[i] ?? 0) * (P[k]?.[j] ?? 0);
+          const term2 = (P[i]?.[k] ?? 0) * (A[k]?.[j] ?? 0);
+          sumLo = nextDown(sumLo + nextDown(term1) + nextDown(term2));
+          sumHi = nextUp(sumHi + nextUp(term1) + nextUp(term2));
+        }
+        // Q_ij = -sum
+        const qLo = nextDown(-sumHi);
+        const qHi = nextUp(-sumLo);
+        QLo[i]![j] = qLo;
+        if (i !== j) {
+          QOffUp[i] = nextUp(QOffUp[i]! + Math.max(Math.abs(qLo), Math.abs(qHi)));
+        }
+      }
+    }
+
+    let lambdaMinQ = Infinity;
+    for (let i = 0; i < n; i++) {
+      const rowMin = nextDown(QLo[i]![i]! - QOffUp[i]!);
+      if (rowMin < lambdaMinQ) lambdaMinQ = rowMin;
+    }
+
+    // Remainder dissipation margin: need lambdaMinQ - 2 * remLip * lambdaMaxP >= 0
+    const remPenaltyUp = nextUp(2 * nextUp(remLip * Math.max(0, lambdaMaxP)));
+    const generatorDriftMargin = nextDown(lambdaMinQ - remPenaltyUp);
+
+    // 3. Outward-rounded upper bound on c = tr(Sigma * P)
+    let cUp = 0;
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        const prod = nextUp((Sigma[i]?.[j] ?? 0) * (P[i]?.[j] ?? 0));
+        cUp = nextUp(cUp + prod);
+      }
+    }
+    const diffusionGeneratorUpper = Math.max(0, cUp);
+
+    // 4. Outward-rounded upper bound on B(x0) = x0^T P x0
+    let bx0Up = 0;
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        bx0Up = nextUp(bx0Up + nextUp((x0[i] ?? 0) * (P[i]?.[j] ?? 0) * (x0[j] ?? 0)));
+      }
+    }
+    bx0Up = Math.max(0, bx0Up);
+
+    // Verify all supermartingale conditions hold strictly
+    if (!(lambdaMinP > 0 && generatorDriftMargin >= 0 && ru > 0 && T >= 0)) {
+      const verdict: ProbabilisticVerdict = {
+        kind: "unknown",
+        reason: "inconclusive-pbox",
+        rigor: "rigorous",
+        probabilityBounds: [0, 1],
+        maxAllowedProbability: tol,
+        detail: `Supermartingale conditions not certified (lambdaMinP=${lambdaMinP.toExponential(3)}, driftMargin=${generatorDriftMargin.toExponential(3)}).`,
+      };
+      return {
+        verdict,
+        isCertifiedSafe: false,
+        maxFailureProbability: 1.0,
+        lambdaMinP,
+        lambdaMaxP,
+        generatorDriftMargin,
+        diffusionGeneratorUpper,
+        barrierMatrixP: P,
+        summary: verdict.detail ?? "Supermartingale conditions not certified.",
+      };
+    }
+
+    // Kushner finite-horizon supermartingale upper bound:
+    //   pMax = (B(x0) + c * T) / (lambda_min(P) * ru^2)
+    const numUp = nextUp(bx0Up + nextUp(diffusionGeneratorUpper * T));
+    const denLo = nextDown(lambdaMinP * nextDown(ru * ru));
+    const pMax = denLo > 0 ? Math.min(1.0, nextUp(numUp / denLo)) : 1.0;
+
+    const verdict = probabilisticVerdictFromBounds(
+      [0, pMax],
+      tol,
+      "rigorous",
+      `Kushner supermartingale bound over [0, ${T}]: P(sup ||x(t)|| >= ${ru}) <= ${pMax.toExponential(4)} vs limit ${tol}`,
+    );
+
+    return {
+      verdict,
+      isCertifiedSafe: verdict.kind === "proven",
+      maxFailureProbability: pMax,
+      lambdaMinP,
+      lambdaMaxP,
+      generatorDriftMargin,
+      diffusionGeneratorUpper,
+      barrierMatrixP: P,
+      summary: verdict.detail ?? "",
     };
   }
 }

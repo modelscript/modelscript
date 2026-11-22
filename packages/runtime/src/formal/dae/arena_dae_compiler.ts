@@ -143,6 +143,8 @@ export interface CompiledDae {
   algebraicNames: string[];
   /** Bounds used for parameters / inputs (by name). */
   fixedBounds: Map<string, Interval>;
+  /** Updates a fixed parameter/input interval bound in place for parametric flowpipe sweeps. */
+  setFixedBound?: ((name: string, bound: Interval) => boolean) | undefined;
 }
 
 export interface CompileDaeOptions {
@@ -449,6 +451,8 @@ export function compileArenaToDae(arena: DAEBuilder, options?: CompileDaeOptions
       fixed.set(i, iv);
       fixedBounds.set(arena.getVarName(i), iv);
     } else if (variability === Variability.Continuous) {
+      const vName = arena.getVarName(i);
+      if (vName.startsWith("der(") && vName.endsWith(")")) continue;
       algIdx.push(i);
     }
   }
@@ -532,6 +536,11 @@ export function compileArenaToDae(arena: DAEBuilder, options?: CompileDaeOptions
     jacobianFxInterval: (_t, x, z) => stateRhs.map((id) => evalStateDual(id, x, z).g),
   };
 
+  const fixedNameToIdx = new Map<string, number>();
+  for (const idx of fixed.keys()) {
+    fixedNameToIdx.set(arena.getVarName(idx), idx);
+  }
+
   return {
     ok: true,
     compiled: {
@@ -539,6 +548,13 @@ export function compileArenaToDae(arena: DAEBuilder, options?: CompileDaeOptions
       stateNames: stateIdx.map((i) => arena.getVarName(i)),
       algebraicNames: algIdx.map((i) => arena.getVarName(i)),
       fixedBounds,
+      setFixedBound: (name: string, bound: Interval): boolean => {
+        const idx = fixedNameToIdx.get(name);
+        if (idx === undefined) return false;
+        fixed.set(idx, bound);
+        fixedBounds.set(name, bound);
+        return true;
+      },
     },
   };
 }

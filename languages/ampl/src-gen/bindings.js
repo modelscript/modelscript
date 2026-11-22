@@ -2658,7 +2658,7 @@ export class LspFacade {
   /** Hashes a string using FNV-1a algorithm matching WASM string hash. */
   hashString(str) {
     let h = 2166136261;
-    for (let i = 0; i < str.length; ) {
+    for (let i = 0; i < str.length;) {
       const cp = str.codePointAt(i);
       h = Math.imul(h ^ cp, 16777619) >>> 0;
       i += cp > 0xffff ? 2 : 1;

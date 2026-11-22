@@ -1,8 +1,6 @@
 version: 2
 updates:
-  # Root npm monorepo dependencies
-  # Note: Routine version update PRs are disabled (open-pull-requests-limit: 0).
-  # Dependabot security vulnerability alerts and security update PRs remain enabled.
+  # Root npm monorepo dependencies (grouped weekly PRs to keep overrides & deps fresh)
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
@@ -10,7 +8,7 @@ updates:
       day: "monday"
       time: "04:00"
       timezone: "UTC"
-    open-pull-requests-limit: 0
+    open-pull-requests-limit: 3
     groups:
       dev-dependencies:
         dependency-type: "development"
@@ -19,8 +17,7 @@ updates:
     commit-message:
       prefix: "chore(deps)"
 
-  # GitHub Actions workflows and actions versions
-  # Note: Routine version update PRs are disabled (open-pull-requests-limit: 0).
+  # GitHub Actions workflows and SHA-pinned actions versions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -28,12 +25,15 @@ updates:
       day: "monday"
       time: "04:00"
       timezone: "UTC"
-    open-pull-requests-limit: 0
+    open-pull-requests-limit: 2
+    groups:
+      github-actions:
+        patterns:
+          - "*"
     commit-message:
       prefix: "chore(ci)"
 
   # Docker base images and build dependencies
-  # Note: Routine version update PRs are disabled (open-pull-requests-limit: 0).
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
@@ -41,6 +41,6 @@ updates:
       day: "monday"
       time: "04:00"
       timezone: "UTC"
-    open-pull-requests-limit: 0
+    open-pull-requests-limit: 2
     commit-message:
       prefix: "chore(docker)"

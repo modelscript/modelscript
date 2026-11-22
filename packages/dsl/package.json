@@ -191,7 +191,6 @@
   },
   "files": [
     "bin/**",
-    "src/**",
     "dist/**"
   ],
   "scripts": {
@@ -201,7 +200,7 @@
     "check:as": "node scripts/check-as.js",
     "clean": "rimraf dist src/src-gen build",
     "lint": "eslint src tests --no-warn-ignored",
-    "test": "node ../../scripts/test-runner.js --timeout=600000",
+    "test": "node ../../scripts/ci/test-runner.js --timeout=600000",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

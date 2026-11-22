@@ -9,6 +9,7 @@
  */
 
 import {
+  amgPreconditioner,
   bicgstab,
   ccsMatVec,
   denseMatVec,
@@ -16,6 +17,9 @@ import {
   ilu0Factor,
   ilu0Preconditioner,
   ilu0Solve,
+  ilutFactor,
+  ilutPreconditioner,
+  ilutSolve,
   jacobiPreconditioner,
   jfnkSolve,
   denseToCCS as runtimeDenseToCCS,
@@ -24,8 +28,11 @@ import {
   solveLinearSystemSparse as runtimeSolveLinearSystemSparse,
   sparseLuFactor as runtimeSparseLuFactor,
   sparseLuSolve as runtimeSparseLuSolve,
+  type AMGOptions,
   type FactorizedLinearSolver,
   type ILU0Factorization,
+  type ILUTFactorization,
+  type ILUTOptions,
   type JFNKOptions,
   type JFNKResult,
   type KrylovOptions,
@@ -38,8 +45,11 @@ import {
 
 export type CCSMatrix = SparseCCSMatrix;
 export type {
+  AMGOptions,
   FactorizedLinearSolver,
   ILU0Factorization,
+  ILUTFactorization,
+  ILUTOptions,
   JFNKOptions,
   JFNKResult,
   KrylovOptions,
@@ -61,6 +71,7 @@ export const sparseLuSolve = runtimeSparseLuSolve;
 export const factorizeLinearMatrix = runtimeFactorizeLinearMatrix;
 export const solveLinearSystemSparse = runtimeSolveLinearSystemSparse;
 export {
+  amgPreconditioner,
   bicgstab,
   ccsMatVec,
   denseMatVec,
@@ -68,6 +79,9 @@ export {
   ilu0Factor,
   ilu0Preconditioner,
   ilu0Solve,
+  ilutFactor,
+  ilutPreconditioner,
+  ilutSolve,
   jacobiPreconditioner,
   jfnkSolve,
 };

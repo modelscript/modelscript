@@ -479,11 +479,10 @@ export class OntologyStore {
   }
 
   /**
-   * Retracts an axiom using the DRed (Delete/Rederive) algorithm.
-   * Phase 1: Over-deletion of derived cascades.
-   * Phase 2: Rederivation from surviving alternative proof paths.
+   * Internal Phase 1 DRed over-deletion for a single axiom without triggering Phase 2 rederivation.
+   * Uses SPO/OSP adjacency chains and O(1) visitedMap instead of O(N) full-table scans.
    */
-  retractAxiom(axiomId: u32): u32 {
+  retractAxiomNoResaturate(axiomId: u32): u32 {
     if (axiomId == 0 || axiomId >= this.axiomCount) return 0;
     if (this.axiomActive.get(axiomId) == 0) return 0;
 
@@ -509,59 +508,117 @@ export class OntologyStore {
       if (changetype<usize>(bm) != 0) bm.remove(axiomId);
     }
 
-    // Phase 1 (Over-deletion): Transitive worklist over affected entities so multi-hop
-    // inferred derivations (e.g., A ⊑ B ⊑ C ⊑ D when B ⊑ C is retracted) are properly
-    // over-deleted before Phase 2 rederivation.
+    // Phase 1 (Over-deletion): O(deg) indexed transitive worklist over affected entities
     let affectedEntities = this.scratchA;
     affectedEntities.clear();
-    if (s != 0) affectedEntities.push(s);
-    if (o != 0 && o != s) affectedEntities.push(o);
+    let seenEntities = this.visitedMap;
+    seenEntities.clear();
+    if (s != 0) {
+      affectedEntities.push(s);
+      seenEntities.set(s as u64, 1);
+    }
+    if (o != 0 && o != s) {
+      affectedEntities.push(o);
+      seenEntities.set(o as u64, 1);
+    }
 
     let entHead: u32 = 0;
     while (entHead < affectedEntities.length) {
       let ent = affectedEntities.get(entHead++);
-      for (let i: u32 = 1; i < this.axiomCount; i++) {
-        if (this.axiomActive.get(i) == 0) continue;
-        let ax = AxiomAccessor.at(this.axiomTable, i);
-        if (ax.flags == 1) { // Inferred axiom
-          let infS = ax.subject;
-          let infO = ax.object;
 
-          if (infS == ent || infO == ent) {
-            let count = this.derivationCount.get(i);
+      // Walk SPO chain for `ent`
+      let curr = this.spoHead.get(ent as u64) as u32;
+      while (curr != 0) {
+        if (this.axiomActive.get(curr) != 0) {
+          let ax = AxiomAccessor.at(this.axiomTable, curr);
+          if (ax.flags == 1) {
+            let count = this.derivationCount.get(curr);
             if (count > 1) {
-              this.derivationCount.set(i, count - 1);
+              this.derivationCount.set(curr, count - 1);
             } else {
-              this.derivationCount.set(i, 0);
-              this.axiomActive.set(i, 0);
-
+              this.derivationCount.set(curr, 0);
+              this.axiomActive.set(curr, 0);
+              let infS = ax.subject;
+              let infP = ax.predicate;
+              let infO = ax.object;
               if (infS != 0) {
                 let bm = this.getRoaring(this.spoBitmaps, infS as u64);
-                if (changetype<usize>(bm) != 0) bm.remove(i);
-                let seenS = false;
-                for (let k: u32 = 0; k < affectedEntities.length; k++) {
-                  if (affectedEntities.get(k) == infS) { seenS = true; break; }
+                if (changetype<usize>(bm) != 0) bm.remove(curr);
+                if (!seenEntities.has(infS as u64)) {
+                  seenEntities.set(infS as u64, 1);
+                  affectedEntities.push(infS);
                 }
-                if (!seenS) affectedEntities.push(infS);
               }
-              if (ax.predicate != 0) {
-                let bm = this.getRoaring(this.posBitmaps, ax.predicate as u64);
-                if (changetype<usize>(bm) != 0) bm.remove(i);
+              if (infP != 0) {
+                let bm = this.getRoaring(this.posBitmaps, infP as u64);
+                if (changetype<usize>(bm) != 0) bm.remove(curr);
               }
               if (infO != 0) {
                 let bm = this.getRoaring(this.ospBitmaps, infO as u64);
-                if (changetype<usize>(bm) != 0) bm.remove(i);
-                let seenO = false;
-                for (let k: u32 = 0; k < affectedEntities.length; k++) {
-                  if (affectedEntities.get(k) == infO) { seenO = true; break; }
+                if (changetype<usize>(bm) != 0) bm.remove(curr);
+                if (!seenEntities.has(infO as u64)) {
+                  seenEntities.set(infO as u64, 1);
+                  affectedEntities.push(infO);
                 }
-                if (!seenO) affectedEntities.push(infO);
               }
             }
           }
         }
+        curr = this.nextSpo.get(curr);
+      }
+
+      // Walk OSP chain for `ent`
+      curr = this.ospHead.get(ent as u64) as u32;
+      while (curr != 0) {
+        if (this.axiomActive.get(curr) != 0) {
+          let ax = AxiomAccessor.at(this.axiomTable, curr);
+          if (ax.flags == 1) {
+            let count = this.derivationCount.get(curr);
+            if (count > 1) {
+              this.derivationCount.set(curr, count - 1);
+            } else {
+              this.derivationCount.set(curr, 0);
+              this.axiomActive.set(curr, 0);
+              let infS = ax.subject;
+              let infP = ax.predicate;
+              let infO = ax.object;
+              if (infS != 0) {
+                let bm = this.getRoaring(this.spoBitmaps, infS as u64);
+                if (changetype<usize>(bm) != 0) bm.remove(curr);
+                if (!seenEntities.has(infS as u64)) {
+                  seenEntities.set(infS as u64, 1);
+                  affectedEntities.push(infS);
+                }
+              }
+              if (infP != 0) {
+                let bm = this.getRoaring(this.posBitmaps, infP as u64);
+                if (changetype<usize>(bm) != 0) bm.remove(curr);
+              }
+              if (infO != 0) {
+                let bm = this.getRoaring(this.ospBitmaps, infO as u64);
+                if (changetype<usize>(bm) != 0) bm.remove(curr);
+                if (!seenEntities.has(infO as u64)) {
+                  seenEntities.set(infO as u64, 1);
+                  affectedEntities.push(infO);
+                }
+              }
+            }
+          }
+        }
+        curr = this.nextOsp.get(curr);
       }
     }
+
+    return 1;
+  }
+
+  /**
+   * Retracts an axiom using the DRed (Delete/Rederive) algorithm.
+   * Phase 1: Indexed O(deg) over-deletion of derived cascades.
+   * Phase 2: Rederivation from surviving alternative proof paths.
+   */
+  retractAxiom(axiomId: u32): u32 {
+    if (this.retractAxiomNoResaturate(axiomId) == 0) return 0;
 
     // Phase 2 (Rederivation): Re-run forward chaining to re-derive any surviving paths
     this.saturateELRules();
@@ -574,6 +631,7 @@ export class OntologyStore {
 
   /**
    * Applies an incremental delta of additions and retractions in WASM linear memory.
+   * Batches all Phase 1 over-deletions via O(deg) SPO lookups before running Phase 2 once.
    */
   applyDelta(
     addCount: u32,
@@ -581,39 +639,49 @@ export class OntologyStore {
     retractCount: u32,
     retractArray: ChunkedUint32Array
   ): u32 {
-    // 1. Process retractions first
+    let applied: u32 = 0;
+
+    // 1. Process all retractions (Phase 1 over-deletion only)
     for (let i: u32 = 0; i < retractCount; i++) {
       let rAx = AxiomAccessor.at(retractArray, i);
-      let aType = rAx.axiomType;
+      let aType = rAx.axiomType as u32;
       let s = rAx.subject;
       let p = rAx.predicate;
       let o = rAx.object;
 
-      // Find matching active axiom
-      for (let k: u32 = 1; k < this.axiomCount; k++) {
-        if (this.axiomActive.get(k) == 0) continue;
-        let ax = AxiomAccessor.at(this.axiomTable, k);
-        if (ax.axiomType == aType &&
-            ax.subject == s &&
-            ax.predicate == p &&
-            ax.object == o) {
-          this.retractAxiom(k);
-          break;
+      let matchId: u32 = 0;
+      if (s != 0) {
+        matchId = this.findExactActiveAxiom(aType, s, p, o);
+      } else {
+        for (let k: u32 = 1; k < this.axiomCount; k++) {
+          if (this.axiomActive.get(k) == 0) continue;
+          let ax = AxiomAccessor.at(this.axiomTable, k);
+          if ((ax.axiomType as u32) == aType && ax.subject == s && ax.predicate == p && ax.object == o) {
+            matchId = k;
+            break;
+          }
         }
+      }
+      if (matchId != 0) {
+        this.retractAxiomNoResaturate(matchId);
+        applied++;
       }
     }
 
-    // 2. Process additions
+    // 2. Process all additions
     for (let i: u32 = 0; i < addCount; i++) {
       let aAx = AxiomAccessor.at(addArray, i);
-      this.addAxiom(aAx.axiomType, aAx.sourceLangId as u32, aAx.subject, aAx.predicate, aAx.object, aAx.flags);
+      this.addAxiom(aAx.axiomType as u32, aAx.sourceLangId as u32, aAx.subject, aAx.predicate, aAx.object, aAx.flags, aAx.extra);
+      applied++;
     }
 
-    // 3. Saturate and recompute index
-    this.saturateELRules();
-    this.saturateFunctionalProperties();
-    this.computeIntervalIndex();
-    return addCount + retractCount;
+    // 3. Saturate and recompute index once for the entire batch
+    if (applied > 0) {
+      this.saturateELRules();
+      this.saturateFunctionalProperties();
+      this.computeIntervalIndex();
+    }
+    return applied;
   }
 
   // --------------------------------------------------------------------------
@@ -2976,16 +3044,18 @@ export function ontology_applyDelta(
 ): u32 {
   ensureOntologyStore();
 
-  let addArr = createChunkedUint32Array(addCount * AXIOM_STRIDE);
-  let addMem = changetype<UnmanagedUint32Array>(addPtr);
-  for (let i: u32 = 0; i < addCount * AXIOM_STRIDE; i++) {
-    addArr.push(addMem[i]);
+  let addArr = t_ontologyStore.scratchC;
+  addArr.clear();
+  let addWords = addCount * AXIOM_STRIDE;
+  for (let i: u32 = 0; i < addWords; i++) {
+    addArr.push(load<u32>(addPtr + ((i as usize) << 2)));
   }
 
-  let retArr = createChunkedUint32Array(retractCount * AXIOM_STRIDE);
-  let retMem = changetype<UnmanagedUint32Array>(retractPtr);
-  for (let i: u32 = 0; i < retractCount * AXIOM_STRIDE; i++) {
-    retArr.push(retMem[i]);
+  let retArr = t_ontologyStore.scratchD;
+  retArr.clear();
+  let retWords = retractCount * AXIOM_STRIDE;
+  for (let i: u32 = 0; i < retWords; i++) {
+    retArr.push(load<u32>(retractPtr + ((i as usize) << 2)));
   }
 
   return t_ontologyStore.applyDelta(addCount, addArr, retractCount, retArr);
@@ -3327,6 +3397,419 @@ export function ontology_getRoaringCardinality(indexType: u32, keyHash: u32): u3
   let bm = t_ontologyStore.getRoaring(map, keyHash as u64);
   if (changetype<usize>(bm) == 0) return 0;
   return bm.cardinality();
+}
+
+// ---------------------------------------------------------------------------
+// Zero-GC WASM Integer-ID Generalized Leapfrog Triejoin (Worst-Case Optimal)
+// ---------------------------------------------------------------------------
+
+const BGP_VAR_TAG: u32 = 0x80000000;
+const BGP_VAR_MASK: u32 = 0x7fffffff;
+const BGP_MAX_VARS: u32 = 32;
+const BGP_MAX_PATTERNS: u32 = 32;
+
+let g_bgpCandBuf: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
+let g_bgpScratchMem: usize = 0; // fixed flat scratch block for varOrder, bindings, degree, and per-level slice descriptors
+let g_bgpRowCount: u32 = 0;
+
+function ensureBgpScratch(): void {
+  if (changetype<usize>(g_bgpCandBuf) == 0) {
+    g_bgpCandBuf = createChunkedUint32Array(4096);
+  }
+  if (g_bgpScratchMem == 0) {
+    // Layout (all u32 words):
+    // [0..31]    varDegree (32)
+    // [32..63]   varOrder (32)
+    // [64..95]   bindings (32)
+    // [96..127]  lfIdxs (32)
+    // [128..159] lfOrder (32)
+    // [160..223] sliceStarts/Ends per pattern (32 * 2 = 64)
+    g_bgpScratchMem = atomicChunkAlloc(256 * sizeof<u32>());
+  }
+}
+
+@inline function bgpWordGet(idx: u32): u32 {
+  return load<u32>(g_bgpScratchMem + ((idx as usize) << 2));
+}
+
+@inline function bgpWordSet(idx: u32, val: u32): void {
+  store<u32>(g_bgpScratchMem + ((idx as usize) << 2), val);
+}
+
+/** In-place iterative introsort/quicksort + insertion sort over `buf[lo..hi)` (exclusive hi). */
+function bgpSortRange(buf: ChunkedUint32Array, lo: u32, hi: u32): void {
+  if (hi <= lo + 1) return;
+  let len = hi - lo;
+  if (len <= 24) {
+    for (let i: u32 = lo + 1; i < hi; i++) {
+      let key = buf.get(i);
+      let j: i64 = (i as i64) - 1;
+      while (j >= (lo as i64) && buf.get(j as u32) > key) {
+        buf.set((j + 1) as u32, buf.get(j as u32));
+        j--;
+      }
+      buf.set((j + 1) as u32, key);
+    }
+    return;
+  }
+
+  // Median-of-three pivot
+  let mid = lo + (len >> 1);
+  let a = buf.get(lo);
+  let b = buf.get(mid);
+  let c = buf.get(hi - 1);
+  let pivot = a < b ? (b < c ? b : (a < c ? c : a)) : (a < c ? a : (b < c ? c : b));
+
+  let i = lo;
+  let j = hi - 1;
+  while (i <= j) {
+    while (buf.get(i) < pivot) i++;
+    while (buf.get(j) > pivot) {
+      if (j == lo) break;
+      j--;
+    }
+    if (i <= j) {
+      let tmp = buf.get(i);
+      buf.set(i, buf.get(j));
+      buf.set(j, tmp);
+      i++;
+      if (j == 0) break;
+      j--;
+    }
+  }
+  if (lo < j + 1) bgpSortRange(buf, lo, j + 1);
+  if (i < hi) bgpSortRange(buf, i, hi);
+}
+
+/** Deduplicates a sorted slice `buf[lo..hi)` in place and returns the new exclusive end offset. */
+function bgpDedupSorted(buf: ChunkedUint32Array, lo: u32, hi: u32): u32 {
+  if (hi <= lo + 1) return hi;
+  let write = lo + 1;
+  let prev = buf.get(lo);
+  for (let r = lo + 1; r < hi; r++) {
+    let val = buf.get(r);
+    if (val != prev) {
+      buf.set(write++, val);
+      prev = val;
+    }
+  }
+  return write;
+}
+
+/** Binary-search lower_bound in sorted `buf[lo..hi)` for `target`. */
+@inline function bgpSeek(buf: ChunkedUint32Array, loStart: u32, hi: u32, target: u32): u32 {
+  let lo = loStart;
+  let h = hi;
+  while (lo < h) {
+    let mid = (lo + h) >>> 1;
+    if (buf.get(mid) < target) lo = mid + 1;
+    else h = mid;
+  }
+  return lo;
+}
+
+/** Checks if at least one active axiom matches exact `(s, p, o)` using RoaringBitmap intersection. */
+function bgpHasExactTriple(store: OntologyStore, s: u32, p: u32, o: u32): bool {
+  let sBm = store.getRoaring(store.spoBitmaps, s as u64);
+  if (changetype<usize>(sBm) == 0 || sBm.isEmpty()) return false;
+  let pBm = store.getRoaring(store.posBitmaps, p as u64);
+  if (changetype<usize>(pBm) == 0 || pBm.isEmpty()) return false;
+  let oBm = store.getRoaring(store.ospBitmaps, o as u64);
+  if (changetype<usize>(oBm) == 0 || oBm.isEmpty()) return false;
+
+  sBm.and(pBm, store.tempJoinBitmap);
+  if (store.tempJoinBitmap.isEmpty()) return false;
+  store.tempAxiomIdBuf.clear();
+  store.tempJoinBitmap.andToArray(oBm, store.tempAxiomIdBuf);
+  for (let i: u32 = 0; i < store.tempAxiomIdBuf.length; i++) {
+    let axId = store.tempAxiomIdBuf.get(i);
+    if (axId != 0 && axId < store.axiomCount && store.axiomActive.get(axId) != 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Populates `store.tempAxiomIdBuf` with matching axiom IDs for `(s, p, o)` (0 = unbound). Returns false if empty. */
+function bgpCollectMatchingAxiomIds(store: OntologyStore, s: u32, p: u32, o: u32): bool {
+  store.tempAxiomIdBuf.clear();
+  if (s == 0 && p == 0 && o == 0) {
+    for (let i: u32 = 1; i < store.axiomCount; i++) {
+      if (store.axiomActive.get(i) != 0) store.tempAxiomIdBuf.push(i);
+    }
+    return store.tempAxiomIdBuf.length > 0;
+  }
+
+  let sBm = s != 0 ? store.getRoaring(store.spoBitmaps, s as u64) : changetype<RoaringBitmap>(0);
+  let pBm = p != 0 ? store.getRoaring(store.posBitmaps, p as u64) : changetype<RoaringBitmap>(0);
+  let oBm = o != 0 ? store.getRoaring(store.ospBitmaps, o as u64) : changetype<RoaringBitmap>(0);
+
+  if (s != 0 && (changetype<usize>(sBm) == 0 || sBm.isEmpty())) return false;
+  if (p != 0 && (changetype<usize>(pBm) == 0 || pBm.isEmpty())) return false;
+  if (o != 0 && (changetype<usize>(oBm) == 0 || oBm.isEmpty())) return false;
+
+  if (s != 0 && p != 0 && o != 0) {
+    sBm.and(pBm, store.tempJoinBitmap);
+    if (store.tempJoinBitmap.isEmpty()) return false;
+    store.tempJoinBitmap.andToArray(oBm, store.tempAxiomIdBuf);
+  } else if (s != 0 && p != 0) {
+    sBm.andToArray(pBm, store.tempAxiomIdBuf);
+  } else if (s != 0 && o != 0) {
+    sBm.andToArray(oBm, store.tempAxiomIdBuf);
+  } else if (p != 0 && o != 0) {
+    pBm.andToArray(oBm, store.tempAxiomIdBuf);
+  } else if (s != 0) {
+    sBm.toArray(store.tempAxiomIdBuf);
+  } else if (p != 0) {
+    pBm.toArray(store.tempAxiomIdBuf);
+  } else {
+    oBm.toArray(store.tempAxiomIdBuf);
+  }
+  return store.tempAxiomIdBuf.length > 0;
+}
+
+@inline function bgpResolveTerm(term: u32): u32 {
+  if ((term & BGP_VAR_TAG) != 0) {
+    return bgpWordGet(64 + (term & BGP_VAR_MASK));
+  }
+  return term;
+}
+
+function bgpLeapfrogSearch(
+  store: OntologyStore,
+  patternsPtr: usize,
+  patternCount: u32,
+  varCount: u32,
+  depth: u32,
+  outBuffer: ChunkedUint32Array,
+  maxResults: u32
+): void {
+  if (g_bgpRowCount >= maxResults) return;
+
+  // 1. Early pruning: verify any fully bound patterns
+  for (let pi: u32 = 0; pi < patternCount; pi++) {
+    let base = patternsPtr + (((pi * 3) as usize) << 2);
+    let s = bgpResolveTerm(load<u32>(base));
+    let p = bgpResolveTerm(load<u32>(base + 4));
+    let o = bgpResolveTerm(load<u32>(base + 8));
+    if (s != 0 && p != 0 && o != 0) {
+      if (!bgpHasExactTriple(store, s, p, o)) return;
+    }
+  }
+
+  // 2. Base case: all variables bound
+  if (depth >= varCount) {
+    for (let v: u32 = 0; v < varCount; v++) {
+      outBuffer.push(bgpWordGet(64 + v));
+    }
+    g_bgpRowCount++;
+    return;
+  }
+
+  let vIdx = bgpWordGet(32 + depth);
+  let vTag = BGP_VAR_TAG | vIdx;
+  let baseOffset = g_bgpCandBuf.length;
+
+  // Local slice descriptors for this recursion depth: store on the stack via flat words in g_bgpCandBuf
+  // Actually, record up to BGP_MAX_PATTERNS (start, end) pairs right before intersecting!
+  let listCount: u32 = 0;
+  let sliceDescBase = baseOffset;
+  // Reserve 2 * patternCount words at the front of this frame for [start0, end0, start1, end1, ...]
+  for (let i: u32 = 0; i < patternCount * 2; i++) {
+    g_bgpCandBuf.push(0);
+  }
+
+  for (let pi: u32 = 0; pi < patternCount; pi++) {
+    let base = patternsPtr + (((pi * 3) as usize) << 2);
+    let sRaw = load<u32>(base);
+    let pRaw = load<u32>(base + 4);
+    let oRaw = load<u32>(base + 8);
+    let inS = sRaw == vTag;
+    let inP = pRaw == vTag;
+    let inO = oRaw == vTag;
+    if (!inS && !inP && !inO) continue;
+
+    let sBound = inS ? 0 : bgpResolveTerm(sRaw);
+    let pBound = inP ? 0 : bgpResolveTerm(pRaw);
+    let oBound = inO ? 0 : bgpResolveTerm(oRaw);
+
+    if (!bgpCollectMatchingAxiomIds(store, sBound, pBound, oBound)) {
+      g_bgpCandBuf.length = baseOffset;
+      return;
+    }
+
+    let listStart = g_bgpCandBuf.length;
+    for (let i: u32 = 0; i < store.tempAxiomIdBuf.length; i++) {
+      let axId = store.tempAxiomIdBuf.get(i);
+      if (axId == 0 || axId >= store.axiomCount || store.axiomActive.get(axId) == 0) continue;
+      let ax = AxiomAccessor.at(store.axiomTable, axId);
+      let sVal = ax.subject;
+      let pVal = ax.predicate;
+      let oVal = ax.object;
+      if (inS && inO && sVal != oVal) continue;
+      if (inS && inP && sVal != pVal) continue;
+      if (inP && inO && pVal != oVal) continue;
+      let cand = inS ? sVal : (inP ? pVal : oVal);
+      if (cand != 0) g_bgpCandBuf.push(cand);
+    }
+    let listEnd = g_bgpCandBuf.length;
+    if (listEnd == listStart) {
+      g_bgpCandBuf.length = baseOffset;
+      return;
+    }
+
+    bgpSortRange(g_bgpCandBuf, listStart, listEnd);
+    let dedupEnd = bgpDedupSorted(g_bgpCandBuf, listStart, listEnd);
+    g_bgpCandBuf.length = dedupEnd;
+
+    g_bgpCandBuf.set(sliceDescBase + listCount * 2, listStart);
+    g_bgpCandBuf.set(sliceDescBase + listCount * 2 + 1, dedupEnd);
+    listCount++;
+  }
+
+  if (listCount == 0) {
+    g_bgpCandBuf.length = baseOffset;
+    return;
+  }
+
+  // 3. K-way integer Leapfrog intersection into [commonStart, commonEnd)
+  let commonStart = g_bgpCandBuf.length;
+  if (listCount == 1) {
+    let s0 = g_bgpCandBuf.get(sliceDescBase);
+    let e0 = g_bgpCandBuf.get(sliceDescBase + 1);
+    for (let i = s0; i < e0; i++) {
+      g_bgpCandBuf.push(g_bgpCandBuf.get(i));
+    }
+  } else {
+    // Initialize cursors (lfIdxs[0..k-1]) and order (lfOrder[0..k-1])
+    for (let i: u32 = 0; i < listCount; i++) {
+      bgpWordSet(96 + i, g_bgpCandBuf.get(sliceDescBase + i * 2));
+      bgpWordSet(128 + i, i);
+    }
+    // Insertion sort lfOrder by first element of each list
+    for (let i: u32 = 1; i < listCount; i++) {
+      let ordIdx = bgpWordGet(128 + i);
+      let keyVal = g_bgpCandBuf.get(bgpWordGet(96 + ordIdx));
+      let j: i32 = (i as i32) - 1;
+      while (j >= 0) {
+        let prevOrd = bgpWordGet(128 + (j as u32));
+        let prevVal = g_bgpCandBuf.get(bgpWordGet(96 + prevOrd));
+        if (prevVal <= keyVal) break;
+        bgpWordSet(128 + ((j + 1) as u32), prevOrd);
+        j--;
+      }
+      bgpWordSet(128 + ((j + 1) as u32), ordIdx);
+    }
+
+    let pCur: u32 = 0;
+    let lastOrd = bgpWordGet(128 + listCount - 1);
+    let maxKey = g_bgpCandBuf.get(bgpWordGet(96 + lastOrd));
+
+    while (true) {
+      let li = bgpWordGet(128 + pCur);
+      let pos = bgpWordGet(96 + li);
+      let end = g_bgpCandBuf.get(sliceDescBase + li * 2 + 1);
+      let curKey = g_bgpCandBuf.get(pos);
+      if (curKey == maxKey) {
+        g_bgpCandBuf.push(curKey);
+        pos++;
+        if (pos >= end) break;
+        bgpWordSet(96 + li, pos);
+        maxKey = g_bgpCandBuf.get(pos);
+        pCur = (pCur + 1) % listCount;
+      } else {
+        let nextPos = bgpSeek(g_bgpCandBuf, pos, end, maxKey);
+        if (nextPos >= end) break;
+        bgpWordSet(96 + li, nextPos);
+        maxKey = g_bgpCandBuf.get(nextPos);
+        pCur = (pCur + 1) % listCount;
+      }
+    }
+  }
+  let commonEnd = g_bgpCandBuf.length;
+
+  // 4. Recurse for each intersected candidate EntityId
+  for (let i = commonStart; i < commonEnd; i++) {
+    bgpWordSet(64 + vIdx, g_bgpCandBuf.get(i));
+    bgpLeapfrogSearch(store, patternsPtr, patternCount, varCount, depth + 1, outBuffer, maxResults);
+    if (g_bgpRowCount >= maxResults) break;
+  }
+  bgpWordSet(64 + vIdx, 0);
+  g_bgpCandBuf.length = baseOffset;
+}
+
+/**
+ * C-ABI export: Evaluates an N-pattern BGP using zero-GC integer-ID Generalized Leapfrog Triejoin
+ * directly over Roaring Bitmaps in WASM linear memory.
+ *
+ * `patternsPtr` points to `patternCount * 3` `u32` words `[s, p, o, ...]`.
+ * Each word is either a dense `EntityId` (`1..0x7fffffff`) or a variable tag (`0x80000000 | varIdx`).
+ * Writes `rowCount * varCount` `u32` `EntityId`s into the flat query buffer (`ontology_getQueryBuffer()`)
+ * and returns `rowCount`.
+ */
+export function ontology_evalBgpLeapfrog(
+  patternCount: u32,
+  patternsPtr: usize,
+  varCount: u32,
+  maxResults: u32
+): u32 {
+  ensureOntologyStore();
+  ensureBgpScratch();
+  t_ontologyQueryBuffer.clear();
+  g_bgpCandBuf.clear();
+  g_bgpRowCount = 0;
+
+  if (patternCount == 0 || patternCount > BGP_MAX_PATTERNS || varCount > BGP_MAX_VARS) {
+    return 0;
+  }
+  let limit = maxResults == 0 ? 50000 : maxResults;
+
+  // Reset degrees, order, and bindings
+  for (let v: u32 = 0; v < varCount; v++) {
+    bgpWordSet(v, 0);        // degree
+    bgpWordSet(32 + v, v);   // varOrder
+    bgpWordSet(64 + v, 0);   // binding
+  }
+
+  // Count variable incidence degree across patterns
+  for (let pi: u32 = 0; pi < patternCount; pi++) {
+    let base = patternsPtr + (((pi * 3) as usize) << 2);
+    for (let slot: u32 = 0; slot < 3; slot++) {
+      let term = load<u32>(base + ((slot as usize) << 2));
+      if ((term & BGP_VAR_TAG) != 0) {
+        let vIdx = term & BGP_VAR_MASK;
+        if (vIdx < varCount) {
+          bgpWordSet(vIdx, bgpWordGet(vIdx) + 1);
+        }
+      }
+    }
+  }
+
+  // Sort varOrder in descending incidence-degree order
+  for (let i: u32 = 1; i < varCount; i++) {
+    let v = bgpWordGet(32 + i);
+    let deg = bgpWordGet(v);
+    let j: i32 = (i as i32) - 1;
+    while (j >= 0) {
+      let prevV = bgpWordGet(32 + (j as u32));
+      if (bgpWordGet(prevV) >= deg) break;
+      bgpWordSet(32 + ((j + 1) as u32), prevV);
+      j--;
+    }
+    bgpWordSet(32 + ((j + 1) as u32), v);
+  }
+
+  bgpLeapfrogSearch(t_ontologyStore, patternsPtr, patternCount, varCount, 0, t_ontologyQueryBuffer, limit);
+
+  let totalWords = t_ontologyQueryBuffer.length;
+  if (totalWords > t_ontologyQueryFlatCapacity) {
+    t_ontologyQueryFlatCapacity = totalWords + 256;
+    t_ontologyQueryFlatPtr = atomicChunkAlloc(t_ontologyQueryFlatCapacity * sizeof<u32>());
+  }
+  if (totalWords > 0) {
+    t_ontologyQueryBuffer.copyToFlat(t_ontologyQueryFlatPtr);
+  }
+  return g_bgpRowCount;
 }
 
 

@@ -670,13 +670,14 @@ export function evaluateConstantArenaExpression(
           const elemIdx = nameToIdx ? nameToIdx.get(elemName) : arena.getVarIdxByName(elemName);
           if (elemIdx === undefined || elemIdx < 0 || arena.isVarRemoved(elemIdx)) break;
           const elemVar = arena.getVarVariability(elemIdx);
-          if (elemVar !== Variability.Constant && (onlyConstants || elemVar !== Variability.Parameter)) {
+          const hasInMap = Boolean(paramMap && paramMap.has(elemName));
+          if (!hasInMap && elemVar !== Variability.Constant && (onlyConstants || elemVar !== Variability.Parameter)) {
             all2DOk = false;
             break;
           }
           let elemVal: any = null;
-          if (paramMap && paramMap.has(elemName)) {
-            elemVal = paramMap.get(elemName);
+          if (hasInMap) {
+            elemVal = paramMap!.get(elemName);
           } else {
             const bExpr = arena.getVarExpression(elemIdx);
             if (bExpr !== undefined && bExpr >= 0 && bExpr !== exprId) {
@@ -708,6 +709,53 @@ export function evaluateConstantArenaExpression(
       }
       if (all2DOk && rows.length > 0) {
         return rows;
+      }
+    }
+    const probe1DIdx = nameToIdx ? nameToIdx.get(`${varName}[1]`) : arena.getVarIdxByName(`${varName}[1]`);
+    if (probe1DIdx !== undefined && probe1DIdx >= 0 && !arena.isVarRemoved(probe1DIdx)) {
+      const vals: any[] = [];
+      let all1DOk = true;
+      let k1 = 1;
+      while (true) {
+        const elemName = `${varName}[${k1}]`;
+        const elemIdx = nameToIdx ? nameToIdx.get(elemName) : arena.getVarIdxByName(elemName);
+        if (elemIdx === undefined || elemIdx < 0 || arena.isVarRemoved(elemIdx)) break;
+        const elemVar = arena.getVarVariability(elemIdx);
+        const hasInMap = Boolean(paramMap && paramMap.has(elemName));
+        if (!hasInMap && elemVar !== Variability.Constant && (onlyConstants || elemVar !== Variability.Parameter)) {
+          all1DOk = false;
+          break;
+        }
+        let elemVal: any = null;
+        if (hasInMap) {
+          elemVal = paramMap!.get(elemName);
+        } else {
+          const bExpr = arena.getVarExpression(elemIdx);
+          if (bExpr !== undefined && bExpr >= 0 && bExpr !== exprId) {
+            elemVal = evaluateConstantArenaExpression(
+              arena,
+              bExpr,
+              paramMap,
+              nameToIdx,
+              visitedDepth + 1,
+              db,
+              scopeId,
+              onlyConstants,
+            );
+          } else if (!onlyConstants && elemVar === Variability.Parameter) {
+            const sv = arena.getVarStartValue(elemIdx);
+            elemVal = arena.getVarType(elemIdx) === VarType.Boolean ? sv !== 0 : sv;
+          }
+        }
+        if (elemVal === null || elemVal === undefined) {
+          all1DOk = false;
+          break;
+        }
+        vals.push(elemVal);
+        k1++;
+      }
+      if (all1DOk && vals.length > 0) {
+        return vals;
       }
     }
     if (db && scopeId !== undefined) {
@@ -1794,6 +1842,27 @@ export function evaluateConstantArenaExpression(
     if (allArgsConst) {
       if (argCount >= 1 && getCallArg(0) >= 0) {
         const arg1 = callArgs[0];
+        if (Array.isArray(arg1) && (argCount === 1 || argCount === 2)) {
+          if (
+            funcName === "Modelica.Math.Vectors.normalize" ||
+            funcName.endsWith(".Vectors.normalize") ||
+            funcName === "Modelica.Math.Vectors.normalizeWithAssert" ||
+            funcName.endsWith(".Vectors.normalizeWithAssert")
+          ) {
+            const vec = arg1 as unknown[];
+            if (vec.length > 0 && vec.every((x) => typeof x === "number" && Number.isFinite(x))) {
+              const nums = vec as number[];
+              const len = Math.hypot(...nums);
+              if (funcName.endsWith("normalizeWithAssert")) {
+                if (len > 0) return nums.map((x) => x / len);
+              } else {
+                const eps = argCount === 2 && typeof callArgs[1] === "number" ? callArgs[1] : 2.220446049250313e-14;
+                const denom = len >= eps ? len : eps;
+                if (denom > 0) return nums.map((x) => x / denom);
+              }
+            }
+          }
+        }
         if (Array.isArray(arg1) && argCount === 1) {
           const flat = (arg1 as unknown[]).flat(Infinity) as number[];
           if (flat.length > 0) {
@@ -2110,13 +2179,14 @@ export function simplifyArenaIfElse(
   paramMap?: Map<string, number>,
   nameToIdx?: Map<string, number>,
   onlyConstants = false,
+  allowFinalBoolParams = false,
 ): number {
   if (exprId < 0 || exprId >= arena.exprCount) return exprId;
   const kind = arena.getExprKind(exprId);
   switch (kind) {
     case ExprKind.IfElse: {
       const condId = arena.getExprData1(exprId);
-      const condVal = evaluateConstantArenaExpression(
+      let condVal = evaluateConstantArenaExpression(
         arena,
         condId,
         paramMap,
@@ -2126,16 +2196,42 @@ export function simplifyArenaIfElse(
         undefined,
         onlyConstants,
       );
+      if (
+        condVal === null &&
+        allowFinalBoolParams &&
+        onlyConstants &&
+        condId >= 0 &&
+        arena.getExprKind(condId) === ExprKind.Name
+      ) {
+        const cName = arena.interner.resolve(arena.getExprData1(condId));
+        if (cName) {
+          const allMap = (paramMap as { _allParamMap?: Map<string, any> } | undefined)?._allParamMap;
+          const vIdx = nameToIdx ? nameToIdx.get(cName) : arena.getVarIdxByName(cName);
+          if (
+            vIdx !== undefined &&
+            vIdx >= 0 &&
+            arena.getVarType(vIdx) === VarType.Boolean &&
+            arena.getVarVariability(vIdx) === Variability.Parameter &&
+            arena.isVarFinal(vIdx)
+          ) {
+            if (allMap && allMap.has(cName)) {
+              condVal = Boolean(allMap.get(cName));
+            } else if (arena.isVarFixed(vIdx)) {
+              condVal = arena.getVarStartValue(vIdx) !== 0;
+            }
+          }
+        }
+      }
       if (condVal !== null) {
         const isTrue = typeof condVal === "boolean" ? condVal : condVal !== 0;
         const branchId = isTrue ? arena.getExprLeft(exprId) : arena.getExprRight(exprId);
-        return simplifyArenaIfElse(arena, branchId, paramMap, nameToIdx, onlyConstants);
+        return simplifyArenaIfElse(arena, branchId, paramMap, nameToIdx, onlyConstants, allowFinalBoolParams);
       }
-      const newCond = simplifyArenaIfElse(arena, condId, paramMap, nameToIdx, onlyConstants);
+      const newCond = simplifyArenaIfElse(arena, condId, paramMap, nameToIdx, onlyConstants, allowFinalBoolParams);
       const leftId = arena.getExprLeft(exprId);
       const rightId = arena.getExprRight(exprId);
-      const newLeft = simplifyArenaIfElse(arena, leftId, paramMap, nameToIdx, onlyConstants);
-      const newRight = simplifyArenaIfElse(arena, rightId, paramMap, nameToIdx, onlyConstants);
+      const newLeft = simplifyArenaIfElse(arena, leftId, paramMap, nameToIdx, onlyConstants, allowFinalBoolParams);
+      const newRight = simplifyArenaIfElse(arena, rightId, paramMap, nameToIdx, onlyConstants, allowFinalBoolParams);
       if (newCond !== condId || newLeft !== leftId || newRight !== rightId) {
         return arena.addIfElseExpr(newCond, newLeft, newRight);
       }
@@ -2144,35 +2240,37 @@ export function simplifyArenaIfElse(
     case ExprKind.Unary: {
       const op = arena.getExprData1(exprId);
       const leftId = arena.getExprLeft(exprId);
-      const newLeft = simplifyArenaIfElse(arena, leftId, paramMap, nameToIdx, onlyConstants);
+      const newLeft = simplifyArenaIfElse(arena, leftId, paramMap, nameToIdx, onlyConstants, allowFinalBoolParams);
       return newLeft !== leftId ? arena.addUnaryExpr(op, newLeft) : exprId;
     }
     case ExprKind.Negate: {
       const leftId = arena.getExprLeft(exprId);
-      const newLeft = simplifyArenaIfElse(arena, leftId, paramMap, nameToIdx, onlyConstants);
+      const newLeft = simplifyArenaIfElse(arena, leftId, paramMap, nameToIdx, onlyConstants, allowFinalBoolParams);
       return newLeft !== leftId ? arena.addExpression(ExprKind.Negate, 0, newLeft) : exprId;
     }
     case ExprKind.Binary: {
       const op = arena.getExprData1(exprId);
       const leftId = arena.getExprLeft(exprId);
       const rightId = arena.getExprRight(exprId);
-      const newLeft = simplifyArenaIfElse(arena, leftId, paramMap, nameToIdx, onlyConstants);
-      const newRight = simplifyArenaIfElse(arena, rightId, paramMap, nameToIdx, onlyConstants);
+      const newLeft = simplifyArenaIfElse(arena, leftId, paramMap, nameToIdx, onlyConstants, allowFinalBoolParams);
+      const newRight = simplifyArenaIfElse(arena, rightId, paramMap, nameToIdx, onlyConstants, allowFinalBoolParams);
       return newLeft !== leftId || newRight !== rightId ? arena.addBinaryExpr(op, newLeft, newRight) : exprId;
     }
     case ExprKind.Call: {
       const funcNameId = arena.getExprData1(exprId);
+      const fnName = arena.interner.resolve(funcNameId) || "";
+      const isComplexCall =
+        allowFinalBoolParams || fnName === "Complex" || fnName.startsWith("Complex.") || fnName.includes(".Complex");
       const argCount = arena.getExprRight(exprId);
       let changed = false;
       const args: number[] = [];
       for (let i = 0; i < argCount; i++) {
         const argId = i === 0 ? arena.getExprLeft(exprId) : arena.getExprLeft(exprId + i);
-        const newArg = simplifyArenaIfElse(arena, argId, paramMap, nameToIdx, onlyConstants);
+        const newArg = simplifyArenaIfElse(arena, argId, paramMap, nameToIdx, onlyConstants, isComplexCall);
         if (newArg !== argId) changed = true;
         args.push(newArg);
       }
       if (changed) {
-        const fnName = arena.interner.resolve(funcNameId) || "";
         return arena.addCallExpr(fnName, args);
       }
       return exprId;
@@ -2809,7 +2907,42 @@ export function substituteArenaConstants(
         }
       }
       const callId = anyChanged ? arena.addCallExpr(fnName, args) : exprId;
+      if (
+        args.length === 0 &&
+        (fnName === "Modelica.Mechanics.MultiBody.Frames.nullRotation" || fnName === "Frames.nullRotation") &&
+        Boolean((arena.extensionMetadata as Record<string, unknown> | undefined)?.["omcCompatibility"])
+      ) {
+        const mkRow = (a: number, b: number, c: number) =>
+          arena.addArrayCtorExpr([arena.addRealLiteral(a), arena.addRealLiteral(b), arena.addRealLiteral(c)]);
+        const matT = arena.addArrayCtorExpr([mkRow(1.0, 0.0, 0.0), mkRow(0.0, 1.0, 0.0), mkRow(0.0, 0.0, 1.0)]);
+        const vecW = mkRow(0.0, 0.0, 0.0);
+        return arena.addCallExpr("Modelica.Mechanics.MultiBody.Frames.Orientation", [matT, vecW]);
+      }
       const folded = evaluateConstantArenaExpression(arena, callId, constMap, nameToIdx, 0, undefined, undefined, true);
+      if (
+        folded !== null &&
+        typeof folded === "object" &&
+        !Array.isArray(folded) &&
+        typeof (folded as any).re === "number" &&
+        typeof (folded as any).im === "number" &&
+        Number.isFinite((folded as any).re) &&
+        Number.isFinite((folded as any).im) &&
+        (fnName === "Complex.'constructor'.fromReal" || fnName.endsWith(".Complex.'constructor'.fromReal"))
+      ) {
+        return arena.addCallExpr("Complex", [
+          arena.addRealLiteral((folded as any).re),
+          arena.addRealLiteral((folded as any).im),
+        ]);
+      }
+      if (
+        Array.isArray(folded) &&
+        (fnName === "Modelica.Math.Vectors.normalize" ||
+          fnName.endsWith(".Vectors.normalize") ||
+          fnName === "Modelica.Math.Vectors.normalizeWithAssert" ||
+          fnName.endsWith(".Vectors.normalizeWithAssert"))
+      ) {
+        return arrayValueToArenaExpr(arena, folded, VarType.Real);
+      }
       if (typeof folded === "number") {
         if (fnName === "/*Real*/" || fnName === "Real" || isRealTypedArenaExpr(arena, callId, nameToIdx)) {
           return arena.addRealLiteral(folded);
@@ -3087,6 +3220,27 @@ function arrayValueToArenaExpr(arena: DAEBuilder, val: any, varType: VarType): n
   }
   if (typeof val === "string") {
     return arena.addStringLiteral(val);
+  }
+  if (val !== null && typeof val === "object") {
+    let reVal: unknown;
+    let imVal: unknown;
+    if (typeof val.re === "number" && typeof val.im === "number") {
+      reVal = val.re;
+      imVal = val.im;
+    } else if (
+      (val as any).__kind === "object" &&
+      (val as any).fields instanceof Map &&
+      (val as any).fields.size === 2
+    ) {
+      reVal = (val as any).fields.get("re");
+      imVal = (val as any).fields.get("im");
+    } else if ((val as any).__fields instanceof Map && (val as any).__fields.size === 2) {
+      reVal = (val as any).__fields.get("re");
+      imVal = (val as any).__fields.get("im");
+    }
+    if (typeof reVal === "number" && typeof imVal === "number") {
+      return arena.addCallExpr("Complex", [arena.addRealLiteral(reVal), arena.addRealLiteral(imVal)]);
+    }
   }
   return arena.addRealLiteral(Number(val));
 }
@@ -3659,7 +3813,7 @@ export function foldArenaConstants(
         const isFinalParamNewInst =
           omcCompatibility &&
           v === Variability.Parameter &&
-          arena.isVarFinal(i) &&
+          (arena.isVarFinal(i) || arena.isVarProtected(i)) &&
           !arena.extensionMetadata?.["isOldFrontend"];
         const evalVal = evaluateConstantArenaExpression(
           arena,
@@ -3728,6 +3882,12 @@ export function foldArenaConstants(
             if (v === Variability.Constant) constMap.set(arena.getVarName(i), foldedValue);
             if (v === Variability.Constant || (v === Variability.Parameter && arena.isVarFinal(i))) {
               finalParamOrConstMap.set(arena.getVarName(i), foldedValue);
+            }
+          } else if (!match && Array.isArray(foldedValue) && arena.getExprKind(exprId) !== ExprKind.ArrayCtor) {
+            const arrExpr = arrayValueToArenaExpr(arena, foldedValue, arena.getVarType(i));
+            if (arrExpr !== exprId) {
+              arena.setVarExpression(i, arrExpr);
+              changed = true;
             }
           }
         } else if (arena.getExprKind(exprId) === ExprKind.Subscript) {
@@ -3919,6 +4079,7 @@ export function foldArenaConstants(
   const assertEvalMap = omcCompatibility && !isOldFrontendFold ? constPlusEvalMap : constMap;
   if (omcCompatibility && !isOldFrontendFold) {
     (eqSubMap as { _allParamMap?: Map<string, any> })._allParamMap = paramMap;
+    (ifElseFoldMap as { _allParamMap?: Map<string, any> })._allParamMap = paramMap;
   }
   for (let eq = 0; eq < arena.eqCount; eq++) {
     const eqKind = arena.getEqKind(eq);
@@ -3961,6 +4122,7 @@ export function foldArenaConstants(
         );
         if (foldedRhs !== null) {
           let varType = VarType.Real;
+          let skipScalarFold = false;
           if (lhsKind === ExprKind.Name) {
             const varName = arena.interner.resolve(arena.getExprData1(lhsExpr));
             let varIdx = nameToIdx
@@ -3989,7 +4151,7 @@ export function foldArenaConstants(
             if (varIdx !== undefined && varIdx >= 0) {
               varType = arena.getVarType(varIdx);
             } else {
-              continue;
+              skipScalarFold = true;
             }
           } else if (lhsKind === ExprKind.Tuple && isCall && Array.isArray(foldedRhs)) {
             const tupleCount = arena.getExprData1(lhsExpr);
@@ -4062,10 +4224,10 @@ export function foldArenaConstants(
             }
             continue;
           } else if (lhsKind !== ExprKind.Subscript) {
-            continue;
+            skipScalarFold = true;
           }
 
-          if (varType !== VarType.Enumeration && !isExprAlreadyLiteral(arena, rhsExpr, foldedRhs)) {
+          if (!skipScalarFold && varType !== VarType.Enumeration && !isExprAlreadyLiteral(arena, rhsExpr, foldedRhs)) {
             let newRhs: number;
             if (Array.isArray(foldedRhs)) {
               newRhs =
@@ -4223,18 +4385,58 @@ export function foldArenaConstants(
     } else if (eqKind === EqKind.If) {
       const meta = arena.getIfEquationMeta(eq);
       if (meta) {
+        const foldIfCond = (condExprId: number): number => {
+          if (condExprId < 0) return condExprId;
+          let cur = simplifyArenaIfElse(arena, condExprId, ifElseFoldMap, nameToIdx, omcCompatibility);
+          cur = substituteArenaConstants(arena, cur, eqSubMap, nameToIdx);
+          const v = evaluateConstantArenaExpression(arena, cur, eqFoldMap, nameToIdx, 0, db, scopeId, omcCompatibility);
+          if (typeof v === "boolean") return arena.addBoolLiteral(v);
+          return cur;
+        };
         const foldEqList = (list: { kind: EqKind; lhsExprId: number; rhsExprId: number }[]) => {
-          for (const bodyEq of list) {
+          for (let bi = list.length - 1; bi >= 0; bi--) {
+            const bodyEq = list[bi]!;
             if (bodyEq.kind === EqKind.If) {
               const anyEq = bodyEq as any;
+              if (bodyEq.lhsExprId >= 0) {
+                bodyEq.lhsExprId = foldIfCond(bodyEq.lhsExprId);
+              }
               if (Array.isArray(anyEq.thenEquations)) foldEqList(anyEq.thenEquations);
               for (const c of anyEq.elseIfClauses || []) {
+                if (c.conditionExprId >= 0) {
+                  c.conditionExprId = foldIfCond(c.conditionExprId);
+                }
                 if (Array.isArray(c.bodyEquations)) foldEqList(c.bodyEquations);
               }
               if (Array.isArray(anyEq.elseEquations)) foldEqList(anyEq.elseEquations);
               continue;
             }
-            if (bodyEq.kind !== EqKind.Simple) continue;
+            if (bodyEq.kind === EqKind.FunctionCall || bodyEq.kind === EqKind.InitialFunctionCall) {
+              if (bodyEq.lhsExprId >= 0) {
+                const subCall = substituteArenaConstants(arena, bodyEq.lhsExprId, eqSubMap, nameToIdx);
+                if (subCall !== bodyEq.lhsExprId) bodyEq.lhsExprId = subCall;
+                if (arena.getExprKind(bodyEq.lhsExprId) === ExprKind.Call) {
+                  const fnName = arena.interner.resolve(arena.getExprData1(bodyEq.lhsExprId));
+                  if (fnName === "assert" && arena.getExprRight(bodyEq.lhsExprId) >= 2) {
+                    const condVal = evaluateConstantArenaExpression(
+                      arena,
+                      arena.getExprLeft(bodyEq.lhsExprId),
+                      assertEvalMap,
+                      nameToIdx,
+                      0,
+                      db,
+                      scopeId,
+                      omcCompatibility,
+                    );
+                    if (condVal === true) {
+                      list.splice(bi, 1);
+                    }
+                  }
+                }
+              }
+              continue;
+            }
+            if (bodyEq.kind !== EqKind.Simple && bodyEq.kind !== EqKind.InitialSimple) continue;
             if (bodyEq.rhsExprId >= 0) {
               let foldedRhs = evaluateConstantArenaExpression(
                 arena,
@@ -4296,8 +4498,18 @@ export function foldArenaConstants(
             }
           }
         };
+        if (meta.conditionExprId >= 0) {
+          const fc = foldIfCond(meta.conditionExprId);
+          if (fc !== meta.conditionExprId) {
+            meta.conditionExprId = fc;
+            arena.setEqLhs(eq, fc);
+          }
+        }
         foldEqList(meta.thenEquations);
         for (const clause of meta.elseIfClauses) {
+          if (clause.conditionExprId >= 0) {
+            clause.conditionExprId = foldIfCond(clause.conditionExprId);
+          }
           foldEqList(clause.bodyEquations);
         }
         if (meta.elseEquations) {
@@ -6324,7 +6536,10 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
             const combinedName = baseName.endsWith("]")
               ? `${baseName.slice(0, -1)},${idxStr}]`
               : `${baseName}[${idxStr}]`;
-            if (arrayShapes.has(rawBase) || out.getVarIdxByName(combinedName) >= 0) {
+            if (
+              out.getVarIdxByName(combinedName) >= 0 ||
+              (arrayShapes.has(rawBase) && out.getVarIdxByName(baseName) < 0)
+            ) {
               return out.addNameExpr(combinedName);
             }
           }
@@ -6657,6 +6872,30 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
     const vRange = dae.getVarSourceRange(i);
 
     if (shape.length > 0) {
+      if (
+        !expandArrayEquations &&
+        (variability === Variability.Parameter || variability === Variability.Constant) &&
+        expr != null &&
+        expr >= 0 &&
+        dae.getExprKind(expr) === ExprKind.Call &&
+        !dae.isVarEvaluate(i)
+      ) {
+        const arrIdx = out.addVariable(name, type, variability, causality, start, flags);
+        out.setVarShape(arrIdx, shape);
+        if (desc) out.setVarDescription(arrIdx, desc);
+        if (customType) out.setVarCustomType(arrIdx, customType);
+        if (enumLits) out.setVarEnumerationLiterals(arrIdx, enumLits);
+        if (cad) out.setVarCadAnnotation(arrIdx, cad);
+        if (vRange) out.setVarSourceRange(arrIdx, vRange.startOffset, vRange.endOffset);
+        out.setVarExpression(arrIdx, cloneExpr(expr, "", null));
+        if (attrs) {
+          for (const [attrName, attrExprId] of attrs.entries()) {
+            if (attrName === "start" && attrExprId === expr) continue;
+            out.setVarAttr(arrIdx, attrName, cloneExpr(attrExprId, "", null));
+          }
+        }
+        continue;
+      }
       if (shape.some((d) => d <= 0)) {
         if (arrayShapes.has(name) && arrayShapes.get(name)!.every((d) => d > 0)) {
           shape = arrayShapes.get(name)!;
@@ -6811,7 +7050,119 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
 
     if (kind === EqKind.Array) {
       const newLhs = cloneExpr(lhsId, "", null);
-      const newRhs = cloneExpr(rhsId, "", null);
+      let newRhs = -1;
+      if (
+        Boolean((dae.extensionMetadata as Record<string, unknown> | undefined)?.["omcCompatibility"]) &&
+        rhsId >= 0 &&
+        dae.getExprKind(rhsId) === ExprKind.Binary
+      ) {
+        const isOutZero = (eid: number): boolean => {
+          const ek = out.getExprKind(eid);
+          return (
+            (ek === ExprKind.RealLiteral && out.getExprRealValue(eid) === 0.0) ||
+            (ek === ExprKind.IntLiteral && out.getExprData1(eid) === 0)
+          );
+        };
+        const isOutOne = (eid: number): boolean => {
+          const ek = out.getExprKind(eid);
+          return (
+            (ek === ExprKind.RealLiteral && out.getExprRealValue(eid) === 1.0) ||
+            (ek === ExprKind.IntLiteral && out.getExprData1(eid) === 1)
+          );
+        };
+        const isScalarBcastLeaf = (eid: number): boolean => {
+          if (eid < 0) return false;
+          const ek = dae.getExprKind(eid);
+          if (ek === ExprKind.ArrayCtor || ek === ExprKind.Call || ek === ExprKind.Comprehension) return false;
+          if (getArrayElements(dae, eid) !== null) return false;
+          if (ek === ExprKind.Name) {
+            const nm = dae.interner.resolve(dae.getExprData1(eid)) || "";
+            if (arrayShapes.has(nm)) return false;
+          }
+          return true;
+        };
+        const mkBinSimp = (bop: BinOp, a: number, b: number): number => {
+          if (bop === BinOp.Mul || bop === BinOp.ElemMul) {
+            if (isOutZero(a) || isOutZero(b)) return out.addRealLiteral(0.0);
+            if (isOutOne(a)) return b;
+            if (isOutOne(b)) return a;
+            return out.addBinaryExpr(BinOp.Mul, a, b);
+          }
+          if (bop === BinOp.Add || bop === BinOp.ElemAdd) {
+            if (isOutZero(a)) return b;
+            if (isOutZero(b)) return a;
+            return out.addBinaryExpr(BinOp.Add, a, b);
+          }
+          if (bop === BinOp.Sub || bop === BinOp.ElemSub) {
+            if (isOutZero(b)) return a;
+            if (isOutZero(a)) return out.addExpression(ExprKind.Negate, 0, b);
+            return out.addBinaryExpr(BinOp.Sub, a, b);
+          }
+          if (bop === BinOp.Div || bop === BinOp.ElemDiv) {
+            if (isOutZero(a)) return out.addRealLiteral(0.0);
+            if (isOutOne(b)) return a;
+            return out.addBinaryExpr(BinOp.Div, a, b);
+          }
+          return out.addBinaryExpr(bop, a, b);
+        };
+        const evalOut1D = (eid: number): number[] | null => {
+          if (eid < 0) return null;
+          const ek = dae.getExprKind(eid);
+          if (ek === ExprKind.ArrayCtor) {
+            const cnt = dae.getExprData1(eid);
+            if (cnt <= 0) return null;
+            const res: number[] = [];
+            for (let ai = 0; ai < cnt; ai++) {
+              const el = ai === 0 ? dae.getExprLeft(eid) : dae.getExprLeft(eid + ai);
+              if (dae.getExprKind(el) === ExprKind.ArrayCtor) return null;
+              res.push(cloneExpr(el, "", null));
+            }
+            return res;
+          }
+          if (ek === ExprKind.Binary) {
+            const bop = dae.getExprData1(eid) as BinOp;
+            if (
+              bop !== BinOp.Add &&
+              bop !== BinOp.Sub &&
+              bop !== BinOp.Mul &&
+              bop !== BinOp.Div &&
+              bop !== BinOp.ElemAdd &&
+              bop !== BinOp.ElemSub &&
+              bop !== BinOp.ElemMul &&
+              bop !== BinOp.ElemDiv
+            ) {
+              return null;
+            }
+            const lRaw = dae.getExprLeft(eid);
+            const rRaw = dae.getExprRight(eid);
+            const lVec = evalOut1D(lRaw);
+            const rVec = evalOut1D(rRaw);
+            if (lVec && rVec && lVec.length === rVec.length) {
+              return lVec.map((lv, idx) => mkBinSimp(bop, lv, rVec[idx]!));
+            }
+            if (
+              lVec &&
+              !rVec &&
+              (bop === BinOp.Mul || bop === BinOp.ElemMul || bop === BinOp.Div || bop === BinOp.ElemDiv) &&
+              isScalarBcastLeaf(rRaw)
+            ) {
+              const sc = cloneExpr(rRaw, "", null);
+              return lVec.map((lv) => mkBinSimp(bop, lv, sc));
+            }
+            if (!lVec && rVec && (bop === BinOp.Mul || bop === BinOp.ElemMul) && isScalarBcastLeaf(lRaw)) {
+              const sc = cloneExpr(lRaw, "", null);
+              return rVec.map((rv) => mkBinSimp(bop, sc, rv));
+            }
+          }
+          return null;
+        };
+        const outVec = evalOut1D(rhsId);
+        const lShapeCheck = getArrayElements(dae, lhsId);
+        if (outVec && (!lShapeCheck || lShapeCheck.length === outVec.length)) {
+          newRhs = out.addArrayCtorExpr(outVec);
+        }
+      }
+      if (newRhs < 0) newRhs = cloneExpr(rhsId, "", null);
       if (targetList) {
         targetList.push({ kind, lhsExprId: newLhs, rhsExprId: newRhs });
       } else {
@@ -6821,21 +7172,157 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
       return;
     }
 
+    if (
+      (kind === EqKind.FunctionCall || kind === EqKind.InitialFunctionCall) &&
+      Boolean((dae.extensionMetadata as Record<string, unknown> | undefined)?.["omcCompatibility"]) &&
+      lhsId >= 0 &&
+      dae.getExprKind(lhsId) === ExprKind.Call &&
+      dae.interner.resolve(dae.getExprData1(lhsId)) === "assert" &&
+      dae.getExprRight(lhsId) >= 2
+    ) {
+      const condVal = evaluateConstantArenaExpression(
+        dae,
+        dae.getExprLeft(lhsId),
+        undefined,
+        undefined,
+        0,
+        undefined,
+        undefined,
+        true,
+      );
+      if (condVal === true) return;
+    }
+
     const lhsElements = getArrayElements(dae, lhsId);
     const rhsElements = getArrayElements(dae, rhsId);
     if ((lhsElements && lhsElements.length === 0) || (rhsElements && rhsElements.length === 0)) {
       return;
     }
+    const isEqualityConstraintCall = (exprId: number): boolean => {
+      if (exprId < 0 || dae.getExprKind(exprId) !== ExprKind.Call) return false;
+      const fn = dae.interner.resolve(dae.getExprData1(exprId));
+      return fn === "equalityConstraint" || fn.endsWith(".equalityConstraint");
+    };
+    const isScalarOrBuiltinCall = (fn: string): boolean => {
+      if (!fn.includes(".") && fn !== "equalityConstraint") return true;
+      if (fn.startsWith("/*Real")) return true;
+      const dot = fn.lastIndexOf(".");
+      const leaf = dot >= 0 ? fn.slice(dot + 1) : fn;
+      return (
+        leaf === "length" ||
+        leaf === "abs" ||
+        leaf === "sqrt" ||
+        leaf === "sign" ||
+        leaf === "sin" ||
+        leaf === "cos" ||
+        leaf === "tan" ||
+        leaf === "asin" ||
+        leaf === "acos" ||
+        leaf === "atan" ||
+        leaf === "atan2" ||
+        leaf === "exp" ||
+        leaf === "log" ||
+        leaf === "log10" ||
+        leaf === "min" ||
+        leaf === "max" ||
+        leaf === "sum" ||
+        leaf === "product" ||
+        leaf === "size" ||
+        leaf === "to_unit1" ||
+        leaf === "from_deg" ||
+        leaf === "to_deg"
+      );
+    };
+    const containsUnsplitVectorCall = (exprId: number): boolean => {
+      if (exprId < 0) return false;
+      const ek = dae.getExprKind(exprId);
+      if (ek === ExprKind.Call) {
+        const fn = dae.interner.resolve(dae.getExprData1(exprId)) || "";
+        return !isScalarOrBuiltinCall(fn);
+      }
+      if (ek === ExprKind.Negate || ek === ExprKind.Unary) {
+        return containsUnsplitVectorCall(dae.getExprLeft(exprId));
+      }
+      if (ek === ExprKind.Binary) {
+        const op = dae.getExprData1(exprId) as BinOp;
+        if (op === BinOp.Add || op === BinOp.Sub || op === BinOp.Mul || op === BinOp.Div) {
+          return (
+            containsUnsplitVectorCall(dae.getExprLeft(exprId)) || containsUnsplitVectorCall(dae.getExprRight(exprId))
+          );
+        }
+      }
+      return false;
+    };
+    const collapseArrayArgCtorsInCall = (callExprId: number): number => {
+      if (callExprId < 0 || out.getExprKind(callExprId) !== ExprKind.Call) return callExprId;
+      const argc = out.getExprRight(callExprId);
+      if (argc <= 0) return callExprId;
+      let anyRep = false;
+      const args: number[] = [];
+      for (let ai = 0; ai < argc; ai++) {
+        let arg = ai === 0 ? out.getExprLeft(callExprId) : out.getExprLeft(callExprId + ai);
+        if (out.getExprKind(arg) === ExprKind.ArrayCtor) {
+          const cnt = out.getExprData1(arg);
+          if (cnt >= 2) {
+            let base: string | null = null;
+            let ok = true;
+            for (let k = 0; k < cnt; k++) {
+              const el = k === 0 ? out.getExprLeft(arg) : out.getExprLeft(arg + k);
+              if (out.getExprKind(el) !== ExprKind.Name) {
+                ok = false;
+                break;
+              }
+              const nm = out.interner.resolve(out.getExprData1(el));
+              const expectedSfx = `[${k + 1}]`;
+              if (!nm || !nm.endsWith(expectedSfx)) {
+                ok = false;
+                break;
+              }
+              const b = nm.slice(0, -expectedSfx.length);
+              if (base === null) base = b;
+              else if (base !== b) {
+                ok = false;
+                break;
+              }
+            }
+            if (
+              ok &&
+              base &&
+              out.getVarIdxByName(`${base}[1]`) >= 0 &&
+              out.getVarIdxByName(`${base}[${cnt + 1}]`) < 0
+            ) {
+              arg = out.addNameExpr(base);
+              anyRep = true;
+            }
+          }
+        }
+        args.push(arg);
+      }
+      if (!anyRep) return callExprId;
+      const fnName = out.interner.resolve(out.getExprData1(callExprId)) || "";
+      return out.addCallExpr(fnName, args);
+    };
     if (
       Boolean((dae.extensionMetadata as Record<string, unknown> | undefined)?.["omcCompatibility"]) &&
-      kind === EqKind.InitialSimple &&
-      lhsElements &&
-      lhsElements.length > 0 &&
-      !rhsElements &&
-      dae.getExprKind(rhsId) === ExprKind.Call
+      ((kind === EqKind.InitialSimple &&
+        lhsElements &&
+        lhsElements.length > 0 &&
+        !rhsElements &&
+        (dae.getExprKind(rhsId) === ExprKind.Call || containsUnsplitVectorCall(rhsId))) ||
+        (kind === EqKind.Simple &&
+          ((lhsElements &&
+            lhsElements.length > 0 &&
+            !rhsElements &&
+            (isEqualityConstraintCall(rhsId) || (!expandArrayEquations && containsUnsplitVectorCall(rhsId)))) ||
+            (rhsElements &&
+              rhsElements.length > 0 &&
+              !lhsElements &&
+              (isEqualityConstraintCall(lhsId) || (!expandArrayEquations && containsUnsplitVectorCall(lhsId)))))))
     ) {
-      const newLhs = cloneExpr(lhsId, "", null);
-      const newRhs = cloneExpr(rhsId, "", null);
+      let newLhs = cloneExpr(lhsId, "", null);
+      let newRhs = cloneExpr(rhsId, "", null);
+      if (isEqualityConstraintCall(rhsId)) newRhs = collapseArrayArgCtorsInCall(newRhs);
+      if (isEqualityConstraintCall(lhsId)) newLhs = collapseArrayArgCtorsInCall(newLhs);
       if (targetList) {
         targetList.push({ kind, lhsExprId: newLhs, rhsExprId: newRhs });
       } else {
@@ -6911,6 +7398,12 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
     const isRhsCall = dae.getExprKind(rhsId) === ExprKind.Call;
     const isRhsComprehension = dae.getExprKind(rhsId) === ExprKind.Comprehension;
     const isRhsRecordCtor = isRhsCall && isRecordConstructorCall(dae, rhsId);
+    const isFramesOrientationCtor =
+      isRhsCall &&
+      (() => {
+        const fn = dae.interner.resolve(dae.getExprData1(rhsId));
+        return fn === "Modelica.Mechanics.MultiBody.Frames.Orientation" || fn.endsWith(".Frames.Orientation");
+      })();
     const isRhsBinary = dae.getExprKind(rhsId) === ExprKind.Binary;
     const isRhsUnary = dae.getExprKind(rhsId) === ExprKind.Unary || dae.getExprKind(rhsId) === ExprKind.Negate;
 
@@ -6924,7 +7417,14 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
       lhsRec &&
       lhsRec.length > 0 &&
       !isComplexRec &&
-      ((isRhsCall && !isRhsRecordCtor) || isRhsComprehension || isRhsBinary || isRhsUnary)
+      ((isRhsCall &&
+        (!isRhsRecordCtor ||
+          (isFramesOrientationCtor &&
+            !expandArrayEquations &&
+            Boolean((dae.extensionMetadata as Record<string, unknown> | undefined)?.["omcCompatibility"])))) ||
+        isRhsComprehension ||
+        isRhsBinary ||
+        isRhsUnary)
     ) {
       const newLhs = cloneExpr(lhsId, "", null);
       const newRhs = cloneExpr(rhsId, "", null);
@@ -7037,6 +7537,25 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
     }
 
     if (recFields && recFields.length > 0) {
+      const isWholeComplexRec =
+        !expandArrayEquations &&
+        kind !== EqKind.Connect &&
+        Boolean(dae.extensionMetadata?.["omcCompatibility"]) &&
+        !dae.extensionMetadata?.["isOldFrontend"] &&
+        recFields.length === 2 &&
+        recFields[0] === "re" &&
+        recFields[1] === "im";
+      if (isWholeComplexRec) {
+        const newLhs = cloneExpr(lhsId, "", null);
+        const newRhs = cloneExpr(rhsId, "", null);
+        if (targetList) {
+          targetList.push({ kind, lhsExprId: newLhs, rhsExprId: newRhs });
+        } else {
+          out.addEquation(kind, newLhs, newRhs, eqFlags);
+          recordEqMeta(out.eqCount - 1);
+        }
+        return;
+      }
       for (const field of recFields) {
         const newLhs = getFieldExpr(dae, out, lhsId, field, cloneExpr, expandArrayEquations);
         const newRhs = getFieldExpr(dae, out, rhsId, field, cloneExpr, expandArrayEquations);
@@ -7178,77 +7697,128 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
     if (kind === EqKind.If) {
       const meta = dae.getIfEquationMeta(i);
       if (meta) {
-        const cloneInlineEqList = (
-          srcList: { kind: EqKind; lhsExprId: number; rhsExprId: number; [k: string]: any }[],
-          dstList: { kind: EqKind; lhsExprId: number; rhsExprId: number; [k: string]: any }[],
-        ) => {
-          for (const eq of srcList) {
-            if (eq.kind === EqKind.If && Array.isArray((eq as any).thenEquations)) {
-              const subCond = cloneExpr(eq.lhsExprId, "", null);
-              const subThen: any[] = [];
-              cloneInlineEqList((eq as any).thenEquations, subThen);
-              const subElseIf: any[] = [];
-              if (Array.isArray((eq as any).elseIfClauses)) {
-                for (const c of (eq as any).elseIfClauses) {
-                  const cCond = cloneExpr(c.conditionExprId, "", null);
-                  const cBody: any[] = [];
-                  cloneInlineEqList(c.bodyEquations ?? c.equations ?? [], cBody);
-                  subElseIf.push({ conditionExprId: cCond, bodyEquations: cBody, equations: [] });
-                }
+        const evalStaticIfCond = (condExprId: number): boolean | null => {
+          if (condExprId < 0) return null;
+          const v = evaluateConstantArenaExpression(
+            dae,
+            condExprId,
+            undefined,
+            undefined,
+            0,
+            undefined,
+            undefined,
+            true,
+          );
+          return typeof v === "boolean" ? v : null;
+        };
+        const emitEvaluatedIf = (
+          rawCondId: number,
+          thenSrc: { kind: EqKind; lhsExprId: number; rhsExprId: number; [k: string]: any }[],
+          elseIfSrc: { conditionExprId: number; bodyEquations?: any[]; equations?: any[] }[],
+          elseSrc: { kind: EqKind; lhsExprId: number; rhsExprId: number; [k: string]: any }[],
+          dstList?: { kind: EqKind; lhsExprId: number; rhsExprId: number; [k: string]: any }[],
+        ): void => {
+          const topVal = evalStaticIfCond(rawCondId);
+          if (topVal === true) {
+            cloneInlineEqList(thenSrc, dstList);
+            return;
+          }
+          if (topVal === false) {
+            for (let ci = 0; ci < elseIfSrc.length; ci++) {
+              const clause = elseIfSrc[ci]!;
+              const cBody = clause.bodyEquations ?? clause.equations ?? [];
+              const cVal = evalStaticIfCond(clause.conditionExprId);
+              if (cVal === true) {
+                cloneInlineEqList(cBody, dstList);
+                return;
               }
-              const subElse: any[] = [];
-              if (Array.isArray((eq as any).elseEquations)) {
-                cloneInlineEqList((eq as any).elseEquations, subElse);
+              if (cVal === null) {
+                emitEvaluatedIf(clause.conditionExprId, cBody, elseIfSrc.slice(ci + 1), elseSrc, dstList);
+                return;
               }
-              if (tryEmitBalancedIfAsSimple(subCond, subThen, subElseIf, subElse, eqFlags, dstList, i)) {
-                continue;
+            }
+            cloneInlineEqList(elseSrc, dstList);
+            return;
+          }
+          const condId = cloneExpr(rawCondId, "", null);
+          const thenList: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
+          cloneInlineEqList(thenSrc, thenList);
+          const elseIfList: {
+            conditionExprId: number;
+            bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+            equations: any[];
+          }[] = [];
+          let activeElseSrc = elseSrc;
+          for (const clause of elseIfSrc) {
+            const cVal = evalStaticIfCond(clause.conditionExprId);
+            if (cVal === false) continue;
+            const cBody = clause.bodyEquations ?? clause.equations ?? [];
+            if (cVal === true) {
+              activeElseSrc = cBody;
+              break;
+            }
+            const clauseCond = cloneExpr(clause.conditionExprId, "", null);
+            const clauseEqs: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
+            cloneInlineEqList(cBody, clauseEqs);
+            elseIfList.push({ conditionExprId: clauseCond, bodyEquations: clauseEqs, equations: [] });
+          }
+          const elseList: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
+          if (activeElseSrc.length > 0) {
+            cloneInlineEqList(activeElseSrc, elseList);
+          }
+          if (tryEmitBalancedIfAsSimple(condId, thenList, elseIfList, elseList, eqFlags, dstList, i)) {
+            return;
+          }
+          if (dstList) {
+            dstList.push({
+              kind: EqKind.If,
+              lhsExprId: condId,
+              rhsExprId: -1,
+              thenEquations: thenList,
+              elseIfClauses: elseIfList,
+              elseEquations: elseList,
+            });
+          } else {
+            const ifIdx = out.addIfEquation(condId);
+            const ifRange = dae.getEqSourceRange?.(i);
+            if (ifRange) out.setEqSourceRange(ifIdx, ifRange.startOffset, ifRange.endOffset);
+            const outMeta = out.getIfEquationMeta(ifIdx);
+            if (outMeta) {
+              outMeta.thenEquations.push(...thenList);
+              outMeta.elseIfClauses.push(...elseIfList);
+              if (meta.elseEquations || elseList.length > 0) {
+                outMeta.elseEquations ??= [];
+                outMeta.elseEquations.push(...elseList);
               }
-              dstList.push({
-                kind: EqKind.If,
-                lhsExprId: subCond,
-                rhsExprId: -1,
-                thenEquations: subThen,
-                elseIfClauses: subElseIf,
-                elseEquations: subElse,
-              });
-            } else {
-              emitEquation(eq.kind, eq.lhsExprId, eq.rhsExprId, 0, dstList);
             }
           }
         };
-        const condId = cloneExpr(meta.conditionExprId, "", null);
-        const thenList: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
-        cloneInlineEqList(meta.thenEquations, thenList);
-        const elseIfList: {
-          conditionExprId: number;
-          bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
-          equations: any[];
-        }[] = [];
-        for (const clause of meta.elseIfClauses) {
-          const clauseCond = cloneExpr(clause.conditionExprId, "", null);
-          const clauseEqs: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
-          cloneInlineEqList(clause.bodyEquations, clauseEqs);
-          elseIfList.push({ conditionExprId: clauseCond, bodyEquations: clauseEqs, equations: [] });
-        }
-        const elseList: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
-        if (meta.elseEquations) {
-          cloneInlineEqList(meta.elseEquations, elseList);
-        }
-        if (tryEmitBalancedIfAsSimple(condId, thenList, elseIfList, elseList, eqFlags, undefined, i)) {
-          continue;
-        }
-        const ifIdx = out.addIfEquation(condId);
-        const ifRange = dae.getEqSourceRange?.(i);
-        if (ifRange) out.setEqSourceRange(ifIdx, ifRange.startOffset, ifRange.endOffset);
-        const outMeta = out.getIfEquationMeta(ifIdx);
-        if (outMeta) {
-          outMeta.thenEquations.push(...thenList);
-          outMeta.elseIfClauses.push(...elseIfList);
-          if (meta.elseEquations) {
-            outMeta.elseEquations ??= [];
-            outMeta.elseEquations.push(...elseList);
+        const cloneInlineEqList = (
+          srcList: { kind: EqKind; lhsExprId: number; rhsExprId: number; [k: string]: any }[],
+          dstList?: { kind: EqKind; lhsExprId: number; rhsExprId: number; [k: string]: any }[],
+        ) => {
+          for (const eq of srcList) {
+            if (eq.kind === EqKind.If && Array.isArray((eq as any).thenEquations)) {
+              emitEvaluatedIf(
+                eq.lhsExprId,
+                (eq as any).thenEquations,
+                (eq as any).elseIfClauses ?? [],
+                (eq as any).elseEquations ?? [],
+                dstList,
+              );
+            } else {
+              const subKind = (eqFlags & 1) !== 0 && eq.kind === EqKind.Simple ? EqKind.InitialSimple : eq.kind;
+              emitEquation(subKind, eq.lhsExprId, eq.rhsExprId, eqFlags, dstList, i);
+            }
           }
-        }
+        };
+        emitEvaluatedIf(
+          meta.conditionExprId,
+          meta.thenEquations,
+          meta.elseIfClauses,
+          meta.elseEquations ?? [],
+          undefined,
+        );
         continue;
       }
     }

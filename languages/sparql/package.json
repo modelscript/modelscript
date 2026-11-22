@@ -36,24 +36,23 @@
     "./dist/parser.wasm": "./dist/parser.wasm"
   },
   "files": [
-    "src/**",
     "src-gen/**",
     "dist/**"
   ],
   "scripts": {
-    "build": "node ../../scripts/build-language-parser.js && tsc",
-    "build:parser": "node ../../scripts/build-language-parser.js --force",
+    "build": "node ../../scripts/build/build-language-parser.js && tsc",
+    "build:parser": "node ../../scripts/build/build-language-parser.js --force",
     "clean": "rimraf dist src-gen *.wasm",
     "lint": "eslint src tests --no-warn-ignored",
-    "test": "node ../../scripts/test-runner.js",
+    "test": "node ../../scripts/ci/test-runner.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@modelscript/dsl": "*",
-    "@modelscript/runtime": "*"
+    "@modelscript/dsl": "workspace:*",
+    "@modelscript/runtime": "workspace:*"
   },
   "modelscript": {
-    "tier": "pre-alpha",
+    "tier": "beta",
     "category": "language"
   }
 }

@@ -6,5 +6,19 @@
     "jsx": "react-jsx"
   },
   "include": ["*.ts", "src/**/*.ts", "src/**/*.tsx", "src-gen/**/*.ts"],
-  "exclude": ["dist", "node_modules", "tests"]
+  "exclude": ["dist", "node_modules", "tests"],
+  "references": [
+    {
+      "path": "../../packages/design-tokens"
+    },
+    {
+      "path": "../../packages/diagram"
+    },
+    {
+      "path": "../../packages/dsl"
+    },
+    {
+      "path": "../../packages/runtime"
+    }
+  ]
 }

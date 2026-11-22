@@ -1450,65 +1450,66 @@ export declare enum SyntaxKind {
   AskQuery = 87,
   InsertDataUpdate = 88,
   DeleteDataUpdate = 89,
-  ModifyUpdate = 90,
-  SubSelect = 91,
-  DatasetClause = 92,
-  WhereClause = 93,
-  GroupGraphPattern = 94,
-  GraphPatternItem = 95,
-  GroupOrUnionGraphPattern = 96,
-  OptionalGraphPattern = 97,
-  MinusGraphPattern = 98,
-  GraphGraphPattern = 99,
-  ServiceGraphPattern = 100,
-  FilterClause = 101,
-  Constraint = 102,
-  BindClause = 103,
-  ValuesClause = 104,
-  ValuesRow = 105,
-  DataBlockValue = 106,
-  TriplesBlock = 107,
-  TriplesSameSubject = 108,
-  PropertyListNotEmpty = 109,
-  PropertyObjectPair = 110,
-  VerbPathOrSimple = 111,
-  PathAlternative = 112,
-  PathSequence = 113,
-  PathEltOrInverse = 114,
-  PathElt = 115,
-  PathMod = 116,
-  PathNegatedPropertySet = 117,
-  PathPrimary = 118,
-  BlankNodePropertyList = 119,
-  Collection = 120,
-  ObjectList = 121,
-  SolutionModifier = 122,
-  GroupClause = 123,
-  GroupCondition = 124,
-  HavingClause = 125,
-  OrderClause = 126,
-  OrderCondition = 127,
-  LimitOffsetClauses = 128,
-  LimitClause = 129,
-  OffsetClause = 130,
-  Expression = 131,
-  ConditionalOrExpression = 132,
-  ConditionalAndExpression = 133,
-  RelationalExpression = 134,
-  AdditiveExpression = 135,
-  MultiplicativeExpression = 136,
-  UnaryExpression = 137,
-  PrimaryExpression = 138,
-  BrackettedExpression = 139,
-  ExpressionList = 140,
-  BuiltInCall = 141,
-  VarOrTerm = 142,
-  Iri = 143,
-  RDFLiteral = 144,
-  NumericLiteral = 145,
-  BooleanLiteral = 146,
-  START = 147,
-  _START = 147,
+  DeleteInsertUpdate = 90,
+  InsertWhereUpdate = 91,
+  SubSelect = 92,
+  DatasetClause = 93,
+  WhereClause = 94,
+  GroupGraphPattern = 95,
+  GraphPatternItem = 96,
+  GroupOrUnionGraphPattern = 97,
+  OptionalGraphPattern = 98,
+  MinusGraphPattern = 99,
+  GraphGraphPattern = 100,
+  ServiceGraphPattern = 101,
+  FilterClause = 102,
+  Constraint = 103,
+  BindClause = 104,
+  ValuesClause = 105,
+  ValuesRow = 106,
+  DataBlockValue = 107,
+  TriplesBlock = 108,
+  TriplesSameSubject = 109,
+  PropertyListNotEmpty = 110,
+  PropertyObjectPair = 111,
+  VerbPathOrSimple = 112,
+  PathAlternative = 113,
+  PathSequence = 114,
+  PathEltOrInverse = 115,
+  PathElt = 116,
+  PathMod = 117,
+  PathNegatedPropertySet = 118,
+  PathPrimary = 119,
+  BlankNodePropertyList = 120,
+  Collection = 121,
+  ObjectList = 122,
+  SolutionModifier = 123,
+  GroupClause = 124,
+  GroupCondition = 125,
+  HavingClause = 126,
+  OrderClause = 127,
+  OrderCondition = 128,
+  LimitOffsetClauses = 129,
+  LimitClause = 130,
+  OffsetClause = 131,
+  Expression = 132,
+  ConditionalOrExpression = 133,
+  ConditionalAndExpression = 134,
+  RelationalExpression = 135,
+  AdditiveExpression = 136,
+  MultiplicativeExpression = 137,
+  UnaryExpression = 138,
+  PrimaryExpression = 139,
+  BrackettedExpression = 140,
+  ExpressionList = 141,
+  BuiltInCall = 142,
+  VarOrTerm = 143,
+  Iri = 144,
+  RDFLiteral = 145,
+  NumericLiteral = 146,
+  BooleanLiteral = 147,
+  START = 148,
+  _START = 148,
   VAR = 232,
   IRIREF = 233,
   PNAMELN = 234,
@@ -1611,10 +1612,14 @@ export interface DeleteDataUpdateNode extends SyntaxNode {
   readonly typeId: SyntaxKind.DeleteDataUpdate;
 }
 export declare function isDeleteDataUpdate(node: SyntaxNode | null | undefined): node is DeleteDataUpdateNode;
-export interface ModifyUpdateNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.ModifyUpdate;
+export interface DeleteInsertUpdateNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DeleteInsertUpdate;
 }
-export declare function isModifyUpdate(node: SyntaxNode | null | undefined): node is ModifyUpdateNode;
+export declare function isDeleteInsertUpdate(node: SyntaxNode | null | undefined): node is DeleteInsertUpdateNode;
+export interface InsertWhereUpdateNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.InsertWhereUpdate;
+}
+export declare function isInsertWhereUpdate(node: SyntaxNode | null | undefined): node is InsertWhereUpdateNode;
 export interface SubSelectNode extends SyntaxNode {
   readonly typeId: SyntaxKind.SubSelect;
 }
@@ -1957,10 +1962,15 @@ export declare namespace Cst {
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is DeleteDataUpdateNode;
   };
-  export const ModifyUpdate: {
+  export const DeleteInsertUpdate: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is ModifyUpdateNode;
+    is(node: SyntaxNode | null | undefined): node is DeleteInsertUpdateNode;
+  };
+  export const InsertWhereUpdate: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is InsertWhereUpdateNode;
   };
   export const SubSelect: {
     readonly typeId: number;

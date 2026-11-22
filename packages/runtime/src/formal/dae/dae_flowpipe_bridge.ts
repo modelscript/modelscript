@@ -12,8 +12,10 @@
  * Interval Krawczyk algebraic manifold certification, and guaranteed safety invariant verification.
  */
 
+import { ivSub } from "../../analysis/outward_rounding.js";
 import {
   DaeFlowpipeOptions,
+  DaeFlowpipeRequirement,
   DaeFlowpipeResult,
   DaeFlowpipeSolver,
   DaeSystem,
@@ -36,6 +38,8 @@ export interface DaeFlowpipeBridgeOptions {
   dt: number;
   initialBounds?: Map<number, NumericalInterval> | undefined;
   order?: number | undefined;
+  requirements?: DaeFlowpipeRequirement[] | undefined;
+  minDt?: number | undefined;
 }
 
 export class DaeFlowpipeBridge {
@@ -145,6 +149,23 @@ export class DaeFlowpipeBridge {
       jacobianXExprs.push(rowX);
     }
 
+    // 3b. Pre-generate symbolic Jacobians for differential RHS: J_fx[i][j] = \partial f_i / \partial x_j
+    const jacobianFxExprs: number[][] = [];
+    for (let i = 0; i < diffVarIndices.length; i++) {
+      const rhsExpr = diffEqMap.get(diffVarIndices[i]!);
+      const rowFx: number[] = [];
+      for (let j = 0; j < diffVarIndices.length; j++) {
+        if (rhsExpr === undefined) {
+          rowFx.push(arena.addRealLiteral(0.0));
+        } else {
+          const varIdx = diffVarIndices[j]!;
+          const nameId = arena.interner.intern(arena.getVarName(varIdx));
+          rowFx.push(differentiateArenaExpression(arena, rhsExpr, nameId));
+        }
+      }
+      jacobianFxExprs.push(rowFx);
+    }
+
     // Helper: evaluate expressions with a given point state (using midpoint to avoid outward-rounding lower bias)
     const evaluatePointState = (exprId: number, xVals: number[], zVals: number[]): number => {
       const env = new Map<number, NumericalInterval>();
@@ -160,6 +181,25 @@ export class DaeFlowpipeBridge {
         return 0.5 * (low + high);
       }
       return Number.isFinite(low) ? low : Number.isFinite(high) ? high : 0;
+    };
+
+    // Helper: evaluate expressions with interval boxes via outward-rounded DaeIntervalEvaluator
+    const buildIntervalEnv = (xBox: Interval[], zBox: Interval[]): Map<number, NumericalInterval> => {
+      const env = new Map<number, NumericalInterval>();
+      for (let i = 0; i < diffVarIndices.length; i++) {
+        const iv = xBox[i] ?? new Interval(0, 0);
+        env.set(diffVarIndices[i]!, new NumericalInterval(iv.lo, iv.hi));
+      }
+      for (let j = 0; j < algVarIndices.length; j++) {
+        const iv = zBox[j] ?? new Interval(0, 0);
+        env.set(algVarIndices[j]!, new NumericalInterval(iv.lo, iv.hi));
+      }
+      return env;
+    };
+
+    const evaluateIntervalState = (exprId: number, env: Map<number, NumericalInterval>): Interval => {
+      const evalRes = evaluator.evaluateExpr(exprId, env);
+      return new Interval(evalRes.interval.low, evalRes.interval.high);
     };
 
     const numDiffStates = diffVarIndices.length;
@@ -221,6 +261,55 @@ export class DaeFlowpipeBridge {
         }
         return J;
       },
+
+      fInterval: (_t: Interval, x: Interval[], z: Interval[]): Interval[] => {
+        const env = buildIntervalEnv(x, z);
+        const res: Interval[] = [];
+        for (let i = 0; i < numDiffStates; i++) {
+          const varIdx = diffVarIndices[i]!;
+          const rhsExpr = diffEqMap.get(varIdx);
+          res.push(rhsExpr !== undefined ? evaluateIntervalState(rhsExpr, env) : new Interval(0, 0));
+        }
+        return res;
+      },
+
+      gInterval: (x: Interval[], z: Interval[]): Interval[] => {
+        const env = buildIntervalEnv(x, z);
+        const res: Interval[] = [];
+        for (let i = 0; i < algEqIndices.length; i++) {
+          const eqIdx = algEqIndices[i]!;
+          const lhsIv = evaluateIntervalState(arena.getEqLhs(eqIdx), env);
+          const rhsIv = evaluateIntervalState(arena.getEqRhs(eqIdx), env);
+          res.push(ivSub(lhsIv, rhsIv));
+        }
+        return res;
+      },
+
+      jacobianGzInterval: (x: Interval[], z: Interval[]): Interval[][] => {
+        const env = buildIntervalEnv(x, z);
+        const J: Interval[][] = [];
+        for (let i = 0; i < jacobianZExprs.length; i++) {
+          const row: Interval[] = [];
+          for (let j = 0; j < numAlgStates; j++) {
+            row.push(evaluateIntervalState(jacobianZExprs[i]![j]!, env));
+          }
+          J.push(row);
+        }
+        return J;
+      },
+
+      jacobianFxInterval: (_t: Interval, x: Interval[], z: Interval[]): Interval[][] => {
+        const env = buildIntervalEnv(x, z);
+        const J: Interval[][] = [];
+        for (let i = 0; i < jacobianFxExprs.length; i++) {
+          const row: Interval[] = [];
+          for (let j = 0; j < numDiffStates; j++) {
+            row.push(evaluateIntervalState(jacobianFxExprs[i]![j]!, env));
+          }
+          J.push(row);
+        }
+        return J;
+      },
     };
 
     return {
@@ -267,6 +356,8 @@ export class DaeFlowpipeBridge {
       tSpan: options.tSpan,
       dt: options.dt,
       order: options.order ?? 2,
+      requirements: options.requirements,
+      minDt: options.minDt,
     };
 
     const result = DaeFlowpipeSolver.solve(solverOpts);

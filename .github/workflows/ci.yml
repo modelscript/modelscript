@@ -20,45 +20,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/setup-workspace
         with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
-      - name: Install Dependencies
-        run: npm ci
-      - name: Cache Nx
-        uses: actions/cache@v4
-        with:
-          path: .nx/cache
-          key: ${{ runner.os }}-nx-lint-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-nx-lint-
-            ${{ runner.os }}-nx-build-
-            ${{ runner.os }}-nx-
-      - name: Cache WASM Parsers
-        uses: actions/cache@v4
-        with:
-          path: |
-            .cache/asc-tests
-            languages/*/.cache
-            languages/*/dist/*.wasm
-            packages/runtime/build/*.wasm
-            packages/simulate/src/wasm/*.wasm
-            packages/simulate/.cache/**
-            packages/dsl/.cache/**
-          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**', 'languages/*/assembly/**') }}
-          restore-keys: |
-            ${{ runner.os }}-wasm-
-            Linux-wasm-
+          nx-cache-prefix: "lint"
+          cache-wasm: "true"
       - name: Calculate Affected Bounds
-        uses: nrwl/nx-set-shas@v4
+        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
       - name: Run Repository Hygiene Doctor
         run: npm run lint:repo
       - name: Build DSL Templates
-        run: npm run build:templates --workspace=@modelscript/dsl
+        run: pnpm --filter @modelscript/dsl run build:templates
       - name: Check Root TypeScript Config
         run: npx tsc --noEmit
       - name: Lint Root Scripts
@@ -82,32 +56,19 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/setup-workspace
         with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
-      - name: Install Dependencies
-        run: npm ci
-      - name: Build DSL Templates
-        run: npm run build:templates --workspace=@modelscript/dsl
-      - name: Cache Nx
-        uses: actions/cache@v4
-        with:
-          path: .nx/cache
-          key: ${{ runner.os }}-nx-test-${{ matrix.shard }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-nx-test-${{ matrix.shard }}-
-            ${{ runner.os }}-nx-build-${{ github.sha }}
-            ${{ runner.os }}-nx-build-
-            ${{ runner.os }}-nx-
+          nx-cache-prefix: "test-${{ matrix.shard }}"
+          cache-wasm: "true"
+          build-dsl-templates: "true"
       - name: Calculate Affected Bounds
-        uses: nrwl/nx-set-shas@v4
+        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
       - name: Cache MSL
         id: cache-msl
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             scripts/ModelicaStandardLibrary_v4.1.0.zip
@@ -116,42 +77,28 @@ jobs:
       - name: Download and Extract MSL
         run: |
           if [ ! -f "scripts/ModelicaStandardLibrary_v4.1.0.zip" ] || [ ! -d "data/libraries/Modelica/4.1.0/extracted/Modelica" ]; then
-            node scripts/download-msl.cjs --version=4.1.0 --extract --outDir=data/libraries/Modelica/4.1.0/extracted
+            node scripts/build/download-msl.cjs --version=4.1.0 --extract --outDir=data/libraries/Modelica/4.1.0/extracted
           fi
       - name: Cache FMI Simulator
         id: cache-fmusim
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: packages/exchange/validation/fmi/reference_fmus
           key: ${{ runner.os }}-fmusim-v0.0.39
       - name: Fetch FMI Simulator
         if: steps.cache-fmusim.outputs.cache-hit != 'true'
-        run: npm run fetch:fmusim --workspace=@modelscript/exchange
-      - name: Cache WASM Parsers
-        uses: actions/cache@v4
-        with:
-          path: |
-            .cache/asc-tests
-            languages/*/.cache
-            languages/*/dist/*.wasm
-            packages/runtime/build/*.wasm
-            packages/simulate/src/wasm/*.wasm
-            packages/simulate/.cache/**
-            packages/dsl/.cache/**
-          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**', 'languages/*/assembly/**') }}
-          restore-keys: |
-            ${{ runner.os }}-wasm-
+        run: pnpm --filter @modelscript/exchange run fetch:fmusim
       - name: Build Prerequisites
         run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/modelica
       - name: Run Sharded Tests
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ] || ( [ -n "$NX_BASE" ] && git rev-parse --verify "$NX_BASE" >/dev/null 2>&1 ); then
-            node scripts/test-coordinator.js affected --shard=${{ matrix.shard }}/8
+            node scripts/ci/test-coordinator.js affected --shard=${{ matrix.shard }}/8
           else
-            node scripts/test-coordinator.js run-many --shard=${{ matrix.shard }}/8
+            node scripts/ci/test-coordinator.js run-many --shard=${{ matrix.shard }}/8
           fi
       - name: Upload CTRF Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ctrf-${{ matrix.shard }}
           path: "**/ctrf/*.json"
@@ -159,7 +106,7 @@ jobs:
           retention-days: 7
         if: always()
       - name: Upload Coverage Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage-${{ matrix.shard }}
           path: "**/coverage/*lcov*.info"
@@ -173,28 +120,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/setup-workspace
         with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
-      - name: Install Dependencies
-        run: npm ci
-      - name: Build DSL Templates
-        run: npm run build:templates --workspace=@modelscript/dsl
-      - name: Cache Nx
-        uses: actions/cache@v4
-        with:
-          path: .nx/cache
-          key: ${{ runner.os }}-nx-omc-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-nx-omc-
-            ${{ runner.os }}-nx-build-
-            ${{ runner.os }}-nx-
+          nx-cache-prefix: "omc"
+          cache-wasm: "false"
+          build-dsl-templates: "true"
       - name: Calculate Affected Bounds
-        uses: nrwl/nx-set-shas@v4
+        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
       - name: Check If Modelica Affected
         id: check-affected
         run: |
@@ -219,7 +154,7 @@ jobs:
           fi
       - name: Cache WASM Parsers
         if: steps.check-affected.outputs.run_suite == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             .cache/asc-tests
@@ -245,7 +180,7 @@ jobs:
           NODE_OPTIONS="--max-old-space-size=12288" npx c8 report --temp-directory=.v8-coverage --reporter=lcov --reports-dir=languages/modelica/coverage/omc --include="languages/modelica/src/**" --include="packages/dsl/src/**" --include="packages/runtime/src/**"
       - name: Upload CTRF Artifacts
         if: always() && steps.check-affected.outputs.run_suite == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ctrf-omc-testsuite
           path: |
@@ -255,7 +190,7 @@ jobs:
           retention-days: 7
       - name: Upload HTML Test Reports
         if: always() && steps.check-affected.outputs.run_suite == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: omc-testsuite-html-reports
           path: |
@@ -264,7 +199,7 @@ jobs:
           retention-days: 7
       - name: Upload Coverage Artifacts
         if: always() && steps.check-affected.outputs.run_suite == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage-omc-testsuite
           path: "languages/modelica/coverage/omc/*lcov*.info"
@@ -277,47 +212,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/setup-workspace
         with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
-      - name: Install Dependencies
-        run: npm ci
-      - name: Build DSL Templates
-        run: npm run build:templates --workspace=@modelscript/dsl
-      - name: Cache Nx
-        uses: actions/cache@v4
-        with:
-          path: .nx/cache
-          key: ${{ runner.os }}-nx-benchmarks-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-nx-benchmarks-
-            ${{ runner.os }}-nx-build-${{ github.sha }}
-            ${{ runner.os }}-nx-build-
-            ${{ runner.os }}-nx-
-      - name: Cache WASM Parsers
-        uses: actions/cache@v4
-        with:
-          path: |
-            .cache/asc-tests
-            languages/*/.cache
-            languages/*/dist/*.wasm
-            packages/runtime/build/*.wasm
-            packages/simulate/src/wasm/*.wasm
-            packages/simulate/.cache/**
-            packages/dsl/.cache/**
-          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**', 'languages/*/assembly/**') }}
-          restore-keys: |
-            ${{ runner.os }}-wasm-
-            Linux-wasm-
+          nx-cache-prefix: "benchmarks"
+          cache-wasm: "true"
+          build-dsl-templates: "true"
       - name: Build Prerequisites
         run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/simulate,@modelscript/antimony,@modelscript/aspen,@modelscript/bngl,@modelscript/cantera,@modelscript/ccsds,@modelscript/cfd,@modelscript/cgmes,@modelscript/eclipse,@modelscript/epanet,@modelscript/fea,@modelscript/febio,@modelscript/fiber,@modelscript/fortran,@modelscript/genbank,@modelscript/gproms,@modelscript/gtfs,@modelscript/hec-ras,@modelscript/ibis,@modelscript/jsbsim,@modelscript/landgem,@modelscript/modflow,@modelscript/nmtran,@modelscript/ocpp,@modelscript/openadr,@modelscript/opendss,@modelscript/openscenario,@modelscript/opensim,@modelscript/optical,@modelscript/pdb,@modelscript/phreeqc,@modelscript/ran,@modelscript/relap5,@modelscript/rocets,@modelscript/sbml,@modelscript/sbol,@modelscript/sedml,@modelscript/sima,@modelscript/smiles,@modelscript/swmm,@modelscript/touchstone,@modelscript/tough,@modelscript/usd,@modelscript/verilog-a
       - name: Cache Benchmarks
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .cache/benchmarks
-          key: ${{ runner.os }}-benchmarks-${{ hashFiles('scripts/fetch-benchmarks.ts', 'packages/exchange/src/catalog/benchmarks.catalog.json') }}
+          key: ${{ runner.os }}-benchmarks-${{ hashFiles('scripts/bench/fetch-benchmarks.ts', 'packages/exchange/src/catalog/benchmarks.catalog.json') }}
           restore-keys: |
             ${{ runner.os }}-benchmarks-
       - name: Fetch Benchmarks
@@ -335,12 +242,12 @@ jobs:
       pull-requests: write
       checks: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: ".nvmrc"
       - name: Download All CTRF Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: ctrf-artifacts
           pattern: ctrf-*
@@ -349,14 +256,14 @@ jobs:
         id: consolidate_tests
         if: always()
         run: |
-          node --experimental-strip-types scripts/consolidate-test-reports.ts \
+          node --experimental-strip-types scripts/ci/consolidate-test-reports.ts \
             --dir=ctrf-artifacts \
             --github-step-summary \
             --output-json=ctrf-artifacts/ctrf-consolidated.json \
             --output-html=ctrf-artifacts/test-report-unified.html
       - name: Upload Consolidated Report Artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: consolidated-test-report
           path: |
@@ -366,7 +273,7 @@ jobs:
           retention-days: 7
       - name: Publish Test Report & PR Insights
         if: always() && steps.consolidate_tests.outputs.total_tests != '0' && steps.consolidate_tests.outputs.total_tests != '' && github.actor != 'nektos/act' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: ctrf-io/github-test-reporter@v1
+        uses: ctrf-io/github-test-reporter@c2e2997afb89a9a515d83121ce7499e272630446 # v1
         with:
           report-path: "ctrf-artifacts/ctrf-consolidated.json"
           github-report: false
@@ -376,7 +283,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Download Coverage Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: coverage-artifacts
           pattern: coverage-*
@@ -385,7 +292,7 @@ jobs:
       - name: Consolidate Code Coverage Reports
         if: always()
         run: |
-          node --experimental-strip-types scripts/consolidate-coverage.ts \
+          node --experimental-strip-types scripts/ci/consolidate-coverage.ts \
             --dir=coverage-artifacts \
             --github-step-summary \
             --output-lcov=coverage/lcov-consolidated.info \
@@ -393,7 +300,7 @@ jobs:
             --threshold=55
       - name: Upload Consolidated Coverage Artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: consolidated-coverage
           path: |
@@ -409,41 +316,17 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/setup-workspace
         with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
-      - name: Install Dependencies
-        run: npm ci
-      - name: Cache Nx
-        uses: actions/cache@v4
-        with:
-          path: .nx/cache
-          key: ${{ runner.os }}-nx-build-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-nx-build-
-            ${{ runner.os }}-nx-
+          nx-cache-prefix: "build"
+          cache-wasm: "true"
       - name: Calculate Affected Bounds
-        uses: nrwl/nx-set-shas@v4
-      - name: Cache WASM Parsers
-        uses: actions/cache@v4
-        with:
-          path: |
-            .cache/asc-tests
-            languages/*/.cache
-            languages/*/dist/*.wasm
-            packages/runtime/build/*.wasm
-            packages/simulate/src/wasm/*.wasm
-            packages/simulate/.cache/**
-            packages/dsl/.cache/**
-          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**', 'languages/*/assembly/**') }}
-          restore-keys: |
-            ${{ runner.os }}-wasm-
+        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
       - name: Ensure Standard Library Assets Exist
-        run: npx tsx scripts/sync-stdlibs.ts --pack=core
+        run: npx tsx scripts/build/sync-stdlibs.ts --pack=core
       - name: Build VS Code Extension
         run: npm run build:extension
       - name: Run Build
@@ -457,15 +340,36 @@ jobs:
         run: npm run verify:dist
       - name: Verify Package Tarballs & Overrides
         run: npm run verify:pack
+      - name: Check If Docs Data Generation Affected
+        id: check-docs
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "run_docs=true" >> "$GITHUB_OUTPUT"
+          else
+            BASE_REF="${NX_BASE:-HEAD~1}"
+            if ! git rev-parse --verify "$BASE_REF" >/dev/null 2>&1; then
+              BASE_REF="HEAD~1"
+            fi
+            DOCS_CHANGED=$(git diff --name-only "$BASE_REF" HEAD | grep -E '(^apps/docs/|^apps/cli/|^packages/mcp/|package\.json$|^languages/modelica/src/errors\.ts)' || true)
+            if [ -n "$DOCS_CHANGED" ]; then
+              echo "Docs-relevant files changed: $DOCS_CHANGED"
+              echo "run_docs=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "No docs-relevant files changed on PR. Skipping full rebuild for docs check."
+              echo "run_docs=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
       - name: Build All Packages for Docs Check
+        if: steps.check-docs.outputs.run_docs == 'true'
         run: npx nx run-many -t build --parallel=3
       - name: Check Docs Generated Data & Links
-        run: npm run check --workspace=@modelscript/docs
+        if: steps.check-docs.outputs.run_docs == 'true'
+        run: pnpm --filter @modelscript/docs run check
       - name: Package VS Code Extension
         run: npx --yes @vscode/vsce package --no-dependencies --allow-star-activation
         working-directory: dist/extension
       - name: Upload VSIX Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: modelscript-vsix
           path: dist/extension/*.vsix
@@ -481,28 +385,11 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/setup-workspace
         with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
-      - name: Install Dependencies
-        run: npm ci --ignore-scripts
-      - name: Cache WASM Parsers
-        uses: actions/cache@v4
-        with:
-          path: |
-            .cache/asc-tests
-            languages/*/.cache
-            languages/*/dist/*.wasm
-            packages/runtime/build/*.wasm
-            packages/simulate/src/wasm/*.wasm
-            packages/simulate/.cache/**
-            packages/dsl/.cache/**
-          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**', 'languages/*/assembly/**') }}
-          restore-keys: |
-            ${{ runner.os }}-wasm-
-            Linux-wasm-
+          ignore-scripts: "true"
+          cache-wasm: "true"
       - name: Build Core Compiler Chain
         run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/modelica --parallel=2
       - name: Verify Cross-Platform Hygiene & Dist Integrity
@@ -522,16 +409,18 @@ jobs:
       packages: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - name: Enable Corepack
+        run: corepack enable
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: ".nvmrc"
-          cache: "npm"
+          cache: "pnpm"
       - name: Calculate Affected Bounds
         id: set-shas
-        uses: nrwl/nx-set-shas@v4
+        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
       - name: Check If Docker Services Affected
         id: check-affected
         run: |
@@ -551,12 +440,12 @@ jobs:
           fi
       - name: Install Dependencies
         if: steps.check-affected.outputs.run_docker == 'true'
-        run: npm ci
+        run: pnpm install --frozen-lockfile
         env:
           CXXFLAGS: "-std=c++20"
       - name: Cache Nx
         if: steps.check-affected.outputs.run_docker == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .nx/cache
           key: ${{ runner.os }}-nx-docker-${{ github.sha }}
@@ -566,7 +455,7 @@ jobs:
             ${{ runner.os }}-nx-
       - name: Ensure Standard Library Assets Exist
         if: steps.check-affected.outputs.run_docker == 'true'
-        run: npx tsx scripts/sync-stdlibs.ts --pack=core
+        run: npx tsx scripts/build/sync-stdlibs.ts --pack=core
       - name: Fast Rebuild from Cache
         if: steps.check-affected.outputs.run_docker == 'true'
         run: npx nx run-many -t build --parallel=3
@@ -577,23 +466,23 @@ jobs:
         if: steps.check-affected.outputs.run_docker == 'true'
         run: |
           if [ ! -f "apps/docs/docs/public/modelscript-reference-manual.pdf" ]; then
-            npm run build:pdf --workspace=@modelscript/docs
+            pnpm --filter @modelscript/docs run build:pdf
           fi
       - name: Rebuild Unified Site & Docs with PDF Manual
         if: steps.check-affected.outputs.run_docker == 'true'
         run: npx nx build @modelscript/docs
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
         if: steps.check-affected.outputs.run_docker == 'true'
       - name: Log in to GHCR
         if: steps.check-affected.outputs.run_docker == 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push EE & CE Docker images
         if: steps.check-affected.outputs.run_docker == 'true'
-        uses: docker/bake-action@v6
+        uses: docker/bake-action@5be5f02ff8819ecd3092ea6b2e6261c31774f2b4 # v6
         with:
           source: .
           files: docker-compose.yml
@@ -685,77 +574,14 @@ jobs:
       PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
       ADMIN_INIT_PASSWORD: ${{ secrets.ADMIN_INIT_PASSWORD }}
+      OAUTH_GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
+      OAUTH_GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
+      GITLAB_CLIENT_ID: ${{ secrets.GITLAB_CLIENT_ID || secrets.OAUTH_GITLAB_CLIENT_ID }}
+      GITLAB_CLIENT_SECRET: ${{ secrets.GITLAB_CLIENT_SECRET || secrets.OAUTH_GITLAB_CLIENT_SECRET }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Trigger Production Docker Compose Rollout via Webhook
-        if: env.PROD_DEPLOY_WEBHOOK_URL != ''
-        run: |
-          curl --fail --silent --show-error -X POST "$PROD_DEPLOY_WEBHOOK_URL" \
-            -H "Authorization: Bearer $PROD_DEPLOY_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "{\"sha\":\"${GITHUB_SHA}\",\"tag\":\"sha-${GITHUB_SHA}\",\"domains\":[\"modelscript.org\",\"ansatz.social\"],\"edition\":\"ee\"}"
-      - name: Roll Out Docker Stack to modelscript.org & ansatz.social via SSH
-        if: env.PROD_SSH_HOST != ''
-        run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "$PROD_SSH_KEY" > ~/.ssh/id_deploy
-          chmod 600 ~/.ssh/id_deploy
-          cat << 'EOF' > ~/.ssh/config
-          Host *
-            IdentityFile ~/.ssh/id_deploy
-            IdentitiesOnly yes
-            StrictHostKeyChecking accept-new
-          EOF
-          chmod 600 ~/.ssh/config
-          if [ -n "$PROD_SSH_KNOWN_HOSTS" ]; then
-            printf '%s\n' "$PROD_SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
-          else
-            ssh-keyscan -H "$PROD_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
-          fi
-
-          TARGET_DIR="${PROD_DEPLOY_PATH:-/opt/modelscript}"
-
-          # 1. Install Docker & Compose plugin if not already installed
-          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "which docker >/dev/null 2>&1 || (curl -fsSL https://get.docker.com | sh)"
-
-          # 2. Ensure target directories exist
-          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "mkdir -p ${TARGET_DIR}/config ${TARGET_DIR}/scripts/ops ${TARGET_DIR}/backups"
-
-          # 3. Synchronize compose files, configs, and ops deployment scripts
-          scp docker-compose.yml docker-compose.prod.yml "${PROD_SSH_USER}@${PROD_SSH_HOST}:${TARGET_DIR}/"
-          scp config/Caddyfile config/mosquitto.conf config/init-timescaledb.sql "${PROD_SSH_USER}@${PROD_SSH_HOST}:${TARGET_DIR}/config/"
-          scp scripts/ops/*.sh scripts/ops/preflight-audit.ts "${PROD_SSH_USER}@${PROD_SSH_HOST}:${TARGET_DIR}/scripts/ops/"
-          scp scripts/ops/*.sh "${PROD_SSH_USER}@${PROD_SSH_HOST}:${TARGET_DIR}/scripts/"
-          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "chmod +x ${TARGET_DIR}/scripts/ops/*.sh ${TARGET_DIR}/scripts/*.sh"
-
-          # 4. Bootstrap / update .env.production from GitHub secret if provided
-          if [ -n "$PROD_ENV_FILE" ]; then
-            printf '%s\n' "$PROD_ENV_FILE" | ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "cat > ${TARGET_DIR}/.env.production && chmod 600 ${TARGET_DIR}/.env.production"
-          fi
-
-          # 4b. Inject standalone RESEND_API_KEY GitHub secret if configured
-          if [ -n "$RESEND_API_KEY" ]; then
-            printf '%s' "$RESEND_API_KEY" | ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "
-              touch ${TARGET_DIR}/.env.production &&
-              chmod 600 ${TARGET_DIR}/.env.production &&
-              (grep -v '^RESEND_API_KEY=' ${TARGET_DIR}/.env.production > ${TARGET_DIR}/.env.production.tmp || true) &&
-              mv ${TARGET_DIR}/.env.production.tmp ${TARGET_DIR}/.env.production &&
-              printf 'RESEND_API_KEY=%s\n' \"\$(cat)\" >> ${TARGET_DIR}/.env.production
-            "
-          fi
-
-          # 4c. Inject standalone ADMIN_INIT_PASSWORD GitHub secret if configured
-          if [ -n "$ADMIN_INIT_PASSWORD" ]; then
-            printf '%s' "$ADMIN_INIT_PASSWORD" | ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "
-              touch ${TARGET_DIR}/.env.production &&
-              chmod 600 ${TARGET_DIR}/.env.production &&
-              (grep -v '^ADMIN_INIT_PASSWORD=' ${TARGET_DIR}/.env.production > ${TARGET_DIR}/.env.production.tmp || true) &&
-              mv ${TARGET_DIR}/.env.production.tmp ${TARGET_DIR}/.env.production &&
-              printf 'ADMIN_INIT_PASSWORD=%s\n' \"\$(cat)\" >> ${TARGET_DIR}/.env.production
-            "
-          fi
-
-          # 5. Authenticate droplet to GHCR and execute production rollout sentinel with automated rollback
-          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin && \
-            docker system prune -af --filter 'until=24h' --volumes=false >/dev/null 2>&1 || true && \
-            IMAGE_TAG=sha-${GITHUB_SHA} TARGET_DIR=${TARGET_DIR} ${TARGET_DIR}/scripts/ops/deploy.sh"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/deploy-production
+        with:
+          image-tag: sha-${{ github.sha }}
+          prune-docker: "true"
+          github-token: ${{ secrets.GITHUB_TOKEN }}

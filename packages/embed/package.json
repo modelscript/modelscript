@@ -41,14 +41,13 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "src/**",
     "dist/**"
   ],
   "scripts": {
     "build": "tsc",
     "clean": "rimraf dist tsconfig.tsbuildinfo",
     "lint": "eslint src tests --no-warn-ignored",
-    "test": "node ../../scripts/test-runner.js",
+    "test": "node ../../scripts/ci/test-runner.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -56,7 +55,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.3.2",
-    "@types/pako": "^2.0.3",
+    "@types/pako": "^2.0.4",
     "typescript": "^5.9.3"
   },
   "modelscript": {

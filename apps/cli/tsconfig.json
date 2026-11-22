@@ -11,5 +11,280 @@
     "verbatimModuleSyntax": true,
     "isolatedModules": true
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "references": [
+    {
+      "path": "../../languages/adams"
+    },
+    {
+      "path": "../../languages/ampl"
+    },
+    {
+      "path": "../../languages/asm"
+    },
+    {
+      "path": "../../languages/aspen"
+    },
+    {
+      "path": "../../languages/atopile"
+    },
+    {
+      "path": "../../languages/atp"
+    },
+    {
+      "path": "../../languages/automationml"
+    },
+    {
+      "path": "../../languages/autosar"
+    },
+    {
+      "path": "../../languages/c"
+    },
+    {
+      "path": "../../packages/cad"
+    },
+    {
+      "path": "../../languages/ccsds"
+    },
+    {
+      "path": "../../languages/cellml"
+    },
+    {
+      "path": "../../languages/cfd"
+    },
+    {
+      "path": "../../languages/cgmes"
+    },
+    {
+      "path": "../../languages/comtrade"
+    },
+    {
+      "path": "../../languages/csv"
+    },
+    {
+      "path": "../../packages/diagram"
+    },
+    {
+      "path": "../../languages/dicom-rt"
+    },
+    {
+      "path": "../../languages/dnp3"
+    },
+    {
+      "path": "../../packages/dsl"
+    },
+    {
+      "path": "../../languages/easy5"
+    },
+    {
+      "path": "../../languages/eclipse"
+    },
+    {
+      "path": "../../languages/energyplus"
+    },
+    {
+      "path": "../../languages/epanet"
+    },
+    {
+      "path": "../../packages/exchange"
+    },
+    {
+      "path": "../../languages/fea"
+    },
+    {
+      "path": "../../languages/febio"
+    },
+    {
+      "path": "../../languages/fiber"
+    },
+    {
+      "path": "../../languages/fortran"
+    },
+    {
+      "path": "../../languages/gensys"
+    },
+    {
+      "path": "../../languages/gtfs"
+    },
+    {
+      "path": "../../languages/gtsuite"
+    },
+    {
+      "path": "../../languages/hec-hms"
+    },
+    {
+      "path": "../../languages/hec-ras"
+    },
+    {
+      "path": "../../languages/ibis"
+    },
+    {
+      "path": "../../languages/igtl"
+    },
+    {
+      "path": "../../languages/jsbsim"
+    },
+    {
+      "path": "../../languages/kicad"
+    },
+    {
+      "path": "../../languages/landgem"
+    },
+    {
+      "path": "../../languages/las"
+    },
+    {
+      "path": "../../languages/lps"
+    },
+    {
+      "path": "../../packages/lsp"
+    },
+    {
+      "path": "../../languages/magicdraw"
+    },
+    {
+      "path": "../../languages/matpower"
+    },
+    {
+      "path": "../../languages/modelica"
+    },
+    {
+      "path": "../../languages/modelscript"
+    },
+    {
+      "path": "../../languages/modflow"
+    },
+    {
+      "path": "../../languages/nifti"
+    },
+    {
+      "path": "../../languages/ocpp"
+    },
+    {
+      "path": "../../languages/olga"
+    },
+    {
+      "path": "../../languages/oneliner"
+    },
+    {
+      "path": "../../languages/openadr"
+    },
+    {
+      "path": "../../languages/opendrive"
+    },
+    {
+      "path": "../../languages/opendss"
+    },
+    {
+      "path": "../../languages/openscenario"
+    },
+    {
+      "path": "../../languages/opensim"
+    },
+    {
+      "path": "../../languages/optical"
+    },
+    {
+      "path": "../../languages/oscal"
+    },
+    {
+      "path": "../../languages/owl2"
+    },
+    {
+      "path": "../../languages/plcopen"
+    },
+    {
+      "path": "../../languages/powerfactory"
+    },
+    {
+      "path": "../../languages/pscad"
+    },
+    {
+      "path": "../../languages/pslf"
+    },
+    {
+      "path": "../../languages/psse"
+    },
+    {
+      "path": "../../languages/qif"
+    },
+    {
+      "path": "../../languages/ran"
+    },
+    {
+      "path": "../../languages/relap5"
+    },
+    {
+      "path": "../../languages/reqif"
+    },
+    {
+      "path": "../../languages/rocets"
+    },
+    {
+      "path": "../../packages/runtime"
+    },
+    {
+      "path": "../../languages/sbml"
+    },
+    {
+      "path": "../../languages/scad"
+    },
+    {
+      "path": "../../languages/scl"
+    },
+    {
+      "path": "../../packages/sdk"
+    },
+    {
+      "path": "../../languages/sel"
+    },
+    {
+      "path": "../../languages/sima"
+    },
+    {
+      "path": "../../languages/simpack"
+    },
+    {
+      "path": "../../packages/simulate"
+    },
+    {
+      "path": "../../languages/simulink"
+    },
+    {
+      "path": "../../languages/spice"
+    },
+    {
+      "path": "../../languages/ssp"
+    },
+    {
+      "path": "../../languages/step"
+    },
+    {
+      "path": "../../languages/swmm"
+    },
+    {
+      "path": "../../languages/sysml2"
+    },
+    {
+      "path": "../../languages/three-mf"
+    },
+    {
+      "path": "../../languages/topas"
+    },
+    {
+      "path": "../../languages/touchstone"
+    },
+    {
+      "path": "../../languages/tough"
+    },
+    {
+      "path": "../../languages/urdf"
+    },
+    {
+      "path": "../../languages/verilog-a"
+    },
+    {
+      "path": "../../languages/waterml"
+    }
+  ]
 }

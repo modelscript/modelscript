@@ -3,7 +3,7 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
-import { buildCleanroomStdLib } from "../../../scripts/build-cleanroom-stdlib.js";
+import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildSelCleanroomSchemas } from "../src/catalog/sel-std-schemas.ts";
 
 const selDir = new URL("..", import.meta.url).pathname;

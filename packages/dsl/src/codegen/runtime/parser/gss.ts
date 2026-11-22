@@ -61,7 +61,7 @@ import { ChunkedUint32Array, UnmanagedUint32Array, createChunkedUint32Array } fr
 import { debugLog } from "./engine";
 
 /** Maximum number of GSS parse heads stored per frontier buffer. */
-export const ARENA_BUFFER_SIZE: i32 = 16384;
+export const ARENA_BUFFER_SIZE: i32 = 4096;
 /** Safety upper bound on tree-cursor stack depth during GSS ancestor walks. */
 const MAX_CURSOR_DEPTH: i32 = 999999;
 
@@ -1237,7 +1237,7 @@ export function allocParseHead(
   h.inErrorState = inErrorState;
   h.summaryPtr = summaryPtr;
   h.summaryCount = summaryCount;
-  h.nodeCount = nodeCount;
+  h.nodeCount = nodeCount != 0 ? nodeCount : (successfulShifts > 0 ? (successfulShifts as u32) : 0);
   h.errorNode = errorNode;
   h.errorLastChild = errorLastChild;
   h.isPaused = isPaused;

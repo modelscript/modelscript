@@ -392,7 +392,7 @@ export function sobolSample(vars: RandomVariable[], N: number): Map<string, numb
   return samples;
 }
 
-function inverseCDF(dist: Distribution, u: number): number {
+export function inverseCDF(dist: Distribution, u: number): number {
   switch (dist.type) {
     case "gaussian":
       return dist.mean + dist.stddev * normalQuantile(u);

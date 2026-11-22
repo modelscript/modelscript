@@ -452,20 +452,34 @@ export class WasmRtcStateMachine {
     if (
       wasm &&
       typeof wasm.statemachine_find_lca === "function" &&
-      typeof wasm.__new === "function" &&
+      (typeof wasm.atomicChunkAlloc === "function" || typeof wasm.__new === "function") &&
       this.nextStateId > 1
     ) {
       const n = this.nextStateId;
-      const parentsPtr = wasm.__new(n * 4, 0);
-      const view = new Int32Array(wasm.memory.buffer, parentsPtr, n);
-      view.fill(-1);
-      for (const [id, st] of this.states.entries()) {
-        if (st.parentId !== undefined) {
-          view[id] = st.parentId;
-        }
+      const bytes = n * 4;
+      let parentsPtr = 0;
+      let freePtr: (() => void) | null = null;
+      if (typeof wasm.atomicChunkAlloc === "function") {
+        parentsPtr = wasm.atomicChunkAlloc(bytes) >>> 0;
+        freePtr = () => parentsPtr && wasm.atomicChunkFree?.(parentsPtr);
+      } else {
+        parentsPtr = wasm.__new(bytes, 0) >>> 0;
+        if (parentsPtr && typeof wasm.__pin === "function") wasm.__pin(parentsPtr);
+        freePtr = () => parentsPtr && wasm.__unpin?.(parentsPtr);
       }
-      const lca: number = wasm.statemachine_find_lca(n, parentsPtr, p1, p2);
-      return lca >= 0 ? lca : undefined;
+      try {
+        const view = new Int32Array(wasm.memory.buffer, parentsPtr, n);
+        view.fill(-1);
+        for (const [id, st] of this.states.entries()) {
+          if (st.parentId !== undefined) {
+            view[id] = st.parentId;
+          }
+        }
+        const lca: number = wasm.statemachine_find_lca(n, parentsPtr, p1, p2);
+        return lca >= 0 ? lca : undefined;
+      } finally {
+        freePtr?.();
+      }
     }
 
     const ancestors1 = new Set<StateId>();

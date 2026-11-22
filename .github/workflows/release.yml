@@ -45,16 +45,12 @@ jobs:
       GITLAB_CLIENT_ID: ${{ secrets.GITLAB_CLIENT_ID || secrets.OAUTH_GITLAB_CLIENT_ID }}
       GITLAB_CLIENT_SECRET: ${{ secrets.GITLAB_CLIENT_SECRET || secrets.OAUTH_GITLAB_CLIENT_SECRET }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           token: ${{ secrets.DEPLOY_PAT }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
       - name: Import GPG Key
-        uses: crazy-max/ghaction-import-gpg@v6
+        uses: crazy-max/ghaction-import-gpg@e89d40939c28e39f97cf32126055eeae86ba74ec # v6
         with:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.GPG_PASSPHRASE }}
@@ -67,44 +63,22 @@ jobs:
           git config user.email "mnachawa@gmail.com"
       - name: Cache MSL
         id: cache-msl
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             scripts/ModelicaStandardLibrary_v4.1.0.zip
             data/libraries/Modelica/4.1.0/extracted
           key: ${{ runner.os }}-msl-v4.1.0
-      - name: Install Dependencies
-        run: npm ci
-        env:
-          CXXFLAGS: "-std=c++20"
-      - name: Cache Nx
-        uses: actions/cache@v4
+      - uses: ./.github/actions/setup-workspace
         with:
-          path: .nx/cache
-          key: ${{ runner.os }}-nx-release-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-nx-build-${{ github.sha }}
-            ${{ runner.os }}-nx-build-
-            ${{ runner.os }}-nx-
-      - name: Cache WASM Parsers
-        uses: actions/cache@v4
-        with:
-          path: |
-            .cache/asc-tests
-            languages/*/.cache
-            languages/*/dist/*.wasm
-            packages/runtime/build/*.wasm
-            packages/simulate/src/wasm/*.wasm
-            packages/simulate/.cache/**
-            packages/dsl/.cache/**
-          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**', 'languages/*/assembly/**') }}
-          restore-keys: |
-            ${{ runner.os }}-wasm-
+          cxxflags: "-std=c++20"
+          nx-cache-prefix: "release"
+          cache-wasm: "true"
       - name: Download Standard Libraries
         run: |
-          npx tsx scripts/sync-stdlibs.ts --pack=core
+          npx tsx scripts/build/sync-stdlibs.ts --pack=core
           if [ ! -d "data/libraries/Modelica/4.1.0/extracted/Modelica" ]; then
-            node scripts/download-msl.cjs --version=4.1.0 --extract --outDir=data/libraries/Modelica/4.1.0/extracted
+            node scripts/build/download-msl.cjs --version=4.1.0 --extract --outDir=data/libraries/Modelica/4.1.0/extracted
           fi
       - name: Build
         run: npm run build
@@ -115,13 +89,13 @@ jobs:
       - name: Lint & Manifest Verification
         run: |
           npm run lint:manifests
-          npm run check --workspace=@modelscript/docs
+          pnpm --filter @modelscript/docs run check
           npm run lint:all
 
       # --- Version, Changelog, Full Monorepo Sync, Tag & Push ---
       - name: Version, Changelog & Tag (Smart Hybrid Orchestrator)
         id: version
-        run: npx tsx scripts/ci-release-version.ts --bump="${{ github.event.inputs.version }}"
+        run: npx tsx scripts/release/ci-release-version.ts --bump="${{ github.event.inputs.version }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -137,7 +111,7 @@ jobs:
           if npm view "@modelscript/runtime@${VERSION}" version >/dev/null 2>&1; then
             echo "✓ @modelscript/*@${VERSION} is already published on npm. Skipping duplicate npm publish."
           else
-            NODE_OPTIONS="--require ./scripts/nx-minimatch-shim.cjs" npx nx release publish --yes
+            NODE_OPTIONS="--require ./scripts/release/nx-minimatch-shim.cjs" npx nx release publish --yes
           fi
         env:
           NPM_CONFIG_PROVENANCE: true
@@ -152,12 +126,12 @@ jobs:
         run: npx --yes @vscode/vsce@3.3.2 package --no-dependencies -o modelscript.vsix
         working-directory: apps/ide/dist/extension
       - name: Upload VSIX Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: modelscript-vsix
           path: apps/ide/dist/extension/modelscript.vsix
       - name: Create or Update GitHub Release & Attach VSIX
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: v${{ steps.version.outputs.version }}
@@ -174,20 +148,20 @@ jobs:
 
       # --- Build Unified Site & Docs (bundled into web/appliance Docker images) ---
       - name: Build PDF Manual
-        run: npm run build:pdf --workspace=@modelscript/docs
+        run: pnpm --filter @modelscript/docs run build:pdf
       - name: Build Docs
         run: npx nx build @modelscript/docs --skip-nx-cache
 
       # --- Publish EE & CE Docker images to GHCR ---
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push EE & CE Docker images
-        uses: docker/bake-action@v6
+        uses: docker/bake-action@5be5f02ff8819ecd3092ea6b2e6261c31774f2b4 # v6
         with:
           source: .
           files: docker-compose.yml
@@ -210,78 +184,8 @@ jobs:
             appliance.tags=ghcr.io/modelscript/appliance:${{ steps.version.outputs.version }}
 
       # --- Roll Out Tagged Release to modelscript.org & ansatz.social via Docker ---
-      - name: Trigger Production Docker Compose Rollout via Webhook
-        if: env.PROD_DEPLOY_WEBHOOK_URL != ''
-        run: |
-          curl --fail --silent --show-error -X POST "$PROD_DEPLOY_WEBHOOK_URL" \
-            -H "Authorization: Bearer $PROD_DEPLOY_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "{\"sha\":\"${GITHUB_SHA}\",\"tag\":\"${{ steps.version.outputs.version }}\",\"domains\":[\"modelscript.org\",\"ansatz.social\"],\"edition\":\"ee\"}"
-      - name: Roll Out Docker Stack to modelscript.org & ansatz.social via SSH
-        if: env.PROD_SSH_HOST != ''
-        run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "$PROD_SSH_KEY" > ~/.ssh/id_deploy
-          chmod 600 ~/.ssh/id_deploy
-          cat << 'EOF' > ~/.ssh/config
-          Host *
-            IdentityFile ~/.ssh/id_deploy
-            IdentitiesOnly yes
-            StrictHostKeyChecking accept-new
-          EOF
-          chmod 600 ~/.ssh/config
-          if [ -n "$PROD_SSH_KNOWN_HOSTS" ]; then
-            printf '%s\n' "$PROD_SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
-          else
-            ssh-keyscan -H "$PROD_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
-          fi
-
-          TARGET_DIR="${PROD_DEPLOY_PATH:-/opt/modelscript}"
-
-          # 1. Install Docker & Compose plugin if not already installed
-          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "which docker >/dev/null 2>&1 || (curl -fsSL https://get.docker.com | sh)"
-
-          # 2. Ensure target directories exist
-          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "mkdir -p ${TARGET_DIR}/config ${TARGET_DIR}/scripts/ops ${TARGET_DIR}/backups"
-
-          # 3. Synchronize compose files, configs, and ops deployment scripts
-          scp docker-compose.yml docker-compose.prod.yml "${PROD_SSH_USER}@${PROD_SSH_HOST}:${TARGET_DIR}/"
-          scp config/Caddyfile config/mosquitto.conf config/init-timescaledb.sql "${PROD_SSH_USER}@${PROD_SSH_HOST}:${TARGET_DIR}/config/"
-          scp scripts/ops/*.sh scripts/ops/preflight-audit.ts "${PROD_SSH_USER}@${PROD_SSH_HOST}:${TARGET_DIR}/scripts/ops/"
-          scp scripts/ops/*.sh "${PROD_SSH_USER}@${PROD_SSH_HOST}:${TARGET_DIR}/scripts/"
-          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "chmod +x ${TARGET_DIR}/scripts/ops/*.sh ${TARGET_DIR}/scripts/*.sh"
-
-          # 4. Bootstrap / update .env.production from GitHub secret if provided
-          if [ -n "$PROD_ENV_FILE" ]; then
-            printf '%s\n' "$PROD_ENV_FILE" | ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "cat > ${TARGET_DIR}/.env.production && chmod 600 ${TARGET_DIR}/.env.production"
-          fi
-          if [ -n "$OAUTH_GITHUB_CLIENT_ID" ] || [ -n "$GITLAB_CLIENT_ID" ]; then
-            {
-              [ -n "$OAUTH_GITHUB_CLIENT_ID" ] && printf 'GITHUB_CLIENT_ID=%s\n' "$OAUTH_GITHUB_CLIENT_ID"
-              [ -n "$OAUTH_GITHUB_CLIENT_SECRET" ] && printf 'GITHUB_CLIENT_SECRET=%s\n' "$OAUTH_GITHUB_CLIENT_SECRET"
-              [ -n "$GITLAB_CLIENT_ID" ] && printf 'GITLAB_CLIENT_ID=%s\n' "$GITLAB_CLIENT_ID"
-              [ -n "$GITLAB_CLIENT_SECRET" ] && printf 'GITLAB_CLIENT_SECRET=%s\n' "$GITLAB_CLIENT_SECRET"
-            } | ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "touch ${TARGET_DIR}/.env.production && chmod 600 ${TARGET_DIR}/.env.production && grep -v -E '^(GITHUB_CLIENT_ID|GITHUB_CLIENT_SECRET|GITLAB_CLIENT_ID|GITLAB_CLIENT_SECRET)=' ${TARGET_DIR}/.env.production > ${TARGET_DIR}/.env.production.tmp || true && cat - >> ${TARGET_DIR}/.env.production.tmp && mv ${TARGET_DIR}/.env.production.tmp ${TARGET_DIR}/.env.production"
-          fi
-          if [ -n "$RESEND_API_KEY" ]; then
-            printf '%s' "$RESEND_API_KEY" | ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "
-              touch ${TARGET_DIR}/.env.production &&
-              chmod 600 ${TARGET_DIR}/.env.production &&
-              (grep -v '^RESEND_API_KEY=' ${TARGET_DIR}/.env.production > ${TARGET_DIR}/.env.production.tmp || true) &&
-              mv ${TARGET_DIR}/.env.production.tmp ${TARGET_DIR}/.env.production &&
-              printf 'RESEND_API_KEY=%s\n' \"\$(cat)\" >> ${TARGET_DIR}/.env.production
-            "
-          fi
-          if [ -n "$ADMIN_INIT_PASSWORD" ]; then
-            printf '%s' "$ADMIN_INIT_PASSWORD" | ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "
-              touch ${TARGET_DIR}/.env.production &&
-              chmod 600 ${TARGET_DIR}/.env.production &&
-              (grep -v '^ADMIN_INIT_PASSWORD=' ${TARGET_DIR}/.env.production > ${TARGET_DIR}/.env.production.tmp || true) &&
-              mv ${TARGET_DIR}/.env.production.tmp ${TARGET_DIR}/.env.production &&
-              printf 'ADMIN_INIT_PASSWORD=%s\n' \"\$(cat)\" >> ${TARGET_DIR}/.env.production
-            "
-          fi
-
-          # 5. Authenticate droplet to GHCR and execute production rollout sentinel with automated rollback
-          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin && \
-            IMAGE_TAG=${{ steps.version.outputs.version }} TARGET_DIR=${TARGET_DIR} ${TARGET_DIR}/scripts/ops/deploy.sh"
+      - uses: ./.github/actions/deploy-production
+        with:
+          image-tag: ${{ steps.version.outputs.version }}
+          prune-docker: "false"
+          github-token: ${{ secrets.GITHUB_TOKEN }}

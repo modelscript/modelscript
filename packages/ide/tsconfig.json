@@ -12,8 +12,71 @@
     "baseUrl": ".",
     "paths": {
       "vscode": ["./tests/mocks/vscode.ts"]
-    }
+    },
+    "composite": false
   },
   "include": ["src/**/*", "tests/**/*"],
-  "exclude": ["src/webview/**/*"]
+  "exclude": ["src/webview/**/*"],
+  "references": [
+    {
+      "path": "../../languages/c"
+    },
+    {
+      "path": "../cad"
+    },
+    {
+      "path": "../../languages/cantera"
+    },
+    {
+      "path": "../../languages/cfd"
+    },
+    {
+      "path": "../../languages/csv"
+    },
+    {
+      "path": "../diagram"
+    },
+    {
+      "path": "../dsl"
+    },
+    {
+      "path": "../exchange"
+    },
+    {
+      "path": "../../languages/fea"
+    },
+    {
+      "path": "../../languages/las"
+    },
+    {
+      "path": "../lsp"
+    },
+    {
+      "path": "../../languages/nmodl"
+    },
+    {
+      "path": "../../languages/pdb"
+    },
+    {
+      "path": "../../languages/qif"
+    },
+    {
+      "path": "../runtime"
+    },
+    {
+      "path": "../../languages/scad"
+    },
+    {
+      "path": "../sdk"
+    },
+    {
+      "path": "../../languages/simpack"
+    },
+    {
+      "path": "../simulate"
+    },
+    {
+      "path": "../../languages/sysml2"
+    }
+  ]
 }

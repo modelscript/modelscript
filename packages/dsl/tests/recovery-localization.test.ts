@@ -244,4 +244,25 @@ describe("GLR Error Recovery Localization, Determinism & Memory Isolation", () =
     );
     assert.ok(elapsedMs < 250, `Expected recovery parse < 250ms, took ${elapsedMs.toFixed(1)}ms`);
   });
+
+  it("recovers Damerau-Levenshtein distance-1 keyword typos (`blcok Main { ... }`) without mutating input", () => {
+    const code = `blcok Main {\n  let x = 1;\n} end;\nlet y = 2;\n`;
+    const { tree, diags } = parseCode(code);
+    assert.ok(diags.length >= 1, "Expected diagnostic for typo 'blcok'");
+    const decls = tree.rootNode.descendantsOfType("Decl");
+    const names = decls.map((d: any) => d.childForFieldName("name")?.text);
+    assert.ok(names.includes("x"), `Expected 'x' preserved in ${JSON.stringify(names)}: ${tree.rootNode.toString()}`);
+    assert.ok(names.includes("y"), `Expected 'y' preserved in ${JSON.stringify(names)}: ${tree.rootNode.toString()}`);
+    assert.equal(tree.rootNode.text.trim(), code.trim());
+  });
+
+  it("handles extra closing brackets (`foo(a, b));`) and newline-separated unclosed expressions cleanly", () => {
+    const code = `foo(a, b));\nlet a = (1 + 2\nlet b = 2;\nlet c = 3;\n`;
+    const { tree, diags } = parseCode(code);
+    assert.ok(diags.length >= 2, `Expected >= 2 diagnostics, got ${diags.length}`);
+    const decls = tree.rootNode.descendantsOfType("Decl");
+    const names = decls.map((d: any) => d.childForFieldName("name")?.text);
+    assert.ok(names.includes("b"), `Expected 'b' preserved in ${JSON.stringify(names)}: ${tree.rootNode.toString()}`);
+    assert.ok(names.includes("c"), `Expected 'c' preserved in ${JSON.stringify(names)}: ${tree.rootNode.toString()}`);
+  });
 });

@@ -3,7 +3,7 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
-import { buildCleanroomStdLib } from "../../../scripts/build-cleanroom-stdlib.js";
+import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildPowerFactoryCleanroomSchemas } from "../src/catalog/powerfactory-std-schemas.ts";
 
 const pfDir = new URL("..", import.meta.url).pathname;

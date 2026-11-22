@@ -4368,6 +4368,40 @@ export class ModelicaFlattener {
                 }
               }
             }
+            if (typeof exIO.flattener_getOcBranchCount === "function") {
+              const ocRootCount = exIO.flattener_getOcRootCount?.(wasmFlattener) ?? 0;
+              const ocPotCount = exIO.flattener_getOcPotentialRootCount?.(wasmFlattener) ?? 0;
+              const ocBranchCount = exIO.flattener_getOcBranchCount(wasmFlattener) ?? 0;
+              const ocQueriedCount = exIO.flattener_getOcQueriedRootCount?.(wasmFlattener) ?? 0;
+              if (ocRootCount > 0 || ocPotCount > 0 || ocBranchCount > 0 || ocQueriedCount > 0) {
+                const roots = new Set<string>();
+                for (let idx = 0; idx < ocRootCount; idx++) {
+                  const s = dae.interner.resolve(exIO.flattener_getOcRoot(wasmFlattener, idx));
+                  if (s) roots.add(s);
+                }
+                const potentialRoots = new Map<string, number>();
+                for (let idx = 0; idx < ocPotCount; idx++) {
+                  const s = dae.interner.resolve(exIO.flattener_getOcPotentialRoot(wasmFlattener, idx));
+                  const prio = exIO.flattener_getOcPotentialRootPrio(wasmFlattener, idx);
+                  if (s) {
+                    const prev = potentialRoots.get(s);
+                    if (prev === undefined || prio < prev) potentialRoots.set(s, prio);
+                  }
+                }
+                const branches: { a: string; b: string }[] = [];
+                for (let idx = 0; idx < ocBranchCount; idx++) {
+                  const sa = dae.interner.resolve(exIO.flattener_getOcBranchA(wasmFlattener, idx));
+                  const sb = dae.interner.resolve(exIO.flattener_getOcBranchB(wasmFlattener, idx));
+                  if (sa && sb) branches.push({ a: sa, b: sb });
+                }
+                const queriedRoots = new Set<string>();
+                for (let idx = 0; idx < ocQueriedCount; idx++) {
+                  const s = dae.interner.resolve(exIO.flattener_getOcQueriedRoot(wasmFlattener, idx));
+                  if (s) queriedRoots.add(s);
+                }
+                dae.extensionMetadata["overconstrainedGraph"] = { roots, potentialRoots, branches, queriedRoots };
+              }
+            }
             const totalVars = dae.varCount;
             for (let v = 0; v < totalVars; v++) {
               if ((dae.getVarFlags(v) & (1 << 9)) !== 0) {
@@ -5049,7 +5083,9 @@ export class ModelicaFlattener {
           const l = dae.getEqLhs(e);
           const r = dae.getEqRhs(e);
           if (l < 0 || r < 0) continue;
-          if (dae.getExprKind(l) !== ExprKind.Name || dae.getExprKind(r) !== ExprKind.Call) continue;
+          const rKind = dae.getExprKind(r);
+          if (dae.getExprKind(l) !== ExprKind.Name || (rKind !== ExprKind.Call && rKind !== ExprKind.ArrayCtor))
+            continue;
           const recName = dae.interner.resolve(dae.getExprData1(l));
           if (!recName) continue;
           const dotPrefix = `${recName}.`;
@@ -5067,6 +5103,7 @@ export class ModelicaFlattener {
             });
           }
           if (fieldVars.length === 0) continue;
+          if (rKind === ExprKind.ArrayCtor && !fieldVars.some((fv) => fv.relSuffix.includes("."))) continue;
           const evalRes = evaluateConstantArenaExpression(
             dae,
             r,
@@ -5110,7 +5147,8 @@ export class ModelicaFlattener {
                 else if (typeof ev === "boolean") dae.setVarStartValue(vIdx, ev ? 1.0 : 0.0);
               }
             }
-            const rhsFnName = dae.interner.resolve(dae.getExprData1(r));
+            const rhsFnName =
+              dae.getExprKind(r) === ExprKind.Call ? dae.interner.resolve(dae.getExprData1(r)) : undefined;
             const rhsFnDae = rhsFnName ? dae.functions.get(rhsFnName) : undefined;
             if (rhsFnDae) {
               for (let vi = 0; vi < rhsFnDae.varCount; vi++) {
@@ -5805,8 +5843,7 @@ export class ModelicaFlattener {
 
     const attachDiffReport = (targetDae: DAEBuilder) => {
       const wasmDiff = (this as any)._wasmDiffStats as
-        | { varCount: number; eqCount: number; bail?: WasmBailInfo | undefined; error?: string | undefined }
-        | undefined;
+        { varCount: number; eqCount: number; bail?: WasmBailInfo | undefined; error?: string | undefined } | undefined;
       if (wasmDiff) {
         delete (this as any)._wasmDiffStats;
         (targetDae as any).diffReport = wasmDiff;
@@ -6093,8 +6130,7 @@ export class ModelicaFlattener {
       visitedClasses.add(cid);
       const cSym = this.db.symbol(cid) as any;
       let cachedInfo = cSym?._cachedCondParamInfo as
-        | { leaves: string[]; baseClassIds: SymbolId[]; childClassIds: SymbolId[] }
-        | undefined;
+        { leaves: string[]; baseClassIds: SymbolId[]; childClassIds: SymbolId[] } | undefined;
       if (!cachedInfo || !Array.isArray(cachedInfo.baseClassIds)) {
         const leaves = extractDirectCondLeaves(this.db.cstNode(cid) as any);
         const baseClassIds: SymbolId[] = [];
@@ -6545,6 +6581,8 @@ export class ModelicaFlattener {
       ) => void;
       flattener_registerEnumLiteral?: (wf: number, typeNameId: number, litNameId: number, index: number) => void;
       flattener_registerScopeConstReal?: (wf: number, scopePtr: number, nameId: number, value: number) => void;
+      flattener_registerCanonicalName?: (wf: number, targetPtr: number, canonFqnId: number) => void;
+      flattener_registerComplexType?: (wf: number, typeId: number) => void;
       flattener_allocSourceBuffer?: (wf: number, totalBytes: number, enc: number) => number;
       lsp_isCharOffsetKernel?: () => boolean | number;
       lsp_getInputEncoding?: () => number;
@@ -6555,6 +6593,8 @@ export class ModelicaFlattener {
     const register = ex.flattener_registerScopeResolution;
     const registerEnum = ex.flattener_registerEnumLiteral;
     const registerConstReal = ex.flattener_registerScopeConstReal;
+    const registerCanon = ex.flattener_registerCanonicalName;
+    const registerComplexType = ex.flattener_registerComplexType;
     const allocSourceBuf: ((wf: number, totalBytes: number, enc: number) => number) | undefined =
       typeof ex.flattener_allocSourceBuffer === "function" ? ex.flattener_allocSourceBuffer : undefined;
     const wasmMemory: WebAssembly.Memory | undefined = ex.memory;
@@ -6682,6 +6722,51 @@ export class ModelicaFlattener {
             0) * unitSize;
     };
 
+    const pendingCanonNames: { targetPtr: number; canonId: number }[] = [];
+    const complexTypeCache = new Map<SymbolId, boolean>();
+    const registeredComplexIds = new Set<number>();
+    const isComplexSubtypeSym = (sym: SymbolEntry | null | undefined, depth = 0): boolean => {
+      if (!sym?.id || depth > 8) return false;
+      const cached = complexTypeCache.get(sym.id);
+      if (cached !== undefined) return cached;
+      if (sym.name === "Complex" || getSymbolQualifiedName(this.db, sym.id) === "Complex") {
+        complexTypeCache.set(sym.id, true);
+        return true;
+      }
+      const symCst = this.db.cstNode(sym.id) as { text?: string; children?: any[]; type?: string } | null;
+      const findShortType = (node: any): string | undefined => {
+        if (!node) return undefined;
+        if (node.type === "short_class_specifier") {
+          return node.children?.find((c: any) => c.type === "type_specifier" || c.type === "name")?.text?.trim();
+        }
+        for (const ch of node.children || []) {
+          const r = findShortType(ch);
+          if (r) return r;
+        }
+        return undefined;
+      };
+      const baseName = findShortType(symCst);
+      if (baseName) {
+        if (baseName === "Complex" || baseName === ".Complex") {
+          complexTypeCache.set(sym.id, true);
+          return true;
+        }
+        const lookupScope = sym.parentId ?? sym.id;
+        const baseSym =
+          this.db.query<ResolveNameFn>("resolveName", sym.id)?.(baseName) ??
+          this.db.query<ResolveNameFn>("resolveSimpleName", sym.id)?.(baseName) ??
+          this.db.query<ResolveNameFn>("resolveName", lookupScope)?.(baseName) ??
+          this.db.query<ResolveNameFn>("resolveSimpleName", lookupScope)?.(baseName);
+        if (baseSym && baseSym.id !== sym.id) {
+          const res = isComplexSubtypeSym(baseSym, depth + 1);
+          complexTypeCache.set(sym.id, res);
+          return res;
+        }
+      }
+      complexTypeCache.set(sym.id, false);
+      return false;
+    };
+
     const queueResolution = (
       scopePtr: number,
       name: string,
@@ -6694,6 +6779,17 @@ export class ModelicaFlattener {
       const nameId = dae.interner.intern(name);
       const localOffset = computeLocalOffset(targetCst, resolvedSym);
       pendingResolutions.push({ scopePtr, nameId, targetPtr: targetCst.ptr, localOffset, fileEntry, alsoGlobal });
+      if (resolvedSym?.id) {
+        const qName = getSymbolQualifiedName(this.db, resolvedSym.id);
+        if (qName) {
+          const canonId = dae.interner.intern(qName);
+          pendingCanonNames.push({ targetPtr: targetCst.ptr, canonId });
+          if (isComplexSubtypeSym(resolvedSym)) {
+            registeredComplexIds.add(nameId);
+            registeredComplexIds.add(canonId);
+          }
+        }
+      }
     };
 
     const visited = new Set<SymbolId>();
@@ -7163,6 +7259,17 @@ export class ModelicaFlattener {
       }
     }
 
+    const complexSymCandidates = this.db.byName("Complex") ?? [];
+    for (const cSym of complexSymCandidates) {
+      if (cSym.kind === "Class" && (!cSym.parentId || getSymbolQualifiedName(this.db, cSym.id) === "Complex")) {
+        const cCst = this.db.cstNode(cSym.id) as unknown as CstNodeLike | null;
+        if (cCst?.ptr) {
+          queueResolution(0, "Complex", cCst, cSym, true);
+        }
+        break;
+      }
+    }
+
     // Materialize contiguous multi-file source buffer in WASM linear memory when available.
     let useMultiFileOffsets = false;
     if (allocSourceBuf && wasmMemory && rootFileEntry && nextBaseUnitOffset > 0) {
@@ -7206,6 +7313,16 @@ export class ModelicaFlattener {
       register(wasmFlattener, res.scopePtr, res.nameId, res.targetPtr, targetOffset);
       if (res.alsoGlobal) {
         register(wasmFlattener, 0, res.nameId, res.targetPtr, targetOffset);
+      }
+    }
+    if (typeof registerCanon === "function") {
+      for (const cn of pendingCanonNames) {
+        registerCanon(wasmFlattener, cn.targetPtr, cn.canonId);
+      }
+    }
+    if (typeof registerComplexType === "function") {
+      for (const cid of registeredComplexIds) {
+        registerComplexType(wasmFlattener, cid);
       }
     }
   }

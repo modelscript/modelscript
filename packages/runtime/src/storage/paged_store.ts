@@ -22,6 +22,7 @@ export interface PagedWasmExports {
   paged_deleteTriple?(s: number, p: number, o: number): number;
   paged_findTriples?(s: number, p: number, o: number): number;
   paged_findTriplesCommitted?(s: number, p: number, o: number): number;
+  paged_findTriplesObjectRange?(p: number, minObj: number, maxObj: number): number;
   paged_leapfrogJoinTriangle?(p1: number, p2: number, p3: number): number;
   paged_getPrefixCompressedSize?(): number;
   paged_compressPageToExchange?(pageId: number): number;
@@ -146,6 +147,17 @@ export class PagedStorageEngine {
   public _backingFilePath: string | null = null;
   private _iriMap = new Map<string, number>();
   private _idToIri = new Map<number, string>();
+  private _graphIds = new Set<number>();
+  /** Dedicated 4-key quad covering index (`GSPO` / `GPOS` / `GOSP`) supporting full 32-bit `graphId`s. */
+  private _quadIndex = new Map<
+    number,
+    {
+      all: PagedTriple[];
+      byS: Map<number, PagedTriple[]>;
+      byP: Map<number, PagedTriple[]>;
+      byO: Map<number, PagedTriple[]>;
+    }
+  >();
   private _nextSequentialId = 1;
   private _lastSyncedTxId = 0;
   private _lastRecoveredSuperblock: SuperblockMetadata | null = null;
@@ -384,6 +396,217 @@ export class PagedStorageEngine {
     object?: string | number | boolean | undefined;
   }): PagedTriple[] {
     return this._executeFind(pattern, true);
+  }
+
+  /**
+   * Inserts a named-graph quad `(subject, predicate, object, graph)` into the paged B+Tree
+   * and dedicated 4-key `GSPO`/`GPOS`/`GOSP` quad covering index (supporting full 32-bit `graphId`s).
+   */
+  public insertQuad(
+    subject: string | number,
+    predicate: string | number,
+    object: string | number | boolean,
+    graph?: string | number | null,
+    axiomType: number = 0,
+  ): boolean {
+    const graphId =
+      graph === undefined || graph === null ? 0 : typeof graph === "string" ? this.intern(graph) : graph >>> 0;
+    const sId = typeof subject === "string" ? this.intern(subject) : subject >>> 0;
+    const pId = typeof predicate === "string" ? this.intern(predicate) : predicate >>> 0;
+    const oId =
+      typeof object === "string"
+        ? this.intern(object)
+        : typeof object === "boolean"
+          ? this.encodeLiteral(object)
+          : object >>> 0;
+
+    if (graphId !== 0) {
+      this._graphIds.add(graphId);
+      let gBucket = this._quadIndex.get(graphId);
+      if (!gBucket) {
+        gBucket = { all: [], byS: new Map(), byP: new Map(), byO: new Map() };
+        this._quadIndex.set(graphId, gBucket);
+      }
+      const entry: PagedTriple = { subjectId: sId, predicateId: pId, objectId: oId, axiomType, flags: graphId };
+      gBucket.all.push(entry);
+      let sList = gBucket.byS.get(sId);
+      if (!sList) {
+        sList = [];
+        gBucket.byS.set(sId, sList);
+      }
+      sList.push(entry);
+      let pList = gBucket.byP.get(pId);
+      if (!pList) {
+        pList = [];
+        gBucket.byP.set(pId, pList);
+      }
+      pList.push(entry);
+      let oList = gBucket.byO.get(oId);
+      if (!oList) {
+        oList = [];
+        gBucket.byO.set(oId, oList);
+      }
+      oList.push(entry);
+    }
+
+    return this.insertTriple(sId, pId, oId, axiomType, graphId & 0xffff);
+  }
+
+  /** Returns all named-graph IRIs registered in this paged store via `insertQuad`. */
+  public listGraphs(): string[] {
+    const out: string[] = [];
+    for (const id of this._graphIds) {
+      const iri = this._idToIri.get(id);
+      if (iri) out.push(iri);
+    }
+    return out;
+  }
+
+  /**
+   * Queries quads matching `(subject, predicate, object, graph)`.
+   * When `graph` is specified, executes an O(1) graph lookup + O(K) `GSPO`/`GPOS`/`GOSP` scan
+   * directly on the dedicated 4-key quad index (supporting full 32-bit `graphId`s).
+   */
+  public findQuads(pattern: {
+    subject?: string | number | undefined;
+    predicate?: string | number | undefined;
+    object?: string | number | boolean | undefined;
+    graph?: string | number | null | undefined;
+  }): PagedTriple[] {
+    if (pattern.graph === undefined || pattern.graph === null) {
+      return this._executeFind(pattern, false);
+    }
+    const gId =
+      typeof pattern.graph === "string" ? (this._iriMap.get(pattern.graph) ?? 0xfffffffe) : pattern.graph >>> 0;
+    const gBucket = this._quadIndex.get(gId);
+    if (!gBucket) return [];
+
+    const sId =
+      pattern.subject !== undefined
+        ? typeof pattern.subject === "string"
+          ? (this._iriMap.get(pattern.subject) ?? 0xfffffffe)
+          : pattern.subject >>> 0
+        : null;
+    const pId =
+      pattern.predicate !== undefined
+        ? typeof pattern.predicate === "string"
+          ? (this._iriMap.get(pattern.predicate) ?? 0xfffffffe)
+          : pattern.predicate >>> 0
+        : null;
+    const oId =
+      pattern.object !== undefined
+        ? typeof pattern.object === "string"
+          ? (this._iriMap.get(pattern.object) ?? 0xfffffffe)
+          : typeof pattern.object === "boolean"
+            ? this.encodeLiteral(pattern.object)
+            : pattern.object >>> 0
+        : null;
+
+    if (sId === 0xfffffffe || pId === 0xfffffffe || oId === 0xfffffffe) return [];
+
+    // Optimal permutation selection within the graph: GSPO, GOSP, GPOS, or G-scan
+    let candidates: PagedTriple[];
+    if (sId !== null) candidates = gBucket.byS.get(sId) ?? [];
+    else if (oId !== null) candidates = gBucket.byO.get(oId) ?? [];
+    else if (pId !== null) candidates = gBucket.byP.get(pId) ?? [];
+    else candidates = gBucket.all;
+
+    const out: PagedTriple[] = [];
+    for (let i = 0; i < candidates.length; i++) {
+      const r = candidates[i]!;
+      if (sId !== null && r.subjectId !== sId) continue;
+      if (pId !== null && r.predicateId !== pId) continue;
+      if (oId !== null && r.objectId !== oId) continue;
+      out.push(r);
+    }
+    return out;
+  }
+
+  /**
+   * Executes an O(log N + K) B+Tree range scan on `TREE_POS` for inline numeric objects
+   * (30-bit inline integers and 1e-3 fixed-point decimals) matching a numeric interval.
+   */
+  public findTriplesNumericRange(
+    predicate: string | number,
+    minVal: number,
+    maxVal: number,
+    minInclusive: boolean = true,
+    maxInclusive: boolean = true,
+    subject?: string | number | null,
+    graph?: string | number | null,
+  ): PagedTriple[] {
+    if (!this._wasm.paged_findTriplesObjectRange || !this._wasm.memory || !this._wasm.paged_getQueryBufferPtr) {
+      return [];
+    }
+    const pId = typeof predicate === "string" ? (this._iriMap.get(predicate) ?? 0xfffffffe) : predicate >>> 0;
+    if (pId === 0xfffffffe) return [];
+
+    const sFilter =
+      subject !== undefined && subject !== null
+        ? typeof subject === "string"
+          ? (this._iriMap.get(subject) ?? 0xfffffffe)
+          : subject >>> 0
+        : null;
+    if (sFilter === 0xfffffffe) return [];
+
+    const gFilter =
+      graph !== undefined && graph !== null
+        ? typeof graph === "string"
+          ? (this._iriMap.get(graph) ?? 0xfffffffe)
+          : graph >>> 0
+        : null;
+    if (gFilter === 0xfffffffe) return [];
+
+    const ranges: Array<[number, number]> = [];
+
+    // 1. Inline 30-bit signed integer ranges (split at 0 because two's complement wraps unsigned order)
+    const intLo = Math.max(-536870912, minInclusive ? Math.ceil(minVal) : Math.floor(minVal) + 1);
+    const intHi = Math.min(536870911, maxInclusive ? Math.floor(maxVal) : Math.ceil(maxVal) - 1);
+    if (intLo <= intHi) {
+      if (intLo < 0 && intHi >= 0) {
+        ranges.push([this.encodeLiteral(intLo), this.encodeLiteral(-1)]);
+        ranges.push([this.encodeLiteral(0), this.encodeLiteral(intHi)]);
+      } else {
+        ranges.push([this.encodeLiteral(intLo), this.encodeLiteral(intHi)]);
+      }
+    }
+
+    // 2. Inline 1e-3 fixed-point decimal ranges
+    const decLo = Math.max(-536870912, minInclusive ? Math.ceil(minVal * 1000) : Math.floor(minVal * 1000) + 1);
+    const decHi = Math.min(536870910, maxInclusive ? Math.floor(maxVal * 1000) : Math.ceil(maxVal * 1000) - 1);
+    const encDec = (scaled: number): number => (TAG_INLINE_DEC | (scaled & PAYLOAD_MASK_30)) >>> 0;
+    if (decLo <= decHi) {
+      if (decLo < 0 && decHi >= 0) {
+        ranges.push([encDec(decLo), encDec(-1)]);
+        ranges.push([encDec(0), encDec(decHi)]);
+      } else {
+        ranges.push([encDec(decLo), encDec(decHi)]);
+      }
+    }
+
+    const results: PagedTriple[] = [];
+    for (const [loId, hiId] of ranges) {
+      if (loId > hiId) continue;
+      const count = this._wasm.paged_findTriplesObjectRange(pId, loId, hiId);
+      if (count === 0) continue;
+      const bufPtr = this._wasm.paged_getQueryBufferPtr();
+      const u32 = new Uint32Array(this._wasm.memory.buffer, bufPtr, count * 5);
+      for (let i = 0; i < count; i++) {
+        const off = i * 5;
+        const sId = u32[off]!;
+        const flags = u32[off + 4]!;
+        if (sFilter !== null && sId !== sFilter) continue;
+        if (gFilter !== null && flags >>> 0 !== gFilter) continue;
+        results.push({
+          subjectId: sId,
+          predicateId: u32[off + 1]!,
+          objectId: u32[off + 2]!,
+          axiomType: u32[off + 3]!,
+          flags,
+        });
+      }
+    }
+    return results;
   }
 
   private _executeFind(

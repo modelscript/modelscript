@@ -3,7 +3,7 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
-import { buildCleanroomStdLib } from "../../../scripts/build-cleanroom-stdlib.js";
+import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildGtSuiteCleanroomSchemas } from "../src/catalog/gtsuite-std-schemas.ts";
 
 const gtsuiteDir = new URL("..", import.meta.url).pathname;

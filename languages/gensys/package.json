@@ -58,7 +58,6 @@
     }
   },
   "files": [
-    "src/**",
     "src-gen/**",
     "as-gen/**",
     "dist/**",
@@ -66,28 +65,28 @@
     "assets/**"
   ],
   "scripts": {
-    "build": "node ../../scripts/build-language-parser.js && npm run build:wasm && node scripts/build-stdlib.js && tsc",
-    "build:parser": "node ../../scripts/build-language-parser.js --force",
+    "build": "node ../../scripts/build/build-language-parser.js && npm run build:wasm && node scripts/build-stdlib.js && tsc",
+    "build:parser": "node ../../scripts/build/build-language-parser.js --force",
     "build:stdlib": "node scripts/build-stdlib.js --force",
     "build:wasm": "node scripts/build-wasm.js",
     "clean": "rimraf dist src-gen as-gen *.wasm",
     "lint": "eslint src tests --no-warn-ignored",
-    "playground": "npx tsx ../../scripts/language-playground.ts .",
-    "test": "node ../../scripts/test-runner.js",
+    "playground": "npx tsx ../../scripts/tools/language-playground.ts .",
+    "test": "node ../../scripts/ci/test-runner.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@modelscript/diagram": "*",
-    "@modelscript/dsl": "*",
-    "@modelscript/runtime": "*"
+    "@modelscript/diagram": "workspace:*",
+    "@modelscript/dsl": "workspace:*",
+    "@modelscript/runtime": "workspace:*"
   },
   "devDependencies": {
-    "@types/react": "^19.0.10",
+    "@types/react": "^19.2.7",
     "rimraf": "^6.1.0",
     "typescript": "^5.9.3"
   },
   "peerDependencies": {
-    "@modelscript/design-tokens": "*",
+    "@modelscript/design-tokens": "workspace:*",
     "react": "^18.0.0 || ^19.0.0"
   },
   "peerDependenciesMeta": {

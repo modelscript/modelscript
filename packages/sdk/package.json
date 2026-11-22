@@ -12,14 +12,13 @@
     "./assembly": "./assembly/index.ts"
   },
   "files": [
-    "src/**",
     "assembly/**",
     "dist/**"
   ],
   "scripts": {
     "build": "tsc",
     "clean": "rimraf dist",
-    "test": "node ../../scripts/test-runner.js --tsconfig tsconfig.json",
+    "test": "node ../../scripts/ci/test-runner.js --tsconfig tsconfig.json",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

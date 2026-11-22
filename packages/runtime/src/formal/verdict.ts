@@ -76,3 +76,95 @@ export function verdictFromEnclosure(
 export function isProven(v: VerificationVerdict | undefined): boolean {
   return v?.kind === "proven";
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Probabilistic Verification Verdicts (P-boxes, Stochastic Barriers)
+// ─────────────────────────────────────────────────────────────────────
+
+export type ProbabilisticUnknownReason = "inconclusive-pbox" | "not-rigorous" | "budget" | "unsupported";
+
+/**
+ * Soundness-aware verdict for probabilistic requirements of the form
+ * P(unsafe) <= maxAllowedProbability.
+ *
+ *  - `proven`   — guaranteed upper bound pMax <= maxAllowedProbability under a sound rigor level.
+ *  - `violated` — guaranteed lower bound pMin > maxAllowedProbability (breach is certain).
+ *  - `unknown`  — bounds straddle maxAllowedProbability (pMin <= limit < pMax), or rigor is heuristic.
+ */
+export type ProbabilisticVerdict =
+  | {
+      kind: "proven";
+      rigor: Exclude<VerdictRigor, "heuristic">;
+      probabilityBounds: [number, number];
+      maxAllowedProbability: number;
+      detail?: string | undefined;
+    }
+  | {
+      kind: "violated";
+      rigor: Exclude<VerdictRigor, "heuristic">;
+      probabilityBounds: [number, number];
+      maxAllowedProbability: number;
+      detail?: string | undefined;
+    }
+  | {
+      kind: "unknown";
+      reason: ProbabilisticUnknownReason;
+      rigor?: VerdictRigor | undefined;
+      probabilityBounds?: [number, number] | undefined;
+      maxAllowedProbability?: number | undefined;
+      detail?: string | undefined;
+    };
+
+/**
+ * Derives a {@link ProbabilisticVerdict} from lower/upper probability bounds [pMin, pMax]
+ * against a requirement P(event) <= maxAllowedProbability.
+ */
+export function probabilisticVerdictFromBounds(
+  probabilityBounds: [number, number],
+  maxAllowedProbability: number,
+  rigor: VerdictRigor,
+  detail?: string,
+): ProbabilisticVerdict {
+  const [pMin, pMax] = probabilityBounds;
+  if (rigor === "heuristic") {
+    return {
+      kind: "unknown",
+      reason: "not-rigorous",
+      rigor,
+      probabilityBounds,
+      maxAllowedProbability,
+      ...(detail ? { detail } : {}),
+    };
+  }
+  if (pMax <= maxAllowedProbability) {
+    return {
+      kind: "proven",
+      rigor,
+      probabilityBounds,
+      maxAllowedProbability,
+      ...(detail ? { detail } : {}),
+    };
+  }
+  if (pMin > maxAllowedProbability) {
+    return {
+      kind: "violated",
+      rigor,
+      probabilityBounds,
+      maxAllowedProbability,
+      ...(detail ? { detail } : {}),
+    };
+  }
+  return {
+    kind: "unknown",
+    reason: "inconclusive-pbox",
+    rigor,
+    probabilityBounds,
+    maxAllowedProbability,
+    ...(detail ? { detail } : {}),
+  };
+}
+
+/** True only for sound probabilistic verdicts that prove P(unsafe) <= limit. */
+export function isProbabilisticallyProven(v: ProbabilisticVerdict | undefined): boolean {
+  return v?.kind === "proven";
+}

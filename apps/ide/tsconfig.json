@@ -8,5 +8,49 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "../../packages/cad"
+    },
+    {
+      "path": "../../languages/csv"
+    },
+    {
+      "path": "../../packages/diagram"
+    },
+    {
+      "path": "../../packages/dsl"
+    },
+    {
+      "path": "../../packages/exchange"
+    },
+    {
+      "path": "../../languages/las"
+    },
+    {
+      "path": "../../packages/lsp"
+    },
+    {
+      "path": "../../languages/modelica"
+    },
+    {
+      "path": "../../languages/owl2"
+    },
+    {
+      "path": "../../packages/runtime"
+    },
+    {
+      "path": "../../languages/scad"
+    },
+    {
+      "path": "../../packages/simulate"
+    },
+    {
+      "path": "../../languages/step"
+    },
+    {
+      "path": "../../languages/sysml2"
+    }
+  ]
 }

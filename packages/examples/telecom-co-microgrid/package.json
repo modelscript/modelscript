@@ -9,7 +9,7 @@
   "scripts": {
     "lint": "eslint tests --no-warn-ignored",
     "sim": "npx tsx simulate_microgrid.ts",
-    "test": "node ../../../scripts/test-runner.js",
+    "test": "node ../../../scripts/ci/test-runner.js",
     "typecheck": "tsc --noEmit"
   },
   "modelscript": {

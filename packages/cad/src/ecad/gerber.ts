@@ -68,13 +68,92 @@ export interface BoardOutline {
   vertices: [number, number][];
 }
 
-/** Complete PCB layout data for export. */
+/** Layer stackup entry (copper, dielectric, mask, silkscreen). */
+export interface LayerStackup {
+  /** Layer name (e.g., "TopCopper", "CoreDielectric"). */
+  name: string;
+  /** IPC-2581 / standard layer function. */
+  type: "CONDUCTOR" | "DIELECTRIC" | "SOLDERMASK" | "SILKSCREEN" | "PASTEMASK" | "DRILL" | "OTHER";
+  /** 1-based physical stackup order from top to bottom. */
+  sequence: number;
+  /** Board side when applicable. */
+  side?: "TOP" | "BOTTOM" | "INTERNAL" | "ALL";
+  /** Physical layer thickness in mm. */
+  thicknessMm?: number;
+  /** Substrate or conductor material (e.g., "FR4", "Copper"). */
+  material?: string;
+  /** Relative permittivity (Er) for dielectric layers. */
+  dielectricConstant?: number;
+  /** Dissipation factor (tan delta) for dielectric layers. */
+  lossTangent?: number;
+}
+
+/** Curved copper trace arc segment. */
+export interface TraceArc {
+  /** Start point [x, y] in mm. */
+  start: [number, number];
+  /** Midpoint [x, y] on the arc in mm. */
+  mid: [number, number];
+  /** End point [x, y] in mm. */
+  end: [number, number];
+  /** Trace width in mm. */
+  width: number;
+  /** Layer name. */
+  layer: string;
+  /** Net name. */
+  net: string;
+}
+
+/** Copper pour / plane zone polygon. */
+export interface CopperZone {
+  /** Net name connected to this pour. */
+  net: string;
+  /** Layer name. */
+  layer: string;
+  /** Polygon outline vertices [[x, y], ...] in mm. */
+  vertices: [number, number][];
+  /** Copper clearance in mm. */
+  clearance?: number;
+}
+
+/** Keepout / rule-area polygon. */
+export interface KeepoutRegion {
+  /** Layer name (or "ALL"). */
+  layer: string;
+  /** Polygon outline vertices [[x, y], ...] in mm. */
+  vertices: [number, number][];
+  noTracks?: boolean;
+  noVias?: boolean;
+  noCopperPour?: boolean;
+  noComponents?: boolean;
+}
+
+/** Bill-of-materials metadata for a placed component. */
+export interface BomEntry {
+  refDes: string;
+  value?: string;
+  mpn?: string;
+  footprint?: string;
+  dnp?: boolean;
+}
+
+/** Complete PCB layout data for import, analysis, and manufacturing export. */
 export interface PCBLayout {
   traces: TraceSegment[];
   pads: PadDefinition[];
   vias: ViaDefinition[];
   outline: BoardOutline | null;
   netlist: NetlistGraph;
+  /** Optional physical layer stackup (for impedance, SI/PI, and round-trip fidelity). */
+  stackup?: LayerStackup[];
+  /** Optional curved trace arcs. */
+  arcs?: TraceArc[];
+  /** Optional copper pour zones / planes. */
+  zones?: CopperZone[];
+  /** Optional routing/placement keepout regions. */
+  keepouts?: KeepoutRegion[];
+  /** Optional BOM metadata keyed by reference designator. */
+  bom?: Record<string, BomEntry>;
 }
 
 /** Generated manufacturing file. */

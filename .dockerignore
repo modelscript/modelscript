@@ -31,11 +31,15 @@ scratch*
 node_modules
 coverage
 **/coverage
+.v8-coverage
 ctrf
 **/ctrf
 **/.cache
 data
+reports
 uploads
+apps/docs/docs/.vitepress/cache
+apps/docs/docs/.vitepress/.temp
 
 # Large testsuites & validation artifacts not needed in builds
 testsuite

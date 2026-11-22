@@ -68,7 +68,6 @@
     }
   },
   "files": [
-    "src/**",
     "src-gen/**",
     "dist/**",
     "transformers/**"
@@ -78,24 +77,24 @@
     "build:parser": "node build.js --force",
     "clean": "rimraf dist *.wasm",
     "lint": "eslint src transformers tests scripts --no-warn-ignored",
-    "playground": "npx tsx ../../scripts/language-playground.ts .",
-    "test": "node ../../scripts/test-runner.js",
+    "playground": "npx tsx ../../scripts/tools/language-playground.ts .",
+    "test": "node ../../scripts/ci/test-runner.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@modelscript/diagram": "*",
-    "@modelscript/dsl": "*",
-    "@modelscript/exchange": "*",
-    "@modelscript/modelica": "*",
-    "@modelscript/runtime": "*",
-    "@modelscript/simulate": "*",
+    "@modelscript/diagram": "workspace:*",
+    "@modelscript/dsl": "workspace:*",
+    "@modelscript/exchange": "workspace:*",
+    "@modelscript/modelica": "workspace:*",
+    "@modelscript/runtime": "workspace:*",
+    "@modelscript/simulate": "workspace:*",
     "vscode-languageserver": "^9.0.1"
   },
   "devDependencies": {
-    "@types/react": "^19.0.10"
+    "@types/react": "^19.2.7"
   },
   "peerDependencies": {
-    "@modelscript/design-tokens": "*",
+    "@modelscript/design-tokens": "workspace:*",
     "react": "^18.0.0 || ^19.0.0"
   },
   "peerDependenciesMeta": {

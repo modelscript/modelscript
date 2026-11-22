@@ -6,5 +6,19 @@
     "jsx": "react-jsx"
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["dist", "node_modules", "tests"]
+  "exclude": ["dist", "node_modules", "tests"],
+  "references": [
+    {
+      "path": "../../packages/design-tokens"
+    },
+    {
+      "path": "../../packages/dsl"
+    },
+    {
+      "path": "../plcopen"
+    },
+    {
+      "path": "../../packages/runtime"
+    }
+  ]
 }

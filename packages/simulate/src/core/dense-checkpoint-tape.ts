@@ -52,13 +52,16 @@ export class DenseHermiteCheckpointTape {
   private algebraicNames: string[] = [];
   private algNameToIndex = new Map<string, number>();
 
+  private readonly maxCheckpoints: number;
+
   // Cached index for fast localized searching during backward sweeps
   private lastQueriedSegmentIdx = 0;
 
   // Lazily constructed HermiteSegment view cache for getSegments()
   private cachedSegmentsView: HermiteSegment[] | null = null;
 
-  constructor(stateNames: string[], algebraicNames: string[] = [], initialCapacity = 256) {
+  constructor(stateNames: string[], algebraicNames: string[] = [], initialCapacity = 256, maxCheckpoints = 0) {
+    this.maxCheckpoints = maxCheckpoints > 0 ? Math.max(4, maxCheckpoints) : 0;
     this.stateNames = [...stateNames];
     for (let i = 0; i < this.stateNames.length; i++) {
       this.stateNameToIndex.set(this.stateNames[i]!, i);
@@ -89,6 +92,12 @@ export class DenseHermiteCheckpointTape {
   ): void {
     if (t1 <= t0) {
       throw new Error(`Invalid checkpoint segment: t1 (${t1}) must be strictly greater than t0 (${t0}).`);
+    }
+
+    // Revolve-style bounded memory compression: if maxCheckpoints is reached, coarsen by merging
+    // adjacent pairs of segments (preserving endpoints and Hermite derivatives) to halve memory.
+    if (this.maxCheckpoints > 0 && this.segmentCount >= this.maxCheckpoints) {
+      this.compressHalf();
     }
 
     const requiredCap = (this.segmentCount + 1) * this.stride;
@@ -440,5 +449,48 @@ export class DenseHermiteCheckpointTape {
    */
   public getStride(): number {
     return this.stride;
+  }
+
+  /**
+   * Revolve-style bounded-memory checkpoint compression: merges adjacent pairs of segments
+   * `[2k, 2k+1]` into single Hermite segments preserving start/end states and derivatives,
+   * halving segment count while maintaining continuous time coverage over `[t_0, t_end]`.
+   */
+  private compressHalf(): void {
+    const nSegs = this.segmentCount;
+    if (nSegs < 4) return;
+    const n = this.numStates;
+    const m = this.numAlgebraic;
+    const stride = this.stride;
+    const buf = this.flatBuffer;
+
+    let writeIdx = 0;
+    for (let i = 0; i < nSegs; i += 2) {
+      const srcA = i * stride;
+      const dst = writeIdx * stride;
+      if (i + 1 < nSegs) {
+        const srcB = (i + 1) * stride;
+        // t0 from A, t1 from B
+        buf[dst] = buf[srcA]!;
+        buf[dst + 1] = buf[srcB + 1]!;
+        // x0 from A, x1 from B
+        buf.copyWithin(dst + 2, srcA + 2, srcA + 2 + n);
+        buf.copyWithin(dst + 2 + n, srcB + 2 + n, srcB + 2 + 2 * n);
+        // dx0 from A, dx1 from B
+        buf.copyWithin(dst + 2 + 2 * n, srcA + 2 + 2 * n, srcA + 2 + 3 * n);
+        buf.copyWithin(dst + 2 + 3 * n, srcB + 2 + 3 * n, srcB + 2 + 4 * n);
+        // y0 from A, y1 from B
+        if (m > 0) {
+          buf.copyWithin(dst + 2 + 4 * n, srcA + 2 + 4 * n, srcA + 2 + 4 * n + m);
+          buf.copyWithin(dst + 2 + 4 * n + m, srcB + 2 + 4 * n + m, srcB + 2 + 4 * n + 2 * m);
+        }
+      } else if (dst !== srcA) {
+        buf.copyWithin(dst, srcA, srcA + stride);
+      }
+      writeIdx++;
+    }
+    this.segmentCount = writeIdx;
+    this.lastQueriedSegmentIdx = Math.min(this.lastQueriedSegmentIdx, Math.max(0, writeIdx - 1));
+    this.cachedSegmentsView = null;
   }
 }

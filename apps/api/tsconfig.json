@@ -11,5 +11,115 @@
     "verbatimModuleSyntax": true,
     "isolatedModules": true
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "references": [
+    {
+      "path": "../../languages/aspen"
+    },
+    {
+      "path": "../../languages/automationml"
+    },
+    {
+      "path": "../../packages/cad"
+    },
+    {
+      "path": "../../languages/cfd"
+    },
+    {
+      "path": "../../packages/diagram"
+    },
+    {
+      "path": "../../packages/dsl"
+    },
+    {
+      "path": "../../languages/easy5"
+    },
+    {
+      "path": "../../languages/eclipse"
+    },
+    {
+      "path": "../../ee"
+    },
+    {
+      "path": "../../packages/embed"
+    },
+    {
+      "path": "../../packages/exchange"
+    },
+    {
+      "path": "../../languages/fea"
+    },
+    {
+      "path": "../../languages/gtsuite"
+    },
+    {
+      "path": "../../languages/ibis"
+    },
+    {
+      "path": "../../languages/jsbsim"
+    },
+    {
+      "path": "../../languages/lps"
+    },
+    {
+      "path": "../../packages/mcp"
+    },
+    {
+      "path": "../../languages/modelica"
+    },
+    {
+      "path": "../../languages/olga"
+    },
+    {
+      "path": "../../languages/opendss"
+    },
+    {
+      "path": "../../languages/openscenario"
+    },
+    {
+      "path": "../../languages/oscal"
+    },
+    {
+      "path": "../../languages/pscad"
+    },
+    {
+      "path": "../../languages/psse"
+    },
+    {
+      "path": "../../languages/qif"
+    },
+    {
+      "path": "../../languages/relap5"
+    },
+    {
+      "path": "../../languages/rocets"
+    },
+    {
+      "path": "../../packages/runtime"
+    },
+    {
+      "path": "../../languages/sbml"
+    },
+    {
+      "path": "../../languages/sima"
+    },
+    {
+      "path": "../../packages/simulate"
+    },
+    {
+      "path": "../../languages/sparql"
+    },
+    {
+      "path": "../../languages/step"
+    },
+    {
+      "path": "../../languages/swmm"
+    },
+    {
+      "path": "../../languages/sysml2"
+    },
+    {
+      "path": "../../languages/touchstone"
+    }
+  ]
 }

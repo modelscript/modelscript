@@ -8,6 +8,7 @@ export * from "./cae-snapshot-extractor.js";
 export * from "./cae-surrogate-bridge.js";
 export * from "./cfd-pod-surrogate.js";
 export * from "./cfd-snapshot-collector.js";
+export * from "./ctesn.js";
 export * from "./dynamic-rom.js";
 export * from "./modelica-surrogate-emitter.js";
 export * from "./multivariate-bounds.js";

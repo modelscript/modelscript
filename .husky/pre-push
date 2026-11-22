@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -e
+
+# Comprehensive monorepo verification before push
+
+# 1. Run unified repository hygiene doctor (lockfile, cycles, headers, filenames, manifests, types-ratchet)
+pnpm run lint:repo
+
+# 2. Check Root TypeScript Config
+pnpm exec tsc --noEmit
+
+# 3. Run Lint & Typecheck on affected packages
+pnpm exec nx affected -t lint,typecheck --parallel=4
+
+# 4. Verify Dist & Exports Integrity on built packages
+pnpm run verify:dist

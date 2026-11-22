@@ -1,20 +1,10 @@
 #!/usr/bin/env bash
 set -e
 
-# 1. Run unified repository hygiene doctor (lockfile, cycles, headers, filenames, manifests, types-ratchet)
-npm run lint:repo
+# Fast pre-commit checks (<10s). Heavy monorepo checks run in .husky/pre-push and CI.
 
-# 2. Check Root TypeScript Config
-npx tsc --noEmit
+# 1. Lint root scripts
+pnpm run lint:scripts
 
-# 3. Lint Root Scripts
-npm run lint:scripts
-
-# 4. Run Lint & Prettier on staged files
-NODE_OPTIONS="--max-old-space-size=8192" npx lint-staged
-
-# 5. Run Lint & Typecheck on affected packages
-npx nx affected -t lint,typecheck --uncommitted --parallel=4
-
-# 6. Verify Dist & Exports Integrity on built packages
-npm run verify:dist
+# 2. Run filename lint, ESLint, and Prettier on staged files
+NODE_OPTIONS="--max-old-space-size=8192" pnpm exec lint-staged

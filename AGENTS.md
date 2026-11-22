@@ -75,9 +75,9 @@ Source (.mo) → WASM GLR Parser → Linear Memory CST
 | `apps/docs/`              | Unified `modelscript.org` website and VitePress documentation portal (`@modelscript/docs`)                                                                                  |
 | `ee/`                     | Enterprise Edition (`@modelscript/ee`) — Ed25519 offline license verifier, NERC CIP / FERC CEII / FDA 21 CFR Part 11 compliance, SSO/SAML, RBAC, Slurm HPC, Digital Twin    |
 
-### Polyglot Languages (`languages/` — 93 Languages)
+### Polyglot Languages (`languages/` — 104 Languages)
 
-ModelScript is a polyglot compiler supporting **93 engineering languages and simulation formats** across 8 domain clusters with unified querying, `DAEBuilder` lowering, and cross-language interoperability. Each package declares its maturity tier in `package.json#modelscript.tier` (`"beta"` [27], `"alpha"` [66], or `"pre-alpha"` [1]), validated by `npm run lint:manifests` and `npm run audit:languages`:
+ModelScript is a polyglot compiler supporting **104 engineering languages and simulation formats** across 8 domain clusters with unified querying, `DAEBuilder` lowering, and cross-language interoperability. Each package declares its maturity tier in `package.json#modelscript.tier` (`"beta"`, `"alpha"`, or `"pre-alpha"`), validated by `npm run lint:manifests` and `npm run audit:languages`:
 
 - **Native & Core Systems Engineering (9):** `modelscript` (`Beta`), `modelica` (`Beta`), `ampl` (`Beta`), `sysml2` (`Beta`), `ssp` (`Beta`), `reqif` (`Beta`), `oscal` (`Alpha`), `owl2` (`Beta`), `csv` (`Beta`)
 - **Electrical Power Grids, RF, Telecommunications & Electronics (22):** `pscad` (`Beta`), `psse` (`Beta`), `cgmes` (`Alpha`), `opendss` (`Alpha`), `powerfactory` (`Beta`), `pslf` (`Alpha`), `ocpp` (`Alpha`), `openadr` (`Alpha`), `spice` (`Beta`), `verilog-a` (`Alpha`), `ibis` (`Alpha`), `touchstone` (`Alpha`), `optical` (`Alpha`), `ran` (`Alpha`), `fiber` (`Beta`), `matpower` (`Alpha`), `comtrade` (`Alpha`), `scl` (`Alpha`), `atp` (`Alpha`), `dnp3` (`Alpha`), `oneliner` (`Alpha`), `sel` (`Alpha`)
@@ -368,7 +368,7 @@ npm run test:msl:sim -- --report-html=reports/msl-sim.html --report-json=reports
 
 ## Open-Core & Enterprise Edition (`ee/`) Licensing Rules
 
-ModelScript uses an **Open-Core** licensing model enforced by CI (`npm run lint:headers`, `npm run lint:manifests`, and `scripts/check-nx-cycles.js`):
+ModelScript uses an **Open-Core** licensing model enforced by CI (`npm run lint:headers`, `npm run lint:manifests`, and `scripts/lint/check-nx-cycles.js`):
 
 1. **SPDX License Headers:**
    - Every source file outside `ee/` (`packages/*`, `languages/*`, `apps/*`, `scripts/*`) must begin with `// SPDX-License-Identifier: AGPL-3.0-or-later`.
@@ -413,4 +413,4 @@ docs: add security policy and vulnerability reporting guidelines
 ## Versioning & Changelog Rules
 
 1. **Clean Numeric SemVer (`major.minor.patch`):** Always use clean numeric versions (e.g., `0.1.0`, `0.2.0`) synchronized across all manifests via `npm run version:bump -- <version>`. Never use hyphenated pre-release suffixes (`-alpha`, `-beta`, `-rc`), which are rejected by the VS Code Marketplace (`@vscode/vsce`) and Tauri desktop bundlers.
-2. **No `❤️ Thank You` or Author Blocks in `CHANGELOG.md`:** Never add `### ❤️ Thank You` or author attribution lists (e.g., `- Mohamad Omar Nachawati @nachawati`) to `CHANGELOG.md` (enforced via `"authors": false` in `nx.json` and `scripts/ci-release-version.ts`).
+2. **No `❤️ Thank You` or Author Blocks in `CHANGELOG.md`:** Never add `### ❤️ Thank You` or author attribution lists (e.g., `- Mohamad Omar Nachawati @nachawati`) to `CHANGELOG.md` (enforced via `"authors": false` in `nx.json` and `scripts/release/ci-release-version.ts`).

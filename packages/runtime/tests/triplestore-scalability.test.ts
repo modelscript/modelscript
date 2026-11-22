@@ -580,7 +580,7 @@ describe("Triplestore Scalability & Performance Benchmark Suite", () => {
     const classPath = path.resolve(jenaCacheDir, "JenaTdb2Benchmark.class");
 
     if (!fs.existsSync(jarPath) || !fs.existsSync(classPath)) {
-      // Ensure the Jena benchmark harness is compiled via scripts/benchmark-triplestore.ts if needed
+      // Ensure the Jena benchmark harness is compiled via scripts/bench/benchmark-triplestore.ts if needed
       return;
     }
 

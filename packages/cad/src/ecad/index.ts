@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export * from "./centroid.js";
+export * from "./edif.js";
+export * from "./gerber-import.js";
 export * from "./gerber.js";
+export * from "./idx.js";
+export * from "./ipc2581-import.js";
 export * from "./ipc2581.js";
 export * from "./netlist.js";
 export * from "./odb.js";
+export * from "./specctra.js";
 
 // Rendering engine
 export { DEFAULT_LAYERS, PCBRenderer } from "./engine/renderer.js";

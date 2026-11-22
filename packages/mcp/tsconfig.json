@@ -4,5 +4,139 @@
     "rootDir": "./src",
     "outDir": "./dist"
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "references": [
+    {
+      "path": "../../languages/asm"
+    },
+    {
+      "path": "../../languages/atopile"
+    },
+    {
+      "path": "../../languages/atp"
+    },
+    {
+      "path": "../../languages/automationml"
+    },
+    {
+      "path": "../cad"
+    },
+    {
+      "path": "../../languages/cellml"
+    },
+    {
+      "path": "../../languages/comtrade"
+    },
+    {
+      "path": "../diagram"
+    },
+    {
+      "path": "../../languages/dicom-rt"
+    },
+    {
+      "path": "../../languages/dnp3"
+    },
+    {
+      "path": "../dsl"
+    },
+    {
+      "path": "../../languages/epanet"
+    },
+    {
+      "path": "../exchange"
+    },
+    {
+      "path": "../../languages/febio"
+    },
+    {
+      "path": "../../languages/fiber"
+    },
+    {
+      "path": "../../languages/gensys"
+    },
+    {
+      "path": "../../languages/hec-hms"
+    },
+    {
+      "path": "../../languages/igtl"
+    },
+    {
+      "path": "../../languages/kicad"
+    },
+    {
+      "path": "../lsp"
+    },
+    {
+      "path": "../../languages/magicdraw"
+    },
+    {
+      "path": "../../languages/matpower"
+    },
+    {
+      "path": "../../languages/modelica"
+    },
+    {
+      "path": "../../languages/nifti"
+    },
+    {
+      "path": "../../languages/olga"
+    },
+    {
+      "path": "../../languages/oneliner"
+    },
+    {
+      "path": "../../languages/opendss"
+    },
+    {
+      "path": "../../languages/opensim"
+    },
+    {
+      "path": "../../languages/optical"
+    },
+    {
+      "path": "../../languages/oscal"
+    },
+    {
+      "path": "../../languages/pscad"
+    },
+    {
+      "path": "../../languages/qif"
+    },
+    {
+      "path": "../../languages/ran"
+    },
+    {
+      "path": "../runtime"
+    },
+    {
+      "path": "../../languages/scl"
+    },
+    {
+      "path": "../../languages/sel"
+    },
+    {
+      "path": "../../languages/sima"
+    },
+    {
+      "path": "../../languages/simpack"
+    },
+    {
+      "path": "../simulate"
+    },
+    {
+      "path": "../../languages/swmm"
+    },
+    {
+      "path": "../../languages/sysml2"
+    },
+    {
+      "path": "../../languages/three-mf"
+    },
+    {
+      "path": "../../languages/topas"
+    },
+    {
+      "path": "../../languages/waterml"
+    }
+  ]
 }

@@ -71,8 +71,7 @@ export interface CalibrationProblem {
   gradient?: "sensitivity" | "finite-difference" | "adjoint" | undefined;
   /** Optional progress callback invoked after each accepted iteration. */
   onProgress?:
-    | ((progress: { iteration: number; cost: number; parameters: Record<string, number> }) => void)
-    | undefined;
+    ((progress: { iteration: number; cost: number; parameters: Record<string, number> }) => void) | undefined;
 }
 
 /**
@@ -1136,4 +1135,204 @@ function interpolate(tSim: number[], ySim: number[][], varIdx: number, tQuery: n
   if (t1 === t0) return y0;
   const alpha = (tQuery - t0) / (t1 - t0);
   return y0 + alpha * (y1 - y0);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Multi-Experiment Joint Calibration (`JointInverseProblem` parity)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface JointExperimentSpec {
+  /** Human-readable experiment identifier (e.g. "run_25C", "high_load"). */
+  id: string;
+  /** Experiment-specific fixed parameter overrides (e.g. ambient temp, input gain). */
+  parameterOverrides?: Map<string, number> | undefined;
+  /** Experiment-specific initial state overrides. */
+  initialStateOverrides?: Map<string, number> | undefined;
+  /** Time-series measurements for this experiment: variable name → { t, y }. */
+  measurements: Map<string, { t: number[]; y: number[] }>;
+  /** Optional relative weight for this experiment in the joint objective (default: 1.0). */
+  weight?: number | undefined;
+  /** Optional simulation start/stop overrides. */
+  startTime?: number | undefined;
+  stopTime?: number | undefined;
+}
+
+export interface JointCalibrationProblem {
+  /** Shared global parameters to calibrate across all experiments. */
+  globalParameters: string[];
+  /** Box constraints for global parameters. */
+  parameterBounds: Map<string, { min: number; max: number }>;
+  /** Initial guesses for global parameters. */
+  initialGuess?: Map<string, number> | undefined;
+  /** Multiple experimental datasets sharing the same physical model. */
+  experiments: JointExperimentSpec[];
+  /** Convergence tolerance (default: 1e-6). */
+  tolerance?: number | undefined;
+  /** Maximum L-BFGS-B iterations (default: 80). */
+  maxIterations?: number | undefined;
+  /** Gradient computation mode: `"finite-difference"` (default) or `"adjoint"` (via `solveDaeAdjoint`). */
+  gradient?: "finite-difference" | "adjoint" | undefined;
+}
+
+export interface JointCalibrationResult {
+  success: boolean;
+  globalParameters: Map<string, number>;
+  totalResidual: number;
+  experimentResiduals: Map<string, number>;
+  iterations: number;
+  message: string;
+}
+
+/**
+ * Solves a multi-experiment `JointCalibrationProblem` (`JointInverseProblem` parity):
+ * simultaneously calibrates shared global parameters across multiple datasets with distinct
+ * initial conditions and operating conditions using bounded L-BFGS-B.
+ */
+export function calibrateJointExperiments(arena: DAEBuilder, problem: JointCalibrationProblem): JointCalibrationResult {
+  const { globalParameters, parameterBounds, experiments } = problem;
+  const nParams = globalParameters.length;
+  const lb = new Float64Array(nParams);
+  const ub = new Float64Array(nParams);
+  const x0 = new Float64Array(nParams);
+
+  for (let i = 0; i < nParams; i++) {
+    const p = globalParameters[i]!;
+    const b = parameterBounds.get(p) ?? { min: -1e6, max: 1e6 };
+    lb[i] = b.min;
+    ub[i] = b.max;
+    const guess = problem.initialGuess?.get(p) ?? 0.5 * (b.min + b.max);
+    x0[i] = Math.max(b.min, Math.min(b.max, guess));
+  }
+
+  const evalJointObjective = (theta: Float64Array): { total: number; perExp: Map<string, number> } => {
+    let total = 0;
+    const perExp = new Map<string, number>();
+
+    for (const exp of experiments) {
+      const overrides = new Map<string, number>(exp.parameterOverrides ?? []);
+      for (let i = 0; i < nParams; i++) {
+        overrides.set(globalParameters[i]!, theta[i]!);
+      }
+
+      let tMin = exp.startTime ?? Infinity;
+      let tMax = exp.stopTime ?? -Infinity;
+      for (const m of exp.measurements.values()) {
+        for (const t of m.t) {
+          if (exp.startTime === undefined && t < tMin) tMin = t;
+          if (exp.stopTime === undefined && t > tMax) tMax = t;
+        }
+      }
+      if (!Number.isFinite(tMin)) tMin = 0;
+      if (!Number.isFinite(tMax)) tMax = 1;
+
+      const simRes = simulateArena(arena, {
+        startTime: tMin,
+        stopTime: tMax,
+        numberOfIntervals: 100,
+        parameterOverrides: overrides,
+        initialStateOverrides: exp.initialStateOverrides,
+      });
+
+      const wExp = exp.weight ?? 1.0;
+      let expRes = 0;
+      for (const [varName, meas] of exp.measurements) {
+        const colIdx = simRes.states.indexOf(varName);
+        if (colIdx < 0) continue;
+        for (let k = 0; k < meas.t.length; k++) {
+          const ySim = interpolate(simRes.t, simRes.y, colIdx, meas.t[k]!);
+          const diff = ySim - meas.y[k]!;
+          expRes += diff * diff;
+        }
+      }
+      perExp.set(exp.id, expRes);
+      total += wExp * expRes;
+    }
+
+    return { total, perExp };
+  };
+
+  const optRes = lbfgsbSolve(
+    x0,
+    (x: Float64Array) => {
+      if (problem.gradient === "adjoint") {
+        let totalCost = 0;
+        const grad = new Float64Array(nParams);
+        for (const exp of experiments) {
+          const overrides = new Map<string, number>(exp.parameterOverrides ?? []);
+          for (let i = 0; i < nParams; i++) overrides.set(globalParameters[i]!, x[i]!);
+
+          let tMin = exp.startTime ?? Infinity;
+          let tMax = exp.stopTime ?? -Infinity;
+          const names: string[] = [];
+          const ySeries: number[][] = [];
+          let tGrid: number[] | undefined;
+          for (const [varName, meas] of exp.measurements) {
+            names.push(varName);
+            ySeries.push(meas.y);
+            if (!tGrid) tGrid = meas.t;
+            for (const t of meas.t) {
+              if (exp.startTime === undefined && t < tMin) tMin = t;
+              if (exp.stopTime === undefined && t > tMax) tMax = t;
+            }
+          }
+          if (!Number.isFinite(tMin)) tMin = 0;
+          if (!Number.isFinite(tMax)) tMax = 1;
+
+          const adj = solveDaeAdjoint(arena, {
+            startTime: tMin,
+            stopTime: tMax,
+            numberOfIntervals: 60,
+            parameterOverrides: overrides,
+            initialStateOverrides: exp.initialStateOverrides,
+            parametersToDifferentiate: globalParameters,
+            targetTrajectory: { names, t: tGrid, y: ySeries },
+          });
+          const wExp = exp.weight ?? 1.0;
+          totalCost += wExp * adj.loss;
+          for (let i = 0; i < nParams; i++) {
+            grad[i] = grad[i]! + wExp * (adj.gradients.get(globalParameters[i]!) ?? 0);
+          }
+        }
+        return { cost: totalCost, grad };
+      }
+
+      const f0 = evalJointObjective(x).total;
+      const grad = new Float64Array(nParams);
+      const xPert = new Float64Array(x);
+      for (let i = 0; i < nParams; i++) {
+        const h = Math.max(1e-6, 1e-6 * Math.abs(x[i]!));
+        xPert[i] = Math.min(ub[i]!, x[i]! + h);
+        const actualH = xPert[i]! - x[i]!;
+        if (actualH > 1e-12) {
+          const f1 = evalJointObjective(xPert).total;
+          grad[i] = (f1 - f0) / actualH;
+        } else {
+          xPert[i] = Math.max(lb[i]!, x[i]! - h);
+          const f1 = evalJointObjective(xPert).total;
+          grad[i] = (f0 - f1) / Math.max(1e-12, x[i]! - xPert[i]!);
+        }
+        xPert[i] = x[i]!;
+      }
+      return { cost: f0, grad };
+    },
+    lb,
+    ub,
+    {
+      maxIterations: problem.maxIterations ?? 80,
+      tolerance: problem.tolerance ?? 1e-6,
+    },
+  );
+
+  const finalEval = evalJointObjective(optRes.x);
+  const globalMap = new Map<string, number>();
+  for (let i = 0; i < nParams; i++) globalMap.set(globalParameters[i]!, optRes.x[i]!);
+
+  return {
+    success: optRes.converged || finalEval.total < 1e-4,
+    globalParameters: globalMap,
+    totalResidual: finalEval.total,
+    experimentResiduals: finalEval.perExp,
+    iterations: optRes.iterations,
+    message: `Joint calibration across ${experiments.length} experiments finished with residual ${finalEval.total.toExponential(3)}.`,
+  };
 }

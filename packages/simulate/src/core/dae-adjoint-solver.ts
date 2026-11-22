@@ -16,6 +16,9 @@
 import type { DAEBuilder } from "@modelscript/runtime";
 import { Dual, evaluateArenaDualExpression } from "@modelscript/runtime";
 import { luFactorFlat, luSolveFlat } from "@modelscript/runtime/wasm_gaussian.js";
+import { rodas4p } from "../solvers/rodas4p.js";
+import { autoCompositeSolve, rodas5p } from "../solvers/rodas5p.js";
+import { tsit5 } from "../solvers/tsit5.js";
 import { DenseHermiteCheckpointTape } from "./dense-checkpoint-tape.js";
 import type { ArenaSimulationResult } from "./simulate-arena.js";
 import { ArenaSimulator, initializeArenaEnvironment } from "./simulate-arena.js";
@@ -58,9 +61,13 @@ export interface DaeAdjointSolverOptions {
   /** Parameter names to compute sensitivities for. */
   parametersToDifferentiate: string[];
   /** Backward adjoint integration scheme (default: "auto", which uses implicit-trapezoidal for stiff systems). */
-  adjointMethod?: "auto" | "implicit-trapezoidal" | "tr-bdf2" | "explicit-heun" | undefined;
-  /** Forward simulation integrator (default: "rk4"). */
-  forwardIntegrator?: "rk4" | "tr-bdf2" | undefined;
+  adjointMethod?: "auto" | "implicit-trapezoidal" | "tr-bdf2" | "explicit-heun" | "quadrature" | "gauss" | undefined;
+  /** Forward simulation integrator (default: "rk4"). Supports adaptive stiff/non-stiff integrators. */
+  forwardIntegrator?: "rk4" | "tr-bdf2" | "tsit5" | "rodas4p" | "rodas5p" | "auto-composite" | undefined;
+  /** Relative tolerance when using an adaptive forward integrator (default: 1e-6). */
+  rtol?: number | undefined;
+  /** Absolute tolerance when using an adaptive forward integrator (default: 1e-8). */
+  atol?: number | undefined;
   /** Terminal cost Phi(x(T), y(T), p). */
   terminalLoss?:
     | ((
@@ -88,6 +95,8 @@ export interface DaeAdjointSolverOptions {
     | undefined;
   /** Pre-existing checkpoint tape if re-using a forward trajectory. */
   checkpointTape?: DenseHermiteCheckpointTape | undefined;
+  /** Optional Revolve-style maximum checkpoint segments kept in memory (0 = unbounded). */
+  maxCheckpoints?: number | undefined;
   /** Cooperative cancellation signal. */
   signal?: AbortSignal | undefined;
 }
@@ -193,7 +202,9 @@ export class DaeAdjointSolver {
     const valuesByStringId = new Float64Array(initRes.valuesByStringId);
     const timeId = this.arena.interner.intern("time");
 
-    const tape = options.checkpointTape ?? new DenseHermiteCheckpointTape(this.stateNames, this.algebraicNames);
+    const tape =
+      options.checkpointTape ??
+      new DenseHermiteCheckpointTape(this.stateNames, this.algebraicNames, 256, options.maxCheckpoints ?? 0);
 
     const tValues: number[] = [];
     const yValues: number[][] = [];
@@ -229,6 +240,74 @@ export class DaeAdjointSolver {
         }
         tValues.push(seg.t1);
         yValues.push(Array.from(seg.x1));
+      }
+    } else if (
+      options.forwardIntegrator === "tsit5" ||
+      options.forwardIntegrator === "rodas4p" ||
+      options.forwardIntegrator === "rodas5p" ||
+      options.forwardIntegrator === "auto-composite"
+    ) {
+      // Solver-agnostic adaptive forward integration with dense Hermite checkpoint tape recording
+      const rhsFn = (tEval: number, yVec: number[]): number[] => {
+        valuesByStringId[timeId] = tEval;
+        for (let i = 0; i < nStates; i++) valuesByStringId[this.stateNameIds[i]!] = yVec[i] ?? 0;
+        this.sim.evaluateBlocks(valuesByStringId);
+        this.sim.evaluateDerivativeEquations(valuesByStringId);
+        const dx = new Array<number>(nStates);
+        for (let i = 0; i < nStates; i++) dx[i] = valuesByStringId[this.derivNameIds[i]!] ?? 0;
+        return dx;
+      };
+
+      const y0Vec = Array.from(currX);
+      const outGrid: number[] = [];
+      for (let i = 0; i <= steps; i++) outGrid.push(startTime + ((stopTime - startTime) * i) / steps);
+      const solverOpts = { rtol: options.rtol ?? 1e-7, atol: options.atol ?? 1e-9 };
+
+      let trajT: number[];
+      let trajY: number[][];
+      if (options.forwardIntegrator === "tsit5") {
+        const res = tsit5(rhsFn, startTime, y0Vec, stopTime, outGrid, solverOpts);
+        trajT = res.times;
+        trajY = res.states;
+      } else if (options.forwardIntegrator === "rodas4p") {
+        const res = rodas4p(rhsFn, startTime, y0Vec, stopTime, outGrid, solverOpts);
+        trajT = res.times;
+        trajY = res.states;
+      } else if (options.forwardIntegrator === "rodas5p") {
+        const res = rodas5p(rhsFn, startTime, y0Vec, stopTime, outGrid, solverOpts);
+        trajT = res.t;
+        trajY = res.y;
+      } else {
+        const res = autoCompositeSolve(rhsFn, startTime, y0Vec, stopTime, outGrid, solverOpts);
+        trajT = res.t;
+        trajY = res.y;
+      }
+
+      for (let idx = 0; idx < trajT.length; idx++) {
+        const tk = trajT[idx]!;
+        const xk = trajY[idx]!;
+        valuesByStringId[timeId] = tk;
+        for (let i = 0; i < nStates; i++) valuesByStringId[this.stateNameIds[i]!] = xk[i] ?? 0;
+        this.sim.evaluateBlocks(valuesByStringId);
+        this.sim.evaluateDerivativeEquations(valuesByStringId);
+
+        if (idx > 0) {
+          prevX.set(currX);
+          prevDx.set(currDx);
+          prevY.set(currY);
+        }
+        for (let i = 0; i < nStates; i++) {
+          currX[i] = xk[i] ?? 0;
+          currDx[i] = valuesByStringId[this.derivNameIds[i]!] ?? 0;
+        }
+        for (let i = 0; i < nAlg; i++) {
+          currY[i] = valuesByStringId[this.algNameIds[i]!] ?? 0;
+        }
+        if (idx > 0 && tk > trajT[idx - 1]! + 1e-14) {
+          tape.pushSegment(trajT[idx - 1]!, tk, prevX, currX, prevDx, currDx, prevY, currY);
+        }
+        tValues.push(tk);
+        yValues.push(Array.from(currX));
       }
     } else {
       tValues.push(currentTime);
@@ -372,9 +451,7 @@ export class DaeAdjointSolver {
       adjointTrajectoryMap.set(name, [lambda.get(name) ?? 0]);
     }
 
-    const nSegments = tape.length;
-
-    for (let k = nSegments - 1; k >= 0; k--) {
+    for (let k = tValues.length - 2; k >= 0; k--) {
       if (options.signal?.aborted) {
         throw new Error("DAE Adjoint integration aborted during backward pass.");
       }
@@ -503,7 +580,10 @@ export class DaeAdjointSolver {
             ? "implicit-trapezoidal"
             : "explicit-heun";
 
-      if (adjointScheme === "implicit-trapezoidal" && nStates > 0) {
+      if (
+        (adjointScheme === "implicit-trapezoidal" || adjointScheme === "quadrature" || adjointScheme === "gauss") &&
+        nStates > 0
+      ) {
         // Unconditionally A-stable Implicit Trapezoidal (Crank-Nicolson) backward step:
         // (I - (dt/2) * J(tCurr)^T) * lambda(tCurr) = lambda(tNext) + (dt/2) * (J(tNext)^T * lambda(tNext) + g(tNext) + g(tCurr))
         const n = nStates;
@@ -677,25 +757,50 @@ export class DaeAdjointSolver {
       }
 
       // Accumulate parameter sensitivity integral over [tCurr, tNext]
-      for (const pName of paramsToDiff) {
-        let vjpPNext = 0;
-        for (const [fName, fJac] of jacNext.J) {
-          const lambda_f = lambdaNext.get(fName) ?? 0;
-          const df_dp = fJac.get(pName) ?? 0;
-          vjpPNext += lambda_f * df_dp;
+      if (adjointScheme === "quadrature" || adjointScheme === "gauss") {
+        // 2-point Gauss-Legendre quadrature (4th-order accurate per segment):
+        // nodes t_{q1,2} = tMid ± dt / (2 * sqrt(3)), weights = dt / 2
+        const tMid = 0.5 * (tCurr + tNext);
+        const invSqrt3 = 1.0 / Math.sqrt(3.0);
+        const offset = 0.5 * dt * invSqrt3;
+        const qNodes = [tMid - offset, tMid + offset];
+        const qAlphas = [0.5 - 0.5 * invSqrt3, 0.5 + 0.5 * invSqrt3];
+        for (let q = 0; q < 2; q++) {
+          const tq = qNodes[q]!;
+          const alpha = qAlphas[q]!;
+          const stateQ = tape.getStateMap(tq);
+          const jacQ = this.sim.evaluateRHSWithJacobian(tq, stateQ, undefined, seedVars);
+          for (const pName of paramsToDiff) {
+            let vjpPQ = 0;
+            for (const [fName, fJac] of jacQ.J) {
+              const lamQ = (1 - alpha) * (lambda.get(fName) ?? 0) + alpha * (lambdaNext.get(fName) ?? 0);
+              vjpPQ += lamQ * (fJac.get(pName) ?? 0);
+            }
+            const stagePQ = (1 - alpha) * (stageGradPCurr.get(pName) ?? 0) + alpha * (stageGradPNext.get(pName) ?? 0);
+            gradParams.set(pName, (gradParams.get(pName) ?? 0) + 0.5 * dt * (vjpPQ + stagePQ));
+          }
         }
-        const contribNext = vjpPNext + (stageGradPNext.get(pName) ?? 0);
+      } else {
+        for (const pName of paramsToDiff) {
+          let vjpPNext = 0;
+          for (const [fName, fJac] of jacNext.J) {
+            const lambda_f = lambdaNext.get(fName) ?? 0;
+            const df_dp = fJac.get(pName) ?? 0;
+            vjpPNext += lambda_f * df_dp;
+          }
+          const contribNext = vjpPNext + (stageGradPNext.get(pName) ?? 0);
 
-        let vjpPCurr = 0;
-        for (const [fName, fJac] of jacCurr.J) {
-          const lambda_f = lambda.get(fName) ?? 0;
-          const df_dp = fJac.get(pName) ?? 0;
-          vjpPCurr += lambda_f * df_dp;
+          let vjpPCurr = 0;
+          for (const [fName, fJac] of jacCurr.J) {
+            const lambda_f = lambda.get(fName) ?? 0;
+            const df_dp = fJac.get(pName) ?? 0;
+            vjpPCurr += lambda_f * df_dp;
+          }
+          const contribCurr = vjpPCurr + (stageGradPCurr.get(pName) ?? 0);
+
+          const deltaP = 0.5 * (contribNext + contribCurr) * dt;
+          gradParams.set(pName, (gradParams.get(pName) ?? 0) + deltaP);
         }
-        const contribCurr = vjpPCurr + (stageGradPCurr.get(pName) ?? 0);
-
-        const deltaP = 0.5 * (contribNext + contribCurr) * dt;
-        gradParams.set(pName, (gradParams.get(pName) ?? 0) + deltaP);
       }
     }
 

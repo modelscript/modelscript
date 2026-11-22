@@ -821,8 +821,18 @@ export class CdclSatSolver {
 
         const requiredBytes = maxClauseLen * 4;
         if (this.wasmBufferCap < requiredBytes || this.wasmBufferPtr === 0) {
-          this.wasmBufferPtr = wasm.__new(requiredBytes * 2, 0);
-          this.wasmBufferCap = requiredBytes * 2;
+          if (this.wasmBufferPtr !== 0) {
+            if (typeof wasm.atomicChunkFree === "function") wasm.atomicChunkFree(this.wasmBufferPtr);
+            else if (typeof wasm.__unpin === "function") wasm.__unpin(this.wasmBufferPtr);
+          }
+          const nextCap = requiredBytes * 2;
+          if (typeof wasm.atomicChunkAlloc === "function") {
+            this.wasmBufferPtr = wasm.atomicChunkAlloc(nextCap) >>> 0;
+          } else {
+            this.wasmBufferPtr = wasm.__new(nextCap, 0) >>> 0;
+            if (this.wasmBufferPtr && typeof wasm.__pin === "function") wasm.__pin(this.wasmBufferPtr);
+          }
+          this.wasmBufferCap = nextCap;
         }
 
         let rootOk = true;

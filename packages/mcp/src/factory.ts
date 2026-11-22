@@ -7,6 +7,7 @@ import { PolyglotMcpHost } from "./polyglot-server.js";
 import { registerResources } from "./resources.js";
 import { registerTools } from "./tools.js";
 import type { ServerContext } from "./types.js";
+import { registerUqTools } from "./uq-tools.js";
 
 export interface CreateMcpServerOptions {
   name?: string | undefined;
@@ -29,6 +30,7 @@ export function createModelScriptMcpServer(ctx: ServerContext, options?: CreateM
   registerTools(server, ctx);
   registerAlmTools(server, ctx);
   registerMagicDrawTools(server, ctx);
+  registerUqTools(server, ctx);
   registerResources(server, ctx);
 
   return server;

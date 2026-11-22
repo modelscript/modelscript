@@ -4,7 +4,7 @@
  * Language-agnostic LSP runtime core (`@modelscript/lsp/core`).
  *
  * Designed to run seamlessly in BOTH:
- *   1. Single-language dev playground mode (`scripts/language-playground.ts`)
+ *   1. Single-language dev playground mode (`scripts/tools/language-playground.ts`)
  *      with 1 dynamically loaded `LanguagePlugin` and zero imports of other languages.
  *   2. Multi-language production mode (`browserServerMain.ts` / `nodeServerMain.ts`)
  *      with all registered `LanguagePlugin`s in a shared `LanguageRegistry`.
@@ -120,8 +120,7 @@ function normalizeDiagnostic(raw: unknown, defaultSource: string): LspRuntimeDia
   if (!raw || typeof raw !== "object") return null;
   const d = raw as Record<string, unknown>;
   const rangeObj = d["range"] as
-    | { start?: { line?: number; character?: number }; end?: { line?: number; character?: number } }
-    | undefined;
+    { start?: { line?: number; character?: number }; end?: { line?: number; character?: number } } | undefined;
   const startLine =
     rangeObj?.start?.line ?? (typeof d["line"] === "number" ? Math.max(0, (d["line"] as number) - 1) : 0);
   const startChar = rangeObj?.start?.character ?? (typeof d["column"] === "number" ? (d["column"] as number) : 0);
@@ -967,8 +966,7 @@ export function createLspRuntime(options: LspRuntimeOptions = {}): LspRuntime {
       if (method === "textDocument/didOpen") {
         const td =
           (params["textDocument"] as
-            | { uri?: string; text?: string; version?: number; languageId?: string }
-            | undefined) ?? {};
+            { uri?: string; text?: string; version?: number; languageId?: string } | undefined) ?? {};
         if (td.uri && typeof td.text === "string") {
           upsertDocument(td.uri, td.text, td.version ?? 1, td.languageId);
         }

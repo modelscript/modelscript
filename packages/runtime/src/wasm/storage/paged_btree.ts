@@ -1090,6 +1090,61 @@ export class PagedBTreeStore {
     return this._findInternal(s, p, o, outBuffer, true);
   }
 
+  /**
+   * Executes an O(log N + K) B+Tree range scan on TREE_POS for a bound predicate `p`
+   * and object NodeId in the closed unsigned interval `[minObj, maxObj]`.
+   * Enables direct index range pushdown for inline numeric literals (`FILTER(?v >= a && ?v <= b)`).
+   */
+  findObjectRange(p: u32, minObj: u32, maxObj: u32, outBuffer: ChunkedUint32Array): u32 {
+    if (p == 0 || minObj > maxObj) return 0;
+
+    let rootId = this.getTreeRoot(TREE_POS, false);
+    let currPageId = this._findLeafPageForRead(rootId, p, minObj, 0, false);
+    let matchCount: u32 = 0;
+    let isFirstLeaf: bool = true;
+
+    while (currPageId != 0) {
+      let pagePtr = this._fetchPageForRead(currPageId, false);
+      this.bufferPool.pinPage(currPageId);
+      let count = BTreePage.getItemCount(pagePtr) as u32;
+
+      let startIdx: u32 = 0;
+      if (isFirstLeaf && count > 0) {
+        let bs = BTreePage.binarySearch(pagePtr, p, minObj, 0);
+        startIdx = bs >= 0 ? (bs as u32) : ((~bs) as u32);
+      }
+      isFirstLeaf = false;
+
+      let exhausted: bool = false;
+      for (let i: u32 = startIdx; i < count; i++) {
+        let ek1 = BTreePage.getEntryS(pagePtr, i); // predicate in TREE_POS
+        let ek2 = BTreePage.getEntryP(pagePtr, i); // object in TREE_POS
+        if (ek1 != p || ek2 > maxObj) {
+          exhausted = true;
+          break;
+        }
+        if (ek2 >= minObj) {
+          let ek3 = BTreePage.getEntryO(pagePtr, i); // subject in TREE_POS
+          let aType = BTreePage.getEntryType(pagePtr, i) as u32;
+          let flags = BTreePage.getEntryFlags(pagePtr, i) as u32;
+          outBuffer.push(ek3); // subject
+          outBuffer.push(ek1); // predicate
+          outBuffer.push(ek2); // object
+          outBuffer.push(aType);
+          outBuffer.push(flags);
+          matchCount++;
+        }
+      }
+
+      let nextPage = BTreePage.getNextPage(pagePtr);
+      this.bufferPool.unpinPage(currPageId);
+      if (exhausted) break;
+      currPageId = nextPage;
+    }
+
+    return matchCount;
+  }
+
   private _findInternal(
     s: u32,
     p: u32,
@@ -2102,6 +2157,21 @@ export function paged_findTriplesCommitted(s: u32, p: u32, o: u32): u32 {
   ensurePagedStore();
   g_pagedQueryBuf!.clear();
   let count = g_pagedStore!.findCommitted(s, p, o, g_pagedQueryBuf!);
+
+  let totalWords = count * 5;
+  if (totalWords > g_pagedQueryFlatCap) {
+    g_pagedQueryFlatCap = totalWords + 256;
+    g_pagedQueryFlatPtr = atomicChunkAlloc(g_pagedQueryFlatCap * sizeof<u32>()) as usize;
+  }
+
+  g_pagedQueryBuf!.copyToFlat(g_pagedQueryFlatPtr);
+  return count;
+}
+
+export function paged_findTriplesObjectRange(p: u32, minObj: u32, maxObj: u32): u32 {
+  ensurePagedStore();
+  g_pagedQueryBuf!.clear();
+  let count = g_pagedStore!.findObjectRange(p, minObj, maxObj, g_pagedQueryBuf!);
 
   let totalWords = count * 5;
   if (totalWords > g_pagedQueryFlatCap) {

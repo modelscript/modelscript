@@ -1,4 +1,80 @@
 {
   "files": [],
-  "references": [{ "path": "./tsconfig.app.json" }, { "path": "./tsconfig.node.json" }]
+  "references": [
+    {
+      "path": "../../packages/cad"
+    },
+    {
+      "path": "../../packages/design-tokens"
+    },
+    {
+      "path": "../../packages/diagram"
+    },
+    {
+      "path": "../../languages/dicom-rt"
+    },
+    {
+      "path": "../../packages/dsl"
+    },
+    {
+      "path": "../../packages/editor"
+    },
+    {
+      "path": "../../packages/embed"
+    },
+    {
+      "path": "../../languages/epanet"
+    },
+    {
+      "path": "../../packages/exchange"
+    },
+    {
+      "path": "../../languages/igtl"
+    },
+    {
+      "path": "../../languages/las"
+    },
+    {
+      "path": "../../packages/lsp"
+    },
+    {
+      "path": "../../languages/modelica"
+    },
+    {
+      "path": "../../languages/opensim"
+    },
+    {
+      "path": "../../languages/oscal"
+    },
+    {
+      "path": "../../languages/pscad"
+    },
+    {
+      "path": "../../languages/psse"
+    },
+    {
+      "path": "../../languages/qif"
+    },
+    {
+      "path": "../../languages/reqif"
+    },
+    {
+      "path": "../../languages/sima"
+    },
+    {
+      "path": "../../packages/simulate"
+    },
+    {
+      "path": "../../languages/swmm"
+    },
+    {
+      "path": "../../languages/urdf"
+    },
+    {
+      "path": "../../languages/usd"
+    }
+  ],
+  "compilerOptions": {
+    "composite": false
+  }
 }

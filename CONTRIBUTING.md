@@ -121,7 +121,7 @@ The monorepo is organized into four distinct architectural layers to ensure clea
 
 ### Monorepo Unit & Integration Tests (`test-coordinator.js`)
 
-`npm test` invokes [`scripts/test-coordinator.js`](./scripts/test-coordinator.js), which inspects available CPU cores and free RAM to dynamically factorize task parallelism ($P$ concurrent Nx package targets $\times$ $W$ `node:test` workers per package) so WASM/V8 workers never exhaust system memory:
+`npm test` invokes [`scripts/ci/test-coordinator.js`](./scripts/ci/test-coordinator.js), which inspects available CPU cores and free RAM to dynamically factorize task parallelism ($P$ concurrent Nx package targets $\times$ $W$ `node:test` workers per package) so WASM/V8 workers never exhaust system memory:
 
 ```bash
 # Run tests for affected packages
@@ -131,7 +131,7 @@ npm test
 npm run test:all
 
 # Preview resource allocation and shard partitioning
-node scripts/test-coordinator.js run-many --dry-run
+node scripts/ci/test-coordinator.js run-many --dry-run
 ```
 
 ### Modelica & OpenModelica (OMC) Conformance Suite
@@ -165,7 +165,7 @@ npm run test:msl:icon -- --package=Modelica.Electrical.Analog.Basic
 
 ### Polyglot Language Benchmarks & Documentation Sync
 
-The unified polyglot benchmark runner ([`scripts/benchmark-languages.ts`](./scripts/benchmark-languages.ts)) evaluates all 93 language packages across parser throughput/recovery, static diagnostics, and domain-specific reference parity adapters (`LanguageBenchmarkAdapter`):
+The unified polyglot benchmark runner ([`scripts/bench/benchmark-languages.ts`](./scripts/bench/benchmark-languages.ts)) evaluates all 93 language packages across parser throughput/recovery, static diagnostics, and domain-specific reference parity adapters (`LanguageBenchmarkAdapter`):
 
 ```bash
 # Run benchmarks for all languages (or filter to specific slugs)
@@ -197,7 +197,7 @@ To wire a language's custom parity runner into the unified suite, export a `Lang
 
 ### Package Manifest & Hygiene Standards
 
-Every workspace package under `apps/`, `packages/`, `languages/`, and `ee/` is verified in CI by [`scripts/lint-package-manifests.ts`](./scripts/lint-package-manifests.ts) and [`scripts/normalize-headers.ts`](./scripts/normalize-headers.ts):
+Every workspace package under `apps/`, `packages/`, `languages/`, and `ee/` is verified in CI by [`scripts/lint/lint-package-manifests.ts`](./scripts/lint/lint-package-manifests.ts) and [`scripts/lint/normalize-headers.ts`](./scripts/lint/normalize-headers.ts):
 
 - **SPDX License Header:** Open-core source files (`apps/`, `packages/`, `languages/`, `scripts/`) must begin with `// SPDX-License-Identifier: AGPL-3.0-or-later`. Enterprise Edition files (`ee/**`) must begin with `// SPDX-License-Identifier: LicenseRef-ModelScript-Enterprise`.
 - **One-Way Open-Core Boundary:** Open-core libraries (`packages/*`, `languages/*`) must never import from `@modelscript/ee` or `ee/*` (enforced via ESLint `no-restricted-imports`).
@@ -232,13 +232,13 @@ npm test
 
 ## 6. Versioning & Making a Release
 
-ModelScript uses a **fixed-version monorepo** strategy where all workspace packages (`packages/*`, `languages/*`, `apps/*`, `ee/`), the VS Code extension, Tauri desktop bundles (`tauri.conf.json`, `Cargo.toml`), VitePress documentation metadata, and runtime version constants share a single canonical `major.minor.patch` version synchronized by [`scripts/sync-versions.ts`](./scripts/sync-versions.ts) (enforced in CI via `npm run lint:versions` / `npm run lint:repo`).
+ModelScript uses a **fixed-version monorepo** strategy where all workspace packages (`packages/*`, `languages/*`, `apps/*`, `ee/`), the VS Code extension, Tauri desktop bundles (`tauri.conf.json`, `Cargo.toml`), VitePress documentation metadata, and runtime version constants share a single canonical `major.minor.patch` version synchronized by [`scripts/release/sync-versions.ts`](./scripts/release/sync-versions.ts) (enforced in CI via `npm run lint:versions` / `npm run lint:repo`).
 
 > **Strict `X.Y.Z` Numeric SemVer Requirement:** Always use clean numeric `major.minor.patch` versions (e.g., `0.1.0`, `0.2.0`, `1.0.0`) without pre-release suffixes (`-alpha`, `-beta`, `-rc`). Both the Visual Studio Marketplace (`@vscode/vsce`) and native desktop bundlers (Windows MSI/NSIS and macOS `CFBundleShortVersionString` in Tauri) strictly reject hyphenated version strings.
 
 ### Two Supported Versioning Workflows (Smart Hybrid Pipeline)
 
-The release orchestrator ([`scripts/ci-release-version.ts`](./scripts/ci-release-version.ts)) compares the version on disk (`packages/runtime/package.json`) against the latest Git release tag (`v*`), allowing you to use either workflow seamlessly:
+The release orchestrator ([`scripts/release/ci-release-version.ts`](./scripts/release/ci-release-version.ts)) compares the version on disk (`packages/runtime/package.json`) against the latest Git release tag (`v*`), allowing you to use either workflow seamlessly:
 
 #### Workflow A: Pre-Bump During Development (Milestone Cycle)
 
@@ -268,7 +268,7 @@ If you prefer not to touch version numbers during development:
 
 If a release workflow run fails mid-flight (for example, due to a transient registry timeout), re-running the workflow with `auto` or `current` is **100% idempotent**:
 
-- **No Empty Version Bumps:** [`scripts/ci-release-version.ts`](./scripts/ci-release-version.ts) detects when `CHANGELOG.md` and `package.json` already contain the target version and skips duplicate version increments.
+- **No Empty Version Bumps:** [`scripts/release/ci-release-version.ts`](./scripts/release/ci-release-version.ts) detects when `CHANGELOG.md` and `package.json` already contain the target version and skips duplicate version increments.
 - **Registry Deduplication:** `npm publish` checks `npm view @modelscript/runtime@<version>` before publishing, and both `@vscode/vsce publish --skip-duplicate` and `ovsx publish --skip-duplicate` gracefully skip if the extension version is already live.
 - **Zero Duplicate CI Runs:** Pushing the `chore(release): publish <version>` commit to `main` automatically skips redundant test/build jobs in [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) since [`.github/workflows/release.yml`](./.github/workflows/release.yml) has already verified the tree.
 

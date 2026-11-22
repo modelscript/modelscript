@@ -219,6 +219,14 @@ await yargs(rawArgs)
   .command(lazy("mc <name> <paths..>", "Run Monte Carlo simulation", () => import("./commands/mc.js"), "MC"))
   .command(
     lazy(
+      "uq <name> <paths..>",
+      "Run analytical, spectral, or reliability Uncertainty Quantification (FOSM, UT, Sobol, gPCE, FORM, SORM, Subset)",
+      () => import("./commands/uq.js"),
+      "UQ",
+    ),
+  )
+  .command(
+    lazy(
       "optimize <name> <paths..>",
       "Solve an optimal control problem for a Modelica model",
       () => import("./commands/optimize.js"),
@@ -435,6 +443,22 @@ await yargs(rawArgs)
       "SPICE netlist (.cir, .sp, .net) analog & mixed-signal simulation and translation",
       () => import("./commands/spice.js"),
       "Spice",
+    ),
+  )
+  .command(
+    lazy(
+      "kicad <action>",
+      "KiCad ECAD (.kicad_pcb, .kicad_sch) linting, ERC, DRC, RLGC parasitics, consistency, and IPC-2581 translation",
+      () => import("./commands/kicad.js"),
+      "KiCad",
+    ),
+  )
+  .command(
+    lazy(
+      "atopile <action>",
+      "atopile (.ato) code-first hardware linting, tolerance verification, netlist elaboration, and IPC-2581 export",
+      () => import("./commands/atopile.js"),
+      "Atopile",
     ),
   )
   .command(

@@ -1,0 +1,95 @@
+{
+  "name": "@modelscript/kicad",
+  "version": "0.1.0",
+  "description": "KiCad ECAD (.kicad_pcb, .kicad_sch, .kicad_sym, .kicad_mod) S-expression language package for ModelScript",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./language": {
+      "types": "./dist/src/language.d.ts",
+      "default": "./dist/src/language.js"
+    },
+    "./grammar": {
+      "types": "./dist/src/grammar/kicad-grammar.d.ts",
+      "default": "./dist/src/grammar/kicad-grammar.js"
+    },
+    "./parser": {
+      "types": "./dist/src/parser/kicad-parser.d.ts",
+      "default": "./dist/src/parser/kicad-parser.js"
+    },
+    "./cad-bridge": {
+      "types": "./dist/src/cad-bridge.d.ts",
+      "default": "./dist/src/cad-bridge.js"
+    },
+    "./schematic-netlist": {
+      "types": "./dist/src/schematic-netlist.d.ts",
+      "default": "./dist/src/schematic-netlist.js"
+    },
+    "./dae": {
+      "types": "./dist/src/dae/dae-lower.d.ts",
+      "default": "./dist/src/dae/dae-lower.js"
+    },
+    "./parasitics": {
+      "types": "./dist/src/parasitics.d.ts",
+      "default": "./dist/src/parasitics.js"
+    },
+    "./consistency": {
+      "types": "./dist/src/consistency.d.ts",
+      "default": "./dist/src/consistency.js"
+    },
+    "./lsp": {
+      "types": "./dist/src/lsp.d.ts",
+      "default": "./dist/src/lsp.js"
+    },
+    "./export": {
+      "types": "./dist/src/export.d.ts",
+      "default": "./dist/src/export.js"
+    },
+    "./indexing": {
+      "types": "./dist/src/indexing.d.ts",
+      "default": "./dist/src/indexing.js"
+    },
+    "./lints": {
+      "types": "./dist/src/lints/index.d.ts",
+      "default": "./dist/src/lints/index.js"
+    },
+    "./types": {
+      "types": "./dist/src/types.d.ts",
+      "default": "./dist/src/types.js"
+    },
+    "./parser.wasm": "./dist/parser.wasm",
+    "./wasm-parser": {
+      "types": "./src-gen/bindings.d.ts",
+      "default": "./src-gen/bindings.js"
+    }
+  },
+  "files": [
+    "dist/**",
+    "src-gen/**"
+  ],
+  "scripts": {
+    "build": "node ../../scripts/build/build-language-parser.js && tsc",
+    "build:parser": "node ../../scripts/build/build-language-parser.js --force",
+    "clean": "rimraf dist",
+    "lint": "eslint src tests --no-warn-ignored",
+    "test": "node ../../scripts/ci/test-runner.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelscript/cad": "workspace:*",
+    "@modelscript/dsl": "workspace:*",
+    "@modelscript/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  },
+  "modelscript": {
+    "tier": "beta",
+    "category": "language"
+  }
+}

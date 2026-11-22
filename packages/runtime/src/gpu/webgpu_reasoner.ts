@@ -3,6 +3,101 @@
 import { SHACL_VALIDATION_WGSL, TRANSITIVE_CLOSURE_WGSL } from "./shaders/transitive_closure.wgsl.js";
 
 /**
+ * WGSL Compute Shader for Sparse CSR Frontier-Based Parallel BFS / Reachability.
+ * Scales to 10^6+ nodes in O(N + E) memory using atomic bitset updates instead of dense O(N^2) matrices.
+ */
+export const CSR_BFS_FRONTIER_WGSL = /* wgsl */ `
+struct Params {
+  nodeCount: u32,
+  wordCount: u32,
+};
+
+@group(0) @binding(0) var<uniform> params: Params;
+@group(0) @binding(1) var<storage, read> rowOffsets: array<u32>;
+@group(0) @binding(2) var<storage, read> colIndices: array<u32>;
+@group(0) @binding(3) var<storage, read> currFrontier: array<u32>;
+@group(0) @binding(4) var<storage, read_write> nextFrontier: array<atomic<u32>>;
+@group(0) @binding(5) var<storage, read_write> visited: array<atomic<u32>>;
+@group(0) @binding(6) var<storage, read_write> changedFlag: array<atomic<u32>>;
+
+@compute @workgroup_size(64)
+fn csrFrontierStep(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let u = gid.x;
+  if (u >= params.nodeCount) { return; }
+
+  let wIdx = u >> 5u;
+  let mask = 1u << (u & 31u);
+  if ((currFrontier[wIdx] & mask) == 0u) { return; }
+
+  let start = rowOffsets[u];
+  let end = rowOffsets[u + 1u];
+  for (var e = start; e < end; e = e + 1u) {
+    let v = colIndices[e];
+    let vWord = v >> 5u;
+    let vMask = 1u << (v & 31u);
+    let prev = atomicOr(&visited[vWord], vMask);
+    if ((prev & vMask) == 0u) {
+      atomicOr(&nextFrontier[vWord], vMask);
+      atomicStore(&changedFlag[0], 1u);
+    }
+  }
+}
+`;
+
+/**
+ * Compressed Sparse Row (CSR) directed graph representation in O(N + E) memory.
+ * Enables million-node property-path reachability (`p+` / `p*`) without dense O(N^2/8) bitsets.
+ */
+export class SparseCsrGraph {
+  public readonly nodeCount: number;
+  public readonly edgeCount: number;
+  public readonly rowOffsets: Uint32Array;
+  public readonly colIndices: Uint32Array;
+
+  constructor(nodeCount: number, rowOffsets: Uint32Array, colIndices: Uint32Array) {
+    this.nodeCount = nodeCount;
+    this.edgeCount = colIndices.length;
+    this.rowOffsets = rowOffsets;
+    this.colIndices = colIndices;
+  }
+
+  /** Builds a CSR graph from an edge list `[u, v][]` in O(N + E) time and space. */
+  public static fromEdges(nodeCount: number, edges: readonly [number, number][]): SparseCsrGraph {
+    const rowOffsets = new Uint32Array(nodeCount + 1);
+    let validEdges = 0;
+    for (let i = 0; i < edges.length; i++) {
+      const [u, v] = edges[i]!;
+      if (u >= 0 && u < nodeCount && v >= 0 && v < nodeCount) {
+        rowOffsets[u + 1]!++;
+        validEdges++;
+      }
+    }
+    for (let i = 0; i < nodeCount; i++) {
+      rowOffsets[i + 1] = rowOffsets[i + 1]! + rowOffsets[i]!;
+    }
+    const colIndices = new Uint32Array(validEdges);
+    const cursor = new Uint32Array(rowOffsets);
+    for (let i = 0; i < edges.length; i++) {
+      const [u, v] = edges[i]!;
+      if (u >= 0 && u < nodeCount && v >= 0 && v < nodeCount) {
+        const pos = cursor[u]!;
+        colIndices[pos] = v;
+        cursor[u] = pos + 1;
+      }
+    }
+    return new SparseCsrGraph(nodeCount, rowOffsets, colIndices);
+  }
+}
+
+export interface SparseReachabilityResult {
+  readonly reachable: Uint32Array;
+  readonly distances: Int32Array;
+  readonly hops: number;
+  readonly executionTimeMs: number;
+  readonly engine: "webgpu" | "cpu-fallback";
+}
+
+/**
  * Dense Bitset Graph Adjacency / Reachability Matrix.
  * Represents an N x N directed graph where each row u contains
  * ceil(N / 32) 32-bit words.
@@ -100,6 +195,7 @@ export class WebGPUOntologyReasoner {
   private _adapter: GPUAdapter | null = null;
   private _transitivePipeline: GPUComputePipeline | null = null;
   private _shaclPipeline: GPUComputePipeline | null = null;
+  private _csrBfsPipeline: GPUComputePipeline | null = null;
   private _isInitialized = false;
 
   /**
@@ -150,6 +246,258 @@ export class WebGPUOntologyReasoner {
       layout: "auto",
       compute: { module: shaclModule, entryPoint: "validateConstraints" },
     });
+
+    const csrModule = this._device.createShaderModule({ code: CSR_BFS_FRONTIER_WGSL });
+    this._csrBfsPipeline = this._device.createComputePipeline({
+      layout: "auto",
+      compute: { module: csrModule, entryPoint: "csrFrontierStep" },
+    });
+  }
+
+  /**
+   * Computes single-source or multi-source sparse property-path reachability (`p+` / `p*`)
+   * over a `SparseCsrGraph` in O(N + E) memory.
+   * Uses `CSR_BFS_FRONTIER_WGSL` on WebGPU devices and a zero-allocation typed-array BFS on CPU.
+   */
+  public async computeSparseReachability(
+    graph: SparseCsrGraph,
+    sources: readonly number[],
+    options: { reflexive?: boolean | undefined; maxHops?: number | undefined } = {},
+  ): Promise<SparseReachabilityResult> {
+    const t0 = performance.now();
+    const n = graph.nodeCount;
+    const reflexive = options.reflexive ?? false;
+    const maxHops = options.maxHops ?? n;
+
+    if (this._device && this._csrBfsPipeline && n > 0) {
+      return this._computeSparseReachabilityWebGPU(graph, sources, reflexive, maxHops, t0);
+    }
+
+    // Zero-allocation typed-array frontier BFS (CPU fallback)
+    const distances = new Int32Array(n);
+    distances.fill(-1);
+    const queue = new Uint32Array(n);
+    let head = 0;
+    let tail = 0;
+
+    // Seed initial frontier
+    const inQueue = new Uint8Array(n);
+    for (let i = 0; i < sources.length; i++) {
+      const s = sources[i]!;
+      if (s < 0 || s >= n) continue;
+      if (reflexive) {
+        if (distances[s] === -1) {
+          distances[s] = 0;
+          queue[tail++] = s;
+          inQueue[s] = 1;
+        }
+      } else {
+        if (inQueue[s] === 0) {
+          inQueue[s] = 1;
+          queue[tail++] = s;
+        }
+      }
+    }
+
+    const rowOffsets = graph.rowOffsets;
+    const colIndices = graph.colIndices;
+    let hops = 0;
+    let levelEnd = tail;
+    let currentDepth = 0;
+
+    while (head < tail && currentDepth < maxHops) {
+      const u = queue[head++]!;
+      const start = rowOffsets[u]!;
+      const end = rowOffsets[u + 1]!;
+      const nextDist = currentDepth + 1;
+
+      for (let e = start; e < end; e++) {
+        const v = colIndices[e]!;
+        if (distances[v] === -1) {
+          distances[v] = nextDist;
+          if (inQueue[v] === 0) {
+            inQueue[v] = 1;
+            queue[tail++] = v;
+          }
+        }
+      }
+
+      if (head === levelEnd) {
+        currentDepth++;
+        hops = currentDepth;
+        levelEnd = tail;
+      }
+    }
+
+    // Collect all reachable nodes (distances[i] >= 0)
+    let count = 0;
+    for (let i = 0; i < n; i++) {
+      if (distances[i]! >= 0) count++;
+    }
+    const reachable = new Uint32Array(count);
+    let idx = 0;
+    for (let i = 0; i < n; i++) {
+      if (distances[i]! >= 0) reachable[idx++] = i;
+    }
+
+    return {
+      reachable,
+      distances,
+      hops,
+      executionTimeMs: performance.now() - t0,
+      engine: "cpu-fallback",
+    };
+  }
+
+  private async _computeSparseReachabilityWebGPU(
+    graph: SparseCsrGraph,
+    sources: readonly number[],
+    reflexive: boolean,
+    maxHops: number,
+    t0: number,
+  ): Promise<SparseReachabilityResult> {
+    const device = this._device!;
+    const n = graph.nodeCount;
+    const wordCount = Math.ceil(n / 32) || 1;
+    const bitsetBytes = wordCount * 4;
+
+    const initFrontier = new Uint32Array(wordCount);
+    const initVisited = new Uint32Array(wordCount);
+    for (const s of sources) {
+      if (s >= 0 && s < n) {
+        initFrontier[s >> 5]! |= 1 << (s & 31);
+        if (reflexive) initVisited[s >> 5]! |= 1 << (s & 31);
+      }
+    }
+
+    const paramsBuf = device.createBuffer({
+      size: 16,
+      usage: GPUBufferUsageFlags.UNIFORM | GPUBufferUsageFlags.COPY_DST,
+    });
+    device.queue.writeBuffer(paramsBuf, 0, new Uint32Array([n, wordCount, 0, 0]));
+
+    const rowBuf = device.createBuffer({
+      size: Math.max(4, graph.rowOffsets.byteLength),
+      usage: GPUBufferUsageFlags.STORAGE | GPUBufferUsageFlags.COPY_DST,
+    });
+    device.queue.writeBuffer(rowBuf, 0, graph.rowOffsets);
+
+    const colBuf = device.createBuffer({
+      size: Math.max(4, graph.colIndices.byteLength),
+      usage: GPUBufferUsageFlags.STORAGE | GPUBufferUsageFlags.COPY_DST,
+    });
+    if (graph.colIndices.byteLength > 0) device.queue.writeBuffer(colBuf, 0, graph.colIndices);
+
+    let currBuf = device.createBuffer({
+      size: bitsetBytes,
+      usage: GPUBufferUsageFlags.STORAGE | GPUBufferUsageFlags.COPY_DST | GPUBufferUsageFlags.COPY_SRC,
+    });
+    let nextBuf = device.createBuffer({
+      size: bitsetBytes,
+      usage: GPUBufferUsageFlags.STORAGE | GPUBufferUsageFlags.COPY_DST | GPUBufferUsageFlags.COPY_SRC,
+    });
+    const visitedBuf = device.createBuffer({
+      size: bitsetBytes,
+      usage: GPUBufferUsageFlags.STORAGE | GPUBufferUsageFlags.COPY_DST | GPUBufferUsageFlags.COPY_SRC,
+    });
+    const changedBuf = device.createBuffer({
+      size: 4,
+      usage: GPUBufferUsageFlags.STORAGE | GPUBufferUsageFlags.COPY_DST | GPUBufferUsageFlags.COPY_SRC,
+    });
+    const readFlagBuf = device.createBuffer({
+      size: 4,
+      usage: GPUBufferUsageFlags.COPY_DST | GPUBufferUsageFlags.MAP_READ,
+    });
+    const readVisitedBuf = device.createBuffer({
+      size: bitsetBytes,
+      usage: GPUBufferUsageFlags.COPY_DST | GPUBufferUsageFlags.MAP_READ,
+    });
+
+    device.queue.writeBuffer(currBuf, 0, initFrontier);
+    device.queue.writeBuffer(visitedBuf, 0, initVisited);
+
+    const workgroups = Math.ceil(n / 64);
+    const zeroBitset = new Uint32Array(wordCount);
+    const zeroFlag = new Uint32Array(1);
+    let hops = 0;
+
+    for (let step = 0; step < maxHops; step++) {
+      device.queue.writeBuffer(nextBuf, 0, zeroBitset);
+      device.queue.writeBuffer(changedBuf, 0, zeroFlag);
+
+      const bindGroup = device.createBindGroup({
+        layout: this._csrBfsPipeline!.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: paramsBuf } },
+          { binding: 1, resource: { buffer: rowBuf } },
+          { binding: 2, resource: { buffer: colBuf } },
+          { binding: 3, resource: { buffer: currBuf } },
+          { binding: 4, resource: { buffer: nextBuf } },
+          { binding: 5, resource: { buffer: visitedBuf } },
+          { binding: 6, resource: { buffer: changedBuf } },
+        ],
+      });
+
+      const enc = device.createCommandEncoder();
+      const pass = enc.beginComputePass();
+      pass.setPipeline(this._csrBfsPipeline!);
+      pass.setBindGroup(0, bindGroup);
+      pass.dispatchWorkgroups(workgroups);
+      pass.end();
+      enc.copyBufferToBuffer(changedBuf, 0, readFlagBuf, 0, 4);
+      device.queue.submit([enc.finish()]);
+
+      await readFlagBuf.mapAsync(GPUMapModeFlags.READ);
+      const changed = new Uint32Array(readFlagBuf.getMappedRange())[0]!;
+      readFlagBuf.unmap();
+
+      if (changed === 0) break;
+      hops++;
+      const tmp = currBuf;
+      currBuf = nextBuf;
+      nextBuf = tmp;
+    }
+
+    const enc = device.createCommandEncoder();
+    enc.copyBufferToBuffer(visitedBuf, 0, readVisitedBuf, 0, bitsetBytes);
+    device.queue.submit([enc.finish()]);
+    await readVisitedBuf.mapAsync(GPUMapModeFlags.READ);
+    const visWords = new Uint32Array(readVisitedBuf.getMappedRange().slice(0));
+    readVisitedBuf.unmap();
+
+    const reachableList: number[] = [];
+    const distances = new Int32Array(n);
+    distances.fill(-1);
+    for (let w = 0; w < wordCount; w++) {
+      let word = visWords[w]!;
+      while (word !== 0) {
+        const bit = 31 - Math.clz32(word & -word);
+        const node = w * 32 + bit;
+        if (node < n) {
+          reachableList.push(node);
+          distances[node] = 1;
+        }
+        word &= word - 1;
+      }
+    }
+
+    paramsBuf.destroy();
+    rowBuf.destroy();
+    colBuf.destroy();
+    currBuf.destroy();
+    nextBuf.destroy();
+    visitedBuf.destroy();
+    changedBuf.destroy();
+    readFlagBuf.destroy();
+    readVisitedBuf.destroy();
+
+    return {
+      reachable: new Uint32Array(reachableList),
+      distances,
+      hops,
+      executionTimeMs: performance.now() - t0,
+      engine: "webgpu",
+    };
   }
 
   /**

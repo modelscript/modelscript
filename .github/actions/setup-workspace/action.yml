@@ -1,0 +1,86 @@
+name: Setup ModelScript Workspace
+description: Configures Node.js & pnpm (via Corepack), installs workspace dependencies, and restores Nx and WASM parser caches.
+
+inputs:
+  node-version-file:
+    description: Path to .nvmrc
+    required: false
+    default: ".nvmrc"
+  ignore-scripts:
+    description: Pass --ignore-scripts to pnpm install
+    required: false
+    default: "false"
+  cxxflags:
+    description: Optional CXXFLAGS for native addon compilation
+    required: false
+    default: ""
+  nx-cache-prefix:
+    description: Prefix for the Nx cache key (set empty to skip Nx cache)
+    required: false
+    default: ""
+  cache-wasm:
+    description: Whether to restore/save the WASM parser cache
+    required: false
+    default: "true"
+  build-dsl-templates:
+    description: Whether to run build:templates for @modelscript/dsl
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Enable Corepack
+      shell: bash
+      run: corepack enable
+
+    - name: Setup Node.js
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      with:
+        node-version-file: ${{ inputs.node-version-file }}
+        cache: "pnpm"
+
+    - name: Install Dependencies
+      shell: bash
+      env:
+        CXXFLAGS: ${{ inputs.cxxflags }}
+      run: |
+        if [ "${{ inputs.ignore-scripts }}" = "true" ]; then
+          pnpm install --frozen-lockfile --ignore-scripts
+        else
+          pnpm install --frozen-lockfile
+        fi
+
+    - name: Build DSL Templates
+      if: inputs.build-dsl-templates == 'true'
+      shell: bash
+      run: pnpm --filter @modelscript/dsl run build:templates
+
+    - name: Cache Nx
+      if: inputs.nx-cache-prefix != ''
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: .nx/cache
+        key: ${{ runner.os }}-nx-${{ inputs.nx-cache-prefix }}-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-nx-${{ inputs.nx-cache-prefix }}-
+          ${{ runner.os }}-nx-build-${{ github.sha }}
+          ${{ runner.os }}-nx-build-
+          ${{ runner.os }}-nx-
+
+    - name: Cache WASM Parsers
+      if: inputs.cache-wasm == 'true'
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: |
+          .cache/asc-tests
+          languages/*/.cache
+          languages/*/dist/*.wasm
+          packages/runtime/build/*.wasm
+          packages/simulate/src/wasm/*.wasm
+          packages/simulate/.cache/**
+          packages/dsl/.cache/**
+        key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**', 'languages/*/assembly/**') }}
+        restore-keys: |
+          ${{ runner.os }}-wasm-
+          Linux-wasm-

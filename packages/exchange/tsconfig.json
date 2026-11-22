@@ -5,5 +5,31 @@
     "outDir": "./dist",
     "resolveJsonModule": true
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "references": [
+    {
+      "path": "../dsl"
+    },
+    {
+      "path": "../../languages/epanet"
+    },
+    {
+      "path": "../../languages/gensys"
+    },
+    {
+      "path": "../../languages/lps"
+    },
+    {
+      "path": "../../languages/olga"
+    },
+    {
+      "path": "../runtime"
+    },
+    {
+      "path": "../../languages/simpack"
+    },
+    {
+      "path": "../simulate"
+    }
+  ]
 }

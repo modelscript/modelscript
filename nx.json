@@ -55,13 +55,11 @@
       "!{projectRoot}/src/test-setup.[jt]s"
     ],
     "sharedGlobals": [
-      "{workspaceRoot}/package.json",
-      "{workspaceRoot}/package-lock.json",
       "{workspaceRoot}/nx.json",
       "{workspaceRoot}/tsconfig.base.json",
       "{workspaceRoot}/eslint.config.ts",
-      "{workspaceRoot}/scripts/build-language-parser.js",
-      "{workspaceRoot}/scripts/build-language-wasm.js"
+      "{workspaceRoot}/scripts/build/build-language-parser.js",
+      "{workspaceRoot}/scripts/build/build-language-wasm.js"
     ]
   },
   "targetDefaults": {

@@ -38,12 +38,18 @@ import {
   action_offsets as _action_offsets,
   action_entry_offsets as _action_entry_offsets,
   action_entry_data as _action_entry_data,
+  action_disp_base as _action_disp_base,
+  action_disp_check as _action_disp_check,
+  action_disp_val as _action_disp_val,
   token_bracket_deltas as _token_bracket_deltas,
   open_bracket_chars as _open_bracket_chars,
   close_bracket_chars as _close_bracket_chars,
   alias_data as _alias_data,
   goto_data as _goto_data,
   goto_offsets as _goto_offsets,
+  goto_disp_base as _goto_disp_base,
+  goto_disp_check as _goto_disp_check,
+  goto_disp_val as _goto_disp_val,
   mrd_data as _mrd_data,
   prod_aliases as _prod_aliases,
   prod_dynamic_prec as _prod_dynamic_prec,
@@ -177,6 +183,12 @@ export let action_data: StaticTable = changetype<StaticTable>(0);
 export let action_entry_offsets: StaticTable = changetype<StaticTable>(0);
 /** Packed GLR action lists: `[actCount, actType_0, actTarget_0, ...]`. */
 export let action_entry_data: StaticTable = changetype<StaticTable>(0);
+/** Tarjan-Yao O(1) row-displacement ACTION table base offsets (`stateId -> offset`, or `-1`). */
+export let action_disp_base: StaticTable = changetype<StaticTable>(0);
+/** Tarjan-Yao O(1) row-displacement ACTION table state verification array. */
+export let action_disp_check: StaticTable = changetype<StaticTable>(0);
+/** Tarjan-Yao O(1) row-displacement ACTION table `matchIdx` values into `action_data`. */
+export let action_disp_val: StaticTable = changetype<StaticTable>(0);
 /** Net bracket nesting depth delta (`+1` open, `-1` close, `0` neutral) per terminal token ID. */
 export let token_bracket_deltas: StaticTable = changetype<StaticTable>(0);
 /** ASCII/Unicode code points of opening delimiter tokens (e.g., `(`, `[`, `{`). */
@@ -187,6 +199,12 @@ export let close_bracket_chars: StaticTable = changetype<StaticTable>(0);
 export let goto_offsets: StaticTable = changetype<StaticTable>(0);
 /** Sorted per-state non-terminal GOTO transitions: `[gCount, nonTermId_0, targetState_0, ...]`. */
 export let goto_data: StaticTable = changetype<StaticTable>(0);
+/** Tarjan-Yao O(1) row-displacement GOTO table base offsets (`stateId -> offset`, or `-1`). */
+export let goto_disp_base: StaticTable = changetype<StaticTable>(0);
+/** Tarjan-Yao O(1) row-displacement GOTO table state verification array. */
+export let goto_disp_check: StaticTable = changetype<StaticTable>(0);
+/** Tarjan-Yao O(1) row-displacement GOTO table target state values. */
+export let goto_disp_val: StaticTable = changetype<StaticTable>(0);
 /** Minimum Reduction Distance (MRD) byte matrix used by minimum-distance error recovery. */
 export let mrd_data: StaticByteTable = changetype<StaticByteTable>(0);
 /** Per-terminal insertion penalty cost used during single/multi-token error repair. */
@@ -242,11 +260,17 @@ export function initStaticTables(): void {
   action_data = changetype<StaticTable>(_action_data);
   action_entry_offsets = changetype<StaticTable>(_action_entry_offsets);
   action_entry_data = changetype<StaticTable>(_action_entry_data);
+  action_disp_base = changetype<StaticTable>(_action_disp_base);
+  action_disp_check = changetype<StaticTable>(_action_disp_check);
+  action_disp_val = changetype<StaticTable>(_action_disp_val);
   token_bracket_deltas = changetype<StaticTable>(_token_bracket_deltas);
   open_bracket_chars = changetype<StaticTable>(_open_bracket_chars);
   close_bracket_chars = changetype<StaticTable>(_close_bracket_chars);
   goto_offsets = changetype<StaticTable>(_goto_offsets);
   goto_data = changetype<StaticTable>(_goto_data);
+  goto_disp_base = changetype<StaticTable>(_goto_disp_base);
+  goto_disp_check = changetype<StaticTable>(_goto_disp_check);
+  goto_disp_val = changetype<StaticTable>(_goto_disp_val);
   mrd_data = changetype<StaticByteTable>(_mrd_data);
   token_insert_costs = changetype<StaticByteTable>(_token_insert_costs);
   type_is_structural = changetype<StaticByteTable>(_type_is_structural);
@@ -291,6 +315,15 @@ export function isReachableZeroDist(state: i32, tok: i32): boolean {
  * Returns -1 if no transition exists.
  */
 export function lookupGoto(state: i32, lhs: i32): i32 {
+  if (changetype<usize>(goto_disp_base) != 0 && state >= 0 && state < goto_disp_base.length && lhs >= 0) {
+    let base = goto_disp_base[state];
+    if (base < 0) return -1;
+    let slot = base + lhs;
+    if (slot >= 0 && slot < goto_disp_check.length && goto_disp_check[slot] == state) {
+      return goto_disp_val[slot];
+    }
+    return -1;
+  }
   if (state < 0 || state >= goto_offsets.length) return -1;
   let gOffset = goto_offsets[state];
   if (gOffset < 0 || gOffset >= goto_data.length) return -1;
@@ -321,6 +354,65 @@ export function lookupGoto(state: i32, lhs: i32): i32 {
     }
   }
   return -1;
+}
+
+/**
+ * Updates the 32-bit packed bracket balance hash:
+ * - Bits 0..7: nesting depth (0..255, stored in `ASTNode.envHash`).
+ * - Bits 8..31: 12-level packed 2-bit bracket-kind stack (`1`, `2`, `3`).
+ */
+@inline
+export function updateBalanceHash(balanceHash: u32, sym: i32): u32 {
+  if (sym < 0 || sym >= token_bracket_deltas.length) return balanceHash;
+  let d = token_bracket_deltas[sym];
+  if (d == 0) return balanceHash;
+  let depth: u32 = balanceHash & 0xff;
+  let stack: u32 = balanceHash >>> 8;
+  if (d > 0) {
+    let kind: u32 = (d as u32) & 3;
+    if (kind == 0) kind = 1;
+    if (depth < 255) depth++;
+    stack = ((stack << 2) | kind) & 0x00ffffff;
+  } else if (depth > 0) {
+    depth--;
+    stack = stack >>> 2;
+  }
+  return (stack << 8) | depth;
+}
+
+/** True when `sym` is a closing bracket and there are no open brackets on the stack (extra closer). */
+@inline
+export function isExtraCloser(balanceHash: u32, sym: i32): bool {
+  if (sym < 0 || sym >= token_bracket_deltas.length) return false;
+  return token_bracket_deltas[sym] < 0 && (balanceHash & 0xff) == 0;
+}
+
+/** True when `sym` is a closing bracket whose kind disagrees with the top open bracket kind. */
+@inline
+export function isMismatchedCloser(balanceHash: u32, sym: i32): bool {
+  if (sym < 0 || sym >= token_bracket_deltas.length) return false;
+  let d = token_bracket_deltas[sym];
+  if (d >= 0) return false;
+  let depth: u32 = balanceHash & 0xff;
+  if (depth == 0) return false;
+  let closeKind: u32 = ((-d) as u32) & 3;
+  if (closeKind == 0) closeKind = 1;
+  let topKind: u32 = (balanceHash >>> 8) & 3;
+  return topKind != 0 && topKind != closeKind;
+}
+
+/** True when `sym` is a closing bracket that matches the top open bracket kind. */
+@inline
+export function matchesTopBracketKind(balanceHash: u32, sym: i32): bool {
+  if (sym < 0 || sym >= token_bracket_deltas.length) return false;
+  let d = token_bracket_deltas[sym];
+  if (d >= 0) return false;
+  let depth: u32 = balanceHash & 0xff;
+  if (depth == 0) return false;
+  let closeKind: u32 = ((-d) as u32) & 3;
+  if (closeKind == 0) closeKind = 1;
+  let topKind: u32 = (balanceHash >>> 8) & 3;
+  return topKind == closeKind;
 }
 
 

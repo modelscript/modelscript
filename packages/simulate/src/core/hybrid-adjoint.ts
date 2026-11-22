@@ -16,8 +16,16 @@
  *   Delta(dL/dp) = [dDelta/dp]^T lambda(t_e^+) + ( (dDelta/dt)^- - (dx/dt)^+ ) / (dh/dt)^- * grad_p h(t_e^-)
  */
 
-import type { DAEBuilder } from "@modelscript/runtime";
-import { DAEEventRelaxer, type EventRelaxerOptions } from "@modelscript/runtime";
+import {
+  BinOp,
+  DAEEventRelaxer,
+  Dual,
+  EqKind,
+  ExprKind,
+  evaluateArenaDualExpression,
+  type DAEBuilder,
+  type EventRelaxerOptions,
+} from "@modelscript/runtime";
 import type { DaeAdjointSolverOptions, DaeAdjointSolverResult } from "./dae-adjoint-solver.js";
 import { DenseHermiteCheckpointTape } from "./dense-checkpoint-tape.js";
 import type { ArenaSimulationResult } from "./simulate-arena.js";
@@ -41,15 +49,138 @@ export interface DiscreteResetEvent {
   ) => Map<string, Map<string, number>>;
   /** Jacobian of reset map w.r.t parameters: dDelta_i / dp_k */
   jacobianResetParam?:
-    | ((t: number, xMinus: Map<string, number>, p: Map<string, number>) => Map<string, Map<string, number>>)
-    | undefined;
+    ((t: number, xMinus: Map<string, number>, p: Map<string, number>) => Map<string, Map<string, number>>) | undefined;
 }
 
 export interface HybridAdjointOptions extends DaeAdjointSolverOptions {
   /** Registered discrete reset events. */
   events?: DiscreteResetEvent[] | undefined;
+  /** Automatically extract `when`/`reinit` reset events with AD saltation gradients from the DAEBuilder (default: true when `events` is omitted). */
+  autoExtractEvents?: boolean | undefined;
   /** Optional sigmoidal switch relaxation configuration for non-smooth if/abs/min/max. */
   relaxation?: EventRelaxerOptions | undefined;
+}
+
+/**
+ * Automatically extracts discrete `when cond then reinit(x, expr)` reset events from a `DAEBuilder`
+ * and synthesizes exact forward-mode AD gradients (`gradIndicatorState`, `gradIndicatorParam`,
+ * `jacobianResetState`, `jacobianResetParam`) for hybrid adjoint saltation matrices.
+ */
+export function extractArenaResetEvents(arena: DAEBuilder): DiscreteResetEvent[] {
+  const events: DiscreteResetEvent[] = [];
+
+  const evalDual = (
+    exprId: number,
+    t: number,
+    x: Map<string, number>,
+    p: Map<string, number>,
+    seedVar?: string,
+  ): Dual => {
+    const dualEnv: (Dual | undefined)[] = [];
+    dualEnv[arena.interner.intern("time")] = new Dual(t, seedVar === "time" ? 1 : 0);
+    for (const [k, v] of p) dualEnv[arena.interner.intern(k)] = new Dual(v, seedVar === k ? 1 : 0);
+    for (const [k, v] of x) dualEnv[arena.interner.intern(k)] = new Dual(v, seedVar === k ? 1 : 0);
+    return evaluateArenaDualExpression(arena, exprId, dualEnv as Dual[]) ?? new Dual(0, 0);
+  };
+
+  for (let eqIdx = 0; eqIdx < arena.eqCount; eqIdx++) {
+    if (arena.getEqKind(eqIdx) !== EqKind.When) continue;
+    const condExpr = arena.getEqLhs(eqIdx);
+    const bodyStart = arena.getEqRhs(eqIdx);
+    const bodyCount = arena.getEqAux(eqIdx);
+    if (bodyCount <= 0) continue;
+
+    // Convert relational condition `a < b` / `a <= b` / `a > b` / `a >= b` into smooth indicator `a - b`
+    let indicatorExpr = condExpr;
+    if (arena.getExprKind(condExpr) === ExprKind.Binary) {
+      const op = arena.getExprData1(condExpr);
+      if (op === BinOp.Lt || op === BinOp.Lte || op === BinOp.Gt || op === BinOp.Gte) {
+        indicatorExpr = arena.addBinaryExpr(BinOp.Sub, arena.getExprLeft(condExpr), arena.getExprRight(condExpr));
+      }
+    }
+
+    // Find reinit(state, resetExpr) calls in the when-body
+    const reinits: { stateName: string; resetExpr: number }[] = [];
+    for (let b = 0; b < bodyCount; b++) {
+      const subEqIdx = bodyStart + b;
+      if (subEqIdx >= arena.eqCount) break;
+      const lhs = arena.getEqLhs(subEqIdx);
+      const rhs = arena.getEqRhs(subEqIdx);
+      if (arena.getExprKind(lhs) === ExprKind.Call) {
+        const fnName = arena.interner.resolve(arena.getExprData1(lhs));
+        if (fnName === "reinit") {
+          const argStart = arena.getExprLeft(lhs);
+          const argCount = arena.getExprRight(lhs);
+          if (argCount >= 2) {
+            const targetExpr = argStart;
+            const resetExpr =
+              lhs + 1 < arena.exprCount && arena.getExprKind(lhs + 1) === ExprKind.Tuple
+                ? arena.getExprLeft(lhs + 1)
+                : argStart + 1;
+            if (arena.getExprKind(targetExpr) === ExprKind.Name) {
+              const stateName = arena.interner.resolve(arena.getExprData1(targetExpr));
+              if (stateName) reinits.push({ stateName, resetExpr });
+            }
+          }
+        }
+      } else if (arena.getExprKind(lhs) === ExprKind.Name && rhs !== 0xffffffff) {
+        const stateName = arena.interner.resolve(arena.getExprData1(lhs));
+        reinits.push({ stateName, resetExpr: rhs });
+      }
+    }
+
+    if (reinits.length === 0) continue;
+
+    events.push({
+      name: `when_eq_${eqIdx}`,
+      indicator: (t, x, p) => evalDual(indicatorExpr, t, x, p).val,
+      gradIndicatorState: (t, x, p) => {
+        const g = new Map<string, number>();
+        for (const s of x.keys()) g.set(s, evalDual(indicatorExpr, t, x, p, s).dot);
+        return g;
+      },
+      gradIndicatorParam: (t, x, p) => {
+        const g = new Map<string, number>();
+        for (const k of p.keys()) g.set(k, evalDual(indicatorExpr, t, x, p, k).dot);
+        return g;
+      },
+      resetMap: (t, xMinus, p) => {
+        const xPlus = new Map(xMinus);
+        for (const r of reinits) {
+          xPlus.set(r.stateName, evalDual(r.resetExpr, t, xMinus, p).val);
+        }
+        return xPlus;
+      },
+      jacobianResetState: (t, xMinus, p) => {
+        const J = new Map<string, Map<string, number>>();
+        const reinitMap = new Map(reinits.map((r) => [r.stateName, r.resetExpr]));
+        for (const si of xMinus.keys()) {
+          const row = new Map<string, number>();
+          const rExpr = reinitMap.get(si);
+          for (const sj of xMinus.keys()) {
+            row.set(sj, rExpr !== undefined ? evalDual(rExpr, t, xMinus, p, sj).dot : si === sj ? 1 : 0);
+          }
+          J.set(si, row);
+        }
+        return J;
+      },
+      jacobianResetParam: (t, xMinus, p) => {
+        const J = new Map<string, Map<string, number>>();
+        const reinitMap = new Map(reinits.map((r) => [r.stateName, r.resetExpr]));
+        for (const si of xMinus.keys()) {
+          const row = new Map<string, number>();
+          const rExpr = reinitMap.get(si);
+          for (const pk of p.keys()) {
+            row.set(pk, rExpr !== undefined ? evalDual(rExpr, t, xMinus, p, pk).dot : 0);
+          }
+          J.set(si, row);
+        }
+        return J;
+      },
+    });
+  }
+
+  return events;
 }
 
 interface RecordedOccurrence {
@@ -179,7 +310,7 @@ export class HybridAdjointSolver {
     tValues.push(currentTime);
     yValues.push(Array.from(currX));
 
-    const events = options.events ?? [];
+    const events = options.events ?? (options.autoExtractEvents !== false ? extractArenaResetEvents(this.arena) : []);
     const lastEventTimes = new Map<string, number>();
 
     while (currentTime < stopTime - 1e-12) {

@@ -12,10 +12,11 @@ ARG PREBUILT=false
 
 # ---- Shared Alpine base with native build tools ----
 FROM node:24-alpine AS deps
-RUN apk add --no-cache python3 make g++ zip unzip
-ENV NODE_OPTIONS="--max-old-space-size=8192"
+RUN apk add --no-cache python3 make g++ zip unzip && corepack enable
+ENV NODE_OPTIONS="--max-old-space-size=8192" \
+    PNPM_HOME="/pnpm"
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 
 # Apps & Enterprise Edition manifests
 COPY apps/api/package.json apps/api/
@@ -29,9 +30,9 @@ COPY ee/package.json ee/
 # Packages manifests
 COPY packages/cad/package.json packages/cad/
 COPY packages/design-tokens/package.json packages/design-tokens/
-COPY packages/editor/package.json packages/editor/
 COPY packages/diagram/package.json packages/diagram/
 COPY packages/dsl/package.json packages/dsl/
+COPY packages/editor/package.json packages/editor/
 COPY packages/embed/package.json packages/embed/
 COPY packages/examples/drone-chassis/package.json packages/examples/drone-chassis/
 COPY packages/examples/pscad-microgrid/package.json packages/examples/pscad-microgrid/
@@ -57,15 +58,15 @@ COPY languages/automationml/package.json languages/automationml/
 COPY languages/autosar/package.json languages/autosar/
 COPY languages/bngl/package.json languages/bngl/
 COPY languages/c/package.json languages/c/
+COPY languages/c37118/package.json languages/c37118/
 COPY languages/cantera/package.json languages/cantera/
 COPY languages/ccsds/package.json languages/ccsds/
 COPY languages/cellml/package.json languages/cellml/
-COPY languages/c37118/package.json languages/c37118/
 COPY languages/cfd/package.json languages/cfd/
 COPY languages/cgmes/package.json languages/cgmes/
 COPY languages/comtrade/package.json languages/comtrade/
-COPY languages/cyme/package.json languages/cyme/
 COPY languages/csv/package.json languages/csv/
+COPY languages/cyme/package.json languages/cyme/
 COPY languages/dicom-rt/package.json languages/dicom-rt/
 COPY languages/dnp3/package.json languages/dnp3/
 COPY languages/easy5/package.json languages/easy5/
@@ -80,21 +81,24 @@ COPY languages/genbank/package.json languages/genbank/
 COPY languages/gensys/package.json languages/gensys/
 COPY languages/gproms/package.json languages/gproms/
 COPY languages/gridlabd/package.json languages/gridlabd/
-COPY languages/gtsuite/package.json languages/gtsuite/
 COPY languages/gtfs/package.json languages/gtfs/
+COPY languages/gtsuite/package.json languages/gtsuite/
 COPY languages/hec-hms/package.json languages/hec-hms/
 COPY languages/hec-ras/package.json languages/hec-ras/
 COPY languages/ibis/package.json languages/ibis/
 COPY languages/iec104/package.json languages/iec104/
 COPY languages/igtl/package.json languages/igtl/
 COPY languages/jsbsim/package.json languages/jsbsim/
+COPY languages/kicad/package.json languages/kicad/
+COPY languages/atopile/package.json languages/atopile/
 COPY languages/landgem/package.json languages/landgem/
 COPY languages/las/package.json languages/las/
 COPY languages/lps/package.json languages/lps/
-COPY languages/modelica/package.json languages/modelica/
-COPY languages/modelscript/package.json languages/modelscript/
+COPY languages/magicdraw/package.json languages/magicdraw/
 COPY languages/matpower/package.json languages/matpower/
 COPY languages/mlxtran/package.json languages/mlxtran/
+COPY languages/modelica/package.json languages/modelica/
+COPY languages/modelscript/package.json languages/modelscript/
 COPY languages/modflow/package.json languages/modflow/
 COPY languages/nifti/package.json languages/nifti/
 COPY languages/nmodl/package.json languages/nmodl/
@@ -110,7 +114,6 @@ COPY languages/opensim/package.json languages/opensim/
 COPY languages/optical/package.json languages/optical/
 COPY languages/oscal/package.json languages/oscal/
 COPY languages/owl2/package.json languages/owl2/
-COPY languages/sparql/package.json languages/sparql/
 COPY languages/pdb/package.json languages/pdb/
 COPY languages/phreeqc/package.json languages/phreeqc/
 COPY languages/plcopen/package.json languages/plcopen/
@@ -118,13 +121,12 @@ COPY languages/plscadd/package.json languages/plscadd/
 COPY languages/powerfactory/package.json languages/powerfactory/
 COPY languages/powerworld/package.json languages/powerworld/
 COPY languages/pscad/package.json languages/pscad/
-COPY languages/psse/package.json languages/psse/
 COPY languages/pslf/package.json languages/pslf/
+COPY languages/psse/package.json languages/psse/
 COPY languages/pypsa/package.json languages/pypsa/
 COPY languages/qif/package.json languages/qif/
 COPY languages/ran/package.json languages/ran/
 COPY languages/relap5/package.json languages/relap5/
-COPY languages/magicdraw/package.json languages/magicdraw/
 COPY languages/reqif/package.json languages/reqif/
 COPY languages/rocets/package.json languages/rocets/
 COPY languages/rtds/package.json languages/rtds/
@@ -138,6 +140,7 @@ COPY languages/sima/package.json languages/sima/
 COPY languages/simpack/package.json languages/simpack/
 COPY languages/simulink/package.json languages/simulink/
 COPY languages/smiles/package.json languages/smiles/
+COPY languages/sparql/package.json languages/sparql/
 COPY languages/spice/package.json languages/spice/
 COPY languages/ssp/package.json languages/ssp/
 COPY languages/step/package.json languages/step/
@@ -145,13 +148,13 @@ COPY languages/swmm/package.json languages/swmm/
 COPY languages/sysml2/package.json languages/sysml2/
 COPY languages/three-mf/package.json languages/three-mf/
 COPY languages/topas/package.json languages/topas/
-COPY languages/tough/package.json languages/tough/
 COPY languages/touchstone/package.json languages/touchstone/
+COPY languages/tough/package.json languages/tough/
 COPY languages/urdf/package.json languages/urdf/
 COPY languages/usd/package.json languages/usd/
 COPY languages/verilog-a/package.json languages/verilog-a/
 COPY languages/waterml/package.json languages/waterml/
-RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts && npm rebuild better-sqlite3
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile --ignore-scripts && pnpm rebuild better-sqlite3
 
 # ==============================================================================
 # IDE Assets & WebLLM Weights (bundled into API & Appliance images)
@@ -169,7 +172,7 @@ COPY languages languages
 COPY apps/ide apps/ide
 RUN npx nx build @modelscript/ide
 
-FROM alpine:latest AS build-ide-true
+FROM alpine:3.21 AS build-ide-true
 WORKDIR /app
 COPY apps/ide/dist apps/ide/dist
 COPY apps/ide/vscode-web apps/ide/vscode-web
@@ -200,11 +203,12 @@ FROM build-api-${PREBUILT} AS build-api
 
 # ---- Community Edition API (physically excludes proprietary /app/ee) ----
 FROM node:24-alpine AS api-ce
+# gcc + musl-dev are required at runtime for Modelica external C function & FMI native compilation
 RUN apk add --no-cache bash git gcc musl-dev
 WORKDIR /app
 RUN mkdir -p /app/apps/api/data/libraries /app/apps/api/data/backups /app/apps/api/data/uploads /app/apps/api/uploads /app/data/uploads /app/apps/api/public/thumbnails /app/apps/api/storage \
   && chown -R node:node /app
-COPY --from=deps --chown=node:node /app/package.json /app/package-lock.json ./
+COPY --from=deps --chown=node:node /app/package.json /app/pnpm-lock.yaml ./
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build-api --chown=node:node /app/scripts scripts
 COPY --from=build-api --chown=node:node /app/packages packages
@@ -230,11 +234,12 @@ CMD ["node", "apps/api/dist/main.js"]
 
 # ---- Enterprise Edition API (bundles /app/ee with Ed25519 license enforcement) ----
 FROM node:24-alpine AS api-ee
+# gcc + musl-dev are required at runtime for Modelica external C function & FMI native compilation
 RUN apk add --no-cache bash git gcc musl-dev
 WORKDIR /app
 RUN mkdir -p /app/apps/api/data/libraries /app/apps/api/data/backups /app/apps/api/data/uploads /app/apps/api/uploads /app/data/uploads /app/apps/api/public/thumbnails /app/apps/api/storage \
   && chown -R node:node /app
-COPY --from=deps --chown=node:node /app/package.json /app/package-lock.json ./
+COPY --from=deps --chown=node:node /app/package.json /app/pnpm-lock.yaml ./
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build-api --chown=node:node /app/scripts scripts
 COPY --from=build-api --chown=node:node /app/packages packages
@@ -341,6 +346,7 @@ FROM cli-ee AS cli
 # Hardened Enterprise Intranet Appliance (Single Container for Regulated Utilities)
 # ==============================================================================
 FROM node:24-alpine AS appliance
+# gcc + musl-dev are required at runtime for Modelica external C function & FMI native compilation
 RUN apk add --no-cache bash git gcc musl-dev
 WORKDIR /app
 
@@ -348,7 +354,7 @@ WORKDIR /app
 RUN mkdir -p /app/apps/api/data/libraries /app/apps/api/data/backups /app/apps/api/uploads /app/apps/api/public/thumbnails \
   && chown -R node:node /app
 
-COPY --from=deps --chown=node:node /app/package.json /app/package-lock.json ./
+COPY --from=deps --chown=node:node /app/package.json /app/pnpm-lock.yaml ./
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 
 # Copy built API backend & Enterprise Edition (ee/)

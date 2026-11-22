@@ -142,7 +142,7 @@ describe("GDPR / CCPA Archive Async Queue & Batch Concurrency", () => {
 
   test("CLI batch script exports all users with concurrency limits", async () => {
     const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-    const scriptPath = path.resolve(repoRoot, "scripts/export-user-data.ts");
+    const scriptPath = path.resolve(repoRoot, "scripts/tools/export-user-data.ts");
 
     // Run batch exporter with --all and --concurrency 2
     const stdout = execFileSync(

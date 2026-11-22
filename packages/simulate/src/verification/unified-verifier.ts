@@ -23,6 +23,7 @@ import {
   DaeIntervalEvaluator,
   DigitalThreadHypergraph,
   DimensionalTheoryOracle,
+  extractPolynomialSystemFromArena,
   FlowAlgebraOracle,
   generateCtrfReport,
   generateHtmlReport,
@@ -31,6 +32,8 @@ import {
   HybridFlowpipeSolver,
   Interval,
   OntologyTheoryOracle,
+  PBox,
+  propagatePBoxArena,
   RegionDecomposer,
   SemanticTheoryCoordinator,
   SosBarrierSynthesizer,
@@ -41,10 +44,24 @@ import {
   type DaeFlowpipeRequirement,
   type HybridAutomaton,
   type HybridFlowpipeResult,
+  type PBoxComparisonOp,
+  type ProbabilisticVerdict,
   type RegionDecompositionResult,
   type VerifierSimulationResult as SimulationResult,
   type VerificationResult,
 } from "@modelscript/runtime";
+import type { ArenaSimulateOptions, ArenaSimulationResult } from "../core/simulate-arena.js";
+import {
+  fitPCEArena,
+  interpolateTrajectoryAt,
+  normalCDF,
+  propagateFOSMArena,
+  propagateUnscentedArena,
+  runFORMArena,
+  runSORMArena,
+  runSubsetSimulationArena,
+  type RandomVariable,
+} from "../uq/index.js";
 import { B2BEquivalenceVerifier, type B2BVerificationResult } from "./b2b-verifier.js";
 
 function errMsg(err: unknown): string {
@@ -206,6 +223,8 @@ export interface UnifiedVerificationOptions {
   b2bCompiler?: string | undefined;
   b2bDt?: number | undefined;
   algorithms?: boolean | undefined;
+  uq?: boolean | undefined;
+  uqMethod?: "fosm" | "unscented" | "pce" | "form" | "sorm" | "subset" | "pbox" | undefined;
   theoryCoordinator?: boolean | undefined;
   updateHypergraph?: boolean | undefined;
   exportFormats?: string[] | undefined; // "smt2" | "nuxmv" | "ocra" | "mos"
@@ -284,6 +303,38 @@ export function parseInitialSetString(str: string): Map<string, [number, number]
   return map;
 }
 
+export interface UqVerificationRequirement {
+  /** Target state or variable name. */
+  state: string;
+  /** Unsafe event comparison: event is `state operator threshold`. */
+  operator: PBoxComparisonOp;
+  /** Threshold value. */
+  threshold: number;
+  /** Maximum allowed probability of the unsafe event: P(state op threshold) <= maxProbability. */
+  maxProbability: number;
+  /** Optional time point to evaluate the requirement (defaults to final simulation time). */
+  snapshotTime?: number | undefined;
+}
+
+export interface UqVerificationConfig {
+  /** Uncertain model parameters (for arena-based analytical / reliability UQ). */
+  randomVars?: RandomVariable[] | undefined;
+  /** Optional input parameter correlation matrix. */
+  correlations?: number[][] | undefined;
+  /** Probabilistic requirements to check. */
+  requirements?: UqVerificationRequirement[] | undefined;
+  /** Sound P-box distributions keyed by variable name (enables rigorous probabilistic certification). */
+  pboxDistributions?: Map<string, PBox> | undefined;
+  /** Preferred UQ propagation method (defaults to "pbox" if pboxDistributions provided, else "unscented"). */
+  method?: "fosm" | "unscented" | "pce" | "form" | "sorm" | "subset" | "pbox" | undefined;
+  /** Base simulation options forwarded to simulateArena(). */
+  simulateOptions?: ArenaSimulateOptions | undefined;
+  /** PCE polynomial degree (default: 3). */
+  pceDegree?: number | undefined;
+  /** Subset simulation samples per level (default: 300). */
+  subsetSamples?: number | undefined;
+}
+
 /**
  * Input artifacts and runtime handles provided to `UnifiedVerifier.verify()`.
  */
@@ -306,6 +357,7 @@ export interface VerificationInputContext {
   contractedStateSpace?: Map<string, [number, number]> | undefined;
   flowpipeRequirements?: DaeFlowpipeRequirement[] | undefined;
   flowpipeOptions?: FlowpipeConfigOptions | undefined;
+  uqConfig?: UqVerificationConfig | undefined;
 }
 
 /**
@@ -350,6 +402,7 @@ export class UnifiedVerifier {
             /\b(verification\s+case|satisfy)\b/i.test(text))));
     const hasB2B = options.b2b ?? (runAll && ctx.arena != null);
     const hasAlgorithms = options.algorithms ?? (runAll || (autoDetect && /\b(algorithm|function)\b/i.test(text)));
+    const hasUq = options.uq ?? ctx.uqConfig != null;
 
     const hasCoordinator = options.theoryCoordinator ?? (runAll || (autoDetect && ctx.coordinator != null));
 
@@ -409,6 +462,11 @@ export class UnifiedVerifier {
     // ── Stage 10: Modelica Algorithmic Abstract Interpretation (Sound RTE Verification) ─
     if (hasAlgorithms) {
       stages["algorithms"] = await this.runAlgorithmsStage(ctx, options);
+    }
+
+    // ── Stage 11: Uncertainty Quantification & Probabilistic Verification ──────
+    if (hasUq) {
+      stages["uq"] = this.runUqStage(ctx, options);
     }
 
     // Compute summary
@@ -1248,14 +1306,17 @@ export class UnifiedVerifier {
           if (unsafeRadius <= initialRadius) {
             unsafeRadius = initialRadius * 2.0 + 1.0;
           }
-          const barrierRes = SosBarrierSynthesizer.synthesizeQuadratic(
-            {
-              numVars: stateNames.length,
-              varNames: stateNames,
-              f: (x: number[]) => dae.f(0, x, nominalZ),
-            },
-            { initialRadius, unsafeRadius },
-          );
+          const polySys = extractPolynomialSystemFromArena(arena);
+          const barrierRes = polySys
+            ? SosBarrierSynthesizer.synthesizePolynomialCertified(polySys, { initialRadius, unsafeRadius })
+            : SosBarrierSynthesizer.synthesizeQuadratic(
+                {
+                  numVars: stateNames.length,
+                  varNames: stateNames,
+                  f: (x: number[]) => dae.f(0, x, nominalZ),
+                },
+                { initialRadius, unsafeRadius },
+              );
           return {
             stage: "barriers",
             name: "Sum-of-Squares Barrier Synthesizer",
@@ -1743,6 +1804,340 @@ export class UnifiedVerifier {
         durationMs: Date.now() - t0,
         summary: `Algorithmic analysis error: ${errMsg(err)}`,
         violations: [{ stage: "algorithms", message: errMsg(err), severity: "error" }],
+      };
+    }
+  }
+
+  /**
+   * Stage 11: Uncertainty Quantification & Probabilistic Verification.
+   *
+   * - Rigorous P-box mode (`pboxDistributions`): emits `certified: true` ONLY when every
+   *   requirement achieves a `proven` ProbabilisticVerdict (`rigor: "rigorous"`).
+   * - Analytical / reliability modes (`fosm`, `unscented`, `pce`, `form`, `sorm`, `subset`):
+   *   runs over `ctx.arena` and strictly sets `certified: false` (non-rigorous estimate).
+   */
+  private static runUqStage(
+    ctx: VerificationInputContext,
+    options: UnifiedVerificationOptions,
+  ): VerificationStageResult {
+    const t0 = Date.now();
+    const cfg = ctx.uqConfig;
+    if (!cfg) {
+      return {
+        stage: "uq",
+        name: "Uncertainty Quantification & Probabilistic Verification",
+        passed: true,
+        skipped: true,
+        durationMs: Date.now() - t0,
+        summary: "Not evaluated: no uqConfig provided.",
+      };
+    }
+
+    const method = options.uqMethod ?? cfg.method ?? (cfg.pboxDistributions ? "pbox" : "unscented");
+    const requirements = cfg.requirements ?? [];
+
+    try {
+      // ── Path A: Rigorous P-Box Probabilistic Verification ──────────────────
+      if (method === "pbox" && (cfg.pboxDistributions || (ctx.arena && (cfg.randomVars?.length ?? 0) > 0))) {
+        const verdicts: Record<string, ProbabilisticVerdict> = {};
+        const violations: VerificationViolation[] = [];
+        let provenCount = 0;
+        let inconclusiveCount = 0;
+
+        if (cfg.pboxDistributions) {
+          for (const req of requirements) {
+            const key = `${req.state} ${req.operator} ${req.threshold} <= ${req.maxProbability}`;
+            const pbox = cfg.pboxDistributions.get(req.state);
+            if (!pbox) {
+              verdicts[key] = {
+                kind: "unknown",
+                reason: "unsupported",
+                detail: `No P-box registered for '${req.state}'.`,
+              };
+              inconclusiveCount++;
+              continue;
+            }
+            const verdict = pbox.verifyRequirement(req.operator, req.threshold, req.maxProbability, "rigorous");
+            verdicts[key] = verdict;
+            if (verdict.kind === "proven") {
+              provenCount++;
+            } else if (verdict.kind === "violated") {
+              violations.push({
+                stage: "uq",
+                message: `Guaranteed probabilistic violation: ${verdict.detail ?? key}`,
+                severity: "error",
+              });
+            } else {
+              inconclusiveCount++;
+            }
+          }
+        } else if (ctx.arena && cfg.randomVars) {
+          const paramPBoxes = new Map<string, PBox>();
+          for (const rv of cfg.randomVars) {
+            if (rv.distribution.type === "uniform") {
+              paramPBoxes.set(rv.name, PBox.fromUniform(rv.distribution.lo, rv.distribution.hi, 12));
+            } else if (rv.distribution.type === "gaussian") {
+              paramPBoxes.set(rv.name, PBox.fromNormal(rv.distribution.mean, rv.distribution.stddev, 12));
+            }
+          }
+          const t0Sim = cfg.simulateOptions?.startTime ?? 0;
+          const tEndSim = cfg.simulateOptions?.stopTime ?? 1;
+          const dtSim = cfg.simulateOptions?.step ?? (tEndSim - t0Sim) / 20;
+          const pboxRes = propagatePBoxArena(ctx.arena, {
+            parameterPBoxes: paramPBoxes,
+            tSpan: [t0Sim, tEndSim],
+            dt: dtSim,
+            requirements: requirements.map((r) => ({
+              state: r.state,
+              operator: r.operator,
+              threshold: r.threshold,
+              maxAllowedProbability: r.maxProbability,
+            })),
+          });
+          if (!pboxRes.ok) {
+            return {
+              stage: "uq",
+              name: "Uncertainty Quantification & Probabilistic Verification (P-Box Arena)",
+              passed: true,
+              certified: false,
+              durationMs: Date.now() - t0,
+              summary: `Inconclusive P-box arena compilation: ${pboxRes.reason}`,
+            };
+          }
+          for (const [key, verdict] of pboxRes.verdicts) {
+            verdicts[key] = verdict;
+            if (verdict.kind === "proven") {
+              provenCount++;
+            } else if (verdict.kind === "violated") {
+              violations.push({
+                stage: "uq",
+                message: `Guaranteed all-time probabilistic violation: ${verdict.detail ?? key}`,
+                severity: "error",
+              });
+            } else {
+              inconclusiveCount++;
+            }
+          }
+        }
+
+        const allProven = requirements.length > 0 && provenCount === requirements.length;
+        const passed = violations.length === 0;
+
+        return {
+          stage: "uq",
+          name: "Uncertainty Quantification & Probabilistic Verification (P-Box)",
+          passed,
+          certified: allProven,
+          durationMs: Date.now() - t0,
+          summary: allProven
+            ? `Certified ${provenCount}/${requirements.length} probabilistic requirement(s) via rigorous P-box bounds.`
+            : violations.length > 0
+              ? `Violated ${violations.length} probabilistic requirement(s) via rigorous P-box lower bounds.`
+              : `Inconclusive P-box verification: ${provenCount} proven, ${inconclusiveCount} inconclusive.`,
+          ...(violations.length > 0 ? { violations } : {}),
+          details: {
+            method: "pbox",
+            rigor: "rigorous",
+            verdicts,
+          },
+        };
+      }
+
+      // ── Path B: Arena Analytical / Reliability Propagation (Non-Rigorous) ─
+      const arena = ctx.arena;
+      const randomVars = cfg.randomVars ?? [];
+      if (!arena || randomVars.length === 0) {
+        return {
+          stage: "uq",
+          name: "Uncertainty Quantification & Probabilistic Verification",
+          passed: true,
+          skipped: true,
+          durationMs: Date.now() - t0,
+          summary: "Not evaluated: requires arena and randomVars (or pboxDistributions).",
+        };
+      }
+
+      const violations: VerificationViolation[] = [];
+      const reqReports: Array<{
+        requirement: string;
+        estimatedProbability: number;
+        maxProbability: number;
+        withinTolerance: boolean;
+        beta?: number | undefined;
+      }> = [];
+
+      const makeLimitState =
+        (req: UqVerificationRequirement) =>
+        (sim: ArenaSimulationResult): number => {
+          const idx = sim.states.indexOf(req.state);
+          if (idx < 0) return 1.0;
+          const val =
+            req.snapshotTime !== undefined
+              ? (interpolateTrajectoryAt(sim, req.snapshotTime, sim.states.length)[idx] ?? 0)
+              : (sim.y[sim.y.length - 1]?.[idx] ?? 0);
+          // Limit state g <= 0 means unsafe event holds
+          return req.operator === ">" || req.operator === ">=" ? req.threshold - val : val - req.threshold;
+        };
+
+      if (method === "form" || method === "sorm" || method === "subset") {
+        for (const req of requirements) {
+          const limitFn = makeLimitState(req);
+          let pf = 0;
+          let beta: number | undefined;
+          if (method === "form") {
+            const res = runFORMArena(arena, randomVars, limitFn, {
+              simulateOptions: cfg.simulateOptions,
+              correlations: cfg.correlations,
+            });
+            pf = res.failureProbability;
+            beta = res.beta;
+          } else if (method === "sorm") {
+            const res = runSORMArena(arena, randomVars, limitFn, {
+              simulateOptions: cfg.simulateOptions,
+              correlations: cfg.correlations,
+            });
+            pf = res.sormFailureProbability;
+            beta = res.beta;
+          } else {
+            const res = runSubsetSimulationArena(arena, randomVars, limitFn, {
+              simulateOptions: cfg.simulateOptions,
+              correlations: cfg.correlations,
+              samplesPerLevel: cfg.subsetSamples ?? 300,
+            });
+            pf = res.failureProbability;
+            beta = res.reliabilityIndex;
+          }
+
+          const within = pf <= req.maxProbability;
+          const label = `P(${req.state} ${req.operator} ${req.threshold}) <= ${req.maxProbability}`;
+          reqReports.push({
+            requirement: label,
+            estimatedProbability: pf,
+            maxProbability: req.maxProbability,
+            withinTolerance: within,
+            ...(beta !== undefined ? { beta } : {}),
+          });
+          if (!within) {
+            violations.push({
+              stage: "uq",
+              message: `[${method.toUpperCase()} estimate] ${label} breached: estimated Pf=${pf.toExponential(3)} (beta=${beta?.toFixed(3) ?? "n/a"}).`,
+              severity: "error",
+            });
+          }
+        }
+
+        const rigor = method === "subset" ? "statistical" : "approximate";
+        return {
+          stage: "uq",
+          name: `Uncertainty Quantification (${method.toUpperCase()})`,
+          passed: violations.length === 0,
+          certified: false,
+          durationMs: Date.now() - t0,
+          summary:
+            violations.length === 0
+              ? `All ${reqReports.length} probabilistic requirement(s) within tolerance via ${method.toUpperCase()} (${rigor}, not a formal proof).`
+              : `${violations.length}/${reqReports.length} probabilistic requirement(s) breached via ${method.toUpperCase()}.`,
+          ...(violations.length > 0 ? { violations } : {}),
+          details: { method, rigor, requirements: reqReports },
+        };
+      }
+
+      // Moment propagation: FOSM, Unscented Transform, or gPCE
+      const stateMoments = new Map<string, { mean: number; stddev: number }>();
+      let numEvaluations = 0;
+
+      if (method === "fosm") {
+        const res = propagateFOSMArena(arena, randomVars, {
+          simulateOptions: cfg.simulateOptions,
+          correlations: cfg.correlations,
+        });
+        numEvaluations = res.numEvaluations;
+        const last = res.t.length - 1;
+        res.states.forEach((s, i) => {
+          stateMoments.set(s, { mean: res.mean[last]?.[i] ?? 0, stddev: res.stddev[last]?.[i] ?? 0 });
+        });
+      } else if (method === "pce") {
+        const res = fitPCEArena(arena, randomVars, {
+          degree: cfg.pceDegree ?? 3,
+          simulateOptions: cfg.simulateOptions,
+        });
+        numEvaluations = res.numEvaluations;
+        for (const [s, exp] of res.outputs) {
+          stateMoments.set(s, { mean: exp.mean, stddev: exp.stddev });
+        }
+      } else {
+        const res = propagateUnscentedArena(arena, randomVars, {
+          simulateOptions: cfg.simulateOptions,
+          correlations: cfg.correlations,
+        });
+        numEvaluations = res.numEvaluations;
+        const last = res.t.length - 1;
+        res.states.forEach((s, i) => {
+          stateMoments.set(s, { mean: res.mean[last]?.[i] ?? 0, stddev: res.stddev[last]?.[i] ?? 0 });
+        });
+      }
+
+      for (const req of requirements) {
+        const m = stateMoments.get(req.state);
+        if (!m) continue;
+        const pf =
+          m.stddev <= 1e-15
+            ? req.operator === ">" || req.operator === ">="
+              ? m.mean > req.threshold
+                ? 1
+                : 0
+              : m.mean < req.threshold
+                ? 1
+                : 0
+            : req.operator === ">" || req.operator === ">="
+              ? 1 - normalCDF((req.threshold - m.mean) / m.stddev)
+              : normalCDF((req.threshold - m.mean) / m.stddev);
+
+        const within = pf <= req.maxProbability;
+        const label = `P(${req.state} ${req.operator} ${req.threshold}) <= ${req.maxProbability}`;
+        reqReports.push({
+          requirement: label,
+          estimatedProbability: pf,
+          maxProbability: req.maxProbability,
+          withinTolerance: within,
+        });
+        if (!within) {
+          violations.push({
+            stage: "uq",
+            message: `[${method.toUpperCase()} estimate] ${label} breached: estimated Pf=${pf.toExponential(3)} (mean=${m.mean.toPrecision(4)}, std=${m.stddev.toPrecision(4)}).`,
+            severity: "error",
+          });
+        }
+      }
+
+      return {
+        stage: "uq",
+        name: `Uncertainty Quantification (${method.toUpperCase()})`,
+        passed: violations.length === 0,
+        certified: false,
+        durationMs: Date.now() - t0,
+        summary:
+          violations.length === 0
+            ? `Propagated uncertainty across ${stateMoments.size} state(s) via ${method.toUpperCase()} (${numEvaluations} evals, approximate — not a formal proof).`
+            : `${violations.length}/${reqReports.length} probabilistic requirement(s) breached via ${method.toUpperCase()}.`,
+        ...(violations.length > 0 ? { violations } : {}),
+        details: {
+          method,
+          rigor: "approximate",
+          numEvaluations,
+          stateMoments: Object.fromEntries(stateMoments),
+          requirements: reqReports,
+        },
+      };
+    } catch (err: unknown) {
+      return {
+        stage: "uq",
+        name: "Uncertainty Quantification & Probabilistic Verification",
+        passed: false,
+        certified: false,
+        durationMs: Date.now() - t0,
+        summary: `UQ stage error: ${errMsg(err)}`,
+        violations: [{ stage: "uq", message: errMsg(err), severity: "error" }],
       };
     }
   }

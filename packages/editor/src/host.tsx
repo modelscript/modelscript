@@ -94,7 +94,7 @@ function getGlobalLanguageUi(): EditorLanguageUiRegistry {
 /**
  * Registers language UI panels, simulation cards, stencils, and toolbar buttons into `@modelscript/editor`.
  * Called once at boot by `apps/web` (from `virtual:modelscript-language-ui`) or by
- * `scripts/language-playground.ts` (from `virtual:modelscript-playground-lang`).
+ * `scripts/tools/language-playground.ts` (from `virtual:modelscript-playground-lang`).
  */
 export function registerEditorLanguageUi(registry: Partial<EditorLanguageUiRegistry>): void {
   const current = getGlobalLanguageUi();

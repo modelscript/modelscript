@@ -4,6 +4,7 @@ import { CodeLens, Range } from "vscode-languageserver";
 import { type LspContext, resolveFeatureFlags } from "../lsp-context.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { CadMetricsService } from "../services/cad-metrics-service.js";
+import { defaultProbabilisticVerdictService } from "../services/probabilistic-verdict-service.js";
 
 const defaultCadMetricsService = new CadMetricsService();
 
@@ -195,6 +196,14 @@ export function registerCodeLensProvider(context: LspContext) {
 
       if (extraPluginLenses.length > 0) {
         lenses.push(...extraPluginLenses);
+      }
+    }
+
+    // 3. Probabilistic Verification Verdict CodeLens badges (P-Box / Kushner Stochastic Barriers)
+    if (showVerification) {
+      const probLenses = defaultProbabilisticVerdictService.getCodeLenses(uri, verificationMode === "problemsOnly");
+      if (probLenses.length > 0) {
+        lenses.push(...probLenses);
       }
     }
 

@@ -35,6 +35,10 @@ import {
   type_is_structural,
   token_delete_costs,
   token_bracket_deltas,
+  updateBalanceHash,
+  isExtraCloser,
+  isMismatchedCloser,
+  matchesTopBracketKind,
   token_is_word,
   precomputed_repairs,
   precomputed_nt_repairs,
@@ -535,12 +539,27 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
     pNl += cl > 0 ? cl : 1;
   }
   let nlPenalty: i32 = crossedNl ? PENALTY_DELETE_NEWLINE_CROSS : (hasNl ? PENALTY_DELETE_LINE_END_DANGLING : 0);
+  if (crossedNl) {
+    let prevIndent = lineIndentAt(pos);
+    let nextIndent = lineIndentAt(srcLexPos);
+    if (nextIndent <= prevIndent) {
+      nlPenalty += 200; // Outer/same-indentation newline barrier
+    }
+  }
 
   let unconfirmedPenalty: i32 = head.successfulShifts < 2 ? 60 : 0;
-  let closeBracketPenalty: i32 =
-    head.balanceHash > 0 && token >= 0 && token < token_bracket_deltas.length && token_bracket_deltas[token] < 0
-      ? PENALTY_DELETE_CLOSE_BRACKET
-      : 0;
+  let closeBracketPenalty: i32 = 0;
+  if (isExtraCloser(head.balanceHash, token)) {
+    closeBracketPenalty = -50; // Strongly prefer deleting an unmatched extra closer
+  } else if (
+    (head.balanceHash & 0xff) > 0 &&
+    token >= 0 &&
+    token < token_bracket_deltas.length &&
+    token_bracket_deltas[token] < 0 &&
+    !isMismatchedCloser(head.balanceHash, token)
+  ) {
+    closeBracketPenalty = PENALTY_DELETE_CLOSE_BRACKET;
+  }
   let parentHead: ParseHead | null = head.errorNode != 0 ? head.prev : head;
   let skippedHead = allocParseHead(
     head.state,
@@ -575,6 +594,75 @@ export let lastKeywordMatchChars: u32 = 0;
  * Compares characters branchlessly with lowercase ASCII normalization.
  * Handles split-word typos like "mo del" -> "model" by inspecting downstream characters.
  */
+@inline
+function lineIndentAt(p: u32): u32 {
+  let start = p;
+  let steps: u32 = 0;
+  while (start > 0 && steps++ < 128) {
+    let ch = peekChar(start - 1);
+    if (ch == 10 || ch == 13) break;
+    start--;
+  }
+  let indent: u32 = 0;
+  while (start < inputLength && indent < 128) {
+    let ch = peekChar(start);
+    if (ch == 32) indent++;
+    else if (ch == 9) indent += 2;
+    else break;
+    start++;
+  }
+  return indent;
+}
+
+/**
+ * True if ASCII/lowercase input slice `[pos, pos + inLen)` is within Damerau-Levenshtein
+ * distance 1 of the keyword at `token_string_bytes[kwOffset + 1 .. kwOffset + kwLen]`.
+ * Zero allocations; handles 1-transposition ("fucntion"), 1-deletion ("paramter"),
+ * 1-insertion ("letr"), or 1-substitution ("modol").
+ */
+@inline
+function isDamerauDist1(pos: u32, inLen: u32, kwOffset: i32, kwLen: u32): bool {
+  if (inLen == 0 || kwLen < 4 || pos + inLen > inputLength) return false;
+  let diff: i32 = (inLen as i32) - (kwLen as i32);
+  if (diff < -1 || diff > 1) return false;
+  let i: u32 = 0;
+  let j: u32 = 0;
+  let edits: i32 = 0;
+  while (i < inLen && j < kwLen) {
+    let c1 = peekChar(pos + i);
+    if (c1 >= 65 && c1 <= 90) c1 += 32;
+    let c2 = token_string_bytes[kwOffset + 1 + j] as u32;
+    if (c2 >= 65 && c2 <= 90) c2 += 32;
+    if (c1 == c2) {
+      i++;
+      j++;
+      continue;
+    }
+    if (++edits > 1) return false;
+    if (diff == 0) {
+      if (i + 1 < inLen && j + 1 < kwLen) {
+        let n1 = peekChar(pos + i + 1);
+        if (n1 >= 65 && n1 <= 90) n1 += 32;
+        let n2 = token_string_bytes[kwOffset + 1 + j + 1] as u32;
+        if (n2 >= 65 && n2 <= 90) n2 += 32;
+        if (c1 == n2 && n1 == c2) {
+          i += 2;
+          j += 2;
+          continue;
+        }
+      }
+      i++;
+      j++;
+    } else if (diff > 0) {
+      i++;
+    } else {
+      j++;
+    }
+  }
+  if (i < inLen || j < kwLen) edits++;
+  return edits <= 1;
+}
+
 function computeKeywordSimilarityPenalty(pos: u32, len: u32, sym: i32, state: i32): i32 {
   lastKeywordMatchSpan = len;
   lastKeywordMatchChars = 0;
@@ -584,6 +672,11 @@ function computeKeywordSimilarityPenalty(pos: u32, len: u32, sym: i32, state: i3
 
   let kwLen = token_string_bytes[offset] as u32;
   if (kwLen == 0) return 50;
+
+  if (kwLen >= 4 && isDamerauDist1(pos, len, offset, kwLen)) {
+    lastKeywordMatchChars = kwLen;
+    return 10;
+  }
 
   let matchChars: u32 = 0;
   let alignedChars: u32 = 0;
@@ -679,12 +772,20 @@ function computeKeywordSimilarityPenalty(pos: u32, len: u32, sym: i32, state: i3
 
 @inline
 function computeNextBalanceHash(balanceHash: u32, sym: i32): u32 {
-  let nextBalance: i32 = balanceHash as i32;
-  if (sym >= 0 && sym < token_bracket_deltas.length) {
-    nextBalance += token_bracket_deltas[sym];
-    if (nextBalance < 0) nextBalance = 0;
-  }
-  return nextBalance as u32;
+  return updateBalanceHash(balanceHash, sym);
+}
+
+/** True if the most recent `recoverMissingToken` call confirmed 2 tokens of lookahead. */
+export let g_missingConfirmedTwoTokens: bool = false;
+
+@inline
+function confirmTwoTokenLookahead(head: ParseHead, nextState: i32, tok: i32, afterTokPos: u32): bool {
+  let shiftTarget = findShiftTarget(nextState, tok as u16);
+  if (shiftTarget == -1) return false;
+  if (afterTokPos >= inputLength) return true;
+  let secondTok = cachedPeekNextTokenInState(afterTokPos, shiftTarget);
+  if (secondTok == TOKEN_EOF) return true;
+  return stateCanAccept(head, shiftTarget, secondTok, 0, 1) > 0;
 }
 
 function findShiftTargetThroughEpsilons(head: ParseHead, state: i32, sym: i32): ParseHead | null {
@@ -989,13 +1090,17 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
             let diagEnd = curSrcLexPos + curTLen;
             let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, sym as u32, 2, sym as u32, 0);
 
+            let substCost: i32 = ERROR_COST_PER_MISSING_TREE;
+            if (isMismatchedCloser(head.balanceHash, token) && matchesTopBracketKind(head.balanceHash, sym)) {
+              substCost = ERROR_COST_PER_MISSING_TREE > 50 ? ERROR_COST_PER_MISSING_TREE - 50 : 10;
+            }
             let substHead = allocParseHead(
               aTarget,
               mutatedNode,
               head,
               nextPosAfterTok,
               head.scannerState,
-              head.errorCost + ERROR_COST_PER_MISSING_TREE,
+              head.errorCost + substCost,
               0,
               computeNextBalanceHash(head.balanceHash, sym),
               0,
@@ -1037,6 +1142,9 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
               );
 
               pushNextHead(changetype<u32>(insHead));
+              if (!g_missingConfirmedTwoTokens && confirmTwoTokenLookahead(head, aTarget, token, curSrcLexPos + curTLen)) {
+                g_missingConfirmedTwoTokens = true;
+              }
               foundAny = true;
             }
           }
@@ -1223,6 +1331,64 @@ const localEdits = new StaticArray<u8>(MAX_LOCAL_NODES);
 const localShifts = new StaticArray<u8>(MAX_LOCAL_NODES);
 const localExpanded = new StaticArray<u8>(MAX_LOCAL_NODES);
 const localPathBuf = new StaticArray<i32>(MAX_LOCAL_NODES);
+const localHeap = new StaticArray<i32>(MAX_LOCAL_NODES);
+let localHeapLen: i32 = 0;
+
+@inline
+function localNodeLess(a: i32, b: i32): bool {
+  let fa = unchecked(localFScore[a]);
+  let fb = unchecked(localFScore[b]);
+  if (fa != fb) return fa < fb;
+  let ea = unchecked(localEdits[a]);
+  let eb = unchecked(localEdits[b]);
+  if (ea != eb) return ea < eb;
+  return a < b;
+}
+
+@inline
+function localHeapPush(nodeIdx: i32): void {
+  let i = localHeapLen++;
+  unchecked(localHeap[i] = nodeIdx);
+  while (i > 0) {
+    let p = (i - 1) >> 1;
+    let pNode = unchecked(localHeap[p]);
+    if (localNodeLess(nodeIdx, pNode)) {
+      unchecked(localHeap[i] = pNode);
+      unchecked(localHeap[p] = nodeIdx);
+      i = p;
+    } else {
+      break;
+    }
+  }
+}
+
+@inline
+function localHeapPop(): i32 {
+  if (localHeapLen <= 0) return -1;
+  let top = unchecked(localHeap[0]);
+  let last = unchecked(localHeap[--localHeapLen]);
+  if (localHeapLen > 0) {
+    unchecked(localHeap[0] = last);
+    let i: i32 = 0;
+    while (true) {
+      let left = (i << 1) + 1;
+      let right = left + 1;
+      let smallest = i;
+      if (left < localHeapLen && localNodeLess(unchecked(localHeap[left]), unchecked(localHeap[smallest]))) {
+        smallest = left;
+      }
+      if (right < localHeapLen && localNodeLess(unchecked(localHeap[right]), unchecked(localHeap[smallest]))) {
+        smallest = right;
+      }
+      if (smallest == i) break;
+      let tmp = unchecked(localHeap[i]);
+      unchecked(localHeap[i] = unchecked(localHeap[smallest]));
+      unchecked(localHeap[smallest] = tmp);
+      i = smallest;
+    }
+  }
+  return top;
+}
 
 /**
  * Bounded deterministic A* local repair search (up to `MAX_LOCAL_EDITS` edits,
@@ -1246,25 +1412,15 @@ export function tryLocalAStarRepair(head: ParseHead, token: i32, pos: u32): bool
   unchecked(localEdits[0] = 0);
   unchecked(localShifts[0] = 0);
   unchecked(localExpanded[0] = 0);
+  localHeapLen = 0;
+  localHeapPush(0);
 
   let expansions: i32 = 0;
   let emittedCount: i32 = 0;
 
   while (expansions < MAX_LOCAL_EXPANSIONS) {
-    // Deterministic min-select over unexpanded scratch nodes: (fScore, edits, nodeIdx)
-    let bestIdx: i32 = -1;
-    let bestF: i32 = 0x7fffffff;
-    let bestE: u8 = 255;
-    for (let i: i32 = 0; i < nodeCount; i++) {
-      if (unchecked(localExpanded[i]) != 0) continue;
-      let f = unchecked(localFScore[i]);
-      let e = unchecked(localEdits[i]);
-      if (f < bestF || (f == bestF && e < bestE)) {
-        bestF = f;
-        bestE = e;
-        bestIdx = i;
-      }
-    }
+    // O(log K) deterministic binary min-heap pop: (fScore, edits, nodeIdx)
+    let bestIdx: i32 = localHeapPop();
     if (bestIdx == -1) break;
     unchecked(localExpanded[bestIdx] = 1);
     expansions++;
@@ -1347,13 +1503,14 @@ export function tryLocalAStarRepair(head: ParseHead, token: i32, pos: u32): bool
           setNodeFlags(errLeaf, FLAG_HAS_ERROR);
           let nextTail = pushDiagnostic(matHead.errorTail, matPos, nextP, sym as u32, 2, 0, 0);
           matPos = nextP;
+          let delCostMat: i32 = ERROR_COST_PER_SKIPPED_TREE + (delLen as i32) * ERROR_COST_PER_SKIPPED_CHAR + 80;
           matHead = allocParseHead(
             nextSt,
             errLeaf,
             matHead,
             matPos,
             matHead.scannerState,
-            matHead.errorCost + ERROR_COST_PER_SKIPPED_TREE,
+            matHead.errorCost + delCostMat,
             0,
             matBalance,
             0,
@@ -1389,6 +1546,7 @@ export function tryLocalAStarRepair(head: ParseHead, token: i32, pos: u32): bool
         unchecked(localEdits[idx] = curEdits);
         unchecked(localShifts[idx] = curShifts + 1);
         unchecked(localExpanded[idx] = 0);
+        localHeapPush(idx);
       }
     }
 
@@ -1422,6 +1580,7 @@ export function tryLocalAStarRepair(head: ParseHead, token: i32, pos: u32): bool
                 unchecked(localEdits[idx] = curEdits + 1);
                 unchecked(localShifts[idx] = 0);
                 unchecked(localExpanded[idx] = 0);
+                localHeapPush(idx);
                 insertedCands++;
               }
             }
@@ -1453,18 +1612,41 @@ export function tryLocalAStarRepair(head: ParseHead, token: i32, pos: u32): bool
             unchecked(localEdits[idx] = curEdits + 1);
             unchecked(localShifts[idx] = 0);
             unchecked(localExpanded[idx] = 0);
+            localHeapPush(idx);
           }
         }
       }
 
-      // Transition 4: Delete current token (blocked on sync tokens & closing brackets when balanced)
+      // Transition 4: Delete current token (blocked on sync tokens & matching closing brackets when balanced;
+      // mismatched or extra closers remain deletable)
       if (
         curTok != TOKEN_EOF &&
         nodeCount < MAX_LOCAL_NODES &&
         !(curTok >= 0 && curTok < token_delete_costs.length && token_delete_costs[curTok] >= 1000) &&
-        !(head.balanceHash > 0 && curTok >= 0 && curTok < token_bracket_deltas.length && token_bracket_deltas[curTok] < 0)
+        !(
+          (head.balanceHash & 0xff) > 0 &&
+          curTok >= 0 &&
+          curTok < token_bracket_deltas.length &&
+          token_bracket_deltas[curTok] < 0 &&
+          !isMismatchedCloser(head.balanceHash, curTok)
+        )
       ) {
-        let nCost = curCost + ERROR_COST_PER_SKIPPED_TREE;
+        let delCrossesNl = false;
+        let pScan = curP;
+        while (pScan < curTokEnd && pScan < inputLength) {
+          let ch = peekChar(pScan);
+          if (ch == 10 || ch == 13) {
+            delCrossesNl = true;
+            break;
+          }
+          if (ch != 32 && ch != 9) break;
+          pScan++;
+        }
+        let delLenEst: i32 = curTokEnd > curP ? ((curTokEnd - curP) as i32) : 1;
+        let extraDelPen: i32 = isExtraCloser(head.balanceHash, curTok)
+          ? -50
+          : (delCrossesNl ? PENALTY_DELETE_NEWLINE_CROSS : 0) + delLenEst * ERROR_COST_PER_SKIPPED_CHAR + 80;
+        let nCost = curCost + ERROR_COST_PER_SKIPPED_TREE + extraDelPen;
         let hMrd: i32 = curSt < mrd_data.length ? (mrd_data[curSt] as i32) : 0;
         let idx = nodeCount++;
         unchecked(localParent[idx] = bestIdx);
@@ -1477,6 +1659,7 @@ export function tryLocalAStarRepair(head: ParseHead, token: i32, pos: u32): bool
         unchecked(localEdits[idx] = curEdits + 1);
         unchecked(localShifts[idx] = 0);
         unchecked(localExpanded[idx] = 0);
+        localHeapPush(idx);
       }
     }
   }
@@ -1490,8 +1673,10 @@ export function tryLocalAStarRepair(head: ParseHead, token: i32, pos: u32): bool
  * the upcoming lookahead token. At EOF, performs MRD-guided completion.
  */
 export function recoverMissingToken(head: ParseHead, token: i32, pos: u32): boolean {
+  g_missingConfirmedTwoTokens = false;
   if (head.consecutiveInsertions >= 6) return false;
   if (token == TOKEN_EOF) {
+    g_missingConfirmedTwoTokens = true;
     return recoverAtEof(head, pos);
   }
   return tryRecoverMissingInState(head, head.state, token, pos, 0);

@@ -109,9 +109,10 @@ export class ASTNode {
 
 /**
  * Gen 2 / Static / Input Buffer
- * This buffer stores the raw source code text. It must match INPUT_BUFFER_SIZE in arena_layout.ts.
+ * Initial capacity for raw source code text; grows dynamically in `ensureInputBuffer()`.
  */
-const INPUT_BUFFER_SIZE = 4 * 1024 * 1024;
+const INPUT_BUFFER_SIZE = 64 * 1024;
+const INITIAL_CHUNK_DIR_CAP: u32 = 256;
 /* moved S().arenaBuffer to state */
 /* moved S().currentInputBufferSize to state */
 
@@ -195,6 +196,22 @@ class SharedState {
   parseStartSeq: u32;
   /** Snapshot of the active generation's bump offset at the start of the current parse. */
   parseStartOffset: u32;
+  /** Capacity (in chunk entries) of `gen0_chunks`, `gen1_chunks`, and `gen2_chunks` directories. */
+  gen0_chunk_cap: u32;
+  gen1_chunk_cap: u32;
+  gen2_chunk_cap: u32;
+  /** Shared intrusive free-list head of recycled 256 KB aligned AST chunks. */
+  freeChunkHead: u32;
+  /** Number of recycled 256 KB chunks currently on `freeChunkHead`. */
+  freeChunkCount: u32;
+  /** Number of live 256 KB chunks currently owned by open per-document arenas. */
+  activeDocChunkCount: u32;
+  /** Shared per-document active chunk map (`fileId -> chunkPtr`). */
+  docActiveChunk: UnmanagedMap64;
+  /** Shared per-document bump offset map (`fileId -> byteOffset`). */
+  docActiveOffset: UnmanagedMap64;
+  /** Shared per-document chunk list head map (`fileId -> headChunkPtr`). */
+  docChunkHead: UnmanagedMap64;
 
   @inline atomicAddOffset(amount: u32): u32 {
     let offsetField = this.activeGeneration == 0 ? offsetof<SharedState>("gen0_offset") : (this.activeGeneration == 1 ? offsetof<SharedState>("gen1_offset") : offsetof<SharedState>("gen2_offset"));
@@ -254,7 +271,8 @@ export function S(): SharedState {
 
     state.currentInputBufferSize = INPUT_BUFFER_SIZE;
     state.arenaBuffer = atomicChunkAlloc(state.currentInputBufferSize);
-    state.gen1_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(8192 * 4));
+    state.gen1_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(INITIAL_CHUNK_DIR_CAP * 4));
+    state.gen1_chunk_cap = INITIAL_CHUNK_DIR_CAP;
     state.gen1_chunk_count = 1;
     let c1 = allocAlignedAstChunk();
     state.gen1_chunks[0] = c1;
@@ -263,7 +281,8 @@ export function S(): SharedState {
     state.arenaOffset = c1;
     stampChunkPages(c1, 1, ++state.chunkSequence);
 
-    state.gen0_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(8192 * 4));
+    state.gen0_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(INITIAL_CHUNK_DIR_CAP * 4));
+    state.gen0_chunk_cap = INITIAL_CHUNK_DIR_CAP;
     state.gen0_chunk_count = 1;
     let c0 = allocAlignedAstChunk();
     state.gen0_chunks[0] = c0;
@@ -271,7 +290,8 @@ export function S(): SharedState {
     state.gen0_endLimit = c0 + AST_CHUNK_SIZE;
     stampChunkPages(c0, 0, ++state.chunkSequence);
 
-    state.gen2_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(8192 * 4));
+    state.gen2_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(INITIAL_CHUNK_DIR_CAP * 4));
+    state.gen2_chunk_cap = INITIAL_CHUNK_DIR_CAP;
     state.gen2_chunk_count = 1;
     let c2 = allocAlignedAstChunk();
     state.gen2_chunks[0] = c2;
@@ -280,7 +300,7 @@ export function S(): SharedState {
     stampChunkPages(c2, 2, ++state.chunkSequence);
 
     state.activeGeneration = 1;
-    state.activeRootsCapacity = 16384;
+    state.activeRootsCapacity = 1024;
     state.activeRootsPtr = changetype<UnmanagedUint32Array>(atomicChunkAlloc(state.activeRootsCapacity * 4));
     return state;
   }
@@ -288,11 +308,33 @@ export function S(): SharedState {
 }
 
 export const PAGE_STAMP_CAPACITY: u32 = 65536;
+const AST_SLAB_CHUNKS: u32 = 2;
 
+/**
+ * Allocates a 64 KB-aligned 256 KB AST chunk.
+ * Pulls from `s.freeChunkHead` if available; otherwise allocates a 4-chunk (1 MB)
+ * aligned slab so the 64 KB alignment overhead is amortized 4x (16 KB/chunk instead of 64 KB/chunk).
+ * Caller must hold `s.acquireLock()` (or be in single-threaded init).
+ */
 export function allocAlignedAstChunk(): u32 {
-  let raw = atomicChunkAlloc(AST_CHUNK_SIZE + 65536);
-  let aligned = (raw + 65535) & ~65535;
-  return aligned as u32;
+  let s = S();
+  if (s.freeChunkHead != 0) {
+    let chunk = s.freeChunkHead;
+    s.freeChunkHead = load<u32>(chunk as usize);
+    if (s.freeChunkCount > 0) s.freeChunkCount--;
+    memory.fill(chunk as usize, 0, AST_CHUNK_SIZE);
+    return chunk;
+  }
+  let raw = atomicChunkAlloc(AST_CHUNK_SIZE * AST_SLAB_CHUNKS + 65536);
+  let aligned = ((raw + 65535) & ~65535) as u32;
+  // Push chunks 1..AST_SLAB_CHUNKS-1 onto the shared free-list (already zeroed by atomicChunkAlloc)
+  for (let i: u32 = AST_SLAB_CHUNKS - 1; i >= 1; i--) {
+    let extra = aligned + i * AST_CHUNK_SIZE;
+    store<u32>(extra as usize, s.freeChunkHead);
+    s.freeChunkHead = extra;
+    s.freeChunkCount++;
+  }
+  return aligned;
 }
 
 export function stampChunkPages(chunkStart: u32, gen: u8, seq: u32): void {
@@ -425,7 +467,7 @@ export function resetGeneration(gen: u8): void {
   if (gen == 1) {
     S().freeNodeHead = 0; // Clear free list to prevent handing out old pointers after reset
     S().fatPaddingCount = 0; // Reset fat padding arena on full re-parse
-    if (activeDocChunkCount == 0) {
+    if (S().activeDocChunkCount == 0) {
       resetSideTables();
       if (stringArenaPtr != 0) stringArenaOffset = 4;
       if (tensorArenaPtr != 0) tensorArenaOffset = 16;
@@ -569,13 +611,16 @@ export function getFatPaddingPtr(idx: u32): usize {
 export function initArena(sizeBytes: u32): void {
   let s = S();
   if (changetype<usize>(s.gen1_chunks) == 0) {
-    s.gen1_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(8192 * 4)); // Metadata array: up to 8192 chunks
+    s.gen1_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(INITIAL_CHUNK_DIR_CAP * 4));
+    s.gen1_chunk_cap = INITIAL_CHUNK_DIR_CAP;
   }
   if (changetype<usize>(s.gen0_chunks) == 0) {
-    s.gen0_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(8192 * 4));
+    s.gen0_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(INITIAL_CHUNK_DIR_CAP * 4));
+    s.gen0_chunk_cap = INITIAL_CHUNK_DIR_CAP;
   }
   if (changetype<usize>(s.gen2_chunks) == 0) {
-    s.gen2_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(8192 * 4));
+    s.gen2_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(INITIAL_CHUNK_DIR_CAP * 4));
+    s.gen2_chunk_cap = INITIAL_CHUNK_DIR_CAP;
   }
 
   // Initialize first chunk for Generation 1 (Persistent)
@@ -628,10 +673,6 @@ export function initArena(sizeBytes: u32): void {
  * @param envHash A structural hash used for rapid comparison and deduplication.
  * @returns A physical memory pointer (u32) to the newly allocated 32-byte node.
  */
-let freeChunkHead: u32 = 0;
-let freeChunkCount: u32 = 0;
-let activeDocChunkCount: u32 = 0;
-
 let gen0OversizedHead: usize = 0;
 let gen2OversizedHead: usize = 0;
 
@@ -659,16 +700,14 @@ function clearChunkPages(chunkStart: u32): void {
   }
 }
 
+/** Per-thread active document fileId (kept in WASM global so concurrent workers can parse distinct files). */
 let currentDocFileId: u32 = 0;
-let docActiveChunk: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
-let docActiveOffset: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
-let docChunkHead: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
 
-function ensureDocMaps(): void {
-  if (changetype<usize>(docActiveChunk) == 0) {
-    docActiveChunk = changetype<UnmanagedMap64>(UnmanagedMap64.create());
-    docActiveOffset = changetype<UnmanagedMap64>(UnmanagedMap64.create());
-    docChunkHead = changetype<UnmanagedMap64>(UnmanagedMap64.create());
+function ensureDocMaps(s: SharedState): void {
+  if (changetype<usize>(s.docActiveChunk) == 0) {
+    s.docActiveChunk = changetype<UnmanagedMap64>(UnmanagedMap64.create());
+    s.docActiveOffset = changetype<UnmanagedMap64>(UnmanagedMap64.create());
+    s.docChunkHead = changetype<UnmanagedMap64>(UnmanagedMap64.create());
   }
 }
 
@@ -680,11 +719,66 @@ export function getAllocDocument(): u32 {
   return currentDocFileId;
 }
 
+function appendGenChunk(s: SharedState, gen: u8, newChunk: u32): void {
+  if (gen == 0) {
+    if (s.gen0_chunk_count >= s.gen0_chunk_cap) {
+      let oldCap = s.gen0_chunk_cap == 0 ? INITIAL_CHUNK_DIR_CAP : s.gen0_chunk_cap;
+      let newCap = oldCap * 2;
+      let oldPtr = changetype<usize>(s.gen0_chunks);
+      let newPtr = atomicChunkAlloc(newCap * 4);
+      if (oldPtr != 0) {
+        memory.copy(newPtr, oldPtr, s.gen0_chunk_count * 4);
+        atomicChunkFree(oldPtr);
+      }
+      s.gen0_chunks = changetype<UnmanagedUint32Array>(newPtr);
+      s.gen0_chunk_cap = newCap;
+    }
+    s.gen0_chunks[s.gen0_chunk_count] = newChunk;
+    s.gen0_chunk_count++;
+  } else if (gen == 2) {
+    if (s.gen2_chunk_count >= s.gen2_chunk_cap) {
+      let oldCap = s.gen2_chunk_cap == 0 ? INITIAL_CHUNK_DIR_CAP : s.gen2_chunk_cap;
+      let newCap = oldCap * 2;
+      let oldPtr = changetype<usize>(s.gen2_chunks);
+      let newPtr = atomicChunkAlloc(newCap * 4);
+      if (oldPtr != 0) {
+        memory.copy(newPtr, oldPtr, s.gen2_chunk_count * 4);
+        atomicChunkFree(oldPtr);
+      }
+      s.gen2_chunks = changetype<UnmanagedUint32Array>(newPtr);
+      s.gen2_chunk_cap = newCap;
+    }
+    s.gen2_chunks[s.gen2_chunk_count] = newChunk;
+    s.gen2_chunk_count++;
+  } else {
+    if (s.gen1_chunk_count >= s.gen1_chunk_cap) {
+      let oldCap = s.gen1_chunk_cap == 0 ? INITIAL_CHUNK_DIR_CAP : s.gen1_chunk_cap;
+      let newCap = oldCap * 2;
+      let oldPtr = changetype<usize>(s.gen1_chunks);
+      let newPtr = atomicChunkAlloc(newCap * 4);
+      if (oldPtr != 0) {
+        memory.copy(newPtr, oldPtr, s.gen1_chunk_count * 4);
+        atomicChunkFree(oldPtr);
+      }
+      s.gen1_chunks = changetype<UnmanagedUint32Array>(newPtr);
+      s.gen1_chunk_cap = newCap;
+    }
+    s.gen1_chunks[s.gen1_chunk_count] = newChunk;
+    s.gen1_chunk_count++;
+  }
+}
+
 export function evictDocumentArena(fileId: u32): void {
-  if (fileId == 0 || changetype<usize>(docChunkHead) == 0) return;
-  let chunk = docChunkHead.get(fileId as u64);
-  let activeChunk = docActiveChunk.get(fileId as u64);
-  let activeOffset = docActiveOffset.get(fileId as u64);
+  if (fileId == 0) return;
+  let s = S();
+  s.acquireLock();
+  if (changetype<usize>(s.docChunkHead) == 0) {
+    s.releaseLock();
+    return;
+  }
+  let chunk = s.docChunkHead.get(fileId as u64);
+  let activeChunk = s.docActiveChunk.get(fileId as u64);
+  let activeOffset = s.docActiveOffset.get(fileId as u64);
   let hasAnySideTable = hasAnySideTableEntries();
   while (chunk != 0) {
     let next = load<u32>(chunk as usize);
@@ -693,15 +787,16 @@ export function evictDocumentArena(fileId: u32): void {
       clearSideTablesForRange(chunk + 32, endOff);
     }
     clearChunkPages(chunk);
-    store<u32>(chunk as usize, freeChunkHead);
-    freeChunkHead = chunk;
-    freeChunkCount++;
-    if (activeDocChunkCount > 0) activeDocChunkCount--;
+    store<u32>(chunk as usize, s.freeChunkHead);
+    s.freeChunkHead = chunk;
+    s.freeChunkCount++;
+    if (s.activeDocChunkCount > 0) s.activeDocChunkCount--;
     chunk = next;
   }
-  docChunkHead.delete(fileId as u64);
-  docActiveChunk.delete(fileId as u64);
-  docActiveOffset.delete(fileId as u64);
+  s.docChunkHead.delete(fileId as u64);
+  s.docActiveChunk.delete(fileId as u64);
+  s.docActiveOffset.delete(fileId as u64);
+  s.releaseLock();
 }
 
 export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHash: u32, isTainted: boolean = false, startState: u32 = 0): u32 {
@@ -710,32 +805,26 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   let ptr: u32 = 0;
 
   if (currentDocFileId != 0) {
-    ensureDocMaps();
-    let chunk = docActiveChunk.get(currentDocFileId as u64);
-    let offset = docActiveOffset.get(currentDocFileId as u64);
+    s.acquireLock();
+    ensureDocMaps(s);
+    let chunk = s.docActiveChunk.get(currentDocFileId as u64);
+    let offset = s.docActiveOffset.get(currentDocFileId as u64);
     if (chunk == 0 || offset + NODE_SIZE > chunk + AST_CHUNK_SIZE) {
-      let newChunk: u32 = 0;
-      if (freeChunkHead != 0) {
-        newChunk = freeChunkHead;
-        freeChunkHead = load<u32>(newChunk as usize);
-        freeChunkCount--;
-        memory.fill(newChunk as usize, 0, AST_CHUNK_SIZE);
-      } else {
-        newChunk = allocAlignedAstChunk();
-      }
-      activeDocChunkCount++;
+      let newChunk = allocAlignedAstChunk();
+      s.activeDocChunkCount++;
       stampChunkPages(newChunk, 1, ++s.chunkSequence);
-      let headChunk = docChunkHead.get(currentDocFileId as u64);
+      let headChunk = s.docChunkHead.get(currentDocFileId as u64);
       store<u32>(newChunk as usize, headChunk);
       store<u32>((newChunk + 4) as usize, currentDocFileId);
-      docChunkHead.set(currentDocFileId as u64, newChunk);
+      s.docChunkHead.set(currentDocFileId as u64, newChunk);
 
       chunk = newChunk;
       offset = chunk + 32;
-      docActiveChunk.set(currentDocFileId as u64, chunk);
+      s.docActiveChunk.set(currentDocFileId as u64, chunk);
     }
     ptr = offset;
-    docActiveOffset.set(currentDocFileId as u64, offset + NODE_SIZE);
+    s.docActiveOffset.set(currentDocFileId as u64, offset + NODE_SIZE);
+    s.releaseLock();
   } else {
     // Perform atomic bump allocation in the currently active generation (Immutable Append-Only)
     let endLimit = s.activeGeneration == 0 ? s.gen0_endLimit : (s.activeGeneration == 1 ? s.gen1_endLimit : s.gen2_endLimit);
@@ -774,24 +863,15 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
 
         if (isGen0) {
           s.gen0_active_chunk++;
-          if (!usingRecycled && s.gen0_chunk_count < 8192) {
-            s.gen0_chunks[s.gen0_chunk_count] = newChunk;
-            s.gen0_chunk_count++;
-          }
+          if (!usingRecycled) appendGenChunk(s, 0, newChunk);
           s.gen0_endLimit = newChunk + AST_CHUNK_SIZE;
         } else if (isGen2) {
           s.gen2_active_chunk++;
-          if (!usingRecycled && s.gen2_chunk_count < 8192) {
-            s.gen2_chunks[s.gen2_chunk_count] = newChunk;
-            s.gen2_chunk_count++;
-          }
+          if (!usingRecycled) appendGenChunk(s, 2, newChunk);
           s.gen2_endLimit = newChunk + AST_CHUNK_SIZE;
         } else {
           s.gen1_active_chunk++;
-          if (!usingRecycled && s.gen1_chunk_count < 8192) {
-            s.gen1_chunks[s.gen1_chunk_count] = newChunk;
-            s.gen1_chunk_count++;
-          }
+          if (!usingRecycled) appendGenChunk(s, 1, newChunk);
           s.gen1_endLimit = newChunk + AST_CHUNK_SIZE;
         }
         s.atomicStoreOffset(newChunk + NODE_SIZE);
@@ -1233,17 +1313,11 @@ export function allocGen0(sizeBytes: u32): u32 {
 
       if (isGen2) {
         S().gen2_active_chunk++;
-        if (!usingRecycled && S().gen2_chunk_count < 8192) {
-          S().gen2_chunks[S().gen2_chunk_count] = newChunk;
-          S().gen2_chunk_count++;
-        }
+        if (!usingRecycled) appendGenChunk(S(), 2, newChunk);
         S().gen2_endLimit = newChunk + AST_CHUNK_SIZE;
       } else {
         S().gen0_active_chunk++;
-        if (!usingRecycled && S().gen0_chunk_count < 8192) {
-          S().gen0_chunks[S().gen0_chunk_count] = newChunk;
-          S().gen0_chunk_count++;
-        }
+        if (!usingRecycled) appendGenChunk(S(), 0, newChunk);
         S().gen0_endLimit = newChunk + AST_CHUNK_SIZE;
       }
       atomic.store<u32>(ptrLoc, newChunk + sizeBytes);
@@ -2323,7 +2397,7 @@ export function arena_getMemoryUsage(): u32 {
   total += s.gen0_chunk_count * AST_CHUNK_SIZE;
   total += s.gen1_chunk_count * AST_CHUNK_SIZE;
   total += s.gen2_chunk_count * AST_CHUNK_SIZE;
-  total += activeDocChunkCount * AST_CHUNK_SIZE;
+  total += s.activeDocChunkCount * AST_CHUNK_SIZE;
   total += s.currentInputBufferSize;
   total += stringArenaCapacity;
   return total;
@@ -2343,8 +2417,8 @@ export function dropRoot(rootPtr: u32): void {
   }
 }
 
-// GC mark stack in linear memory (zero-GC)
-const GC_STACK_CAPACITY: u32 = 1000000;
+// GC mark stack in linear memory (zero-GC; grows dynamically in pushGcStack)
+const GC_STACK_CAPACITY: u32 = 4096;
 /* moved S().gcStackPtr to state */
 
 /** Initializes the linear memory stack used by the GC for iterative tree traversal. */
@@ -2419,35 +2493,52 @@ export function clearAstMarks(rootToKeep: u32): void {
   }
 
   // --------------------------------------------------------------------------
-  // Sweep Phase
+  // Sweep Phase (Chunk-level dead-chunk recycling + active-chunk tail trim)
   // --------------------------------------------------------------------------
-  S().freeNodeHead = 0; // Reset free-list
+  let s = S();
+  s.freeNodeHead = 0; // Reset free-list
+  if (s.gen1_chunk_count == 0) return;
 
-  let activeChunk = S().gen1_active_chunk;
-  if (activeChunk >= S().gen1_chunk_count) {
-    activeChunk = S().gen1_chunk_count - 1;
+  let activeChunk = s.gen1_active_chunk;
+  if (activeChunk >= s.gen1_chunk_count) {
+    activeChunk = s.gen1_chunk_count - 1;
   }
 
+  let writeChunk: u32 = 0;
   for (let i: u32 = 0; i <= activeChunk; i++) {
-    let start = S().gen1_chunks[i];
-    let sweepEnd = i == S().gen1_active_chunk ? S().gen1_offset : start + AST_CHUNK_SIZE;
-
+    let start = s.gen1_chunks[i];
+    let sweepEnd = i == activeChunk ? s.gen1_offset : start + AST_CHUNK_SIZE;
     let lastLivePtr: u32 = start;
+    let hasLive = false;
 
-    // Sweep sequentially through the chunk's memory block
     for (let ptr = start; ptr < sweepEnd; ptr += NODE_SIZE) {
       let node = changetype<ASTNode>(ptr);
-
-      if (!node.isGcMarked) {
-        // NOTE: allocNode() is currently bump-only and does not consume S().freeNodeHead.
-        // Do not overwrite node.freeListNext (aliased to firstChild) to avoid corrupting
-        // any live JS SyntaxNode handles referencing Gen1 nodes.
-      } else {
-        // Node is live: clear GC, LSP, error, and taint flags for the next cycle
+      if (node.isGcMarked) {
+        hasLive = true;
         lastLivePtr = ptr + NODE_SIZE;
         node.clearFlag((FLAG_GC_MARK | FLAG_LSP_VISITED | FLAG_IS_TAINED) as u16);
       }
     }
+
+    if (i == activeChunk) {
+      if (writeChunk != i) {
+        let tmp = s.gen1_chunks[writeChunk];
+        s.gen1_chunks[writeChunk] = start;
+        s.gen1_chunks[i] = tmp;
+      }
+      s.gen1_active_chunk = writeChunk;
+      s.gen1_offset = lastLivePtr;
+      s.gen1_endLimit = start + AST_CHUNK_SIZE;
+    } else if (hasLive) {
+      if (writeChunk != i) {
+        let tmp = s.gen1_chunks[writeChunk];
+        s.gen1_chunks[writeChunk] = start;
+        s.gen1_chunks[i] = tmp;
+      }
+      writeChunk++;
+    }
+    // Chunks with !hasLive (100% dead) are swapped past s.gen1_active_chunk
+    // so allocNode() immediately recycles them with a fresh chunkSequence stamp.
   }
 }
 

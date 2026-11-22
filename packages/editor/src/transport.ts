@@ -35,7 +35,7 @@ export function getCustomEditorLspTransport(): EditorLspTransport | null {
 
 /**
  * Creates an `EditorLspTransport` backed by a single-language HTTP endpoint
- * such as `scripts/language-playground.ts` (`/__playground/lsp` -> `@modelscript/lsp/core`).
+ * such as `scripts/tools/language-playground.ts` (`/__playground/lsp` -> `@modelscript/lsp/core`).
  */
 export function createHttpLspTransport(endpoint = "/__playground/lsp"): EditorLspTransport {
   const listeners = new Map<string, Set<(params: unknown) => void>>();

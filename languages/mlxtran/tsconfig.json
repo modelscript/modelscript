@@ -4,5 +4,13 @@
     "outDir": "./dist",
     "rootDir": "."
   },
-  "include": ["src/**/*", "tests/**/*"]
+  "include": ["src/**/*", "tests/**/*"],
+  "references": [
+    {
+      "path": "../../packages/dsl"
+    },
+    {
+      "path": "../../packages/runtime"
+    }
+  ]
 }

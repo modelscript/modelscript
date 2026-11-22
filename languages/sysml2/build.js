@@ -3,7 +3,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { runLanguageParserBuild } from "../../scripts/build-language-parser.js";
+import { runLanguageParserBuild } from "../../scripts/build/build-language-parser.js";
 
 runLanguageParserBuild({
   langName: "sysml2",

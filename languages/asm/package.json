@@ -38,16 +38,16 @@
     "src-gen/**"
   ],
   "scripts": {
-    "build": "node ../../scripts/build-language-parser.js && tsc -b",
-    "build:parser": "node ../../scripts/build-language-parser.js --force",
+    "build": "node ../../scripts/build/build-language-parser.js && tsc -b",
+    "build:parser": "node ../../scripts/build/build-language-parser.js --force",
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
     "lint": "eslint src/ --ext .ts --no-warn-ignored",
-    "playground": "npx tsx ../../scripts/language-playground.ts .",
-    "test": "node ../../scripts/test-runner.js"
+    "playground": "npx tsx ../../scripts/tools/language-playground.ts .",
+    "test": "node ../../scripts/ci/test-runner.js"
   },
   "dependencies": {
-    "@modelscript/dsl": "*",
-    "@modelscript/runtime": "*"
+    "@modelscript/dsl": "workspace:*",
+    "@modelscript/runtime": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.3.2",

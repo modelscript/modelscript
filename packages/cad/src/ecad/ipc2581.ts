@@ -135,13 +135,31 @@ export function compileToIPC2581(layout: PCBLayout, options?: IPC2581CompileOpti
 
   // 5.1 Layer Stackup
   lines.push(`    <LayerStack name="DEFAULT_STACKUP">`);
-  lines.push(`      <LayerDef name="TopSilkscreen" type="SILKSCREEN" sequence="1" side="TOP"/>`);
-  lines.push(`      <LayerDef name="TopSolderMask" type="SOLDERMASK" sequence="2" side="TOP"/>`);
-  lines.push(`      <LayerDef name="TopCopper" type="CONDUCTOR" sequence="3" side="TOP" thickness="0.035"/>`);
-  lines.push(`      <LayerDef name="CoreDielectric" type="DIELECTRIC" sequence="4" thickness="1.530" material="FR4"/>`);
-  lines.push(`      <LayerDef name="BottomCopper" type="CONDUCTOR" sequence="5" side="BOTTOM" thickness="0.035"/>`);
-  lines.push(`      <LayerDef name="BottomSolderMask" type="SOLDERMASK" sequence="6" side="BOTTOM"/>`);
-  lines.push(`      <LayerDef name="BottomSilkscreen" type="SILKSCREEN" sequence="7" side="BOTTOM"/>`);
+  if (layout.stackup && layout.stackup.length > 0) {
+    for (const layer of layout.stackup) {
+      const attrs = [
+        `name="${escapeXml(layer.name)}"`,
+        `type="${escapeXml(layer.type)}"`,
+        `sequence="${layer.sequence}"`,
+      ];
+      if (layer.side) attrs.push(`side="${escapeXml(layer.side)}"`);
+      if (layer.thicknessMm !== undefined) attrs.push(`thickness="${layer.thicknessMm.toFixed(3)}"`);
+      if (layer.material) attrs.push(`material="${escapeXml(layer.material)}"`);
+      if (layer.dielectricConstant !== undefined) attrs.push(`dielectricConstant="${layer.dielectricConstant}"`);
+      if (layer.lossTangent !== undefined) attrs.push(`lossTangent="${layer.lossTangent}"`);
+      lines.push(`      <LayerDef ${attrs.join(" ")}/>`);
+    }
+  } else {
+    lines.push(`      <LayerDef name="TopSilkscreen" type="SILKSCREEN" sequence="1" side="TOP"/>`);
+    lines.push(`      <LayerDef name="TopSolderMask" type="SOLDERMASK" sequence="2" side="TOP"/>`);
+    lines.push(`      <LayerDef name="TopCopper" type="CONDUCTOR" sequence="3" side="TOP" thickness="0.035"/>`);
+    lines.push(
+      `      <LayerDef name="CoreDielectric" type="DIELECTRIC" sequence="4" thickness="1.530" material="FR4"/>`,
+    );
+    lines.push(`      <LayerDef name="BottomCopper" type="CONDUCTOR" sequence="5" side="BOTTOM" thickness="0.035"/>`);
+    lines.push(`      <LayerDef name="BottomSolderMask" type="SOLDERMASK" sequence="6" side="BOTTOM"/>`);
+    lines.push(`      <LayerDef name="BottomSilkscreen" type="SILKSCREEN" sequence="7" side="BOTTOM"/>`);
+  }
   lines.push(`    </LayerStack>`);
 
   // 5.2 Padstack Definitions (Unique pad shapes)
@@ -240,6 +258,12 @@ export function compileToIPC2581(layout: PCBLayout, options?: IPC2581CompileOpti
     const r = (via.drill + 2 * via.annularRing).toFixed(4);
     lines.push(
       `        <Via net="${escapeXml(via.net)}" x="${via.center[0].toFixed(4)}" y="${via.center[1].toFixed(4)}" drill="${d}" outerDiameter="${r}"/>`,
+    );
+  }
+  // Placed Pads (for lossless round-trip import)
+  for (const pad of layout.pads) {
+    lines.push(
+      `        <PadInstance padstackRef="${escapeXml(padstackName(pad))}" component="${escapeXml(pad.component)}" layer="${escapeXml(pad.layer)}" net="${escapeXml(pad.net)}" x="${pad.center[0].toFixed(4)}" y="${pad.center[1].toFixed(4)}" shape="${pad.shape.toUpperCase()}" width="${pad.width.toFixed(4)}" height="${pad.height.toFixed(4)}" drill="${pad.drill.toFixed(4)}"/>`,
     );
   }
   lines.push(`      </RoutingGroup>`);

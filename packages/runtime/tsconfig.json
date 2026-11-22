@@ -5,5 +5,13 @@
     "outDir": "./dist"
   },
   "include": ["src/**/*"],
-  "exclude": ["src/wasm/**/*", "assembly/**/*", "dist", "build", "node_modules"]
+  "exclude": ["src/wasm/**/*", "assembly/**/*", "dist", "build", "node_modules"],
+  "references": [
+    {
+      "path": "../dsl"
+    },
+    {
+      "path": "../solve"
+    }
+  ]
 }

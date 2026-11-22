@@ -44,7 +44,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@types/react": "^19.0.10",
+    "@types/react": "^19.2.7",
     "react": "^19.2.7",
     "typescript": "^5.9.3"
   },

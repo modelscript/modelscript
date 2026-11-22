@@ -43,23 +43,22 @@
     }
   },
   "files": [
-    "src/**",
     "dist/**",
     "assets/**",
     "src-gen/**"
   ],
   "scripts": {
-    "build": "node ../../scripts/build-language-parser.js && tsc",
-    "build:parser": "node ../../scripts/build-language-parser.js --force",
+    "build": "node ../../scripts/build/build-language-parser.js && tsc",
+    "build:parser": "node ../../scripts/build/build-language-parser.js --force",
     "clean": "rimraf dist",
     "lint": "eslint src tests --no-warn-ignored",
-    "playground": "npx tsx ../../scripts/language-playground.ts .",
-    "test": "node ../../scripts/test-runner.js",
+    "playground": "npx tsx ../../scripts/tools/language-playground.ts .",
+    "test": "node ../../scripts/ci/test-runner.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@modelscript/dsl": "*",
-    "@modelscript/runtime": "*"
+    "@modelscript/dsl": "workspace:*",
+    "@modelscript/runtime": "workspace:*"
   },
   "devDependencies": {
     "rimraf": "^6.1.0",

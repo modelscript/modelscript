@@ -4,5 +4,22 @@
     "rootDir": "./src",
     "outDir": "./dist"
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "references": [
+    {
+      "path": "../../languages/cfd"
+    },
+    {
+      "path": "../dsl"
+    },
+    {
+      "path": "../../languages/fea"
+    },
+    {
+      "path": "../runtime"
+    },
+    {
+      "path": "../solve"
+    }
+  ]
 }

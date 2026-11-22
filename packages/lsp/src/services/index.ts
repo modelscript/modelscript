@@ -14,6 +14,7 @@ export * from "./diagram-service.js";
 export * from "./document-manager.js";
 export * from "./hierarchy-service.js";
 export * from "./parser-service.js";
+export * from "./probabilistic-verdict-service.js";
 export * from "./reasoner-service.js";
 export * from "./validation-service.js";
 export * from "./workspace-linter-dispatch.js";

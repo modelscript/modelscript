@@ -256,3 +256,193 @@ export class BayesianParameterCalibrator {
     return bindTelemetryToSimulationThread(hypergraph, threadId, telemetryNodeId, simulationNodeId);
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hamiltonian Monte Carlo / No-U-Turn Sampler (NUTS) for Bayesian Posterior UQ
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface NutsSamplerOptions {
+  /** Initial parameter vector `q0`. */
+  initialPosition: Float64Array;
+  /** Evaluates unnormalized log-posterior `log p(q | y)` and its gradient `∇_q log p(q | y)`. */
+  logProbAndGrad: (q: Float64Array) => { logProb: number; grad: Float64Array };
+  /** Number of post-warmup posterior samples (default: 400). */
+  numSamples?: number | undefined;
+  /** Number of warmup / dual-averaging adaptation steps (default: 200). */
+  numWarmup?: number | undefined;
+  /** Initial leapfrog step size `ε` (default: 0.05). */
+  stepSize?: number | undefined;
+  /** Target Metropolis acceptance probability for dual averaging (default: 0.8). */
+  targetAccept?: number | undefined;
+  /** Maximum binary tree depth `2^maxTreeDepth` leapfrog steps (default: 6). */
+  maxTreeDepth?: number | undefined;
+  /** Deterministic PRNG seed (default: 42). */
+  seed?: number | undefined;
+}
+
+export interface NutsPosteriorSummary {
+  samples: Float64Array[];
+  mean: Float64Array;
+  stdDev: Float64Array;
+  ci95: [number, number][];
+  acceptanceRate: number;
+  finalStepSize: number;
+}
+
+/**
+ * No-U-Turn Sampler (NUTS / Adaptive HMC) for gradient-informed Bayesian parameter inference.
+ *
+ * Uses symplectic leapfrog integration, Hoffman-Gelman U-turn termination (`(q^+ - q^-) · p < 0`),
+ * and Nesterov dual averaging for automatic step-size tuning during warmup.
+ */
+export function samplePosteriorNuts(options: NutsSamplerOptions): NutsPosteriorSummary {
+  const { initialPosition, logProbAndGrad } = options;
+  const d = initialPosition.length;
+  const numSamples = options.numSamples ?? 400;
+  const numWarmup = options.numWarmup ?? 200;
+  const targetAccept = options.targetAccept ?? 0.8;
+  const maxSteps = 1 << Math.min(8, options.maxTreeDepth ?? 5);
+
+  // Deterministic Box-Muller PRNG (xorshift32)
+  let state = (options.seed ?? 42) >>> 0 || 1;
+  const randUniform = (): number => {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    return ((state >>> 0) + 1) / 4294967297;
+  };
+  const randNormal = (): number => {
+    const u1 = Math.max(1e-12, randUniform());
+    const u2 = randUniform();
+    return Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+  };
+
+  let eps = options.stepSize ?? 0.05;
+  const mu = Math.log(10 * eps);
+  let logEpsBar = Math.log(eps);
+  let hBar = 0;
+  const gammaDA = 0.05;
+  const t0DA = 10;
+  const kappaDA = 0.75;
+
+  let qCur = new Float64Array(initialPosition);
+  let evalCur = logProbAndGrad(qCur);
+
+  const samples: Float64Array[] = [];
+  let acceptSum = 0;
+  const totalIters = numWarmup + numSamples;
+
+  for (let iter = 0; iter < totalIters; iter++) {
+    // Sample momentum p ~ N(0, I)
+    const p0 = new Float64Array(d);
+    let kin0 = 0;
+    for (let i = 0; i < d; i++) {
+      const pi = randNormal();
+      p0[i] = pi;
+      kin0 += 0.5 * pi * pi;
+    }
+    const H0 = -evalCur.logProb + kin0;
+
+    // Leapfrog trajectory with U-turn termination (Hoffman-Gelman criterion)
+    const dir = randUniform() < 0.5 ? -1 : 1;
+    const step = dir * eps;
+    const q = new Float64Array(qCur);
+    const p = new Float64Array(p0);
+    let grad: Float64Array = new Float64Array(evalCur.grad);
+    let logP = evalCur.logProb;
+
+    let qProp = new Float64Array(qCur);
+    let evalProp = evalCur;
+    let propH = H0;
+    let weightSum = 1.0;
+
+    for (let l = 0; l < maxSteps; l++) {
+      // Half step momentum
+      for (let i = 0; i < d; i++) p[i] = p[i]! + 0.5 * step * grad[i]!;
+      // Full step position
+      for (let i = 0; i < d; i++) q[i] = q[i]! + step * p[i]!;
+      const ev = logProbAndGrad(q);
+      if (!Number.isFinite(ev.logProb)) break;
+      logP = ev.logProb;
+      grad = ev.grad;
+      // Half step momentum
+      for (let i = 0; i < d; i++) p[i] = p[i]! + 0.5 * step * grad[i]!;
+
+      let kin = 0;
+      for (let i = 0; i < d; i++) kin += 0.5 * p[i]! * p[i]!;
+      const H = -logP + kin;
+      if (H - H0 > 1000) break; // Divergent trajectory
+
+      // Multinomial transition weight exp(-(H - H0))
+      const w = Math.exp(Math.min(0, H0 - H));
+      weightSum += w;
+      if (randUniform() < w / weightSum) {
+        qProp = new Float64Array(q);
+        evalProp = ev;
+        propH = H;
+      }
+
+      // Check No-U-Turn condition: (q - q0) · (dir * p) < 0
+      let dotUTurn = 0;
+      for (let i = 0; i < d; i++) dotUTurn += (q[i]! - qCur[i]!) * (dir * p[i]!);
+      if (dotUTurn < 0) break;
+    }
+
+    const alpha = Math.min(1.0, Math.exp(Math.min(0, H0 - propH)));
+    if (randUniform() < alpha) {
+      qCur = qProp;
+      evalCur = evalProp;
+    }
+
+    if (iter < numWarmup) {
+      // Nesterov dual averaging step-size adaptation
+      const m = iter + 1;
+      const wM = 1.0 / (m + t0DA);
+      hBar = (1 - wM) * hBar + wM * (targetAccept - alpha);
+      const logEps = mu - (Math.sqrt(m) / gammaDA) * hBar;
+      eps = Math.max(1e-4, Math.min(1.0, Math.exp(logEps)));
+      const mk = Math.pow(m, -kappaDA);
+      logEpsBar = mk * logEps + (1 - mk) * logEpsBar;
+      if (iter === numWarmup - 1) eps = Math.max(1e-4, Math.min(1.0, Math.exp(logEpsBar)));
+    } else {
+      acceptSum += alpha;
+      samples.push(new Float64Array(qCur));
+    }
+  }
+
+  // Compute posterior mean, stdDev, and 95% credible intervals
+  const mean = new Float64Array(d);
+  const stdDev = new Float64Array(d);
+  const ci95: [number, number][] = [];
+
+  for (let i = 0; i < d; i++) {
+    let s = 0;
+    const col = new Array<number>(samples.length);
+    for (let k = 0; k < samples.length; k++) {
+      const v = samples[k]![i]!;
+      s += v;
+      col[k] = v;
+    }
+    const m = s / Math.max(1, samples.length);
+    mean[i] = m;
+    let varAcc = 0;
+    for (let k = 0; k < samples.length; k++) {
+      const diff = col[k]! - m;
+      varAcc += diff * diff;
+    }
+    stdDev[i] = Math.sqrt(varAcc / Math.max(1, samples.length - 1));
+    col.sort((a, b) => a - b);
+    const loIdx = Math.floor(0.025 * (col.length - 1));
+    const hiIdx = Math.ceil(0.975 * (col.length - 1));
+    ci95.push([col[loIdx] ?? m, col[hiIdx] ?? m]);
+  }
+
+  return {
+    samples,
+    mean,
+    stdDev,
+    ci95,
+    acceptanceRate: acceptSum / Math.max(1, numSamples),
+    finalStepSize: eps,
+  };
+}

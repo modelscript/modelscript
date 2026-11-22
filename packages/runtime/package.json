@@ -286,7 +286,6 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "src/**",
     "dist/**",
     "build/*.wasm"
   ],
@@ -299,12 +298,12 @@
     "build": "npm run asbuild && tsc",
     "clean": "rimraf dist build",
     "lint": "eslint src tests --no-warn-ignored",
-    "test": "node ../../scripts/test-runner.js --timeout=180000",
+    "test": "node ../../scripts/ci/test-runner.js --timeout=180000",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@modelscript/dsl": "*",
-    "@modelscript/solve": "*",
+    "@modelscript/dsl": "workspace:*",
+    "@modelscript/solve": "workspace:*",
     "yaml": "^2.9.0"
   },
   "devDependencies": {

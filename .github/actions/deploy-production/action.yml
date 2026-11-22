@@ -1,0 +1,116 @@
+name: Deploy Production Stack
+description: Hardened production rollout to modelscript.org & ansatz.social via webhook and/or SSH.
+
+inputs:
+  image-tag:
+    description: Docker image tag to deploy (e.g. sha-<sha> or semver version)
+    required: true
+  prune-docker:
+    description: Whether to prune unused Docker images older than 24h before deploy
+    required: false
+    default: "false"
+  github-token:
+    description: GitHub token for GHCR authentication
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Trigger Production Docker Compose Rollout via Webhook
+      if: env.PROD_DEPLOY_WEBHOOK_URL != ''
+      shell: bash
+      run: |
+        curl --fail --silent --show-error -X POST "$PROD_DEPLOY_WEBHOOK_URL" \
+          -H "Authorization: Bearer $PROD_DEPLOY_TOKEN" \
+          -H "Content-Type: application/json" \
+          -d "{\"sha\":\"${GITHUB_SHA}\",\"tag\":\"${{ inputs.image-tag }}\",\"domains\":[\"modelscript.org\",\"ansatz.social\"],\"edition\":\"ee\"}"
+
+    - name: Roll Out Docker Stack to modelscript.org & ansatz.social via SSH
+      if: env.PROD_SSH_HOST != ''
+      shell: bash
+      env:
+        GHCR_TOKEN: ${{ inputs.github-token }}
+        GHCR_ACTOR: ${{ github.actor }}
+        IMAGE_TAG: ${{ inputs.image-tag }}
+        PRUNE_DOCKER: ${{ inputs.prune-docker }}
+      run: |
+        set -euo pipefail
+
+        if [ -z "${PROD_SSH_KNOWN_HOSTS:-}" ]; then
+          echo "::error::PROD_SSH_KNOWN_HOSTS secret must be set for verified SSH deployment."
+          exit 1
+        fi
+
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+        printf '%s\n' "$PROD_SSH_KEY" > ~/.ssh/id_deploy
+        chmod 600 ~/.ssh/id_deploy
+        printf '%s\n' "$PROD_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+        chmod 600 ~/.ssh/known_hosts
+        cat << 'EOF' > ~/.ssh/config
+        Host *
+          IdentityFile ~/.ssh/id_deploy
+          IdentitiesOnly yes
+          StrictHostKeyChecking yes
+          UserKnownHostsFile ~/.ssh/known_hosts
+        EOF
+        chmod 600 ~/.ssh/config
+
+        TARGET_DIR="${PROD_DEPLOY_PATH:-/opt/modelscript}"
+        SSH_TARGET="${PROD_SSH_USER}@${PROD_SSH_HOST}"
+
+        # 1. Verify Docker is pre-installed on the host (fail closed instead of curl|sh)
+        ssh "$SSH_TARGET" "command -v docker >/dev/null 2>&1 || { echo 'Docker is not installed on target host.' >&2; exit 1; }"
+
+        # 2. Ensure target directories exist
+        ssh "$SSH_TARGET" "mkdir -p '${TARGET_DIR}/config' '${TARGET_DIR}/scripts/ops' '${TARGET_DIR}/backups'"
+
+        # 3. Synchronize compose files, configs, and ops deployment scripts
+        scp docker-compose.yml docker-compose.prod.yml "${SSH_TARGET}:${TARGET_DIR}/"
+        scp config/Caddyfile config/mosquitto.conf config/init-timescaledb.sql "${SSH_TARGET}:${TARGET_DIR}/config/"
+        scp scripts/ops/*.sh scripts/ops/preflight-audit.ts "${SSH_TARGET}:${TARGET_DIR}/scripts/ops/"
+        scp scripts/ops/*.sh "${SSH_TARGET}:${TARGET_DIR}/scripts/"
+        ssh "$SSH_TARGET" "chmod +x '${TARGET_DIR}'/scripts/ops/*.sh '${TARGET_DIR}'/scripts/*.sh"
+
+        # 4. Bootstrap / update .env.production from GitHub secrets
+        if [ -n "${PROD_ENV_FILE:-}" ]; then
+          printf '%s\n' "$PROD_ENV_FILE" | ssh "$SSH_TARGET" "cat > '${TARGET_DIR}/.env.production' && chmod 600 '${TARGET_DIR}/.env.production'"
+        fi
+
+        if [ -n "${OAUTH_GITHUB_CLIENT_ID:-}" ] || [ -n "${GITLAB_CLIENT_ID:-}" ]; then
+          {
+            [ -n "${OAUTH_GITHUB_CLIENT_ID:-}" ] && printf 'GITHUB_CLIENT_ID=%s\n' "$OAUTH_GITHUB_CLIENT_ID"
+            [ -n "${OAUTH_GITHUB_CLIENT_SECRET:-}" ] && printf 'GITHUB_CLIENT_SECRET=%s\n' "$OAUTH_GITHUB_CLIENT_SECRET"
+            [ -n "${GITLAB_CLIENT_ID:-}" ] && printf 'GITLAB_CLIENT_ID=%s\n' "$GITLAB_CLIENT_ID"
+            [ -n "${GITLAB_CLIENT_SECRET:-}" ] && printf 'GITLAB_CLIENT_SECRET=%s\n' "$GITLAB_CLIENT_SECRET"
+          } | ssh "$SSH_TARGET" "touch '${TARGET_DIR}/.env.production' && chmod 600 '${TARGET_DIR}/.env.production' && (grep -v -E '^(GITHUB_CLIENT_ID|GITHUB_CLIENT_SECRET|GITLAB_CLIENT_ID|GITLAB_CLIENT_SECRET)=' '${TARGET_DIR}/.env.production' > '${TARGET_DIR}/.env.production.tmp' || true) && cat - >> '${TARGET_DIR}/.env.production.tmp' && mv '${TARGET_DIR}/.env.production.tmp' '${TARGET_DIR}/.env.production'"
+        fi
+
+        if [ -n "${RESEND_API_KEY:-}" ]; then
+          printf '%s' "$RESEND_API_KEY" | ssh "$SSH_TARGET" "
+            touch '${TARGET_DIR}/.env.production' &&
+            chmod 600 '${TARGET_DIR}/.env.production' &&
+            (grep -v '^RESEND_API_KEY=' '${TARGET_DIR}/.env.production' > '${TARGET_DIR}/.env.production.tmp' || true) &&
+            mv '${TARGET_DIR}/.env.production.tmp' '${TARGET_DIR}/.env.production' &&
+            printf 'RESEND_API_KEY=%s\n' \"\$(cat)\" >> '${TARGET_DIR}/.env.production'
+          "
+        fi
+
+        if [ -n "${ADMIN_INIT_PASSWORD:-}" ]; then
+          printf '%s' "$ADMIN_INIT_PASSWORD" | ssh "$SSH_TARGET" "
+            touch '${TARGET_DIR}/.env.production' &&
+            chmod 600 '${TARGET_DIR}/.env.production' &&
+            (grep -v '^ADMIN_INIT_PASSWORD=' '${TARGET_DIR}/.env.production' > '${TARGET_DIR}/.env.production.tmp' || true) &&
+            mv '${TARGET_DIR}/.env.production.tmp' '${TARGET_DIR}/.env.production' &&
+            printf 'ADMIN_INIT_PASSWORD=%s\n' \"\$(cat)\" >> '${TARGET_DIR}/.env.production'
+          "
+        fi
+
+        # 5. Authenticate host to GHCR over stdin (avoid exposing token in remote shell args)
+        printf '%s' "$GHCR_TOKEN" | ssh "$SSH_TARGET" "docker login ghcr.io -u '${GHCR_ACTOR}' --password-stdin"
+
+        # 6. Optionally prune stale Docker images and run rollout sentinel
+        if [ "$PRUNE_DOCKER" = "true" ]; then
+          ssh "$SSH_TARGET" "docker system prune -af --filter 'until=24h' --volumes=false >/dev/null 2>&1 || true"
+        fi
+        ssh "$SSH_TARGET" "IMAGE_TAG='${IMAGE_TAG}' TARGET_DIR='${TARGET_DIR}' '${TARGET_DIR}/scripts/ops/deploy.sh'"

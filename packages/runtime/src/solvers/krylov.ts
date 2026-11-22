@@ -71,6 +71,35 @@ export interface ILU0Factorization {
   scratchY: Float64Array;
 }
 
+export interface ILUTOptions {
+  /** Maximum fill-in entries retained per row in L and U (default: 15). */
+  maxFill?: number | undefined;
+  /** Relative drop tolerance τ scaled by row 2-norm (default: 1e-4). */
+  dropTol?: number | undefined;
+}
+
+export interface ILUTFactorization {
+  n: number;
+  lRowPtr: Int32Array;
+  lColIndices: Int32Array;
+  lValues: Float64Array;
+  uRowPtr: Int32Array;
+  uColIndices: Int32Array;
+  uValues: Float64Array;
+  scratchY: Float64Array;
+}
+
+export interface AMGOptions {
+  /** Strength-of-connection threshold θ ∈ (0, 1) (default: 0.25). */
+  strengthThreshold?: number | undefined;
+  /** Number of pre/post Gauss-Seidel smoothing sweeps (default: 2). */
+  smoothingSweeps?: number | undefined;
+  /** Maximum multigrid hierarchy levels (default: 4). */
+  maxLevels?: number | undefined;
+  /** Coarse-grid size cutoff for direct solve (default: 16). */
+  coarseCutoff?: number | undefined;
+}
+
 export interface JFNKOptions {
   /** Nonlinear residual convergence tolerance `||F(x)||_2` (default: 1e-9). */
   tol?: number | undefined;
@@ -1062,5 +1091,381 @@ export function jfnkSolve(
     krylovIterations: totalKrylovIter,
     fEvals,
     residualNorm: fNorm,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Saad Dual-Threshold ILUT(p, τ) & Unsmoothed-Aggregation AMG Preconditioners
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ccsToRowMaps(A: SparseCCSMatrix): Map<number, number>[] {
+  const n = A.nRows;
+  const rows: Map<number, number>[] = Array.from({ length: n }, () => new Map<number, number>());
+  for (let col = 0; col < A.nCols; col++) {
+    const start = A.colPtr[col]!;
+    const end = A.colPtr[col + 1]!;
+    for (let p = start; p < end; p++) {
+      const r = A.rowIndices[p]!;
+      const v = A.values[p]!;
+      if (v !== 0) {
+        rows[r]!.set(col, (rows[r]!.get(col) ?? 0) + v);
+      }
+    }
+  }
+  return rows;
+}
+
+/**
+ * Saad's Dual-Threshold Incomplete LU Factorization (`ILUT(maxFill, dropTol)`).
+ *
+ * Drops entries smaller than `dropTol * ||A_{i,:}||_2` during row-wise Gaussian elimination
+ * and retains at most `maxFill` largest off-diagonal entries in L and U per row.
+ */
+export function ilutFactor(A: SparseCCSMatrix, options: ILUTOptions = {}): ILUTFactorization {
+  const n = A.nRows;
+  const maxFill = Math.max(1, options.maxFill ?? 15);
+  const dropTol = options.dropTol ?? 1e-4;
+  const srcRows = ccsToRowMaps(A);
+
+  const lColsPerRow: number[][] = Array.from({ length: n }, () => []);
+  const lValsPerRow: number[][] = Array.from({ length: n }, () => []);
+  const uColsPerRow: number[][] = Array.from({ length: n }, () => []);
+  const uValsPerRow: number[][] = Array.from({ length: n }, () => []);
+  const uDiag = new Float64Array(n);
+
+  for (let i = 0; i < n; i++) {
+    const w = new Map<number, number>(srcRows[i]!);
+    let rowNormSq = 0;
+    for (const v of w.values()) rowNormSq += v * v;
+    const thresh = dropTol * Math.sqrt(rowNormSq);
+
+    // Eliminate columns k < i in ascending order
+    const lowerKs = Array.from(w.keys())
+      .filter((k) => k < i)
+      .sort((a, b) => a - b);
+    const lEntries: { col: number; val: number }[] = [];
+    const visited = new Set<number>(lowerKs);
+    const queue = [...lowerKs];
+
+    let qi = 0;
+    while (qi < queue.length) {
+      // Pick smallest unprocessed k < i
+      let minIdx = qi;
+      for (let m = qi + 1; m < queue.length; m++) {
+        if (queue[m]! < queue[minIdx]!) minIdx = m;
+      }
+      const k = queue[minIdx]!;
+      queue[minIdx] = queue[qi]!;
+      qi++;
+
+      const wik = w.get(k) ?? 0;
+      if (Math.abs(wik) <= thresh) {
+        w.delete(k);
+        continue;
+      }
+      const ukk = uDiag[k]!;
+      const lik = Math.abs(ukk) > 1e-15 ? wik / ukk : 0;
+      w.delete(k);
+      if (Math.abs(lik) <= thresh) continue;
+      lEntries.push({ col: k, val: lik });
+
+      // Update w[j] -= lik * U[k, j] for j > k
+      const ukCols = uColsPerRow[k]!;
+      const ukVals = uValsPerRow[k]!;
+      for (let idx = 1; idx < ukCols.length; idx++) {
+        const j = ukCols[idx]!;
+        const nextVal = (w.get(j) ?? 0) - lik * ukVals[idx]!;
+        w.set(j, nextVal);
+        if (j < i && !visited.has(j)) {
+          visited.add(j);
+          queue.push(j);
+        }
+      }
+    }
+
+    // Apply dual-threshold truncation to L row (keep largest maxFill entries)
+    if (lEntries.length > maxFill) {
+      lEntries.sort((a, b) => Math.abs(b.val) - Math.abs(a.val));
+      lEntries.length = maxFill;
+    }
+    lEntries.sort((a, b) => a.col - b.col);
+    for (const e of lEntries) {
+      lColsPerRow[i]!.push(e.col);
+      lValsPerRow[i]!.push(e.val);
+    }
+
+    // Diagonal + U row entries (j > i)
+    let diag = w.get(i) ?? 0;
+    if (Math.abs(diag) < 1e-15) diag = diag >= 0 ? 1e-12 : -1e-12;
+    uDiag[i] = diag;
+
+    const uEntries: { col: number; val: number }[] = [];
+    for (const [j, val] of w.entries()) {
+      if (j > i && Math.abs(val) > thresh) {
+        uEntries.push({ col: j, val });
+      }
+    }
+    if (uEntries.length > maxFill) {
+      uEntries.sort((a, b) => Math.abs(b.val) - Math.abs(a.val));
+      uEntries.length = maxFill;
+    }
+    uEntries.sort((a, b) => a.col - b.col);
+    // Store diagonal first in U row
+    uColsPerRow[i]!.push(i);
+    uValsPerRow[i]!.push(diag);
+    for (const e of uEntries) {
+      uColsPerRow[i]!.push(e.col);
+      uValsPerRow[i]!.push(e.val);
+    }
+  }
+
+  // Flatten into CSR arrays
+  const lRowPtr = new Int32Array(n + 1);
+  const uRowPtr = new Int32Array(n + 1);
+  let lTotal = 0;
+  let uTotal = 0;
+  for (let i = 0; i < n; i++) {
+    lRowPtr[i] = lTotal;
+    lTotal += lColsPerRow[i]!.length;
+    uRowPtr[i] = uTotal;
+    uTotal += uColsPerRow[i]!.length;
+  }
+  lRowPtr[n] = lTotal;
+  uRowPtr[n] = uTotal;
+
+  const lColIndices = new Int32Array(lTotal);
+  const lValues = new Float64Array(lTotal);
+  const uColIndices = new Int32Array(uTotal);
+  const uValues = new Float64Array(uTotal);
+
+  let lp = 0;
+  let up = 0;
+  for (let i = 0; i < n; i++) {
+    const lc = lColsPerRow[i]!;
+    const lv = lValsPerRow[i]!;
+    for (let k = 0; k < lc.length; k++) {
+      lColIndices[lp] = lc[k]!;
+      lValues[lp] = lv[k]!;
+      lp++;
+    }
+    const uc = uColsPerRow[i]!;
+    const uv = uValsPerRow[i]!;
+    for (let k = 0; k < uc.length; k++) {
+      uColIndices[up] = uc[k]!;
+      uValues[up] = uv[k]!;
+      up++;
+    }
+  }
+
+  return {
+    n,
+    lRowPtr,
+    lColIndices,
+    lValues,
+    uRowPtr,
+    uColIndices,
+    uValues,
+    scratchY: new Float64Array(n),
+  };
+}
+
+/** Triangular solve `L * U * out = r` using an `ILUTFactorization`. */
+export function ilutSolve(fac: ILUTFactorization, r: Float64Array, out: Float64Array): void {
+  const { n, lRowPtr, lColIndices, lValues, uRowPtr, uColIndices, uValues, scratchY } = fac;
+  // Forward solve L y = r (unit diagonal)
+  for (let i = 0; i < n; i++) {
+    let s = r[i]!;
+    const start = lRowPtr[i]!;
+    const end = lRowPtr[i + 1]!;
+    for (let p = start; p < end; p++) {
+      s -= lValues[p]! * scratchY[lColIndices[p]!]!;
+    }
+    scratchY[i] = s;
+  }
+  // Backward solve U out = y (diagonal at uRowPtr[i])
+  for (let i = n - 1; i >= 0; i--) {
+    const start = uRowPtr[i]!;
+    const end = uRowPtr[i + 1]!;
+    let s = scratchY[i]!;
+    for (let p = start + 1; p < end; p++) {
+      s -= uValues[p]! * out[uColIndices[p]!]!;
+    }
+    out[i] = s / uValues[start]!;
+  }
+}
+
+/** Builds a right preconditioner `M^{-1}` from Saad's `ILUT(maxFill, dropTol)`. */
+export function ilutPreconditioner(A: SparseCCSMatrix, options: ILUTOptions = {}): Preconditioner {
+  const fac = ilutFactor(A, options);
+  return (r, out) => ilutSolve(fac, r, out);
+}
+
+interface AmgLevel {
+  n: number;
+  rowPtr: Int32Array;
+  colIndices: Int32Array;
+  values: Float64Array;
+  diag: Float64Array;
+  aggOf: Int32Array | null;
+  nCoarse: number;
+}
+
+function buildCsrFromMaps(rows: Map<number, number>[]): Omit<AmgLevel, "aggOf" | "nCoarse"> {
+  const n = rows.length;
+  const rowPtr = new Int32Array(n + 1);
+  let nnz = 0;
+  for (let i = 0; i < n; i++) {
+    rowPtr[i] = nnz;
+    nnz += rows[i]!.size;
+  }
+  rowPtr[n] = nnz;
+  const colIndices = new Int32Array(nnz);
+  const values = new Float64Array(nnz);
+  const diag = new Float64Array(n);
+  let p = 0;
+  for (let i = 0; i < n; i++) {
+    for (const [c, v] of rows[i]!.entries()) {
+      colIndices[p] = c;
+      values[p] = v;
+      if (c === i) diag[i] = v;
+      p++;
+    }
+    if (Math.abs(diag[i]!) < 1e-15) diag[i] = 1.0;
+  }
+  return { n, rowPtr, colIndices, values, diag };
+}
+
+function gaussSeidelSmooth(level: AmgLevel, b: Float64Array, x: Float64Array, sweeps: number, reverse = false): void {
+  const { n, rowPtr, colIndices, values, diag } = level;
+  for (let s = 0; s < sweeps; s++) {
+    if (!reverse) {
+      for (let i = 0; i < n; i++) {
+        let sum = b[i]!;
+        const start = rowPtr[i]!;
+        const end = rowPtr[i + 1]!;
+        for (let p = start; p < end; p++) {
+          const c = colIndices[p]!;
+          if (c !== i) sum -= values[p]! * x[c]!;
+        }
+        x[i] = sum / diag[i]!;
+      }
+    } else {
+      for (let i = n - 1; i >= 0; i--) {
+        let sum = b[i]!;
+        const start = rowPtr[i]!;
+        const end = rowPtr[i + 1]!;
+        for (let p = start; p < end; p++) {
+          const c = colIndices[p]!;
+          if (c !== i) sum -= values[p]! * x[c]!;
+        }
+        x[i] = sum / diag[i]!;
+      }
+    }
+  }
+}
+
+/**
+ * Unsmoothed-Aggregation Algebraic Multigrid (AMG) V-Cycle Preconditioner.
+ *
+ * Constructs a hierarchy of coarse Galerkin operators `A_c = P^T A P` via strength-of-connection
+ * aggregation and applies symmetric Gauss-Seidel V-cycles. Well suited for large elliptic/parabolic
+ * sparse systems (FEA, diffusion DAEs, power grids).
+ */
+export function amgPreconditioner(A: SparseCCSMatrix, options: AMGOptions = {}): Preconditioner {
+  const theta = options.strengthThreshold ?? 0.25;
+  const sweeps = options.smoothingSweeps ?? 2;
+  const maxLevels = options.maxLevels ?? 4;
+  const coarseCutoff = options.coarseCutoff ?? 16;
+
+  const levels: AmgLevel[] = [];
+  let curMaps = ccsToRowMaps(A);
+
+  for (let lvl = 0; lvl < maxLevels; lvl++) {
+    const csr = buildCsrFromMaps(curMaps);
+    const n = csr.n;
+    if (lvl === maxLevels - 1 || n <= coarseCutoff) {
+      levels.push({ ...csr, aggOf: null, nCoarse: 0 });
+      break;
+    }
+
+    // Greedy pairwise/neighborhood strength-of-connection aggregation
+    const aggOf = new Int32Array(n).fill(-1);
+    let nCoarse = 0;
+    for (let i = 0; i < n; i++) {
+      if (aggOf[i] !== -1) continue;
+      const row = curMaps[i]!;
+      let maxOff = 0;
+      for (const [j, v] of row.entries()) {
+        if (j !== i) maxOff = Math.max(maxOff, Math.abs(v));
+      }
+      const aggId = nCoarse++;
+      aggOf[i] = aggId;
+      const cutoff = theta * maxOff;
+      for (const [j, v] of row.entries()) {
+        if (j !== i && aggOf[j] === -1 && Math.abs(v) >= cutoff) {
+          aggOf[j] = aggId;
+        }
+      }
+    }
+
+    if (nCoarse >= Math.floor(0.85 * n)) {
+      levels.push({ ...csr, aggOf: null, nCoarse: 0 });
+      break;
+    }
+
+    levels.push({ ...csr, aggOf, nCoarse });
+
+    // Galerkin coarse matrix A_c[I, J] = Σ_{i ∈ I, j ∈ J} A[i, j]
+    const nextMaps: Map<number, number>[] = Array.from({ length: nCoarse }, () => new Map<number, number>());
+    for (let i = 0; i < n; i++) {
+      const I = aggOf[i]!;
+      for (const [j, v] of curMaps[i]!.entries()) {
+        const J = aggOf[j]!;
+        nextMaps[I]!.set(J, (nextMaps[I]!.get(J) ?? 0) + v);
+      }
+    }
+    curMaps = nextMaps;
+  }
+
+  const vCycle = (lvlIdx: number, b: Float64Array, x: Float64Array): void => {
+    const level = levels[lvlIdx]!;
+    if (lvlIdx === levels.length - 1 || !level.aggOf) {
+      // Coarse solve via symmetric Gauss-Seidel sweeps
+      gaussSeidelSmooth(level, b, x, 12, false);
+      gaussSeidelSmooth(level, b, x, 12, true);
+      return;
+    }
+
+    // Pre-smoothing
+    gaussSeidelSmooth(level, b, x, sweeps, false);
+
+    // Compute residual r = b - A x and restrict r_c = P^T r
+    const rCoarse = new Float64Array(level.nCoarse);
+    const { n, rowPtr, colIndices, values, aggOf } = level;
+    for (let i = 0; i < n; i++) {
+      let ax = 0;
+      const start = rowPtr[i]!;
+      const end = rowPtr[i + 1]!;
+      for (let p = start; p < end; p++) ax += values[p]! * x[colIndices[p]!]!;
+      const agg = aggOf[i]!;
+      rCoarse[agg] = rCoarse[agg]! + (b[i]! - ax);
+    }
+
+    // Coarse grid correction
+    const eCoarse = new Float64Array(level.nCoarse);
+    vCycle(lvlIdx + 1, rCoarse, eCoarse);
+
+    // Prolongate x += P e_c
+    for (let i = 0; i < n; i++) {
+      x[i] = x[i]! + eCoarse[aggOf[i]!]!;
+    }
+
+    // Post-smoothing
+    gaussSeidelSmooth(level, b, x, sweeps, true);
+  };
+
+  return (r, out) => {
+    out.fill(0);
+    vCycle(0, r, out);
   };
 }

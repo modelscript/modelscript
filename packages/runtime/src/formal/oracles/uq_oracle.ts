@@ -8,13 +8,17 @@
  * Uses analytical CDF and WasmMonteCarloEngine sampling to detect stochastic safety margin violations.
  */
 
+import { PBox, type PBoxComparisonOp } from "../../analysis/wasm_pbox.js";
 import type { ConflictClause, SharedEquality, TheoryLiteral, TheoryOracle } from "../theory_coordinator.js";
+import { probabilisticVerdictFromBounds, type ProbabilisticVerdict } from "../verdict.js";
 import { hasSharedEqualityWithLiteral, retainSharedEqualitiesWithoutLiteral } from "./retraction_utils.js";
 import { UndoTrail } from "./undo_trail.js";
 
 export type DistributionSpec =
   | { kind: "normal"; mean: number; stdDev: number }
-  | { kind: "uniform"; min: number; max: number };
+  | { kind: "uniform"; min: number; max: number }
+  | { kind: "interval"; min: number; max: number }
+  | { kind: "pbox"; pbox: PBox };
 
 export interface ProbabilisticRequirement {
   varName: string;
@@ -80,19 +84,29 @@ export class UqTheoryOracle implements TheoryOracle {
     this.trail.mapSet(this.distributions, varName, dist);
   }
 
+  public setPBox(varName: string, pbox: PBox): void {
+    this.setDistribution(varName, { kind: "pbox", pbox });
+  }
+
   public assertLiteral(lit: TheoryLiteral): boolean {
     this.trail.mapSet(this.assertedLiterals, lit.id, lit);
     const { predicate, args } = lit;
 
     switch (predicate) {
       case "distribution": {
-        const [varName, kind] = args as [string, "normal" | "uniform"];
+        const [varName, kind] = args as [string, "normal" | "uniform" | "interval" | "pbox"];
         if (kind === "normal") {
           const [, , mean, stdDev] = args as [string, string, number, number];
           this.trail.mapSet(this.distributions, varName, { kind: "normal", mean, stdDev });
         } else if (kind === "uniform") {
           const [, , min, max] = args as [string, string, number, number];
           this.trail.mapSet(this.distributions, varName, { kind: "uniform", min, max });
+        } else if (kind === "interval") {
+          const [, , min, max] = args as [string, string, number, number];
+          this.trail.mapSet(this.distributions, varName, { kind: "interval", min, max });
+        } else if (kind === "pbox") {
+          const [, , pbox] = args as [string, string, PBox];
+          this.trail.mapSet(this.distributions, varName, { kind: "pbox", pbox });
         }
         break;
       }
@@ -167,51 +181,33 @@ export class UqTheoryOracle implements TheoryOracle {
           },
         };
       }
+      if (dist.kind === "interval" && dist.min > dist.max) {
+        const culprits = Array.from(this.assertedLiterals.values()).filter((l) => l.args.includes(varName));
+        return {
+          isSat: false,
+          conflict: {
+            literals: culprits,
+            explanation: `Uncertainty Quantification (UQ) Conflict: Interval for '${varName}' has inverted bounds [${dist.min}, ${dist.max}].`,
+            culpritEntities: [varName],
+            theoryName: this.name,
+          },
+        };
+      }
     }
 
     for (const req of this.requirements) {
       const dist = this.distributions.get(req.varName);
       if (!dist) continue;
 
-      let violationProb = 0;
+      const [pMin] = this.evaluateRequirementBounds(dist, req);
 
-      if (dist.kind === "normal") {
-        if (dist.stdDev === 0) {
-          if (req.op === ">") violationProb = dist.mean > req.threshold ? 1.0 : 0.0;
-          else if (req.op === ">=") violationProb = dist.mean >= req.threshold ? 1.0 : 0.0;
-          else if (req.op === "<") violationProb = dist.mean < req.threshold ? 1.0 : 0.0;
-          else violationProb = dist.mean <= req.threshold ? 1.0 : 0.0;
-        } else if (req.op === ">" || req.op === ">=") {
-          // P(X > threshold) = 1 - CDF(threshold)
-          violationProb = 1.0 - normalCdf(req.threshold, dist.mean, dist.stdDev);
-        } else {
-          // P(X < threshold) = CDF(threshold)
-          violationProb = normalCdf(req.threshold, dist.mean, dist.stdDev);
-        }
-      } else if (dist.kind === "uniform") {
-        if (dist.min === dist.max) {
-          if (req.op === ">") violationProb = dist.min > req.threshold ? 1.0 : 0.0;
-          else if (req.op === ">=") violationProb = dist.min >= req.threshold ? 1.0 : 0.0;
-          else if (req.op === "<") violationProb = dist.min < req.threshold ? 1.0 : 0.0;
-          else violationProb = dist.min <= req.threshold ? 1.0 : 0.0;
-        } else if (req.op === ">" || req.op === ">=") {
-          if (req.threshold <= dist.min) violationProb = 1.0;
-          else if (req.threshold >= dist.max) violationProb = 0.0;
-          else violationProb = (dist.max - req.threshold) / (dist.max - dist.min);
-        } else {
-          if (req.threshold <= dist.min) violationProb = 0.0;
-          else if (req.threshold >= dist.max) violationProb = 1.0;
-          else violationProb = (req.threshold - dist.min) / (dist.max - dist.min);
-        }
-      }
-
-      if (violationProb > req.maxProbability + 1e-9) {
+      if (pMin > req.maxProbability + 1e-9) {
         const culprits = Array.from(this.assertedLiterals.values()).filter((l) => l.args.includes(req.varName));
         return {
           isSat: false,
           conflict: {
             literals: culprits,
-            explanation: `Uncertainty Quantification (UQ) Conflict: Probability of '${req.varName} ${req.op} ${req.threshold}' is ${(violationProb * 100).toFixed(3)}%, which breaches the safety requirement margin of <= ${(req.maxProbability * 100).toFixed(3)}%.`,
+            explanation: `Uncertainty Quantification (UQ) Conflict: Probability of '${req.varName} ${req.op} ${req.threshold}' is at least ${(pMin * 100).toFixed(3)}%, which breaches the safety requirement margin of <= ${(req.maxProbability * 100).toFixed(3)}%.`,
             culpritEntities: [req.varName],
             theoryName: this.name,
           },
@@ -220,6 +216,77 @@ export class UqTheoryOracle implements TheoryOracle {
     }
 
     return { isSat: true };
+  }
+
+  /**
+   * Evaluate every registered probabilistic requirement and return a soundness-aware
+   * {@link ProbabilisticVerdict} (`proven`, `violated`, or `unknown(inconclusive-pbox)`).
+   */
+  public checkRequirementsWithVerdicts(): Map<string, ProbabilisticVerdict> {
+    const verdicts = new Map<string, ProbabilisticVerdict>();
+    for (const req of this.requirements) {
+      const key = `${req.varName} ${req.op} ${req.threshold} <= ${req.maxProbability}`;
+      const dist = this.distributions.get(req.varName);
+      if (!dist) {
+        verdicts.set(key, {
+          kind: "unknown",
+          reason: "unsupported",
+          detail: `No distribution registered for '${req.varName}'.`,
+        });
+        continue;
+      }
+      const bounds = this.evaluateRequirementBounds(dist, req);
+      const rigor = dist.kind === "pbox" || dist.kind === "interval" ? "rigorous" : "float-sound";
+      verdicts.set(
+        key,
+        probabilisticVerdictFromBounds(
+          bounds,
+          req.maxProbability,
+          rigor,
+          `P(${req.varName} ${req.op} ${req.threshold}) in [${bounds[0].toFixed(6)}, ${bounds[1].toFixed(6)}]`,
+        ),
+      );
+    }
+    return verdicts;
+  }
+
+  private evaluateRequirementBounds(dist: DistributionSpec, req: ProbabilisticRequirement): [number, number] {
+    if (dist.kind === "pbox") {
+      return dist.pbox.probBound(req.op as PBoxComparisonOp, req.threshold);
+    }
+    if (dist.kind === "interval") {
+      return PBox.fromInterval(dist.min, dist.max).probBound(req.op as PBoxComparisonOp, req.threshold);
+    }
+
+    let violationProb = 0;
+    if (dist.kind === "normal") {
+      if (dist.stdDev === 0) {
+        if (req.op === ">") violationProb = dist.mean > req.threshold ? 1.0 : 0.0;
+        else if (req.op === ">=") violationProb = dist.mean >= req.threshold ? 1.0 : 0.0;
+        else if (req.op === "<") violationProb = dist.mean < req.threshold ? 1.0 : 0.0;
+        else violationProb = dist.mean <= req.threshold ? 1.0 : 0.0;
+      } else if (req.op === ">" || req.op === ">=") {
+        violationProb = 1.0 - normalCdf(req.threshold, dist.mean, dist.stdDev);
+      } else {
+        violationProb = normalCdf(req.threshold, dist.mean, dist.stdDev);
+      }
+    } else if (dist.kind === "uniform") {
+      if (dist.min === dist.max) {
+        if (req.op === ">") violationProb = dist.min > req.threshold ? 1.0 : 0.0;
+        else if (req.op === ">=") violationProb = dist.min >= req.threshold ? 1.0 : 0.0;
+        else if (req.op === "<") violationProb = dist.min < req.threshold ? 1.0 : 0.0;
+        else violationProb = dist.min <= req.threshold ? 1.0 : 0.0;
+      } else if (req.op === ">" || req.op === ">=") {
+        if (req.threshold <= dist.min) violationProb = 1.0;
+        else if (req.threshold >= dist.max) violationProb = 0.0;
+        else violationProb = (dist.max - req.threshold) / (dist.max - dist.min);
+      } else {
+        if (req.threshold <= dist.min) violationProb = 0.0;
+        else if (req.threshold >= dist.max) violationProb = 1.0;
+        else violationProb = (req.threshold - dist.min) / (dist.max - dist.min);
+      }
+    }
+    return [violationProb, violationProb];
   }
 
   public propagateEqualities(): SharedEquality[] {

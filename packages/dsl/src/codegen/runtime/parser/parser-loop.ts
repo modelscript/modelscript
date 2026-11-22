@@ -14,7 +14,7 @@
  */
 
 import {
-    initGSS,
+    initGSS, resetGSSProbe,
     ParseHead, GssEdge, t_activeHeads, t_nextHeads, activeHeadsCount, nextHeadsCount, pushActiveHead, pushNextHead, swapActiveAndNextHeads, allocParseHead, t_extractedHeadsBuffer,
     t_pausedHeads, pausedHeadsCount, resetPausedHeads,
     globalCursorDepth, cursorNodeStack, cursorContentStartStack, globalCursorGotoNextSibling, globalCursorGotoParent, globalCursorGotoFirstChild,
@@ -40,7 +40,7 @@ import {
 import {
     TOKEN_EOF, TOKEN_UNKNOWN, NODE_TYPE_ERROR, ACTION_SHIFT, ACTION_REDUCE, ACTION_ACCEPT,
     action_offsets, action_data, action_entry_offsets, action_entry_data, goto_offsets, goto_data, mrd_data, token_insert_costs,
-    token_bracket_deltas, isOpenBracketChar, isCloseBracketChar,
+    token_bracket_deltas, isOpenBracketChar, isCloseBracketChar, updateBalanceHash, token_is_word,
     prod_lengths, prod_right_offsets, prod_right_symbols, prod_lhs, prod_is_invisible, prod_is_list, prod_dynamic_prec, prod_aliases, alias_data,
     type_fields, type_field_data, type_is_list,
     MAX_ERRORS, MAX_PARALLEL_HEADS, INFINITE_COST, MAX_CHILD_NODES, MIN_LOOP_LIMIT, ARENA_BUFFER_SIZE,
@@ -60,6 +60,8 @@ import {
     globalSearchIterations,
     tempActions, initGlobalCursor, errorCount,
     MAX_LR_STACK_DEPTH, FieldCursor, MAX_TERMINAL_ID, START_SYMBOL_ID, isReachableZeroDist, lookupGoto,
+    action_disp_base, action_disp_check, action_disp_val,
+    goto_disp_base, goto_disp_check, goto_disp_val,
     configEnableBranchA1, configEnableBranchB, configEnableBranchC, configEnableIslandMode, configEnableMultiFile
 } from "./engine";
 import { globalAstRoot, setLastParsedAstRoot } from "./lsp";
@@ -70,7 +72,7 @@ export let diag_count_append: u32 = 0;
 export let diag_count_shift: u32 = 0;
 
 
-import { recoverStackSummary, recoverSkipToken, recoverMissingToken, findShiftTarget, tryLocalAStarRepair, resetRecoveryLookaheadCache } from "./recovery";
+import { recoverStackSummary, recoverSkipToken, recoverMissingToken, findShiftTarget, tryLocalAStarRepair, resetRecoveryLookaheadCache, g_missingConfirmedTwoTokens } from "./recovery";
 import { initQueryArena, resetQueryArena, clearDiagnostics } from "../graph";
 
 const ACTION_CACHE_SIZE: u32 = 512;
@@ -180,6 +182,22 @@ function computeActionEntry(state: i32, token: i32): i32 {
  * Falls back to default entry (`sym == 0`) if exact match is not found.
  */
 export function findActionEntry(state: i32, token: i32): i32 {
+  if (changetype<usize>(action_disp_base) != 0 && state >= 0 && state < action_disp_base.length) {
+    let base = action_disp_base[state];
+    if (base < 0) return -1;
+    let eofSlot = MAX_TERMINAL_ID + 1;
+    let sym = token == TOKEN_EOF ? eofSlot : token;
+    if (sym >= 0 && sym <= eofSlot) {
+      let slot = base + sym;
+      if (slot >= 0 && slot < action_disp_check.length && action_disp_check[slot] == state) {
+        return action_disp_val[slot];
+      }
+      if (sym != 0 && base < action_disp_check.length && action_disp_check[base] == state) {
+        return action_disp_val[base];
+      }
+      return -1;
+    }
+  }
   if (changetype<usize>(t_actionCacheState) == 0 || t_actionCacheTable != changetype<usize>(action_data)) {
     initActionCache();
   }
@@ -460,14 +478,61 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
 
 
   let consecutiveReductions: u32 = 0;
+  let dispBasePtr: usize = changetype<usize>(action_disp_base);
+  let dispCheckPtr: usize = changetype<usize>(action_disp_check);
+  let dispValPtr: usize = changetype<usize>(action_disp_val);
+  let dispBaseLen: i32 = dispBasePtr != 0 ? action_disp_base.length : 0;
+  let dispCheckLen: i32 = dispCheckPtr != 0 ? action_disp_check.length : 0;
+  let actDataPtr: usize = changetype<usize>(action_data);
+  let gDispBasePtr: usize = changetype<usize>(goto_disp_base);
+  let gDispCheckPtr: usize = changetype<usize>(goto_disp_check);
+  let gDispValPtr: usize = changetype<usize>(goto_disp_val);
+  let gDispBaseLen: i32 = gDispBasePtr != 0 ? goto_disp_base.length : 0;
+  let gDispCheckLen: i32 = gDispCheckPtr != 0 ? goto_disp_check.length : 0;
+  let eofSlot: i32 = MAX_TERMINAL_ID + 1;
+  let hasEdit: bool = g_editNewEnd > 0 || g_editOldEnd > 0 || t_editRangesCount > 0;
+
   while (currentParserMode == MODE_LR) {
     let currentState = t_lrStateStack[(lrStackDepth - 1)] as i32;
-    let lrActCount = lookupActions(currentState, token);
-    let isPendingReduce = (lrActCount == 1 && tempActions[0] == (ACTION_REDUCE as u32));
+
+    // Single direct O(1) action lookup per LR step (eliminates duplicate lookupActions + tempActions copy).
+    let actionCount: i32 = 0;
+    let type: u32 = 0;
+    let target: i32 = 0;
+    if (dispBasePtr != 0 && currentState >= 0 && currentState < dispBaseLen) {
+      let base = load<i32>(dispBasePtr + ((currentState as usize) << 2));
+      if (base >= 0) {
+        let sym = token == TOKEN_EOF ? eofSlot : token;
+        let matchIdx: i32 = -1;
+        if (sym >= 0 && sym <= eofSlot) {
+          let slot = base + sym;
+          if (slot < dispCheckLen && load<i32>(dispCheckPtr + ((slot as usize) << 2)) == currentState) {
+            matchIdx = load<i32>(dispValPtr + ((slot as usize) << 2));
+          } else if (sym != 0 && base < dispCheckLen && load<i32>(dispCheckPtr + ((base as usize) << 2)) == currentState) {
+            matchIdx = load<i32>(dispValPtr + ((base as usize) << 2));
+          }
+        }
+        if (matchIdx != -1) {
+          actionCount = load<i32>(actDataPtr + (((matchIdx + 1) as usize) << 2));
+          if (actionCount == 1) {
+            type = load<i32>(actDataPtr + (((matchIdx + 2) as usize) << 2)) as u32;
+            target = load<i32>(actDataPtr + (((matchIdx + 3) as usize) << 2));
+          }
+        }
+      }
+    } else {
+      actionCount = lookupActions(currentState, token);
+      if (actionCount == 1) {
+        type = tempActions[0];
+        target = tempActions[1] as i32;
+      }
+    }
+
+    let isPendingReduce = (actionCount == 1 && type == (ACTION_REDUCE as u32));
     // Stack index of a speculatively pushed empty list (step 0 below), or -1.
     let speculativeEmptyIdx: i32 = -1;
 
-    if (!isPendingReduce && pos < inputLength && token != TOKEN_EOF && globalCursorDepth >= 0 && (g_editNewEnd > 0 || g_editOldEnd > 0 || t_editRangesCount > 0)) {
+    if (!isPendingReduce && hasEdit && pos < inputLength && token != TOKEN_EOF && globalCursorDepth >= 0) {
       let oldPos = mapNewPosToOldPos(pos);
       let oldSrcLexPos = mapNewPosToOldPos(srcLexPos);
 
@@ -756,12 +821,13 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
     if (speculativeEmptyIdx >= 0 && lrStackDepth == speculativeEmptyIdx + 1) {
       lrStackDepth--;
       currentState = t_lrStateStack[(lrStackDepth - 1)] as i32;
+      actionCount = lookupActions(currentState, token);
+      if (actionCount == 1) {
+        type = tempActions[0];
+        target = tempActions[1] as i32;
+      }
     }
 
-    let actionCount = lookupActions(currentState, token);
-
-    let type: u32 = 0;
-    let target: i32 = 0;
     if (actionCount == 0 || actionCount > 1) {
       let defaultReduce = -1;
       let hasConflictingReduce = false;
@@ -797,16 +863,12 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
       } else {
         debugLog(9301, currentState as u32, token as u32, actionCount as u32);
         debugLog(9302, lrStackDepth as u32, pos, srcLexPos);
-        if (startToken == -1) {
-          transitionToGlr(pos, pendingPadding, currentScannerState);
-        } else {
-          currentParserMode = MODE_GLR;
-        }
+        transitionToGlr(pos, pendingPadding, currentScannerState);
         return 0;
       }
 
 
-    } else {
+    } else if (actionCount != 1) {
       type = tempActions[0];
       target = tempActions[1] as i32;
     }
@@ -814,23 +876,22 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
     if (type == ACTION_SHIFT) {
       consecutiveReductions = 0;
       let paddingLength = (srcLexPos > pos ? srcLexPos - pos : 0) + pendingPadding;
-      let nextBalance: i32 = (lrStackDepth > 0 ? t_lrBalanceStack[lrStackDepth - 1] : 0) as i32;
-      let delta: i32 = 0;
-      if (token >= 0 && token <= MAX_TERMINAL_ID && changetype<usize>(token_bracket_deltas) != 0) {
-        delta = token_bracket_deltas[token];
-      }
-      if (delta != 0) {
-        nextBalance += delta;
+      let prevBal: u32 = lrStackDepth > 0 ? t_lrBalanceStack[lrStackDepth - 1] : 0;
+      let curBalance: u32 = prevBal;
+      if (token >= 0 && token <= MAX_TERMINAL_ID && changetype<usize>(token_bracket_deltas) != 0 && token_bracket_deltas[token] != 0) {
+        curBalance = updateBalanceHash(prevBal, token);
       } else {
         let charLen = peekCharLen(lexPos);
         if (lexLen == charLen) {
           let c = peekChar(lexPos);
-          if (isOpenBracketChar(c)) nextBalance++;
-          else if (isCloseBracketChar(c)) nextBalance--;
+          let depth = prevBal & 0xff;
+          if (isOpenBracketChar(c)) {
+            curBalance = (prevBal & 0xffffff00) | (depth < 255 ? depth + 1 : 255);
+          } else if (isCloseBracketChar(c) && depth > 0) {
+            curBalance = ((prevBal >>> 10) << 8) | (depth - 1);
+          }
         }
       }
-      if (nextBalance < 0) nextBalance = 0;
-      let curBalance: u32 = nextBalance as u32;
 
       let leaf = allocNode(token as u16, paddingLength, lexLen, curBalance & 0xff, false, currentState as u32);
 
@@ -869,11 +930,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
 
     } else if (type == ACTION_REDUCE) {
       if (++consecutiveReductions > 5000) {
-        if (startToken == -1) {
-          transitionToGlr(pos, pendingPadding, currentScannerState);
-        } else {
-          currentParserMode = MODE_GLR;
-        }
+        transitionToGlr(pos, pendingPadding, currentScannerState);
         return 0;
       }
       let reduceProd = target;
@@ -881,15 +938,22 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
       let lhsSym = prod_lhs[reduceProd];
       let childStartIdx = lrStackDepth - popCount;
       let prevState = t_lrStateStack[(childStartIdx - 1)] as i32;
-      let nextState = lookupGoto(prevState, lhsSym);
+      let nextState: i32 = -1;
+      if (gDispBasePtr != 0 && prevState >= 0 && prevState < gDispBaseLen) {
+        let gBase = load<i32>(gDispBasePtr + ((prevState as usize) << 2));
+        if (gBase >= 0) {
+          let gSlot = gBase + (lhsSym as i32);
+          if (gSlot >= 0 && gSlot < gDispCheckLen && load<i32>(gDispCheckPtr + ((gSlot as usize) << 2)) == prevState) {
+            nextState = load<i32>(gDispValPtr + ((gSlot as usize) << 2));
+          }
+        }
+      } else {
+        nextState = lookupGoto(prevState, lhsSym);
+      }
 
       if (nextState == -1) {
         debugLog(9300, reduceProd as u32, lhsSym as u32, prevState as u32);
-        if (startToken == -1) {
-          transitionToGlr(pos, pendingPadding, currentScannerState);
-        } else {
-          currentParserMode = MODE_GLR;
-        }
+        transitionToGlr(pos, pendingPadding, currentScannerState);
         return 0;
       }
 
@@ -2420,11 +2484,13 @@ function appendRec(node: u32, leaf: u32, listSym: u16, envHash: u32, isBoundary:
       setNodePadding(owned, getNodePadding(owned) + getNodePadding(leaf));
       setNodePadding(leaf, 0);
       setFirstChild(owned, leaf);
+      setNextSibling(leaf, 0);
+      setNodeByteLength(owned, getNodeByteLength(leaf));
     } else {
       setNextSibling(lastOwned, leaf);
+      setNextSibling(leaf, 0);
+      setNodeByteLength(owned, getNodeByteLength(owned) + getNodePadding(leaf) + getNodeByteLength(leaf));
     }
-    setNextSibling(leaf, 0);
-    fixNodeLength(owned);
     return owned;
   }
 
@@ -2666,23 +2732,22 @@ export { configEnableIslandMode, configEnableIslandMode as g_configIslandMode };
  * @param cameFromVirtualQueue True if the token was pulled from the virtual queue.
  */
 function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, isVirtual: boolean, cameFromVirtualQueue: boolean): void {
-  let nextBalance: i32 = head.balanceHash as i32;
-  let delta: i32 = 0;
-  if (token >= 0 && token <= MAX_TERMINAL_ID && changetype<usize>(token_bracket_deltas) != 0) {
-    delta = token_bracket_deltas[token];
-  }
-  if (delta != 0) {
-    nextBalance += delta;
+  let prevBal: u32 = head.balanceHash;
+  let newBalance: u32 = prevBal;
+  if (token >= 0 && token <= MAX_TERMINAL_ID && changetype<usize>(token_bracket_deltas) != 0 && token_bracket_deltas[token] != 0) {
+    newBalance = updateBalanceHash(prevBal, token);
   } else {
     let charLen = peekCharLen(lexPos);
     if (lexLen == charLen) {
       let c = peekChar(lexPos);
-      if (isOpenBracketChar(c)) nextBalance++;
-      else if (isCloseBracketChar(c)) nextBalance--;
+      let depth = prevBal & 0xff;
+      if (isOpenBracketChar(c)) {
+        newBalance = (prevBal & 0xffffff00) | (depth < 255 ? depth + 1 : 255);
+      } else if (isCloseBracketChar(c) && depth > 0) {
+        newBalance = ((prevBal >>> 10) << 8) | (depth - 1);
+      }
     }
   }
-  if (nextBalance < 0) nextBalance = 0;
-  let newBalance: u32 = nextBalance as u32;
 
   let paddingLength: u32 = 0;
   let leafLen: u32 = 0;
@@ -3800,6 +3865,94 @@ function recoverHeadHypotheses(head: ParseHead, tok: i32, pos: u32): void {
 export function advanceGLR(): void {
   let lastCursorAdvancePos: u32 = 0xffffffff;
   while (activeHeadsCount > 0) {
+    // Safe, non-speculative GLR -> LR re-entry:
+    // When GLR has collapsed to a single clean, stabilized, linear ParseHead (no forks,
+    // no paused heads, no pending acceptance, >= 4 clean shifts since recovery), hand
+    // the exact linear stack back to `parseLR` and reclaim 100% of Gen0 memory.
+    if (pausedHeadsCount == 0 && acceptedNode == 0) {
+      let sole: ParseHead | null = null;
+      let liveHeads: u32 = 0;
+      for (let li: u32 = 0; li < activeHeadsCount; li++) {
+        let hCand = changetype<ParseHead>(t_activeHeads[li]);
+        if (!hCand.isDead) {
+          sole = hCand;
+          if (++liveHeads > 1) break;
+        }
+      }
+      if (
+        liveHeads == 1 &&
+        sole != null &&
+        !sole.inErrorState &&
+        !sole.isPaused &&
+        sole.errorNode == 0 &&
+        sole.consecutiveInsertions == 0 &&
+        sole.successfulShifts >= 2 &&
+        sole.pos < inputLength
+      ) {
+        let depth: i32 = 0;
+        let linear = true;
+        let curr: ParseHead | null = sole;
+        while (curr != null) {
+          if ((sole.errorCost == 0 && curr.firstEdge != 0) || curr.inErrorState || curr.errorNode != 0 || depth >= 2048) {
+            linear = false;
+            break;
+          }
+          if (curr.prev == null) {
+            if (curr.state != 0 || curr.astNode != 0) linear = false;
+          }
+          depth++;
+          curr = curr.prev;
+        }
+        if (linear && depth > 0) {
+          if (sole.errorTail != 0) {
+            commitDiagnostics(sole.errorTail);
+            sole.errorTail = 0;
+          }
+          let resumePos = sole.pos;
+          let resumePad = sole.pendingPadding;
+          let resumeScanner = sole.scannerState;
+
+          // Materialize the linear spine bottom-up into the LR stacks before resetting Gen0.
+          let writeIdx = depth - 1;
+          curr = sole;
+          while (curr != null && writeIdx >= 0) {
+            t_lrStateStack[writeIdx] = curr.state as u32;
+            t_lrNodeStack[writeIdx] = curr.astNode;
+            t_lrScannerStack[writeIdx] = curr.scannerState;
+            t_lrBalanceStack[writeIdx] = curr.balanceHash;
+            writeIdx--;
+            curr = curr.prev;
+          }
+          lrStackDepth = depth;
+
+          // Clear all Gen0 references and reclaim 100% of Gen0 linear memory.
+          setBestDyingHead(0);
+          furthestDyingPos = 0;
+          activeHeadsCount = 0;
+          nextHeadsCount = 0;
+          pausedHeadsCount = 0;
+          resetGSSProbe();
+          resetFrontierLexMemo();
+          resetGeneration(0);
+
+          currentScannerState = resumeScanner;
+          currentParserMode = MODE_LR;
+          let resumeTok = skipExtraTokens(invokeLexer(resumePos), resumePos, 1);
+          let nextPad = resumePad + g_skipPad;
+          let nextPos = g_skipPos;
+          let lrAccepted = parseLR(nextPos, resumeTok, nextPad);
+          if (currentParserMode == MODE_LR && lrAccepted != 0) {
+            acceptedNode = lrAccepted;
+            setBestAcceptingHead(0);
+            return;
+          }
+          // parseLR hit another error/conflict and called transitionToGlr -> seamlessly resume GLR.
+          lastCursorAdvancePos = 0xffffffff;
+          continue;
+        }
+      }
+    }
+
     if (activeHeadsCount > g_counter_peak_active_heads) g_counter_peak_active_heads = activeHeadsCount;
     if (nextHeadsCount > g_counter_peak_active_heads) g_counter_peak_active_heads = nextHeadsCount;
     if ((++globalLoopIterations as u32) > (inputLength > 1000 ? inputLength : 1000) * LOOP_MULTIPLIER_LIMIT) {
@@ -4291,6 +4444,7 @@ export function advanceGLR(): void {
  * @returns Pointer to the new AST root node.
  */
 export let g_isMultiEdit: boolean = false;
+let g_lastGcChunkCount: u32 = 0;
 
 /**
  * Multi-Range Incremental Parser Entry Point.
@@ -4371,6 +4525,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       if (!configEnableMultiFile) {
         resetGeneration(1);
         S().freeNodeHead = 0;
+        g_lastGcChunkCount = 0;
       }
       setParseWatermark(false);
     } else {
@@ -4398,6 +4553,10 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     currentParserMode = MODE_LR;
     let accepted = parseLR();
     if (currentParserMode == MODE_LR) {
+      if (oldTree != 0 && !configEnableMultiFile && S().activeRootCount == 0 && S().gen1_active_chunk >= g_lastGcChunkCount + 16) {
+        clearAstMarks(accepted);
+        g_lastGcChunkCount = S().gen1_active_chunk;
+      }
       globalAstRoot = accepted;
       setLastParsedAstRoot(accepted);
       debugLog(9100, diag_count_reduce, diag_count_clone, diag_count_append);
@@ -4447,6 +4606,10 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
           fixNodeLength(errSibling);
           fixNodeLength(finalTree);
         }
+      }
+      if (oldTree != 0 && !configEnableMultiFile && S().activeRootCount == 0 && S().gen1_active_chunk >= g_lastGcChunkCount + 16) {
+        clearAstMarks(finalTree);
+        g_lastGcChunkCount = S().gen1_active_chunk;
       }
       globalAstRoot = finalTree;
       setLastParsedAstRoot(finalTree);

@@ -5,5 +5,13 @@
     "outDir": "./dist"
   },
   "include": ["language.ts", "src/**/*.ts", "src-gen/**/*.ts"],
-  "exclude": ["node_modules", "dist", "build", "tests"]
+  "exclude": ["node_modules", "dist", "build", "tests"],
+  "references": [
+    {
+      "path": "../../packages/dsl"
+    },
+    {
+      "path": "../../packages/runtime"
+    }
+  ]
 }

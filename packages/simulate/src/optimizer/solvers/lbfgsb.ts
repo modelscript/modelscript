@@ -153,32 +153,40 @@ export function lbfgsbSolve(
         const kn = k * n;
         const f64Count = n + kn + kn + k + n + (2 * n + k);
         const totalBytes = f64Count * 8 + n + 16;
-        const ptr = wasm.__new(totalBytes, 0);
-        if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+        const chunkWasm = wasm as typeof wasm & {
+          atomicChunkAlloc?: (size: number) => number;
+          atomicChunkFree?: (ptr: number) => void;
+        };
+        const useChunk = typeof chunkWasm.atomicChunkAlloc === "function";
+        const ptr = useChunk ? chunkWasm.atomicChunkAlloc!(totalBytes) >>> 0 : wasm.__new(totalBytes, 0);
+        if (!useChunk && typeof wasm.__pin === "function") wasm.__pin(ptr);
+        try {
+          const gradPtr = (ptr + 7) & ~7;
+          const sFlatPtr = gradPtr + n * 8;
+          const yFlatPtr = sFlatPtr + kn * 8;
+          const rhoPtr = yFlatPtr + kn * 8;
+          const dOutPtr = rhoPtr + k * 8;
+          const scratchPtr = dOutPtr + n * 8;
+          const activePtr = scratchPtr + (2 * n + k) * 8;
 
-        const gradPtr = (ptr + 7) & ~7;
-        const sFlatPtr = gradPtr + n * 8;
-        const yFlatPtr = sFlatPtr + kn * 8;
-        const rhoPtr = yFlatPtr + kn * 8;
-        const dOutPtr = rhoPtr + k * 8;
-        const scratchPtr = dOutPtr + n * 8;
-        const activePtr = scratchPtr + (2 * n + k) * 8;
+          const buf = wasm.memory.buffer;
+          new Float64Array(buf, gradPtr, n).set(grad);
+          const sView = new Float64Array(buf, sFlatPtr, kn);
+          const yView = new Float64Array(buf, yFlatPtr, kn);
+          const rhoView = new Float64Array(buf, rhoPtr, k);
+          for (let i = 0; i < k; i++) {
+            sView.set(sHistory[i]!, i * n);
+            yView.set(yHistory[i]!, i * n);
+            rhoView[i] = rhoHistory[i]!;
+          }
+          new Uint8Array(buf, activePtr, n).set(active);
 
-        const buf = wasm.memory.buffer;
-        new Float64Array(buf, gradPtr, n).set(grad);
-        const sView = new Float64Array(buf, sFlatPtr, kn);
-        const yView = new Float64Array(buf, yFlatPtr, kn);
-        const rhoView = new Float64Array(buf, rhoPtr, k);
-        for (let i = 0; i < k; i++) {
-          sView.set(sHistory[i]!, i * n);
-          yView.set(yHistory[i]!, i * n);
-          rhoView[i] = rhoHistory[i]!;
+          wasm.lbfgsTwoLoopWasm(n, k, gradPtr, activePtr, sFlatPtr, yFlatPtr, rhoPtr, dOutPtr, scratchPtr);
+          d.set(new Float64Array(wasm.memory.buffer, dOutPtr, n));
+        } finally {
+          if (useChunk) chunkWasm.atomicChunkFree?.(ptr);
+          else if (typeof wasm.__unpin === "function") wasm.__unpin(ptr);
         }
-        new Uint8Array(buf, activePtr, n).set(active);
-
-        wasm.lbfgsTwoLoopWasm(n, k, gradPtr, activePtr, sFlatPtr, yFlatPtr, rhoPtr, dOutPtr, scratchPtr);
-        d.set(new Float64Array(wasm.memory.buffer, dOutPtr, n));
-        if (typeof wasm.__unpin === "function") wasm.__unpin(ptr);
         usedWasmTwoLoop = true;
       }
     }

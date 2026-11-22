@@ -70,6 +70,54 @@ export interface InitBLTResult {
   matchedEquationCount?: number;
 }
 
+export interface InitSystemDiagnostic {
+  status: "balanced" | "under-determined" | "over-determined";
+  numUnknowns: number;
+  numEquations: number;
+  /** Positive = missing initial equations (DOF); negative = redundant/conflicting initial equations. */
+  degreesOfFreedom: number;
+  /** Unknowns not solved by any explicit or implicit initialization block. */
+  unmatchedUnknowns: string[];
+  message: string;
+}
+
+/**
+ * Produces structured under/over-determined structural diagnostics for a DAE initialization system
+ * (`ModelingToolkit.jl` `InitializationProblem` structural analysis parity).
+ */
+export function diagnoseInitializationSystem(initBlt: InitBLTResult): InitSystemDiagnostic {
+  const solved = new Set<string>();
+  let blockEqCount = 0;
+  for (const blk of initBlt.blocks) {
+    if (blk.type === "explicit") {
+      solved.add(blk.target);
+      blockEqCount += 1;
+    } else {
+      for (const u of blk.unknowns) solved.add(u);
+      blockEqCount += blk.equations.length;
+    }
+  }
+  const numUnknowns = initBlt.unknowns.size;
+  const numEquations = initBlt.equationCount ?? blockEqCount;
+  const degreesOfFreedom = numUnknowns - numEquations;
+  const unmatchedUnknowns: string[] = [];
+  for (const u of initBlt.unknowns) {
+    if (!solved.has(u)) unmatchedUnknowns.push(u);
+  }
+
+  let status: InitSystemDiagnostic["status"] = "balanced";
+  let message = `Initialization system is balanced (${numEquations} equations, ${numUnknowns} unknowns).`;
+  if (degreesOfFreedom > 0 || unmatchedUnknowns.length > 0) {
+    status = "under-determined";
+    message = `Initialization system is under-determined: ${numUnknowns} unknowns vs ${numEquations} equations (${unmatchedUnknowns.length} unmatched: ${unmatchedUnknowns.slice(0, 5).join(", ")}).`;
+  } else if (degreesOfFreedom < 0) {
+    status = "over-determined";
+    message = `Initialization system is over-determined: ${numEquations} equations for ${numUnknowns} unknowns (${-degreesOfFreedom} redundant/conflicting constraint(s)).`;
+  }
+
+  return { status, numUnknowns, numEquations, degreesOfFreedom, unmatchedUnknowns, message };
+}
+
 /** Result of initial equation solving natively on the arena. */
 export interface ArenaInitSolverResult {
   valuesByStringId: Float64Array;

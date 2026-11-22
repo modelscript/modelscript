@@ -644,14 +644,7 @@ export type PropertyPathOp = "direct" | "plus" | "star" | "inverse" | "inverse-p
 /** A simplified SPARQL-DL or Property Path query. */
 export interface DLQuery {
   readonly type:
-    | "instances"
-    | "subclasses"
-    | "superclasses"
-    | "equivalents"
-    | "disjoint"
-    | "property-values"
-    | "reachable"
-    | "path";
+    "instances" | "subclasses" | "superclasses" | "equivalents" | "disjoint" | "property-values" | "reachable" | "path";
   readonly iri: string;
   readonly fromIri?: string | undefined;
   readonly pathOp?: PropertyPathOp | undefined;
@@ -1210,12 +1203,8 @@ export interface WasmOntologyInstance {
   ): number;
   ontology_saturateELRules?(): number;
   ontology_retractAxiom?(axiomId: number): number;
-  ontology_applyDelta?(
-    retractionsPtr: number,
-    retractionsCount: number,
-    assertionsPtr: number,
-    assertionsCount: number,
-  ): number;
+  ontology_applyDelta?(addCount: number, addPtr: number, retractCount: number, retractPtr: number): number;
+  ontology_evalBgpLeapfrog?(patternCount: number, patternsPtr: number, varCount: number, maxResults: number): number;
   ontology_saturateFunctional?(): number;
   ontology_quickXplain?(): number;
   ontology_allMus?(maxCores?: number): number;
@@ -1415,10 +1404,16 @@ export class WasmOntologyReasoner implements IOWLReasoner {
 
   /** Whether the ontology has been classified since the last axiom mutation. */
   private _classified = false;
+  /** Monotonically increasing revision counter incremented on every ontology mutation. */
+  private _revision = 0;
   /** Lazily compiled covering index for BGP conjunctive queries. */
   private _bgpIndex: BgpCompiledIndex | null = null;
   /** Optional native WebAssembly ontology instance. */
   private _wasmInstance: WasmOntologyInstance | null = null;
+  /** Reverse IRI lookup table for WASM entity IDs synchronized by this reasoner. */
+  private _wasmIriToId = new Map<string, number>();
+  /** Forward IRI lookup table for WASM entity IDs synchronized by this reasoner. */
+  private _wasmIdToIri = new Map<number, string>();
 
   /** Creates a new `WasmOntologyReasoner`, optionally bound to a compiled WASM instance. */
   constructor(wasmInstance?: WasmOntologyInstance | null) {
@@ -1435,6 +1430,11 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     return this._status;
   }
 
+  /** Monotonically increasing revision number of this reasoner state. */
+  get revision(): number {
+    return this._revision;
+  }
+
   /** Total number of axioms currently loaded in the reasoner. */
   get axiomCount(): number {
     if (this._wasmInstance?.ontology_getAxiomCount) {
@@ -1448,6 +1448,63 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     this._status = "ready";
   }
 
+  /** Interns an IRI into the attached WASM `OntologyStore` entity dictionary. */
+  private _internWasmIri(iri: string): number {
+    if (!iri || !this._wasmInstance?.ontology_getOrCreateEntity) return 0;
+    const existing = this._wasmIriToId.get(iri);
+    if (existing !== undefined) return existing;
+    const { lo, hi } = hashIri64(iri);
+    const id = this._wasmInstance.ontology_getOrCreateEntity(lo, hi);
+    this._wasmIriToId.set(iri, id);
+    this._wasmIdToIri.set(id, iri);
+    return id;
+  }
+
+  /** Mirrors a batch delta into the attached WASM `OntologyStore` via `ontology_applyDelta`. */
+  private _syncDeltaToWasm(delta: OWL2AxiomDelta): void {
+    const wasm = this._wasmInstance;
+    if (!wasm?.ontology_applyDelta || !wasm.memory || !wasm.alloc || !wasm.free) return;
+
+    const addRecords: number[] = [];
+    for (const ax of delta.assertions) {
+      const m = axiomToTypeAndIris(ax);
+      if (!m) continue;
+      const sId = m.sIri ? this._internWasmIri(m.sIri) : 0;
+      const pId = m.pIri ? this._internWasmIri(m.pIri) : 0;
+      const oId = m.oIri ? this._internWasmIri(m.oIri) : 0;
+      addRecords.push(m.type & 0xffff, sId, pId, oId, m.flags ?? 0, m.extra ?? 0);
+    }
+
+    const retractRecords: number[] = [];
+    for (const ax of delta.retractions) {
+      const m = axiomToTypeAndIris(ax);
+      if (!m) continue;
+      const sId = m.sIri ? this._internWasmIri(m.sIri) : 0;
+      const pId = m.pIri ? this._internWasmIri(m.pIri) : 0;
+      const oId = m.oIri ? this._internWasmIri(m.oIri) : 0;
+      retractRecords.push(m.type & 0xffff, sId, pId, oId, m.flags ?? 0, m.extra ?? 0);
+    }
+
+    const addCount = addRecords.length / 6;
+    const retractCount = retractRecords.length / 6;
+    if (addCount === 0 && retractCount === 0) return;
+
+    const addPtr = addCount > 0 ? wasm.alloc(addRecords.length * 4) : 0;
+    const retPtr = retractCount > 0 ? wasm.alloc(retractRecords.length * 4) : 0;
+    try {
+      if (addCount > 0 && addPtr !== 0) {
+        new Uint32Array(wasm.memory.buffer, addPtr, addRecords.length).set(addRecords);
+      }
+      if (retractCount > 0 && retPtr !== 0) {
+        new Uint32Array(wasm.memory.buffer, retPtr, retractRecords.length).set(retractRecords);
+      }
+      wasm.ontology_applyDelta(addCount, addPtr, retractCount, retPtr);
+    } finally {
+      if (addPtr !== 0) wasm.free(addPtr);
+      if (retPtr !== 0) wasm.free(retPtr);
+    }
+  }
+
   /** Replaces the current ontology with the given axioms and indexes them. */
   loadOntology(axioms: readonly OWL2Axiom[]): void {
     this._status = "loading";
@@ -1458,24 +1515,407 @@ export class WasmOntologyReasoner implements IOWLReasoner {
       this.indexAxiom(axiom);
     }
 
+    // Mirror into attached WASM store if present
+    if (this._wasmInstance?.ontology_clear && this._wasmInstance.ontology_addAxiom64) {
+      this._wasmInstance.ontology_clear();
+      this._wasmIriToId.clear();
+      this._wasmIdToIri.clear();
+      for (const ax of axioms) {
+        const m = axiomToTypeAndIris(ax);
+        if (!m) continue;
+        const s = m.sIri ? hashIri64(m.sIri) : { lo: 0, hi: 0 };
+        const p = m.pIri ? hashIri64(m.pIri) : { lo: 0, hi: 0 };
+        const o = m.oIri ? hashIri64(m.oIri) : { lo: 0, hi: 0 };
+        this._wasmInstance.ontology_addAxiom64(
+          m.type,
+          0,
+          s.lo,
+          s.hi,
+          p.lo,
+          p.hi,
+          o.lo,
+          o.hi,
+          m.flags ?? 0,
+          m.extra ?? 0,
+        );
+        if (m.sIri) this._internWasmIri(m.sIri);
+        if (m.pIri) this._internWasmIri(m.pIri);
+        if (m.oIri) this._internWasmIri(m.oIri);
+      }
+    }
+
     this._classified = false;
     this._bgpIndex = null;
+    this._revision++;
     this._status = "ready";
+  }
+
+  /** Returns true if the current ontology + delta can be maintained via fast O(Δ) incremental updates. */
+  private _canApplyIncrementally(delta: OWL2AxiomDelta): boolean {
+    if (!this._classified) return false;
+    if (
+      this.swrlRules.length > 0 ||
+      this.functionalObjectProperties.size > 0 ||
+      this.inverseFunctionalObjectProperties.size > 0 ||
+      this.reflexiveProperties.size > 0 ||
+      this.subPropertyChains.length > 0 ||
+      this.objectOneOfMap.size > 0 ||
+      this.sameIndividualGroups.size > 0 ||
+      this.disjointPairs.size > 0 ||
+      this.disjointPropertyPairs.size > 0 ||
+      this.asymmetricProperties.size > 0 ||
+      this.irreflexiveProperties.size > 0 ||
+      this.differentIndividualPairs.size > 0
+    ) {
+      return false;
+    }
+    // Retractions with active sub-property or domain/range rules fall back to full classify for exactness;
+    // additive-only deltas propagate sub-properties and domains/ranges incrementally in O(Δ)!
+    const hasPropRules =
+      this.subObjectPropertyEdges.size > 0 ||
+      this.subDataPropertyEdges.size > 0 ||
+      this.objectPropertyDomains.size > 0 ||
+      this.objectPropertyRanges.size > 0 ||
+      this.dataPropertyDomains.size > 0 ||
+      this.dataPropertyRanges.size > 0;
+    if (delta.retractions.length > 0 && hasPropRules) {
+      return false;
+    }
+    const isSimple = (ax: OWL2Axiom): boolean =>
+      ax.type === "ClassDeclaration" ||
+      ax.type === "SubClassOf" ||
+      ax.type === "ClassAssertion" ||
+      ax.type === "IndividualDeclaration" ||
+      ax.type === "ObjectPropertyDeclaration" ||
+      ax.type === "DataPropertyDeclaration" ||
+      ax.type === "ObjectPropertyAssertion" ||
+      ax.type === "DataPropertyAssertion";
+
+    for (const ax of delta.assertions) {
+      if (!isSimple(ax)) return false;
+    }
+    for (const ax of delta.retractions) {
+      if (!isSimple(ax)) return false;
+    }
+    return true;
+  }
+
+  /** Appends a single fact into the live `_bgpIndex` if already compiled. */
+  private _bgpIndexAddFact(s: string, p: string, o: string): void {
+    const idx = this._bgpIndex;
+    if (!idx) return;
+    const spoKey = `${s}\0${p}\0${o}`;
+    if (idx.exactSet.has(spoKey)) return;
+    idx.exactSet.add(spoKey);
+    idx.allFacts.push({ s, p, o });
+
+    const spKey = `${s}\0${p}`;
+    let spList = idx.bySubjPred.get(spKey);
+    if (!spList) {
+      spList = [];
+      idx.bySubjPred.set(spKey, spList);
+    }
+    spList.push(o);
+
+    const poKey = `${p}\0${o}`;
+    let poList = idx.byPredObj.get(poKey);
+    if (!poList) {
+      poList = [];
+      idx.byPredObj.set(poKey, poList);
+    }
+    poList.push(s);
+
+    const soKey = `${s}\0${o}`;
+    let soList = idx.bySubjObj.get(soKey);
+    if (!soList) {
+      soList = [];
+      idx.bySubjObj.set(soKey, soList);
+    }
+    soList.push(p);
+
+    let pList = idx.byPred.get(p);
+    if (!pList) {
+      pList = [];
+      idx.byPred.set(p, pList);
+    }
+    pList.push({ s, o });
+
+    let sList = idx.bySubj.get(s);
+    if (!sList) {
+      sList = [];
+      idx.bySubj.set(s, sList);
+    }
+    sList.push({ p, o });
+
+    let oList = idx.byObj.get(o);
+    if (!oList) {
+      oList = [];
+      idx.byObj.set(o, oList);
+    }
+    oList.push({ s, p });
   }
 
   /** Incrementally applies a set of axiom retractions and assertions. */
   applyDelta(delta: OWL2AxiomDelta): void {
-    for (const axiom of delta.retractions) {
-      this.removeAxiom(axiom);
+    this._revision++;
+    const canIncremental = this._canApplyIncrementally(delta);
+
+    // Sync to attached WASM store using batched DRed (Phase 1 over-delete + Phase 2 once)
+    this._syncDeltaToWasm(delta);
+
+    if (!canIncremental) {
+      for (const axiom of delta.retractions) {
+        this.removeAxiom(axiom);
+      }
+      for (const axiom of delta.assertions) {
+        this._axioms.push(axiom);
+        this.indexAxiom(axiom);
+      }
+      this._classified = false;
+      this._bgpIndex = null;
+      return;
     }
 
+    // Fast O(Δ) Incremental Maintenance (DRed for retractions + incremental closure for assertions)
+    const affectedClasses = new Set<string>();
+    const affectedIndividuals = new Set<string>();
+
+    // 1. Retractions (local DRed)
+    if (delta.retractions.length > 0) {
+      this._bgpIndex = null; // rebuild lazily on next BGP query
+      for (const axiom of delta.retractions) {
+        if (axiom.type === "SubClassOf") {
+          const subNode = this.classes.get(axiom.subClassIri);
+          affectedClasses.add(axiom.subClassIri);
+          if (subNode?.allSubClasses) {
+            for (const desc of subNode.allSubClasses) affectedClasses.add(desc);
+          }
+        } else if (axiom.type === "ClassAssertion") {
+          affectedIndividuals.add(axiom.individualIri);
+        }
+        this.removeAxiom(axiom);
+      }
+
+      // Phase 1+2 local DRed for affected classes only
+      if (affectedClasses.size > 0) {
+        for (const cls of affectedClasses) {
+          const node = this.classes.get(cls);
+          if (!node) continue;
+          if (node.allSuperClasses) {
+            for (const oldSup of node.allSuperClasses) {
+              this.classes.get(oldSup)?.allSubClasses?.delete(cls);
+            }
+          }
+          node.allSuperClasses = null;
+        }
+        for (const cls of affectedClasses) {
+          const supers = this.computeAllSuperClasses(cls);
+          for (const sup of supers) {
+            const supNode = this.ensureClass(sup);
+            if (!supNode.allSubClasses) supNode.allSubClasses = new Set();
+            supNode.allSubClasses.add(cls);
+          }
+        }
+        // Any individual currently typed with an affected class needs local type re-derivation
+        for (const [ind, types] of this.individualTypes) {
+          for (const cls of affectedClasses) {
+            if (types.has(cls)) {
+              affectedIndividuals.add(ind);
+              break;
+            }
+          }
+        }
+      }
+
+      // Local type re-derivation for affected individuals only
+      if (affectedIndividuals.size > 0) {
+        for (const ind of affectedIndividuals) {
+          const types = this.individualTypes.get(ind);
+          if (types) types.clear();
+        }
+        for (const ax of this._axioms) {
+          if (ax.type === "ClassAssertion" && affectedIndividuals.has(ax.individualIri)) {
+            let types = this.individualTypes.get(ax.individualIri);
+            if (!types) {
+              types = new Set();
+              this.individualTypes.set(ax.individualIri, types);
+            }
+            types.add(ax.classIri);
+            const clsNode = this.classes.get(ax.classIri);
+            if (clsNode?.allSuperClasses) {
+              for (const sup of clsNode.allSuperClasses) types.add(sup);
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Assertions (O(Δ) incremental closure propagation + live _bgpIndex update)
     for (const axiom of delta.assertions) {
       this._axioms.push(axiom);
       this.indexAxiom(axiom);
+
+      if (axiom.type === "ClassDeclaration") {
+        const node = this.ensureClass(axiom.iri);
+        if (!node.allSuperClasses) node.allSuperClasses = new Set();
+        if (!node.allSubClasses) node.allSubClasses = new Set();
+      } else if (axiom.type === "SubClassOf") {
+        const subNode = this.ensureClass(axiom.subClassIri);
+        const supNode = this.ensureClass(axiom.superClassIri);
+        if (!subNode.allSuperClasses) subNode.allSuperClasses = new Set();
+        if (!subNode.allSubClasses) subNode.allSubClasses = new Set();
+        if (!supNode.allSuperClasses) supNode.allSuperClasses = new Set();
+        if (!supNode.allSubClasses) supNode.allSubClasses = new Set();
+
+        const newSupers = new Set<string>([axiom.superClassIri, ...supNode.allSuperClasses]);
+        const subGroup = [axiom.subClassIri, ...subNode.allSubClasses];
+        for (const desc of subGroup) {
+          const dNode = this.ensureClass(desc);
+          if (!dNode.allSuperClasses) dNode.allSuperClasses = new Set();
+          for (const sup of newSupers) {
+            if (sup === desc) continue;
+            if (!dNode.allSuperClasses.has(sup)) {
+              dNode.allSuperClasses.add(sup);
+              const sNode = this.ensureClass(sup);
+              if (!sNode.allSubClasses) sNode.allSubClasses = new Set();
+              sNode.allSubClasses.add(desc);
+            }
+          }
+        }
+        this._bgpIndexAddFact(axiom.subClassIri, "rdfs:subClassOf", axiom.superClassIri);
+
+        // Propagate new superclasses to existing individuals of subGroup
+        const subSet = new Set(subGroup);
+        for (const [ind, types] of this.individualTypes) {
+          let matched = false;
+          for (const d of subSet) {
+            if (types.has(d)) {
+              matched = true;
+              break;
+            }
+          }
+          if (matched) {
+            for (const sup of newSupers) {
+              if (!types.has(sup)) {
+                types.add(sup);
+                this._bgpIndexAddFact(ind, "rdf:type", sup);
+              }
+            }
+          }
+        }
+      } else if (axiom.type === "ClassAssertion") {
+        const types = this.individualTypes.get(axiom.individualIri)!;
+        this._bgpIndexAddFact(axiom.individualIri, "rdf:type", axiom.classIri);
+        const clsNode = this.classes.get(axiom.classIri);
+        if (clsNode?.allSuperClasses) {
+          for (const sup of clsNode.allSuperClasses) {
+            types.add(sup);
+            this._bgpIndexAddFact(axiom.individualIri, "rdf:type", sup);
+          }
+        }
+      } else if (axiom.type === "ObjectPropertyAssertion") {
+        // Incrementally propagate SubObjectPropertyOf closure + ObjectPropertyDomain/Range + superclasses
+        const propQueue = [axiom.propertyIri];
+        const visitedProps = new Set<string>([axiom.propertyIri]);
+        const addTypeAndSupers = (ind: string, cls: string) => {
+          let types = this.individualTypes.get(ind);
+          if (!types) {
+            types = new Set();
+            this.individualTypes.set(ind, types);
+          }
+          if (!types.has(cls)) {
+            types.add(cls);
+            this._bgpIndexAddFact(ind, "rdf:type", cls);
+          }
+          const clsNode = this.classes.get(cls);
+          if (clsNode?.allSuperClasses) {
+            for (const sup of clsNode.allSuperClasses) {
+              if (!types.has(sup)) {
+                types.add(sup);
+                this._bgpIndexAddFact(ind, "rdf:type", sup);
+              }
+            }
+          }
+        };
+
+        while (propQueue.length > 0) {
+          const pIri = propQueue.pop()!;
+          const edges = this.objectPropertyAssertions.get(pIri) ?? [];
+          if (!edges.some((e) => e.subjectIri === axiom.subjectIri && e.objectIri === axiom.objectIri)) {
+            edges.push({ subjectIri: axiom.subjectIri, objectIri: axiom.objectIri });
+            this.objectPropertyAssertions.set(pIri, edges);
+          }
+          this._bgpIndexAddFact(axiom.subjectIri, pIri, axiom.objectIri);
+
+          const doms = this.objectPropertyDomains.get(pIri);
+          if (doms) {
+            for (const d of doms) addTypeAndSupers(axiom.subjectIri, d);
+          }
+          const rngs = this.objectPropertyRanges.get(pIri);
+          if (rngs) {
+            for (const r of rngs) addTypeAndSupers(axiom.objectIri, r);
+          }
+          const supProps = this.subObjectPropertyEdges.get(pIri);
+          if (supProps) {
+            for (const sp of supProps) {
+              if (!visitedProps.has(sp)) {
+                visitedProps.add(sp);
+                propQueue.push(sp);
+              }
+            }
+          }
+        }
+      } else if (axiom.type === "DataPropertyAssertion") {
+        // Incrementally propagate SubDataPropertyOf closure + DataPropertyDomain
+        const propQueue = [axiom.propertyIri];
+        const visitedProps = new Set<string>([axiom.propertyIri]);
+        while (propQueue.length > 0) {
+          const pIri = propQueue.pop()!;
+          const asserts = this.dataPropertyAssertions.get(pIri) ?? [];
+          if (!asserts.some((a) => a.subjectIri === axiom.subjectIri && a.value === axiom.value)) {
+            asserts.push({ subjectIri: axiom.subjectIri, value: axiom.value });
+            this.dataPropertyAssertions.set(pIri, asserts);
+          }
+          this._bgpIndexAddFact(axiom.subjectIri, pIri, axiom.value);
+
+          const doms = this.dataPropertyDomains.get(pIri);
+          if (doms) {
+            let types = this.individualTypes.get(axiom.subjectIri);
+            if (!types) {
+              types = new Set();
+              this.individualTypes.set(axiom.subjectIri, types);
+            }
+            for (const d of doms) {
+              if (!types.has(d)) {
+                types.add(d);
+                this._bgpIndexAddFact(axiom.subjectIri, "rdf:type", d);
+              }
+              const clsNode = this.classes.get(d);
+              if (clsNode?.allSuperClasses) {
+                for (const sup of clsNode.allSuperClasses) {
+                  if (!types.has(sup)) {
+                    types.add(sup);
+                    this._bgpIndexAddFact(axiom.subjectIri, "rdf:type", sup);
+                  }
+                }
+              }
+            }
+          }
+          const supProps = this.subDataPropertyEdges.get(pIri);
+          if (supProps) {
+            for (const sp of supProps) {
+              if (!visitedProps.has(sp)) {
+                visitedProps.add(sp);
+                propQueue.push(sp);
+              }
+            }
+          }
+        }
+      }
     }
 
-    this._classified = false;
-    this._bgpIndex = null;
+    this._classified = true;
+    this._status = "ready";
   }
 
   /**
@@ -2967,6 +3407,177 @@ export class WasmOntologyReasoner implements IOWLReasoner {
       bindings: currentBindings,
       executionTimeMs: performance.now() - start,
     };
+  }
+
+  /**
+   * O(1) cardinality estimate for a triple pattern `(subject, predicate, object)` using
+   * the reasoner's 6-way covering index. Used by the cost-based SPARQL join planner.
+   */
+  estimateTripleCardinality(subject?: string | null, predicate?: string | null, object?: string | null): number {
+    if (!this._classified) this.classify();
+    const idx = this._ensureBgpIndex();
+    const RDF_TYPE_IRI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+    const RDFS_SUBCLASS_IRI = "http://www.w3.org/2000/01/rdf-schema#subClassOf";
+    const pKey =
+      predicate === RDF_TYPE_IRI
+        ? "rdf:type"
+        : predicate === RDFS_SUBCLASS_IRI
+          ? "rdfs:subClassOf"
+          : (predicate ?? null);
+
+    if (subject && pKey && object) {
+      return idx.exactSet.has(`${subject}\0${pKey}\0${object}`) ? 1 : 0;
+    }
+    if (subject && pKey) return idx.bySubjPred.get(`${subject}\0${pKey}`)?.length ?? 0;
+    if (pKey && object) return idx.byPredObj.get(`${pKey}\0${object}`)?.length ?? 0;
+    if (subject && object) return idx.bySubjObj.get(`${subject}\0${object}`)?.length ?? 0;
+    if (pKey) return idx.byPred.get(pKey)?.length ?? 0;
+    if (subject) return idx.bySubj.get(subject)?.length ?? 0;
+    if (object) return idx.byObj.get(object)?.length ?? 0;
+    return idx.allFacts.length;
+  }
+
+  /**
+   * Live, zero-snapshot triple matcher over the reasoner's classified covering index + taxonomy.
+   * Automatically runs `classify()` if dirty and reflects incremental `applyDelta()` mutations immediately.
+   */
+  *matchTriplesLive(
+    subject?: string | null,
+    predicate?: string | null,
+    object?: string | null,
+  ): Iterable<{ s: string; p: string; o: string }> {
+    if (!this._classified) this.classify();
+    const idx = this._ensureBgpIndex();
+
+    const RDF_TYPE_IRI = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+    const RDFS_SUBCLASS_IRI = "http://www.w3.org/2000/01/rdf-schema#subClassOf";
+    const OWL_CLASS_IRI = "http://www.w3.org/2002/07/owl#Class";
+
+    const normPredOut = (p: string): string =>
+      p === "rdf:type" ? RDF_TYPE_IRI : p === "rdfs:subClassOf" ? RDFS_SUBCLASS_IRI : p;
+
+    const pKey =
+      predicate === RDF_TYPE_IRI
+        ? "rdf:type"
+        : predicate === RDFS_SUBCLASS_IRI
+          ? "rdfs:subClassOf"
+          : (predicate ?? null);
+
+    const emitted = new Set<string>();
+    const emitIfNew = (s: string, p: string, o: string): { s: string; p: string; o: string } | null => {
+      const k = `${s}\0${p}\0${o}`;
+      if (emitted.has(k)) return null;
+      emitted.add(k);
+      return { s, p, o };
+    };
+
+    // 1. Direct O(1)/O(K) lookup in the 6-way covering index
+    if (subject && pKey && object) {
+      if (idx.exactSet.has(`${subject}\0${pKey}\0${object}`)) {
+        const t = emitIfNew(subject, normPredOut(pKey), object);
+        if (t) yield t;
+      }
+    } else if (subject && pKey) {
+      const objs = idx.bySubjPred.get(`${subject}\0${pKey}`);
+      if (objs) {
+        const outP = normPredOut(pKey);
+        for (let i = 0; i < objs.length; i++) {
+          const t = emitIfNew(subject, outP, objs[i]!);
+          if (t) yield t;
+        }
+      }
+    } else if (pKey && object) {
+      const subjs = idx.byPredObj.get(`${pKey}\0${object}`);
+      if (subjs) {
+        const outP = normPredOut(pKey);
+        for (let i = 0; i < subjs.length; i++) {
+          const t = emitIfNew(subjs[i]!, outP, object);
+          if (t) yield t;
+        }
+      }
+    } else if (subject && object) {
+      const preds = idx.bySubjObj.get(`${subject}\0${object}`);
+      if (preds) {
+        for (let i = 0; i < preds.length; i++) {
+          const t = emitIfNew(subject, normPredOut(preds[i]!), object);
+          if (t) yield t;
+        }
+      }
+    } else if (pKey) {
+      const edges = idx.byPred.get(pKey);
+      if (edges) {
+        const outP = normPredOut(pKey);
+        for (let i = 0; i < edges.length; i++) {
+          const e = edges[i]!;
+          const t = emitIfNew(e.s, outP, e.o);
+          if (t) yield t;
+        }
+      }
+    } else if (subject) {
+      const edges = idx.bySubj.get(subject);
+      if (edges) {
+        for (let i = 0; i < edges.length; i++) {
+          const e = edges[i]!;
+          const t = emitIfNew(subject, normPredOut(e.p), e.o);
+          if (t) yield t;
+        }
+      }
+    } else if (object) {
+      const edges = idx.byObj.get(object);
+      if (edges) {
+        for (let i = 0; i < edges.length; i++) {
+          const e = edges[i]!;
+          const t = emitIfNew(e.s, normPredOut(e.p), object);
+          if (t) yield t;
+        }
+      }
+    } else {
+      for (let i = 0; i < idx.allFacts.length; i++) {
+        const f = idx.allFacts[i]!;
+        const t = emitIfNew(f.s, normPredOut(f.p), f.o);
+        if (t) yield t;
+      }
+    }
+
+    // 2. Live taxonomy declarations (`?c rdf:type owl:Class`) & direct superclasses (`?c rdfs:subClassOf ?sup`)
+    const wantClassType =
+      (!predicate || predicate === RDF_TYPE_IRI || predicate === "rdf:type") && (!object || object === OWL_CLASS_IRI);
+    const wantSubClass = !predicate || predicate === RDFS_SUBCLASS_IRI || predicate === "rdfs:subClassOf";
+
+    if (wantClassType || wantSubClass) {
+      if (subject) {
+        const node = this.classes.get(subject);
+        if (node) {
+          if (wantClassType) {
+            const t = emitIfNew(subject, RDF_TYPE_IRI, OWL_CLASS_IRI);
+            if (t) yield t;
+          }
+          if (wantSubClass) {
+            for (const sup of node.superClasses) {
+              if (!object || object === sup) {
+                const t = emitIfNew(subject, RDFS_SUBCLASS_IRI, sup);
+                if (t) yield t;
+              }
+            }
+          }
+        }
+      } else {
+        for (const [clsIri, node] of this.classes) {
+          if (wantClassType) {
+            const t = emitIfNew(clsIri, RDF_TYPE_IRI, OWL_CLASS_IRI);
+            if (t) yield t;
+          }
+          if (wantSubClass) {
+            for (const sup of node.superClasses) {
+              if (!object || object === sup) {
+                const t = emitIfNew(clsIri, RDFS_SUBCLASS_IRI, sup);
+                if (t) yield t;
+              }
+            }
+          }
+        }
+      }
+    }
   }
 
   /** Returns a minimal sequence of asserted axioms justifying why `subClassIri` is a subclass of `superClassIri`. */
@@ -5260,6 +5871,17 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
   private _wasmInstance: WasmOntologyInstance | null = null;
   /** Optional multi-file `WorkspaceIndex` used for automatic symbol-to-axiom projection. */
   private _workspace: any = null;
+  /** Optional unified disk/OPFS-backed `PagedStorageEngine` for crash-safe CoW MVCC persistence. */
+  private _pagedStorage: {
+    insertTriple(
+      subject: string | number,
+      predicate: string | number,
+      object: string | number | boolean,
+      axiomType?: number,
+      flags?: number,
+    ): boolean;
+    encodeLiteral?(value: number | boolean | string): number;
+  } | null = null;
   /** When true, skips JS-side axiom array materialization and forwards directly to WASM. */
   private _pureWasmMode = false;
   /** Bidirectional map from numeric entity ID to IRI string. */
@@ -5291,6 +5913,56 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
   /** Currently attached WebAssembly ontology module instance, if any. */
   public get wasmInstance(): WasmOntologyInstance | null {
     return this._wasmInstance;
+  }
+
+  /** Attaches a `PagedStorageEngine` as the unified disk/OPFS persistence backend for this store. */
+  public attachPagedStorage(pagedStore: {
+    insertTriple(
+      subject: string | number,
+      predicate: string | number,
+      object: string | number | boolean,
+      axiomType?: number,
+      flags?: number,
+    ): boolean;
+    encodeLiteral?(value: number | boolean | string): number;
+  }): void {
+    this._pagedStorage = pagedStore;
+    // Mirror any already-loaded axioms into the newly attached paged backend
+    for (const ax of this._axioms) {
+      this._mirrorAxiomToPaged(ax);
+    }
+  }
+
+  /** Returns the attached `PagedStorageEngine`, if any. */
+  public get pagedStorage() {
+    return this._pagedStorage;
+  }
+
+  private _mirrorAxiomToPaged(ax: OWL2Axiom): void {
+    const ps = this._pagedStorage;
+    if (!ps) return;
+    if (ax.type === "SubClassOf") {
+      ps.insertTriple(
+        ax.subClassIri,
+        "http://www.w3.org/2000/01/rdf-schema#subClassOf",
+        ax.superClassIri,
+        AXIOM_SUBCLASS_OF,
+      );
+    } else if (ax.type === "ClassAssertion") {
+      ps.insertTriple(
+        ax.individualIri,
+        "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+        ax.classIri,
+        AXIOM_CLASS_ASSERT,
+      );
+    } else if (ax.type === "ObjectPropertyAssertion") {
+      ps.insertTriple(ax.subjectIri, ax.propertyIri, ax.objectIri, AXIOM_OBJ_PROP_ASSERT);
+    } else if (ax.type === "DataPropertyAssertion") {
+      const num = Number(ax.value);
+      const objVal =
+        ps.encodeLiteral && ax.value.trim() !== "" && !Number.isNaN(num) ? ps.encodeLiteral(num) : ax.value;
+      ps.insertTriple(ax.subjectIri, ax.propertyIri, objVal, AXIOM_DATA_PROP_ASSERT);
+    }
   }
 
   /** Enables or disables pure-WASM mode (bypassing JS-side axiom arrays). */
@@ -5427,6 +6099,87 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     return this._wasmInstance.ontology_getRoaringCardinality(indexType, entityId);
   }
 
+  /**
+   * Evaluates a multi-pattern BGP directly in WASM linear memory using integer-ID
+   * Generalized Leapfrog Triejoin over Roaring Bitmaps.
+   * Decodes `EntityId -> IRI` only for the final result rows.
+   * Returns `null` if WASM Leapfrog is unavailable or unsupported for the given pattern shape.
+   */
+  public evalBgpWasm(
+    patterns: readonly { subject: string; predicate: string; object: string }[],
+    maxResults: number = 50000,
+  ): { variables: string[]; bindings: Record<string, string>[] } | null {
+    const wasm = this._wasmInstance;
+    if (!wasm?.ontology_evalBgpLeapfrog || !wasm.ontology_getQueryBuffer || !wasm.memory || !wasm.alloc || !wasm.free) {
+      return null;
+    }
+    if (patterns.length === 0 || patterns.length > 32) return null;
+
+    const VAR_TAG = 0x80000000;
+    const varToIdx = new Map<string, number>();
+    const varNames: string[] = [];
+
+    const encodeTerm = (t: string): number | null => {
+      if (t.startsWith("?")) {
+        let idx = varToIdx.get(t);
+        if (idx === undefined) {
+          if (varNames.length >= 32) return null;
+          idx = varNames.length;
+          varToIdx.set(t, idx);
+          varNames.push(t);
+        }
+        return (VAR_TAG | idx) >>> 0;
+      }
+      const existingId = this._iriEntityMap.get(t);
+      if (existingId === undefined) return 0; // Constant not present in store -> 0 matches
+      return existingId >>> 0;
+    };
+
+    const flatPatterns = new Uint32Array(patterns.length * 3);
+    for (let i = 0; i < patterns.length; i++) {
+      const pat = patterns[i]!;
+      const s = encodeTerm(pat.subject);
+      const p = encodeTerm(pat.predicate);
+      const o = encodeTerm(pat.object);
+      if (s === null || p === null || o === null) return null;
+      if (s === 0 || p === 0 || o === 0) {
+        return { variables: varNames, bindings: [] };
+      }
+      flatPatterns[i * 3] = s;
+      flatPatterns[i * 3 + 1] = p;
+      flatPatterns[i * 3 + 2] = o;
+    }
+
+    const patPtr = wasm.alloc(flatPatterns.byteLength);
+    if (patPtr === 0) return null;
+    try {
+      new Uint32Array(wasm.memory.buffer, patPtr, flatPatterns.length).set(flatPatterns);
+      const rowCount = wasm.ontology_evalBgpLeapfrog(patterns.length, patPtr, varNames.length, maxResults);
+      if (rowCount === 0) {
+        return { variables: varNames, bindings: [] };
+      }
+      const varCount = varNames.length;
+      if (varCount === 0) {
+        return { variables: [], bindings: [{}] };
+      }
+      const bufPtr = wasm.ontology_getQueryBuffer();
+      const raw = new Uint32Array(wasm.memory.buffer, bufPtr, rowCount * varCount);
+      const bindings: Record<string, string>[] = new Array(rowCount);
+      for (let r = 0; r < rowCount; r++) {
+        const row: Record<string, string> = {};
+        const base = r * varCount;
+        for (let v = 0; v < varCount; v++) {
+          const id = raw[base + v]!;
+          row[varNames[v]!] = this._entityIriMap.get(id) ?? String(id);
+        }
+        bindings[r] = row;
+      }
+      return { variables: varNames, bindings };
+    } finally {
+      wasm.free(patPtr);
+    }
+  }
+
   /** Directly inserts an axiom into the WASM store using 64-bit FNV-1a IRI hashes. */
   public addAxiomDirect64(
     axiomType: number,
@@ -5518,6 +6271,13 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
             mapped.extra ?? 0,
           );
         }
+      }
+    }
+
+    // Forward to attached unified PagedStorageEngine if present
+    if (this._pagedStorage) {
+      for (const ax of axioms) {
+        this._mirrorAxiomToPaged(ax);
       }
     }
 
@@ -6316,14 +7076,7 @@ export interface CadBoundingBox {
 
 /** Region Connection Calculus (RCC-8) topological relation between two 3D bounding envelopes. */
 export type Rcc8Relation =
-  | "rcc:DC"
-  | "rcc:EC"
-  | "rcc:PO"
-  | "rcc:EQ"
-  | "rcc:TPP"
-  | "rcc:NTPP"
-  | "rcc:TPPi"
-  | "rcc:NTPPi";
+  "rcc:DC" | "rcc:EC" | "rcc:PO" | "rcc:EQ" | "rcc:TPP" | "rcc:NTPP" | "rcc:TPPi" | "rcc:NTPPi";
 
 /**
  * Computes the topological RCC-8 relation (`rcc:DC`, `rcc:EC`, `rcc:PO`, `rcc:EQ`, `rcc:TPP`, `rcc:NTPP`, etc.)

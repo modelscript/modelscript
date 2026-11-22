@@ -793,7 +793,8 @@ export function lowerSparqlCst(rootNode: GenericSyntaxNode, sourceText?: string)
     "AskQuery",
     "InsertDataUpdate",
     "DeleteDataUpdate",
-    "ModifyUpdate",
+    "DeleteInsertUpdate",
+    "InsertWhereUpdate",
   ]);
   if (!queryNode) {
     return {
@@ -844,7 +845,7 @@ export function lowerSparqlCst(rootNode: GenericSyntaxNode, sourceText?: string)
     };
   }
 
-  if (queryNode.type === "ModifyUpdate") {
+  if (queryNode.type === "DeleteInsertUpdate" || queryNode.type === "InsertWhereUpdate") {
     const ch = getChildren(queryNode);
     const deleteTemplate: SparqlTriplePattern[] = [];
     const insertTemplate: SparqlTriplePattern[] = [];

@@ -6,5 +6,25 @@
     "jsx": "react-jsx"
   },
   "include": ["*.ts", "src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["dist", "build", "node_modules", "tests"]
+  "exclude": ["dist", "build", "node_modules", "tests"],
+  "references": [
+    {
+      "path": "../c"
+    },
+    {
+      "path": "../../packages/design-tokens"
+    },
+    {
+      "path": "../../packages/dsl"
+    },
+    {
+      "path": "../../packages/exchange"
+    },
+    {
+      "path": "../fortran"
+    },
+    {
+      "path": "../../packages/runtime"
+    }
+  ]
 }

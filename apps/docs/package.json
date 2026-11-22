@@ -21,13 +21,13 @@
     "gen:og": "tsx scripts/gen-og.ts",
     "lint": "eslint docs scripts --no-warn-ignored",
     "preview": "vitepress preview docs",
-    "test": "node ../../scripts/test-runner.js --timeout=300000",
+    "test": "node ../../scripts/ci/test-runner.js --timeout=300000",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@modelscript/cad": "*",
-    "@modelscript/design-tokens": "*",
-    "@modelscript/diagram": "*",
+    "@modelscript/cad": "workspace:*",
+    "@modelscript/design-tokens": "workspace:*",
+    "@modelscript/diagram": "workspace:*",
     "@types/three": "^0.184.0",
     "markdown-it-mathjax3": "^4.3.2",
     "mermaid": "^11.16.1",

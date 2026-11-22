@@ -358,7 +358,120 @@ interface TableauState {
   appliedWitnesses: Set<string>;
   /** Applied choice keys `(ind|prop|fillerKey|targetInd)`. */
   appliedChoices: Set<string>;
+  /** Dependency sets (choice-point branch IDs) per `ind|exprKey` for dependency-directed backjumping. */
+  conceptDeps: Map<string, Set<number>>;
+  /** Active choice-point branch IDs on the current DFS path. */
+  activeBranchDeps: Set<number>;
   nextAnonId: number;
+}
+
+interface AbsorptionIndex {
+  subClassCount: number;
+  disjointCount: number;
+  /** Absorbed unary GCIs: `A ⊑ C` keyed by named class IRI `A`. */
+  unaryByClass: Map<string, TableauClassExpr[]>;
+  /** Absorbed binary GCIs: `A ⊓ B ⊑ C` keyed by `A` (with partner `B`). */
+  binaryByClass: Map<string, Array<{ partner: string; sup: TableauClassExpr }>>;
+  /** Remaining non-absorbable general GCIs (e.g., `owl:Thing ⊑ C`, `∃R.D ⊑ C`, `A ⊔ B ⊑ C`). */
+  generalGcis: TableauSubClassAxiom[];
+  /** Indexed named-class disjointness: `A -> ¬B[]`. */
+  disjointByClass: Map<string, TableauClassExpr[]>;
+  /** Remaining complex-expression disjointness sets. */
+  generalDisjointSets: TableauClassExpr[][];
+}
+
+function collectExprSignature(expr: TableauClassExpr, out: Set<string>): void {
+  switch (expr.kind) {
+    case "NamedClass":
+      if (expr.iri !== "owl:Thing" && expr.iri !== "owl:Nothing") out.add(expr.iri);
+      break;
+    case "ObjectComplementOf":
+      collectExprSignature(expr.operand, out);
+      break;
+    case "ObjectIntersectionOf":
+    case "ObjectUnionOf":
+      for (const op of expr.operands) collectExprSignature(op, out);
+      break;
+    case "ObjectOneOf":
+      for (const ind of expr.individuals) out.add(ind);
+      break;
+    case "ObjectSomeValuesFrom":
+    case "ObjectAllValuesFrom":
+    case "ObjectCardinality":
+      out.add(expr.property);
+      collectExprSignature(expr.filler, out);
+      break;
+    case "ObjectHasValue":
+      out.add(expr.property);
+      out.add(expr.individual);
+      break;
+    case "ObjectHasSelf":
+    case "DataSomeValuesFrom":
+    case "DataAllValuesFrom":
+    case "DataHasValue":
+    case "DataCardinality":
+      out.add(expr.property);
+      break;
+  }
+}
+
+/** Evaluates syntactic ⊥-locality: returns true if `expr` is equivalent to ⊥ when symbols outside `sig` are ⊥. */
+function isBottomExpr(expr: TableauClassExpr, sig: Set<string>): boolean {
+  switch (expr.kind) {
+    case "NamedClass":
+      if (expr.iri === "owl:Nothing") return true;
+      if (expr.iri === "owl:Thing") return false;
+      return !sig.has(expr.iri);
+    case "ObjectComplementOf":
+      return isTopExpr(expr.operand, sig);
+    case "ObjectIntersectionOf":
+      return expr.operands.some((op) => isBottomExpr(op, sig));
+    case "ObjectUnionOf":
+      return expr.operands.every((op) => isBottomExpr(op, sig));
+    case "ObjectSomeValuesFrom":
+      return !sig.has(expr.property) || isBottomExpr(expr.filler, sig);
+    case "ObjectHasValue":
+    case "ObjectHasSelf":
+    case "DataSomeValuesFrom":
+    case "DataHasValue":
+      return !sig.has(expr.property);
+    case "ObjectCardinality":
+      return (expr.cardType === "min" || expr.cardType === "exact") && expr.count >= 1
+        ? !sig.has(expr.property) || isBottomExpr(expr.filler, sig)
+        : false;
+    case "DataCardinality":
+      return (expr.cardType === "min" || expr.cardType === "exact") && expr.count >= 1
+        ? !sig.has(expr.property)
+        : false;
+    default:
+      return false;
+  }
+}
+
+/** Evaluates syntactic ⊥-locality: returns true if `expr` is equivalent to ⊤ when symbols outside `sig` are ⊥. */
+function isTopExpr(expr: TableauClassExpr, sig: Set<string>): boolean {
+  switch (expr.kind) {
+    case "NamedClass":
+      return expr.iri === "owl:Thing";
+    case "ObjectComplementOf":
+      return isBottomExpr(expr.operand, sig);
+    case "ObjectIntersectionOf":
+      return expr.operands.every((op) => isTopExpr(op, sig));
+    case "ObjectUnionOf":
+      return expr.operands.some((op) => isTopExpr(op, sig));
+    case "ObjectAllValuesFrom":
+      return !sig.has(expr.property) || isTopExpr(expr.filler, sig);
+    case "DataAllValuesFrom":
+      return !sig.has(expr.property);
+    case "ObjectCardinality":
+      return expr.cardType === "max"
+        ? !sig.has(expr.property) || isBottomExpr(expr.filler, sig)
+        : expr.cardType === "min" && expr.count === 0;
+    case "DataCardinality":
+      return expr.cardType === "max" ? !sig.has(expr.property) : expr.cardType === "min" && expr.count === 0;
+    default:
+      return false;
+  }
 }
 
 function pairKey(a: string, b: string): string {
@@ -375,27 +488,33 @@ function cloneState(st: TableauState): TableauState {
     roleEdges.set(k, new Set(s));
   }
   const negRoleEdges = new Map<string, Set<string>>();
-  for (const [k, s] of st.negRoleEdges) {
-    negRoleEdges.set(k, new Set(s));
+  if (st.negRoleEdges.size > 0) {
+    for (const [k, s] of st.negRoleEdges) negRoleEdges.set(k, new Set(s));
   }
   const dataLiterals = new Map<string, Set<string>>();
-  for (const [k, s] of st.dataLiterals) {
-    dataLiterals.set(k, new Set(s));
+  if (st.dataLiterals.size > 0) {
+    for (const [k, s] of st.dataLiterals) dataLiterals.set(k, new Set(s));
   }
   const negDataLiterals = new Map<string, Set<string>>();
-  for (const [k, s] of st.negDataLiterals) {
-    negDataLiterals.set(k, new Set(s));
+  if (st.negDataLiterals.size > 0) {
+    for (const [k, s] of st.negDataLiterals) negDataLiterals.set(k, new Set(s));
   }
   const dataIntervals = new Map<string, NumericInterval>();
-  for (const [k, iv] of st.dataIntervals) {
-    dataIntervals.set(k, { ...iv });
+  if (st.dataIntervals.size > 0) {
+    for (const [k, iv] of st.dataIntervals) dataIntervals.set(k, { ...iv });
   }
   const dataSomeRanges = new Map<string, DataRangeSpec[]>();
-  for (const [k, list] of st.dataSomeRanges) {
-    dataSomeRanges.set(
-      k,
-      list.map((r) => ({ datatypeIri: r.datatypeIri, facets: [...r.facets] })),
-    );
+  if (st.dataSomeRanges.size > 0) {
+    for (const [k, list] of st.dataSomeRanges) {
+      dataSomeRanges.set(
+        k,
+        list.map((r) => ({ datatypeIri: r.datatypeIri, facets: [...r.facets] })),
+      );
+    }
+  }
+  const conceptDeps = new Map<string, Set<number>>();
+  if (st.conceptDeps.size > 0) {
+    for (const [k, s] of st.conceptDeps) conceptDeps.set(k, new Set(s));
   }
   return {
     individuals: new Set(st.individuals),
@@ -412,6 +531,8 @@ function cloneState(st: TableauState): TableauState {
     dataSomeRanges,
     appliedWitnesses: new Set(st.appliedWitnesses),
     appliedChoices: new Set(st.appliedChoices),
+    conceptDeps,
+    activeBranchDeps: new Set(st.activeBranchDeps),
     nextAnonId: st.nextAnonId,
   };
 }
@@ -497,6 +618,190 @@ export class Owl2TableauReasoner {
   public negDataAssertions: Array<{ property: string; subject: string; value: string }> = [];
   public sameIndividualSets: string[][] = [];
   public differentIndividualSets: string[][] = [];
+
+  /** Lazily built GCI absorption + named-class disjointness index. */
+  private _absorptionCache: AbsorptionIndex | null = null;
+  /** Optional scoped absorption index active during syntactic ⊥-locality module queries. */
+  private _scopedAbsorption: AbsorptionIndex | null = null;
+  /** Counter of backjumps performed during the last tableau search (for diagnostics/benchmarks). */
+  public lastBackjumpCount = 0;
+
+  private buildAbsorptionIndex(
+    subClassAxioms: readonly TableauSubClassAxiom[],
+    disjointClassSets: readonly TableauClassExpr[][],
+  ): AbsorptionIndex {
+    const unaryByClass = new Map<string, TableauClassExpr[]>();
+    const binaryByClass = new Map<string, Array<{ partner: string; sup: TableauClassExpr }>>();
+    const generalGcis: TableauSubClassAxiom[] = [];
+    const disjointByClass = new Map<string, TableauClassExpr[]>();
+    const generalDisjointSets: TableauClassExpr[][] = [];
+
+    for (const ax of subClassAxioms) {
+      if (ax.sub.kind === "NamedClass" && ax.sub.iri !== "owl:Thing" && ax.sub.iri !== "owl:Nothing") {
+        let list = unaryByClass.get(ax.sub.iri);
+        if (!list) {
+          list = [];
+          unaryByClass.set(ax.sub.iri, list);
+        }
+        list.push(ax.sup);
+      } else if (
+        ax.sub.kind === "ObjectIntersectionOf" &&
+        ax.sub.operands.length === 2 &&
+        ax.sub.operands[0]!.kind === "NamedClass" &&
+        ax.sub.operands[1]!.kind === "NamedClass" &&
+        ax.sub.operands[0]!.iri !== "owl:Thing" &&
+        ax.sub.operands[1]!.iri !== "owl:Thing"
+      ) {
+        const a = ax.sub.operands[0]!.iri;
+        const b = ax.sub.operands[1]!.iri;
+        let listA = binaryByClass.get(a);
+        if (!listA) {
+          listA = [];
+          binaryByClass.set(a, listA);
+        }
+        listA.push({ partner: b, sup: ax.sup });
+      } else {
+        generalGcis.push(ax);
+      }
+    }
+
+    for (const disjSet of disjointClassSets) {
+      const allNamed = disjSet.every((c) => c.kind === "NamedClass");
+      if (allNamed) {
+        for (let i = 0; i < disjSet.length; i++) {
+          const iri = (disjSet[i] as { kind: "NamedClass"; iri: string }).iri;
+          let negs = disjointByClass.get(iri);
+          if (!negs) {
+            negs = [];
+            disjointByClass.set(iri, negs);
+          }
+          for (let j = 0; j < disjSet.length; j++) {
+            if (i !== j) negs.push(negateClassExpr(disjSet[j]!));
+          }
+        }
+      } else {
+        generalDisjointSets.push(disjSet);
+      }
+    }
+
+    return {
+      subClassCount: subClassAxioms.length,
+      disjointCount: disjointClassSets.length,
+      unaryByClass,
+      binaryByClass,
+      generalGcis,
+      disjointByClass,
+      generalDisjointSets,
+    };
+  }
+
+  private getAbsorptionIndex(): AbsorptionIndex {
+    if (this._scopedAbsorption !== null) return this._scopedAbsorption;
+    if (
+      this._absorptionCache !== null &&
+      this._absorptionCache.subClassCount === this.subClassAxioms.length &&
+      this._absorptionCache.disjointCount === this.disjointClassSets.length
+    ) {
+      return this._absorptionCache;
+    }
+    this._absorptionCache = this.buildAbsorptionIndex(this.subClassAxioms, this.disjointClassSets);
+    return this._absorptionCache;
+  }
+
+  /**
+   * Extracts the syntactic ⊥-locality module (Grau et al., JAIR 2008) for the given seed signature.
+   * Guarantees preservation of all entailments over `seedSignature` while discarding irrelevant TBox axioms.
+   */
+  public extractLocalityModule(seedSignature: Iterable<string>): {
+    signature: Set<string>;
+    subClassAxioms: TableauSubClassAxiom[];
+    disjointClassSets: TableauClassExpr[][];
+  } {
+    const sig = new Set<string>();
+    for (const s of seedSignature) {
+      const n = this.normIri(s);
+      if (n !== "owl:Thing" && n !== "owl:Nothing") sig.add(n);
+    }
+
+    const modSub = new Set<number>();
+    const modDisj = new Set<number>();
+
+    let changed = true;
+    while (changed) {
+      changed = false;
+
+      for (let i = 0; i < this.subClassAxioms.length; i++) {
+        if (modSub.has(i)) continue;
+        const ax = this.subClassAxioms[i]!;
+        // SubClassOf(C, D) is ⊥-local iff C ≡ ⊥ or D ≡ ⊤ under symbols ∉ sig -> ⊥
+        if (!isBottomExpr(ax.sub, sig) && !isTopExpr(ax.sup, sig)) {
+          modSub.add(i);
+          const before = sig.size;
+          collectExprSignature(ax.sub, sig);
+          collectExprSignature(ax.sup, sig);
+          if (sig.size > before) changed = true;
+        }
+      }
+
+      for (let i = 0; i < this.disjointClassSets.length; i++) {
+        if (modDisj.has(i)) continue;
+        const set = this.disjointClassSets[i]!;
+        let nonBottom = 0;
+        for (const c of set) {
+          if (!isBottomExpr(c, sig)) nonBottom++;
+        }
+        if (nonBottom >= 2) {
+          modDisj.add(i);
+          const before = sig.size;
+          for (const c of set) collectExprSignature(c, sig);
+          if (sig.size > before) changed = true;
+        }
+      }
+
+      // Role hierarchy, domains, ranges, inverses, chains
+      for (const { sub, sup } of this.subObjectProperties) {
+        if (sig.has(sub) && !sig.has(sup)) {
+          sig.add(sup);
+          changed = true;
+        }
+      }
+      for (const { p1, p2 } of this.inverseProperties) {
+        if (sig.has(p1) && !sig.has(p2)) {
+          sig.add(p2);
+          changed = true;
+        } else if (sig.has(p2) && !sig.has(p1)) {
+          sig.add(p1);
+          changed = true;
+        }
+      }
+      for (const [prop, doms] of this.objectPropertyDomains) {
+        if (sig.has(prop)) {
+          const before = sig.size;
+          for (const d of doms) collectExprSignature(d, sig);
+          if (sig.size > before) changed = true;
+        }
+      }
+      for (const [prop, rngs] of this.objectPropertyRanges) {
+        if (sig.has(prop)) {
+          const before = sig.size;
+          for (const r of rngs) collectExprSignature(r, sig);
+          if (sig.size > before) changed = true;
+        }
+      }
+      for (const { chain, superProperty } of this.propertyChains) {
+        if (chain.every((p) => sig.has(p)) && !sig.has(superProperty)) {
+          sig.add(superProperty);
+          changed = true;
+        }
+      }
+    }
+
+    return {
+      signature: sig,
+      subClassAxioms: [...modSub].map((i) => this.subClassAxioms[i]!),
+      disjointClassSets: [...modDisj].map((i) => this.disjointClassSets[i]!),
+    };
+  }
 
   constructor(initialSourceOrAxioms?: string | OWL2Axiom[]) {
     if (typeof initialSourceOrAxioms === "string") {
@@ -1429,12 +1734,19 @@ export class Owl2TableauReasoner {
     return rep;
   }
 
-  private addConcept(st: TableauState, ind: string, expr: TableauClassExpr): boolean {
+  private addConcept(st: TableauState, ind: string, expr: TableauClassExpr, exactDeps?: ReadonlySet<number>): boolean {
     const rep = this.ensureIndividual(st, ind);
     const map = st.conceptsByInd.get(rep)!;
     const k = exprKey(expr);
     if (map.has(k)) return false;
     map.set(k, expr);
+    if (exactDeps !== undefined) {
+      if (exactDeps.size > 0) {
+        st.conceptDeps.set(`${rep}|${k}`, new Set<number>(exactDeps));
+      }
+    } else if (st.activeBranchDeps.size > 0) {
+      st.conceptDeps.set(`${rep}|${k}`, new Set<number>(st.activeBranchDeps));
+    }
     return true;
   }
 
@@ -1640,6 +1952,8 @@ export class Owl2TableauReasoner {
       dataSomeRanges: new Map(),
       appliedWitnesses: new Set(),
       appliedChoices: new Set(),
+      conceptDeps: new Map(),
+      activeBranchDeps: new Set(),
       nextAnonId: 1,
     };
 
@@ -1719,12 +2033,14 @@ export class Owl2TableauReasoner {
    */
   private saturateDeterministic(st: TableauState): {
     clash?: string | undefined;
-    branches?: Array<() => TableauState | null> | undefined;
+    clashDeps?: Set<number> | undefined;
+    branches?: Array<(choiceId: number) => TableauState | null> | undefined;
     truncated?: boolean | undefined;
   } {
     let changed = true;
     let iterations = 0;
     let truncated = false;
+    const absorption = this.getAbsorptionIndex();
 
     while (changed && ++iterations < 200) {
       changed = false;
@@ -1883,21 +2199,56 @@ export class Owl2TableauReasoner {
         }
       }
 
-      // 6. Concept unfolding, GCI absorption, Conjunction, Universal, HasValue, HasSelf, ExactCardinality
+      // 6. Concept unfolding, Absorbed GCI (Unary + Binary) & Indexed Disjointness
       for (const ind of [...st.individuals]) {
         const conceptMap = st.conceptsByInd.get(ind);
         if (!conceptMap) continue;
         const currentConcepts = [...conceptMap.values()];
 
-        // Check SubClassOf axioms
-        for (const ax of this.subClassAxioms) {
+        // 6a. O(deg) Lazy Unfolding via Absorbed Unary/Binary GCIs & Named-Class Disjointness
+        for (const c of currentConcepts) {
+          if (c.kind === "NamedClass") {
+            const cDeps = st.conceptDeps.get(`${ind}|${exprKey(c)}`) ?? new Set<number>();
+            const unarySups = absorption.unaryByClass.get(c.iri);
+            if (unarySups) {
+              for (let i = 0; i < unarySups.length; i++) {
+                if (this.addConcept(st, ind, unarySups[i]!, cDeps)) changed = true;
+              }
+            }
+            const binList = absorption.binaryByClass.get(c.iri);
+            if (binList) {
+              for (let i = 0; i < binList.length; i++) {
+                const entry = binList[i]!;
+                const partnerKey = `C:${entry.partner}`;
+                if (conceptMap.has(partnerKey)) {
+                  const pDeps = st.conceptDeps.get(`${ind}|${partnerKey}`);
+                  let mergedDeps = cDeps;
+                  if (pDeps && pDeps.size > 0) {
+                    mergedDeps = new Set<number>(cDeps);
+                    for (const d of pDeps) mergedDeps.add(d);
+                  }
+                  if (this.addConcept(st, ind, entry.sup, mergedDeps)) changed = true;
+                }
+              }
+            }
+            const disjNegs = absorption.disjointByClass.get(c.iri);
+            if (disjNegs) {
+              for (let i = 0; i < disjNegs.length; i++) {
+                if (this.addConcept(st, ind, disjNegs[i]!, cDeps)) changed = true;
+              }
+            }
+          }
+        }
+
+        // 6b. Remaining Non-Absorbable General GCIs
+        for (const ax of absorption.generalGcis) {
           if (this.satisfiesConceptDeterministically(st, ind, ax.sub)) {
             if (this.addConcept(st, ind, ax.sup)) changed = true;
           }
         }
 
-        // Check DisjointClasses sets
-        for (const disjSet of this.disjointClassSets) {
+        // 6c. Remaining Complex-Expression DisjointClasses Sets
+        for (const disjSet of absorption.generalDisjointSets) {
           for (let i = 0; i < disjSet.length; i++) {
             if (this.satisfiesConceptDeterministically(st, ind, disjSet[i]!)) {
               for (let j = 0; j < disjSet.length; j++) {
@@ -2294,8 +2645,8 @@ export class Owl2TableauReasoner {
       }
 
       // 8. Clash detection
-      const clash = this.detectClash(st);
-      if (clash) return { clash };
+      const clash = this.detectClashWithDeps(st);
+      if (clash) return { clash: clash.message, clashDeps: clash.deps, truncated };
 
       // 9. Existential (\exists R.C) and MinCardinality (\ge n R.C) witness generation (with ancestor subset blocking)
       for (const ind of [...st.individuals]) {
@@ -2379,9 +2730,9 @@ export class Owl2TableauReasoner {
       truncated = true;
     }
 
-    // Check clashes again after saturation
-    const finalClash = this.detectClash(st);
-    if (finalClash) return { clash: finalClash, truncated };
+    // Check clashes again after saturation (with conflict dependency tracking for backjumping)
+    const finalClash = this.detectClashWithDeps(st);
+    if (finalClash) return { clash: finalClash.message, clashDeps: finalClash.deps, truncated };
 
     // ── Nondeterministic Branching Rules (Or-Rule, OneOf-Rule, MaxCard Choose & Merge Rules) ──
 
@@ -2396,10 +2747,13 @@ export class Owl2TableauReasoner {
             return { clash: `Empty ObjectUnionOf on '${ind}'` };
           }
           if (!c.operands.some((op) => this.satisfiesConceptDeterministically(st, ind, op))) {
+            const unionDeps = st.conceptDeps.get(`${ind}|${exprKey(c)}`);
             return {
-              branches: c.operands.map((op) => () => {
+              branches: c.operands.map((op) => (choiceId: number) => {
                 const next = cloneState(st);
-                this.addConcept(next, ind, op);
+                const branchDeps = new Set<number>(unionDeps);
+                branchDeps.add(choiceId);
+                this.addConcept(next, ind, op, branchDeps);
                 return next;
               }),
             };
@@ -2783,8 +3137,44 @@ export class Owl2TableauReasoner {
   }
 
   /**
-   * Depth-first backtracking tableau search. Returns a clash-free completed `TableauState`
-   * if one exists, or `{ model: null, clashes }` if all branches close with a clash.
+   * Like `detectClash`, but also returns the conflict dependency set (`Set<number>` of choice-point IDs)
+   * when a concept clash (`owl:Nothing` or `C` vs `¬C`) occurs, enabling dependency-directed backjumping.
+   */
+  private detectClashWithDeps(st: TableauState): { message: string; deps?: Set<number> | undefined } | null {
+    for (const ind of st.individuals) {
+      const conceptMap = st.conceptsByInd.get(ind);
+      if (!conceptMap) continue;
+      for (const c of conceptMap.values()) {
+        if (c.kind === "NamedClass" && c.iri === "owl:Nothing") {
+          const deps = st.conceptDeps.get(`${ind}|${exprKey(c)}`) ?? new Set<number>();
+          return { message: `Individual '${ind}' belongs to owl:Nothing`, deps: new Set(deps) };
+        }
+        if (c.kind === "ObjectComplementOf") {
+          if (this.satisfiesConceptDeterministically(st, ind, c.operand)) {
+            const opKey = exprKey(c.operand);
+            if (conceptMap.has(opKey)) {
+              const d1 = st.conceptDeps.get(`${ind}|${exprKey(c)}`);
+              const d2 = st.conceptDeps.get(`${ind}|${opKey}`);
+              const merged = new Set<number>();
+              if (d1) for (const b of d1) merged.add(b);
+              if (d2) for (const b of d2) merged.add(b);
+              return {
+                message: `Clash on '${ind}': both ${opKey} and its complement hold`,
+                deps: merged,
+              };
+            }
+            return { message: `Clash on '${ind}': both ${opKey} and its complement hold` };
+          }
+        }
+      }
+    }
+    const msg = this.detectClash(st);
+    return msg ? { message: msg } : null;
+  }
+
+  /**
+   * Depth-first backtracking tableau search with dependency-directed backjumping.
+   * Returns a clash-free completed `TableauState` if one exists, or `{ model: null, clashes }` if all branches close.
    */
   private solveTableau(
     initialState: TableauState,
@@ -2792,33 +3182,63 @@ export class Owl2TableauReasoner {
   ): { model: TableauState | null; clashes: string[]; truncated: boolean } {
     const clashes: string[] = [];
     let truncated = false;
+    let nextChoiceId = 1;
+    this.lastBackjumpCount = 0;
 
-    const dfs = (st: TableauState, depth: number): TableauState | null => {
+    const dfs = (st: TableauState, depth: number): { model: TableauState | null; deps?: Set<number> | undefined } => {
       const res = this.saturateDeterministic(st);
       if (res.truncated) truncated = true;
       if (res.clash) {
         clashes.push(res.clash);
-        return null;
+        return { model: null, deps: res.clashDeps };
       }
       if (!res.branches || res.branches.length === 0) {
-        return st;
+        return { model: st };
       }
       if (depth >= maxDepth) {
         truncated = true;
         clashes.push(`Maximum tableau branching depth (${maxDepth}) exceeded`);
-        return null;
+        return { model: null };
       }
-      for (const makeBranch of res.branches) {
-        const nextSt = makeBranch();
-        if (!nextSt) continue;
-        const solved = dfs(nextSt, depth + 1);
-        if (solved) return solved;
+
+      const choiceId = nextChoiceId++;
+      const combinedDeps = new Set<number>();
+      let allHaveDeps = true;
+
+      for (let i = 0; i < res.branches.length; i++) {
+        // Stamp activeBranchDeps with `choiceId` for rules that do not pass exactDeps,
+        // and pass `choiceId` directly to branch constructors (e.g. ObjectUnionOf) for tight backjumping.
+        st.activeBranchDeps.add(choiceId);
+        const nextSt = res.branches[i]!(choiceId);
+        st.activeBranchDeps.delete(choiceId);
+        if (!nextSt) {
+          allHaveDeps = false;
+          continue;
+        }
+        const sub = dfs(nextSt, depth + 1);
+        if (sub.model) return sub;
+
+        if (sub.deps !== undefined) {
+          // Dependency-directed backjumping: if this clash did not depend on `choiceId`,
+          // none of the remaining sibling branches can resolve it — jump back immediately!
+          if (!sub.deps.has(choiceId)) {
+            if (i + 1 < res.branches.length) {
+              this.lastBackjumpCount++;
+            }
+            return { model: null, deps: sub.deps };
+          }
+          for (const d of sub.deps) {
+            if (d !== choiceId) combinedDeps.add(d);
+          }
+        } else {
+          allHaveDeps = false;
+        }
       }
-      return null;
+      return { model: null, deps: allHaveDeps ? combinedDeps : undefined };
     };
 
-    const model = dfs(initialState, 0);
-    return { model, clashes, truncated };
+    const solved = dfs(initialState, 0);
+    return { model: solved.model, clashes, truncated };
   }
 
   // ── Public Reasoning API ───────────────────────────────────────────────────
@@ -2981,6 +3401,33 @@ export class Owl2TableauReasoner {
     const concept: TableauClassExpr =
       typeof classOrExpr === "string" ? { kind: "NamedClass", iri: this.normIri(classOrExpr) } : classOrExpr;
     if (concept.kind === "NamedClass" && concept.iri === "owl:Nothing") return false;
+
+    // For TBox-only ontologies with >20 subclass axioms, scope the tableau to the
+    // syntactic ⊥-locality module for `sig(concept)` for O(|Module|) satisfiability checking.
+    const isPureTBox =
+      this.classAssertions.length === 0 &&
+      this.roleAssertions.length === 0 &&
+      this.negRoleAssertions.length === 0 &&
+      this.dataAssertions.length === 0 &&
+      this.negDataAssertions.length === 0 &&
+      this.sameIndividualSets.length === 0 &&
+      this.differentIndividualSets.length === 0 &&
+      this.subClassAxioms.length > 20;
+
+    if (isPureTBox) {
+      const seedSig = new Set<string>();
+      collectExprSignature(concept, seedSig);
+      const mod = this.extractLocalityModule(seedSig);
+      this._scopedAbsorption = this.buildAbsorptionIndex(mod.subClassAxioms, mod.disjointClassSets);
+      try {
+        const init = this.createInitialState([{ individual: "_:probe_sat", concept }]);
+        if (init.immediateClash) return false;
+        return this.solveTableau(init.state).model !== null;
+      } finally {
+        this._scopedAbsorption = null;
+      }
+    }
+
     const init = this.createInitialState([{ individual: "_:probe_sat", concept }]);
     if (init.immediateClash) return false;
     return this.solveTableau(init.state).model !== null;

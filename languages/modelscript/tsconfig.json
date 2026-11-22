@@ -5,5 +5,25 @@
     "outDir": "./dist"
   },
   "include": ["src/**/*.ts", "src-gen/**/*.ts", "language.ts"],
-  "exclude": ["dist", "node_modules", "tests"]
+  "exclude": ["dist", "node_modules", "tests"],
+  "references": [
+    {
+      "path": "../../packages/dsl"
+    },
+    {
+      "path": "../modelica"
+    },
+    {
+      "path": "../../packages/runtime"
+    },
+    {
+      "path": "../step"
+    },
+    {
+      "path": "../sysml2"
+    },
+    {
+      "path": "../urdf"
+    }
+  ]
 }

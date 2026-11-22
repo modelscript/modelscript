@@ -40,13 +40,39 @@ export interface WorkspaceDiscoveryOptions {
 }
 
 /**
- * Discovers all workspace `package.json` absolute paths declared in root `package.json#workspaces`.
+ * Discovers all workspace `package.json` absolute paths declared in `pnpm-workspace.yaml`
+ * (falling back to root `package.json#workspaces` when absent).
  */
 export function getWorkspacePackages(options: WorkspaceDiscoveryOptions = {}): string[] {
   const rootDir = options.rootDir ?? REPO_ROOT;
-  const rootPkgPath = path.join(rootDir, "package.json");
-  const rootPkg = JSON.parse(fs.readFileSync(rootPkgPath, "utf-8")) as { workspaces?: string[] };
-  const workspaces: string[] = rootPkg.workspaces || [];
+  const pnpmWorkspacePath = path.join(rootDir, "pnpm-workspace.yaml");
+  let workspaces: string[] = [];
+
+  if (fs.existsSync(pnpmWorkspacePath)) {
+    const raw = fs.readFileSync(pnpmWorkspacePath, "utf-8");
+    let inPackages = false;
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      if (/^packages\s*:/.test(trimmed)) {
+        inPackages = true;
+        continue;
+      }
+      if (inPackages) {
+        if (/^[A-Za-z0-9_-]+\s*:/.test(trimmed)) {
+          break;
+        }
+        const m = trimmed.match(/^-\s+["']?([^"']+)["']?$/);
+        if (m?.[1]) {
+          workspaces.push(m[1]);
+        }
+      }
+    }
+  } else {
+    const rootPkgPath = path.join(rootDir, "package.json");
+    const rootPkg = JSON.parse(fs.readFileSync(rootPkgPath, "utf-8")) as { workspaces?: string[] };
+    workspaces = rootPkg.workspaces || [];
+  }
   const packagePaths: string[] = [];
 
   for (const pattern of workspaces) {

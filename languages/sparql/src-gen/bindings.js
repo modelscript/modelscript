@@ -537,8 +537,8 @@ export class NativeRuntime {
   }
 }
 export const SYNTAX_NAMES =
-  typeof ["ERROR","/\\s/","/#.*/","/[bB][aA][sS][eE]/","/[pP][rR][eE][fF][iI][xX]/","/[sS][eE][lL][eE][cC][tT]/","/[dD][iI][sS][tT][iI][nN][cC][tT]/","/[rR][eE][dD][uU][cC][eE][dD]/","\"*\"","\"(\"","/[aA][sS]/","\")\"","/[cC][oO][nN][sS][tT][rR][uU][cC][tT]/","\"{\"","\"}\"","/[dD][eE][sS][cC][rR][iI][bB][eE]/","/[aA][sS][kK]/","/[iI][nN][sS][eE][rR][tT]/","/[dD][aA][tT][aA]/","/[dD][eE][lL][eE][tT][eE]/","/[fF][rR][oO][mM]/","/[nN][aA][mM][eE][dD]/","/[wW][hH][eE][rR][eE]/","\".\"","/[uU][nN][iI][oO][nN]/","/[oO][pP][tT][iI][oO][nN][aA][lL]/","/[mM][iI][nN][uU][sS]/","/[gG][rR][aA][pP][hH]/","/[sS][eE][rR][vV][iI][cC][eE]/","/[sS][iI][lL][eE][nN][tT]/","/[fF][iI][lL][tT][eE][rR]/","/[bB][iI][nN][dD]/","/[vV][aA][lL][uU][eE][sS]/","/[uU][nN][dD][eE][fF]/","\";\"","\"|\"","\"/\"","\"^\"","\"?\"","\"+\"","\"!\"","\"a\"","\"[\"","\"]\"","\",\"","/[gG][rR][oO][uU][pP]/","/[bB][yY]/","/[hH][aA][vV][iI][nN][gG]/","/[oO][rR][dD][eE][rR]/","/[aA][sS][cC]/","/[dD][eE][sS][cC]/","/[lL][iI][mM][iI][tT]/","/[oO][fF][fF][sS][eE][tT]/","\"||\"","\"&&\"","\"=\"","\"!=\"","\"<=\"","\">=\"","\"<\"","\">\"","/[nN][oO][tT]/","/[iI][nN]/","\"-\"","\"^^\"","/[tT][rR][uU][eE]/","/[fF][aA][lL][sS][eE]/","/[?$][a-zA-Z_][a-zA-Z0-9_]*/","/<[^<>\"{}|^`\\\\\\s]*>/","/[a-zA-Z_][a-zA-Z0-9_-]*:[a-zA-Z0-9_.-]+|:[a-zA-Z0-9_.-]+/","/[a-zA-Z_][a-zA-Z0-9_-]*:|:/","/_:[a-zA-Z0-9_.-]+/","/\"(?:[^\"\\\\]|\\\\.)*\"|'(?:[^'\\\\]|\\\\.)*'/","/@[a-zA-Z]+(?:-[a-zA-Z0-9]+)*/","/[0-9]+\\.[0-9]+(?:[eE][+-]?[0-9]+)?|[0-9]+[eE][+-]?[0-9]+/","/[0-9]+/","/[a-zA-Z_][a-zA-Z0-9_]*/","QueryUnit","Prologue","BaseDecl","PrefixDecl","SelectQuery","SelectClause","SelectProjection","ConstructQuery","ConstructTemplate","DescribeQuery","AskQuery","InsertDataUpdate","DeleteDataUpdate","ModifyUpdate","SubSelect","DatasetClause","WhereClause","GroupGraphPattern","GraphPatternItem","GroupOrUnionGraphPattern","OptionalGraphPattern","MinusGraphPattern","GraphGraphPattern","ServiceGraphPattern","FilterClause","Constraint","BindClause","ValuesClause","ValuesRow","DataBlockValue","TriplesBlock","TriplesSameSubject","PropertyListNotEmpty","PropertyObjectPair","VerbPathOrSimple","PathAlternative","PathSequence","PathEltOrInverse","PathElt","PathMod","PathNegatedPropertySet","PathPrimary","BlankNodePropertyList","Collection","ObjectList","SolutionModifier","GroupClause","GroupCondition","HavingClause","OrderClause","OrderCondition","LimitOffsetClauses","LimitClause","OffsetClause","Expression","ConditionalOrExpression","ConditionalAndExpression","RelationalExpression","AdditiveExpression","MultiplicativeExpression","UnaryExpression","PrimaryExpression","BrackettedExpression","ExpressionList","BuiltInCall","VarOrTerm","Iri","RDFLiteral","NumericLiteral","BooleanLiteral","_START","_(SelectQuery | ConstructQuery | Describe_872fb5e6","_(BaseDecl | PrefixDecl)","_(BaseDecl | PrefixDecl)*","_DatasetClause*","_ValuesClause?","_(/[dD][iI][sS][tT][iI][nN][cC][tT]/ | /[_fa84c568","_(/[dD][iI][sS][tT][iI][nN][cC][tT]/ | /[_b602a7f5","_(\"*\" | SelectProjection+)","_SelectProjection+","_(VAR | (\"(\" Expression /[aA][sS]/ VAR \")\"))","_TriplesBlock?","_(\"*\" | (VAR | Iri)+)","_(VAR | Iri)","_(VAR | Iri)+","_WhereClause?","_(/[dD][eE][lL][eE][tT][eE]/ \"{\" TriplesB_e8262357","_(/[iI][nN][sS][eE][rR][tT]/ \"{\" TriplesB_f7b1dce3","_/[nN][aA][mM][eE][dD]/?","_/[wW][hH][eE][rR][eE]/?","_(SubSelect | GraphPatternItem*)","_GraphPatternItem*","_(TriplesSameSubject | OptionalGraphPatte_df131a25","_(/[uU][nN][iI][oO][nN]/ GroupGraphPattern)*","_(VAR | Iri)_1","_/[sS][iI][lL][eE][nN][tT]/?","_(VAR | Iri)_2","_(BrackettedExpression | BuiltInCall)","_DataBlockValue*","_((VAR \"{\" DataBlockValue* \"}\") | (\"(\" VA_8e62653f","_VAR*","_ValuesRow*","_(Iri | RDFLiteral | NumericLiteral | Boo_10816b81","_(TriplesSameSubject | \".\")","_(TriplesSameSubject | \".\")+","_(\";\" PropertyObjectPair)*","_\";\"?","_(VAR | PathAlternative)","_(\"|\" PathSequence)*","_(\"/\" PathEltOrInverse)*","_((\"^\" PathElt) | PathElt)","_PathMod?","_(\"?\" | \"*\" | \"+\")","_(Iri | \"a\" | (\"(\" (Iri | \"a\") (\"|\" (Iri _ad00180e","_(Iri | \"a\")","_(\"|\" (Iri | \"a\"))*","_(Iri | \"a\" | PathNegatedPropertySet | (\"_0b9cee81","_VarOrTerm+","_(\",\" VarOrTerm)*","_GroupClause?","_HavingClause?","_OrderClause?","_LimitOffsetClauses?","_GroupCondition+","_(BuiltInCall | VAR | (\"(\" Expression (/[_420fb64c","_(/[aA][sS]/ VAR)?","_Constraint+","_OrderCondition+","_(/[aA][sS][cC]/ | /[dD][eE][sS][cC]/)","_(((/[aA][sS][cC]/ | /[dD][eE][sS][cC]/) _1810ada3","_OffsetClause?","_((LimitClause OffsetClause?) | (OffsetCl_9548c494","_LimitClause?","_(ConditionalAndExpression | (Conditional_cb3fa36e","_(RelationalExpression | (ConditionalAndE_f3a62a22","_(AdditiveExpression | (AdditiveExpressio_b089bbe3","_(\"=\" | \"!=\" | \"<=\" | \">=\" | \"<\" | \">\")","_/[nN][oO][tT]/?","_ExpressionList?","_(MultiplicativeExpression | (AdditiveExp_7cde01e2","_(\"+\" | \"-\")","_(UnaryExpression | (MultiplicativeExpres_47070be7","_(\"*\" | \"/\")","_((\"!\" PrimaryExpression) | (\"+\" PrimaryE_236aa1ae","_(BrackettedExpression | BuiltInCall | Ir_113395c3","_(\",\" Expression)*","_/[dD][iI][sS][tT][iI][nN][cC][tT]/?","_(\"*\" | ExpressionList)","_(\"*\" | ExpressionList)?","_(VAR | Iri | RDFLiteral | NumericLiteral_cb3767aa","_(IRIREF | PNAME_LN | PNAME_NS)","_(LANGTAG | (\"^^\" Iri))","_(LANGTAG | (\"^^\" Iri))?","_(DECIMAL_OR_DOUBLE | INTEGER)","_(/[tT][rR][uU][eE]/ | /[fF][aA][lL][sS][eE]/)","VAR","IRIREF","PNAME_LN","PNAME_NS","BLANK_NODE_LABEL","STRING_LITERAL","LANGTAG","DECIMAL_OR_DOUBLE","INTEGER","IDENT","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"] !== "undefined"
-    ? ["ERROR","/\\s/","/#.*/","/[bB][aA][sS][eE]/","/[pP][rR][eE][fF][iI][xX]/","/[sS][eE][lL][eE][cC][tT]/","/[dD][iI][sS][tT][iI][nN][cC][tT]/","/[rR][eE][dD][uU][cC][eE][dD]/","\"*\"","\"(\"","/[aA][sS]/","\")\"","/[cC][oO][nN][sS][tT][rR][uU][cC][tT]/","\"{\"","\"}\"","/[dD][eE][sS][cC][rR][iI][bB][eE]/","/[aA][sS][kK]/","/[iI][nN][sS][eE][rR][tT]/","/[dD][aA][tT][aA]/","/[dD][eE][lL][eE][tT][eE]/","/[fF][rR][oO][mM]/","/[nN][aA][mM][eE][dD]/","/[wW][hH][eE][rR][eE]/","\".\"","/[uU][nN][iI][oO][nN]/","/[oO][pP][tT][iI][oO][nN][aA][lL]/","/[mM][iI][nN][uU][sS]/","/[gG][rR][aA][pP][hH]/","/[sS][eE][rR][vV][iI][cC][eE]/","/[sS][iI][lL][eE][nN][tT]/","/[fF][iI][lL][tT][eE][rR]/","/[bB][iI][nN][dD]/","/[vV][aA][lL][uU][eE][sS]/","/[uU][nN][dD][eE][fF]/","\";\"","\"|\"","\"/\"","\"^\"","\"?\"","\"+\"","\"!\"","\"a\"","\"[\"","\"]\"","\",\"","/[gG][rR][oO][uU][pP]/","/[bB][yY]/","/[hH][aA][vV][iI][nN][gG]/","/[oO][rR][dD][eE][rR]/","/[aA][sS][cC]/","/[dD][eE][sS][cC]/","/[lL][iI][mM][iI][tT]/","/[oO][fF][fF][sS][eE][tT]/","\"||\"","\"&&\"","\"=\"","\"!=\"","\"<=\"","\">=\"","\"<\"","\">\"","/[nN][oO][tT]/","/[iI][nN]/","\"-\"","\"^^\"","/[tT][rR][uU][eE]/","/[fF][aA][lL][sS][eE]/","/[?$][a-zA-Z_][a-zA-Z0-9_]*/","/<[^<>\"{}|^`\\\\\\s]*>/","/[a-zA-Z_][a-zA-Z0-9_-]*:[a-zA-Z0-9_.-]+|:[a-zA-Z0-9_.-]+/","/[a-zA-Z_][a-zA-Z0-9_-]*:|:/","/_:[a-zA-Z0-9_.-]+/","/\"(?:[^\"\\\\]|\\\\.)*\"|'(?:[^'\\\\]|\\\\.)*'/","/@[a-zA-Z]+(?:-[a-zA-Z0-9]+)*/","/[0-9]+\\.[0-9]+(?:[eE][+-]?[0-9]+)?|[0-9]+[eE][+-]?[0-9]+/","/[0-9]+/","/[a-zA-Z_][a-zA-Z0-9_]*/","QueryUnit","Prologue","BaseDecl","PrefixDecl","SelectQuery","SelectClause","SelectProjection","ConstructQuery","ConstructTemplate","DescribeQuery","AskQuery","InsertDataUpdate","DeleteDataUpdate","ModifyUpdate","SubSelect","DatasetClause","WhereClause","GroupGraphPattern","GraphPatternItem","GroupOrUnionGraphPattern","OptionalGraphPattern","MinusGraphPattern","GraphGraphPattern","ServiceGraphPattern","FilterClause","Constraint","BindClause","ValuesClause","ValuesRow","DataBlockValue","TriplesBlock","TriplesSameSubject","PropertyListNotEmpty","PropertyObjectPair","VerbPathOrSimple","PathAlternative","PathSequence","PathEltOrInverse","PathElt","PathMod","PathNegatedPropertySet","PathPrimary","BlankNodePropertyList","Collection","ObjectList","SolutionModifier","GroupClause","GroupCondition","HavingClause","OrderClause","OrderCondition","LimitOffsetClauses","LimitClause","OffsetClause","Expression","ConditionalOrExpression","ConditionalAndExpression","RelationalExpression","AdditiveExpression","MultiplicativeExpression","UnaryExpression","PrimaryExpression","BrackettedExpression","ExpressionList","BuiltInCall","VarOrTerm","Iri","RDFLiteral","NumericLiteral","BooleanLiteral","_START","_(SelectQuery | ConstructQuery | Describe_872fb5e6","_(BaseDecl | PrefixDecl)","_(BaseDecl | PrefixDecl)*","_DatasetClause*","_ValuesClause?","_(/[dD][iI][sS][tT][iI][nN][cC][tT]/ | /[_fa84c568","_(/[dD][iI][sS][tT][iI][nN][cC][tT]/ | /[_b602a7f5","_(\"*\" | SelectProjection+)","_SelectProjection+","_(VAR | (\"(\" Expression /[aA][sS]/ VAR \")\"))","_TriplesBlock?","_(\"*\" | (VAR | Iri)+)","_(VAR | Iri)","_(VAR | Iri)+","_WhereClause?","_(/[dD][eE][lL][eE][tT][eE]/ \"{\" TriplesB_e8262357","_(/[iI][nN][sS][eE][rR][tT]/ \"{\" TriplesB_f7b1dce3","_/[nN][aA][mM][eE][dD]/?","_/[wW][hH][eE][rR][eE]/?","_(SubSelect | GraphPatternItem*)","_GraphPatternItem*","_(TriplesSameSubject | OptionalGraphPatte_df131a25","_(/[uU][nN][iI][oO][nN]/ GroupGraphPattern)*","_(VAR | Iri)_1","_/[sS][iI][lL][eE][nN][tT]/?","_(VAR | Iri)_2","_(BrackettedExpression | BuiltInCall)","_DataBlockValue*","_((VAR \"{\" DataBlockValue* \"}\") | (\"(\" VA_8e62653f","_VAR*","_ValuesRow*","_(Iri | RDFLiteral | NumericLiteral | Boo_10816b81","_(TriplesSameSubject | \".\")","_(TriplesSameSubject | \".\")+","_(\";\" PropertyObjectPair)*","_\";\"?","_(VAR | PathAlternative)","_(\"|\" PathSequence)*","_(\"/\" PathEltOrInverse)*","_((\"^\" PathElt) | PathElt)","_PathMod?","_(\"?\" | \"*\" | \"+\")","_(Iri | \"a\" | (\"(\" (Iri | \"a\") (\"|\" (Iri _ad00180e","_(Iri | \"a\")","_(\"|\" (Iri | \"a\"))*","_(Iri | \"a\" | PathNegatedPropertySet | (\"_0b9cee81","_VarOrTerm+","_(\",\" VarOrTerm)*","_GroupClause?","_HavingClause?","_OrderClause?","_LimitOffsetClauses?","_GroupCondition+","_(BuiltInCall | VAR | (\"(\" Expression (/[_420fb64c","_(/[aA][sS]/ VAR)?","_Constraint+","_OrderCondition+","_(/[aA][sS][cC]/ | /[dD][eE][sS][cC]/)","_(((/[aA][sS][cC]/ | /[dD][eE][sS][cC]/) _1810ada3","_OffsetClause?","_((LimitClause OffsetClause?) | (OffsetCl_9548c494","_LimitClause?","_(ConditionalAndExpression | (Conditional_cb3fa36e","_(RelationalExpression | (ConditionalAndE_f3a62a22","_(AdditiveExpression | (AdditiveExpressio_b089bbe3","_(\"=\" | \"!=\" | \"<=\" | \">=\" | \"<\" | \">\")","_/[nN][oO][tT]/?","_ExpressionList?","_(MultiplicativeExpression | (AdditiveExp_7cde01e2","_(\"+\" | \"-\")","_(UnaryExpression | (MultiplicativeExpres_47070be7","_(\"*\" | \"/\")","_((\"!\" PrimaryExpression) | (\"+\" PrimaryE_236aa1ae","_(BrackettedExpression | BuiltInCall | Ir_113395c3","_(\",\" Expression)*","_/[dD][iI][sS][tT][iI][nN][cC][tT]/?","_(\"*\" | ExpressionList)","_(\"*\" | ExpressionList)?","_(VAR | Iri | RDFLiteral | NumericLiteral_cb3767aa","_(IRIREF | PNAME_LN | PNAME_NS)","_(LANGTAG | (\"^^\" Iri))","_(LANGTAG | (\"^^\" Iri))?","_(DECIMAL_OR_DOUBLE | INTEGER)","_(/[tT][rR][uU][eE]/ | /[fF][aA][lL][sS][eE]/)","VAR","IRIREF","PNAME_LN","PNAME_NS","BLANK_NODE_LABEL","STRING_LITERAL","LANGTAG","DECIMAL_OR_DOUBLE","INTEGER","IDENT","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"]
+  typeof ["ERROR","/\\s/","/#.*/","/[bB][aA][sS][eE]/","/[pP][rR][eE][fF][iI][xX]/","/[sS][eE][lL][eE][cC][tT]/","/[dD][iI][sS][tT][iI][nN][cC][tT]/","/[rR][eE][dD][uU][cC][eE][dD]/","\"*\"","\"(\"","/[aA][sS]/","\")\"","/[cC][oO][nN][sS][tT][rR][uU][cC][tT]/","\"{\"","\"}\"","/[dD][eE][sS][cC][rR][iI][bB][eE]/","/[aA][sS][kK]/","/[iI][nN][sS][eE][rR][tT]/","/[dD][aA][tT][aA]/","/[dD][eE][lL][eE][tT][eE]/","/[fF][rR][oO][mM]/","/[nN][aA][mM][eE][dD]/","/[wW][hH][eE][rR][eE]/","\".\"","/[uU][nN][iI][oO][nN]/","/[oO][pP][tT][iI][oO][nN][aA][lL]/","/[mM][iI][nN][uU][sS]/","/[gG][rR][aA][pP][hH]/","/[sS][eE][rR][vV][iI][cC][eE]/","/[sS][iI][lL][eE][nN][tT]/","/[fF][iI][lL][tT][eE][rR]/","/[bB][iI][nN][dD]/","/[vV][aA][lL][uU][eE][sS]/","/[uU][nN][dD][eE][fF]/","\";\"","\"|\"","\"/\"","\"^\"","\"?\"","\"+\"","\"!\"","\"a\"","\"[\"","\"]\"","\",\"","/[gG][rR][oO][uU][pP]/","/[bB][yY]/","/[hH][aA][vV][iI][nN][gG]/","/[oO][rR][dD][eE][rR]/","/[aA][sS][cC]/","/[dD][eE][sS][cC]/","/[lL][iI][mM][iI][tT]/","/[oO][fF][fF][sS][eE][tT]/","\"||\"","\"&&\"","\"=\"","\"!=\"","\"<=\"","\">=\"","\"<\"","\">\"","/[nN][oO][tT]/","/[iI][nN]/","\"-\"","\"^^\"","/[tT][rR][uU][eE]/","/[fF][aA][lL][sS][eE]/","/[?$][a-zA-Z_][a-zA-Z0-9_]*/","/<[^<>\"{}|^`\\\\\\s]*>/","/[a-zA-Z_][a-zA-Z0-9_-]*:[a-zA-Z0-9_.-]+|:[a-zA-Z0-9_.-]+/","/[a-zA-Z_][a-zA-Z0-9_-]*:|:/","/_:[a-zA-Z0-9_.-]+/","/\"(?:[^\"\\\\]|\\\\.)*\"|'(?:[^'\\\\]|\\\\.)*'/","/@[a-zA-Z]+(?:-[a-zA-Z0-9]+)*/","/[0-9]+\\.[0-9]+(?:[eE][+-]?[0-9]+)?|[0-9]+[eE][+-]?[0-9]+/","/[0-9]+/","/[a-zA-Z_][a-zA-Z0-9_]*/","QueryUnit","Prologue","BaseDecl","PrefixDecl","SelectQuery","SelectClause","SelectProjection","ConstructQuery","ConstructTemplate","DescribeQuery","AskQuery","InsertDataUpdate","DeleteDataUpdate","DeleteInsertUpdate","InsertWhereUpdate","SubSelect","DatasetClause","WhereClause","GroupGraphPattern","GraphPatternItem","GroupOrUnionGraphPattern","OptionalGraphPattern","MinusGraphPattern","GraphGraphPattern","ServiceGraphPattern","FilterClause","Constraint","BindClause","ValuesClause","ValuesRow","DataBlockValue","TriplesBlock","TriplesSameSubject","PropertyListNotEmpty","PropertyObjectPair","VerbPathOrSimple","PathAlternative","PathSequence","PathEltOrInverse","PathElt","PathMod","PathNegatedPropertySet","PathPrimary","BlankNodePropertyList","Collection","ObjectList","SolutionModifier","GroupClause","GroupCondition","HavingClause","OrderClause","OrderCondition","LimitOffsetClauses","LimitClause","OffsetClause","Expression","ConditionalOrExpression","ConditionalAndExpression","RelationalExpression","AdditiveExpression","MultiplicativeExpression","UnaryExpression","PrimaryExpression","BrackettedExpression","ExpressionList","BuiltInCall","VarOrTerm","Iri","RDFLiteral","NumericLiteral","BooleanLiteral","_START","_(SelectQuery | ConstructQuery | Describe_b3f2bef5","_(BaseDecl | PrefixDecl)","_(BaseDecl | PrefixDecl)*","_DatasetClause*","_ValuesClause?","_(/[dD][iI][sS][tT][iI][nN][cC][tT]/ | /[_fa84c568","_(/[dD][iI][sS][tT][iI][nN][cC][tT]/ | /[_b602a7f5","_(\"*\" | SelectProjection+)","_SelectProjection+","_(VAR | (\"(\" Expression /[aA][sS]/ VAR \")\"))","_TriplesBlock?","_(\"*\" | (VAR | Iri)+)","_(VAR | Iri)","_(VAR | Iri)+","_WhereClause?","_(/[iI][nN][sS][eE][rR][tT]/ \"{\" TriplesB_f7b1dce3","_/[nN][aA][mM][eE][dD]/?","_/[wW][hH][eE][rR][eE]/?","_(SubSelect | GraphPatternItem*)","_GraphPatternItem*","_(TriplesSameSubject | OptionalGraphPatte_df131a25","_(/[uU][nN][iI][oO][nN]/ GroupGraphPattern)*","_(VAR | Iri)_1","_/[sS][iI][lL][eE][nN][tT]/?","_(VAR | Iri)_2","_(BrackettedExpression | BuiltInCall)","_DataBlockValue*","_((VAR \"{\" DataBlockValue* \"}\") | (\"(\" VA_8e62653f","_VAR*","_ValuesRow*","_(Iri | RDFLiteral | NumericLiteral | Boo_10816b81","_TriplesSameSubject?","_(\".\" TriplesSameSubject?)*","_(\";\" PropertyObjectPair)*","_\";\"?","_(VAR | PathAlternative)","_(\"|\" PathSequence)*","_(\"/\" PathEltOrInverse)*","_((\"^\" PathElt) | PathElt)","_PathMod?","_(\"?\" | \"*\" | \"+\")","_(Iri | \"a\" | (\"(\" (Iri | \"a\") (\"|\" (Iri _ad00180e","_(Iri | \"a\")","_(\"|\" (Iri | \"a\"))*","_(Iri | \"a\" | PathNegatedPropertySet | (\"_0b9cee81","_VarOrTerm+","_(\",\" VarOrTerm)*","_GroupClause?","_HavingClause?","_OrderClause?","_LimitOffsetClauses?","_GroupCondition+","_(BuiltInCall | VAR | (\"(\" Expression (/[_420fb64c","_(/[aA][sS]/ VAR)?","_Constraint+","_OrderCondition+","_(/[aA][sS][cC]/ | /[dD][eE][sS][cC]/)","_(((/[aA][sS][cC]/ | /[dD][eE][sS][cC]/) _1810ada3","_OffsetClause?","_((LimitClause OffsetClause?) | (OffsetCl_9548c494","_LimitClause?","_(ConditionalAndExpression | (Conditional_cb3fa36e","_(RelationalExpression | (ConditionalAndE_f3a62a22","_(AdditiveExpression | (AdditiveExpressio_b089bbe3","_(\"=\" | \"!=\" | \"<=\" | \">=\" | \"<\" | \">\")","_/[nN][oO][tT]/?","_ExpressionList?","_(MultiplicativeExpression | (AdditiveExp_7cde01e2","_(\"+\" | \"-\")","_(UnaryExpression | (MultiplicativeExpres_47070be7","_(\"*\" | \"/\")","_((\"!\" PrimaryExpression) | (\"+\" PrimaryE_236aa1ae","_(BrackettedExpression | BuiltInCall | Ir_113395c3","_(\",\" Expression)*","_/[dD][iI][sS][tT][iI][nN][cC][tT]/?","_(\"*\" | ExpressionList)","_(\"*\" | ExpressionList)?","_(VAR | Iri | RDFLiteral | NumericLiteral_cb3767aa","_(IRIREF | PNAME_LN | PNAME_NS)","_(LANGTAG | (\"^^\" Iri))","_(LANGTAG | (\"^^\" Iri))?","_(DECIMAL_OR_DOUBLE | INTEGER)","_(/[tT][rR][uU][eE]/ | /[fF][aA][lL][sS][eE]/)","VAR","IRIREF","PNAME_LN","PNAME_NS","BLANK_NODE_LABEL","STRING_LITERAL","LANGTAG","DECIMAL_OR_DOUBLE","INTEGER","IDENT","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"] !== "undefined"
+    ? ["ERROR","/\\s/","/#.*/","/[bB][aA][sS][eE]/","/[pP][rR][eE][fF][iI][xX]/","/[sS][eE][lL][eE][cC][tT]/","/[dD][iI][sS][tT][iI][nN][cC][tT]/","/[rR][eE][dD][uU][cC][eE][dD]/","\"*\"","\"(\"","/[aA][sS]/","\")\"","/[cC][oO][nN][sS][tT][rR][uU][cC][tT]/","\"{\"","\"}\"","/[dD][eE][sS][cC][rR][iI][bB][eE]/","/[aA][sS][kK]/","/[iI][nN][sS][eE][rR][tT]/","/[dD][aA][tT][aA]/","/[dD][eE][lL][eE][tT][eE]/","/[fF][rR][oO][mM]/","/[nN][aA][mM][eE][dD]/","/[wW][hH][eE][rR][eE]/","\".\"","/[uU][nN][iI][oO][nN]/","/[oO][pP][tT][iI][oO][nN][aA][lL]/","/[mM][iI][nN][uU][sS]/","/[gG][rR][aA][pP][hH]/","/[sS][eE][rR][vV][iI][cC][eE]/","/[sS][iI][lL][eE][nN][tT]/","/[fF][iI][lL][tT][eE][rR]/","/[bB][iI][nN][dD]/","/[vV][aA][lL][uU][eE][sS]/","/[uU][nN][dD][eE][fF]/","\";\"","\"|\"","\"/\"","\"^\"","\"?\"","\"+\"","\"!\"","\"a\"","\"[\"","\"]\"","\",\"","/[gG][rR][oO][uU][pP]/","/[bB][yY]/","/[hH][aA][vV][iI][nN][gG]/","/[oO][rR][dD][eE][rR]/","/[aA][sS][cC]/","/[dD][eE][sS][cC]/","/[lL][iI][mM][iI][tT]/","/[oO][fF][fF][sS][eE][tT]/","\"||\"","\"&&\"","\"=\"","\"!=\"","\"<=\"","\">=\"","\"<\"","\">\"","/[nN][oO][tT]/","/[iI][nN]/","\"-\"","\"^^\"","/[tT][rR][uU][eE]/","/[fF][aA][lL][sS][eE]/","/[?$][a-zA-Z_][a-zA-Z0-9_]*/","/<[^<>\"{}|^`\\\\\\s]*>/","/[a-zA-Z_][a-zA-Z0-9_-]*:[a-zA-Z0-9_.-]+|:[a-zA-Z0-9_.-]+/","/[a-zA-Z_][a-zA-Z0-9_-]*:|:/","/_:[a-zA-Z0-9_.-]+/","/\"(?:[^\"\\\\]|\\\\.)*\"|'(?:[^'\\\\]|\\\\.)*'/","/@[a-zA-Z]+(?:-[a-zA-Z0-9]+)*/","/[0-9]+\\.[0-9]+(?:[eE][+-]?[0-9]+)?|[0-9]+[eE][+-]?[0-9]+/","/[0-9]+/","/[a-zA-Z_][a-zA-Z0-9_]*/","QueryUnit","Prologue","BaseDecl","PrefixDecl","SelectQuery","SelectClause","SelectProjection","ConstructQuery","ConstructTemplate","DescribeQuery","AskQuery","InsertDataUpdate","DeleteDataUpdate","DeleteInsertUpdate","InsertWhereUpdate","SubSelect","DatasetClause","WhereClause","GroupGraphPattern","GraphPatternItem","GroupOrUnionGraphPattern","OptionalGraphPattern","MinusGraphPattern","GraphGraphPattern","ServiceGraphPattern","FilterClause","Constraint","BindClause","ValuesClause","ValuesRow","DataBlockValue","TriplesBlock","TriplesSameSubject","PropertyListNotEmpty","PropertyObjectPair","VerbPathOrSimple","PathAlternative","PathSequence","PathEltOrInverse","PathElt","PathMod","PathNegatedPropertySet","PathPrimary","BlankNodePropertyList","Collection","ObjectList","SolutionModifier","GroupClause","GroupCondition","HavingClause","OrderClause","OrderCondition","LimitOffsetClauses","LimitClause","OffsetClause","Expression","ConditionalOrExpression","ConditionalAndExpression","RelationalExpression","AdditiveExpression","MultiplicativeExpression","UnaryExpression","PrimaryExpression","BrackettedExpression","ExpressionList","BuiltInCall","VarOrTerm","Iri","RDFLiteral","NumericLiteral","BooleanLiteral","_START","_(SelectQuery | ConstructQuery | Describe_b3f2bef5","_(BaseDecl | PrefixDecl)","_(BaseDecl | PrefixDecl)*","_DatasetClause*","_ValuesClause?","_(/[dD][iI][sS][tT][iI][nN][cC][tT]/ | /[_fa84c568","_(/[dD][iI][sS][tT][iI][nN][cC][tT]/ | /[_b602a7f5","_(\"*\" | SelectProjection+)","_SelectProjection+","_(VAR | (\"(\" Expression /[aA][sS]/ VAR \")\"))","_TriplesBlock?","_(\"*\" | (VAR | Iri)+)","_(VAR | Iri)","_(VAR | Iri)+","_WhereClause?","_(/[iI][nN][sS][eE][rR][tT]/ \"{\" TriplesB_f7b1dce3","_/[nN][aA][mM][eE][dD]/?","_/[wW][hH][eE][rR][eE]/?","_(SubSelect | GraphPatternItem*)","_GraphPatternItem*","_(TriplesSameSubject | OptionalGraphPatte_df131a25","_(/[uU][nN][iI][oO][nN]/ GroupGraphPattern)*","_(VAR | Iri)_1","_/[sS][iI][lL][eE][nN][tT]/?","_(VAR | Iri)_2","_(BrackettedExpression | BuiltInCall)","_DataBlockValue*","_((VAR \"{\" DataBlockValue* \"}\") | (\"(\" VA_8e62653f","_VAR*","_ValuesRow*","_(Iri | RDFLiteral | NumericLiteral | Boo_10816b81","_TriplesSameSubject?","_(\".\" TriplesSameSubject?)*","_(\";\" PropertyObjectPair)*","_\";\"?","_(VAR | PathAlternative)","_(\"|\" PathSequence)*","_(\"/\" PathEltOrInverse)*","_((\"^\" PathElt) | PathElt)","_PathMod?","_(\"?\" | \"*\" | \"+\")","_(Iri | \"a\" | (\"(\" (Iri | \"a\") (\"|\" (Iri _ad00180e","_(Iri | \"a\")","_(\"|\" (Iri | \"a\"))*","_(Iri | \"a\" | PathNegatedPropertySet | (\"_0b9cee81","_VarOrTerm+","_(\",\" VarOrTerm)*","_GroupClause?","_HavingClause?","_OrderClause?","_LimitOffsetClauses?","_GroupCondition+","_(BuiltInCall | VAR | (\"(\" Expression (/[_420fb64c","_(/[aA][sS]/ VAR)?","_Constraint+","_OrderCondition+","_(/[aA][sS][cC]/ | /[dD][eE][sS][cC]/)","_(((/[aA][sS][cC]/ | /[dD][eE][sS][cC]/) _1810ada3","_OffsetClause?","_((LimitClause OffsetClause?) | (OffsetCl_9548c494","_LimitClause?","_(ConditionalAndExpression | (Conditional_cb3fa36e","_(RelationalExpression | (ConditionalAndE_f3a62a22","_(AdditiveExpression | (AdditiveExpressio_b089bbe3","_(\"=\" | \"!=\" | \"<=\" | \">=\" | \"<\" | \">\")","_/[nN][oO][tT]/?","_ExpressionList?","_(MultiplicativeExpression | (AdditiveExp_7cde01e2","_(\"+\" | \"-\")","_(UnaryExpression | (MultiplicativeExpres_47070be7","_(\"*\" | \"/\")","_((\"!\" PrimaryExpression) | (\"+\" PrimaryE_236aa1ae","_(BrackettedExpression | BuiltInCall | Ir_113395c3","_(\",\" Expression)*","_/[dD][iI][sS][tT][iI][nN][cC][tT]/?","_(\"*\" | ExpressionList)","_(\"*\" | ExpressionList)?","_(VAR | Iri | RDFLiteral | NumericLiteral_cb3767aa","_(IRIREF | PNAME_LN | PNAME_NS)","_(LANGTAG | (\"^^\" Iri))","_(LANGTAG | (\"^^\" Iri))?","_(DECIMAL_OR_DOUBLE | INTEGER)","_(/[tT][rR][uU][eE]/ | /[fF][aA][lL][sS][eE]/)","VAR","IRIREF","PNAME_LN","PNAME_NS","BLANK_NODE_LABEL","STRING_LITERAL","LANGTAG","DECIMAL_OR_DOUBLE","INTEGER","IDENT","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"]
     : [];
 export const LINT_MESSAGES =
   typeof {} !== "undefined"
@@ -2658,7 +2658,7 @@ export class LspFacade {
   /** Hashes a string using FNV-1a algorithm matching WASM string hash. */
   hashString(str) {
     let h = 2166136261;
-    for (let i = 0; i < str.length; ) {
+    for (let i = 0; i < str.length;) {
       const cp = str.codePointAt(i);
       h = Math.imul(h ^ cp, 16777619) >>> 0;
       i += cp > 0xffff ? 2 : 1;
@@ -6922,65 +6922,66 @@ export const SyntaxKind = {
   AskQuery: 87,
   InsertDataUpdate: 88,
   DeleteDataUpdate: 89,
-  ModifyUpdate: 90,
-  SubSelect: 91,
-  DatasetClause: 92,
-  WhereClause: 93,
-  GroupGraphPattern: 94,
-  GraphPatternItem: 95,
-  GroupOrUnionGraphPattern: 96,
-  OptionalGraphPattern: 97,
-  MinusGraphPattern: 98,
-  GraphGraphPattern: 99,
-  ServiceGraphPattern: 100,
-  FilterClause: 101,
-  Constraint: 102,
-  BindClause: 103,
-  ValuesClause: 104,
-  ValuesRow: 105,
-  DataBlockValue: 106,
-  TriplesBlock: 107,
-  TriplesSameSubject: 108,
-  PropertyListNotEmpty: 109,
-  PropertyObjectPair: 110,
-  VerbPathOrSimple: 111,
-  PathAlternative: 112,
-  PathSequence: 113,
-  PathEltOrInverse: 114,
-  PathElt: 115,
-  PathMod: 116,
-  PathNegatedPropertySet: 117,
-  PathPrimary: 118,
-  BlankNodePropertyList: 119,
-  Collection: 120,
-  ObjectList: 121,
-  SolutionModifier: 122,
-  GroupClause: 123,
-  GroupCondition: 124,
-  HavingClause: 125,
-  OrderClause: 126,
-  OrderCondition: 127,
-  LimitOffsetClauses: 128,
-  LimitClause: 129,
-  OffsetClause: 130,
-  Expression: 131,
-  ConditionalOrExpression: 132,
-  ConditionalAndExpression: 133,
-  RelationalExpression: 134,
-  AdditiveExpression: 135,
-  MultiplicativeExpression: 136,
-  UnaryExpression: 137,
-  PrimaryExpression: 138,
-  BrackettedExpression: 139,
-  ExpressionList: 140,
-  BuiltInCall: 141,
-  VarOrTerm: 142,
-  Iri: 143,
-  RDFLiteral: 144,
-  NumericLiteral: 145,
-  BooleanLiteral: 146,
-  START: 147,
-  _START: 147,
+  DeleteInsertUpdate: 90,
+  InsertWhereUpdate: 91,
+  SubSelect: 92,
+  DatasetClause: 93,
+  WhereClause: 94,
+  GroupGraphPattern: 95,
+  GraphPatternItem: 96,
+  GroupOrUnionGraphPattern: 97,
+  OptionalGraphPattern: 98,
+  MinusGraphPattern: 99,
+  GraphGraphPattern: 100,
+  ServiceGraphPattern: 101,
+  FilterClause: 102,
+  Constraint: 103,
+  BindClause: 104,
+  ValuesClause: 105,
+  ValuesRow: 106,
+  DataBlockValue: 107,
+  TriplesBlock: 108,
+  TriplesSameSubject: 109,
+  PropertyListNotEmpty: 110,
+  PropertyObjectPair: 111,
+  VerbPathOrSimple: 112,
+  PathAlternative: 113,
+  PathSequence: 114,
+  PathEltOrInverse: 115,
+  PathElt: 116,
+  PathMod: 117,
+  PathNegatedPropertySet: 118,
+  PathPrimary: 119,
+  BlankNodePropertyList: 120,
+  Collection: 121,
+  ObjectList: 122,
+  SolutionModifier: 123,
+  GroupClause: 124,
+  GroupCondition: 125,
+  HavingClause: 126,
+  OrderClause: 127,
+  OrderCondition: 128,
+  LimitOffsetClauses: 129,
+  LimitClause: 130,
+  OffsetClause: 131,
+  Expression: 132,
+  ConditionalOrExpression: 133,
+  ConditionalAndExpression: 134,
+  RelationalExpression: 135,
+  AdditiveExpression: 136,
+  MultiplicativeExpression: 137,
+  UnaryExpression: 138,
+  PrimaryExpression: 139,
+  BrackettedExpression: 140,
+  ExpressionList: 141,
+  BuiltInCall: 142,
+  VarOrTerm: 143,
+  Iri: 144,
+  RDFLiteral: 145,
+  NumericLiteral: 146,
+  BooleanLiteral: 147,
+  START: 148,
+  _START: 148,
   VAR: 232,
   IRIREF: 233,
   PNAMELN: 234,
@@ -7077,176 +7078,179 @@ export function isInsertDataUpdate(node) {
 export function isDeleteDataUpdate(node) {
   return node != null && node.typeId === 89;
 }
-export function isModifyUpdate(node) {
+export function isDeleteInsertUpdate(node) {
   return node != null && node.typeId === 90;
 }
-export function isSubSelect(node) {
+export function isInsertWhereUpdate(node) {
   return node != null && node.typeId === 91;
 }
-export function isDatasetClause(node) {
+export function isSubSelect(node) {
   return node != null && node.typeId === 92;
 }
-export function isWhereClause(node) {
+export function isDatasetClause(node) {
   return node != null && node.typeId === 93;
 }
-export function isGroupGraphPattern(node) {
+export function isWhereClause(node) {
   return node != null && node.typeId === 94;
 }
-export function isGraphPatternItem(node) {
+export function isGroupGraphPattern(node) {
   return node != null && node.typeId === 95;
 }
-export function isGroupOrUnionGraphPattern(node) {
+export function isGraphPatternItem(node) {
   return node != null && node.typeId === 96;
 }
-export function isOptionalGraphPattern(node) {
+export function isGroupOrUnionGraphPattern(node) {
   return node != null && node.typeId === 97;
 }
-export function isMinusGraphPattern(node) {
+export function isOptionalGraphPattern(node) {
   return node != null && node.typeId === 98;
 }
-export function isGraphGraphPattern(node) {
+export function isMinusGraphPattern(node) {
   return node != null && node.typeId === 99;
 }
-export function isServiceGraphPattern(node) {
+export function isGraphGraphPattern(node) {
   return node != null && node.typeId === 100;
 }
-export function isFilterClause(node) {
+export function isServiceGraphPattern(node) {
   return node != null && node.typeId === 101;
 }
-export function isConstraint(node) {
+export function isFilterClause(node) {
   return node != null && node.typeId === 102;
 }
-export function isBindClause(node) {
+export function isConstraint(node) {
   return node != null && node.typeId === 103;
 }
-export function isValuesClause(node) {
+export function isBindClause(node) {
   return node != null && node.typeId === 104;
 }
-export function isValuesRow(node) {
+export function isValuesClause(node) {
   return node != null && node.typeId === 105;
 }
-export function isDataBlockValue(node) {
+export function isValuesRow(node) {
   return node != null && node.typeId === 106;
 }
-export function isTriplesBlock(node) {
+export function isDataBlockValue(node) {
   return node != null && node.typeId === 107;
 }
-export function isTriplesSameSubject(node) {
+export function isTriplesBlock(node) {
   return node != null && node.typeId === 108;
 }
-export function isPropertyListNotEmpty(node) {
+export function isTriplesSameSubject(node) {
   return node != null && node.typeId === 109;
 }
-export function isPropertyObjectPair(node) {
+export function isPropertyListNotEmpty(node) {
   return node != null && node.typeId === 110;
 }
-export function isVerbPathOrSimple(node) {
+export function isPropertyObjectPair(node) {
   return node != null && node.typeId === 111;
 }
-export function isPathAlternative(node) {
+export function isVerbPathOrSimple(node) {
   return node != null && node.typeId === 112;
 }
-export function isPathSequence(node) {
+export function isPathAlternative(node) {
   return node != null && node.typeId === 113;
 }
-export function isPathEltOrInverse(node) {
+export function isPathSequence(node) {
   return node != null && node.typeId === 114;
 }
-export function isPathElt(node) {
+export function isPathEltOrInverse(node) {
   return node != null && node.typeId === 115;
 }
-export function isPathMod(node) {
+export function isPathElt(node) {
   return node != null && node.typeId === 116;
 }
-export function isPathNegatedPropertySet(node) {
+export function isPathMod(node) {
   return node != null && node.typeId === 117;
 }
-export function isPathPrimary(node) {
+export function isPathNegatedPropertySet(node) {
   return node != null && node.typeId === 118;
 }
-export function isBlankNodePropertyList(node) {
+export function isPathPrimary(node) {
   return node != null && node.typeId === 119;
 }
-export function isCollection(node) {
+export function isBlankNodePropertyList(node) {
   return node != null && node.typeId === 120;
 }
-export function isObjectList(node) {
+export function isCollection(node) {
   return node != null && node.typeId === 121;
 }
-export function isSolutionModifier(node) {
+export function isObjectList(node) {
   return node != null && node.typeId === 122;
 }
-export function isGroupClause(node) {
+export function isSolutionModifier(node) {
   return node != null && node.typeId === 123;
 }
-export function isGroupCondition(node) {
+export function isGroupClause(node) {
   return node != null && node.typeId === 124;
 }
-export function isHavingClause(node) {
+export function isGroupCondition(node) {
   return node != null && node.typeId === 125;
 }
-export function isOrderClause(node) {
+export function isHavingClause(node) {
   return node != null && node.typeId === 126;
 }
-export function isOrderCondition(node) {
+export function isOrderClause(node) {
   return node != null && node.typeId === 127;
 }
-export function isLimitOffsetClauses(node) {
+export function isOrderCondition(node) {
   return node != null && node.typeId === 128;
 }
-export function isLimitClause(node) {
+export function isLimitOffsetClauses(node) {
   return node != null && node.typeId === 129;
 }
-export function isOffsetClause(node) {
+export function isLimitClause(node) {
   return node != null && node.typeId === 130;
 }
-export function isExpression(node) {
+export function isOffsetClause(node) {
   return node != null && node.typeId === 131;
 }
-export function isConditionalOrExpression(node) {
+export function isExpression(node) {
   return node != null && node.typeId === 132;
 }
-export function isConditionalAndExpression(node) {
+export function isConditionalOrExpression(node) {
   return node != null && node.typeId === 133;
 }
-export function isRelationalExpression(node) {
+export function isConditionalAndExpression(node) {
   return node != null && node.typeId === 134;
 }
-export function isAdditiveExpression(node) {
+export function isRelationalExpression(node) {
   return node != null && node.typeId === 135;
 }
-export function isMultiplicativeExpression(node) {
+export function isAdditiveExpression(node) {
   return node != null && node.typeId === 136;
 }
-export function isUnaryExpression(node) {
+export function isMultiplicativeExpression(node) {
   return node != null && node.typeId === 137;
 }
-export function isPrimaryExpression(node) {
+export function isUnaryExpression(node) {
   return node != null && node.typeId === 138;
 }
-export function isBrackettedExpression(node) {
+export function isPrimaryExpression(node) {
   return node != null && node.typeId === 139;
 }
-export function isExpressionList(node) {
+export function isBrackettedExpression(node) {
   return node != null && node.typeId === 140;
 }
-export function isBuiltInCall(node) {
+export function isExpressionList(node) {
   return node != null && node.typeId === 141;
 }
-export function isVarOrTerm(node) {
+export function isBuiltInCall(node) {
   return node != null && node.typeId === 142;
 }
-export function isIri(node) {
+export function isVarOrTerm(node) {
   return node != null && node.typeId === 143;
 }
-export function isRDFLiteral(node) {
+export function isIri(node) {
   return node != null && node.typeId === 144;
 }
-export function isNumericLiteral(node) {
+export function isRDFLiteral(node) {
   return node != null && node.typeId === 145;
 }
-export function isBooleanLiteral(node) {
+export function isNumericLiteral(node) {
   return node != null && node.typeId === 146;
+}
+export function isBooleanLiteral(node) {
+  return node != null && node.typeId === 147;
 }
 export function isVAR(node) {
   return node != null && node.typeId === 232;
@@ -7376,20 +7380,25 @@ export const Cst = {
     type: "DeleteDataUpdate",
     is(node) { return node != null && node.typeId === 89; },
   },
-  ModifyUpdate: {
+  DeleteInsertUpdate: {
     typeId: 90,
-    type: "ModifyUpdate",
+    type: "DeleteInsertUpdate",
     is(node) { return node != null && node.typeId === 90; },
   },
-  SubSelect: {
+  InsertWhereUpdate: {
     typeId: 91,
-    type: "SubSelect",
+    type: "InsertWhereUpdate",
     is(node) { return node != null && node.typeId === 91; },
   },
-  DatasetClause: {
+  SubSelect: {
     typeId: 92,
-    type: "DatasetClause",
+    type: "SubSelect",
     is(node) { return node != null && node.typeId === 92; },
+  },
+  DatasetClause: {
+    typeId: 93,
+    type: "DatasetClause",
+    is(node) { return node != null && node.typeId === 93; },
     iri(node) {
       return node ? node.childForFieldId(1) : null;
     },
@@ -7398,39 +7407,39 @@ export const Cst = {
     },
   },
   WhereClause: {
-    typeId: 93,
-    type: "WhereClause",
-    is(node) { return node != null && node.typeId === 93; },
-  },
-  GroupGraphPattern: {
     typeId: 94,
-    type: "GroupGraphPattern",
+    type: "WhereClause",
     is(node) { return node != null && node.typeId === 94; },
   },
-  GraphPatternItem: {
+  GroupGraphPattern: {
     typeId: 95,
-    type: "GraphPatternItem",
+    type: "GroupGraphPattern",
     is(node) { return node != null && node.typeId === 95; },
   },
-  GroupOrUnionGraphPattern: {
+  GraphPatternItem: {
     typeId: 96,
-    type: "GroupOrUnionGraphPattern",
+    type: "GraphPatternItem",
     is(node) { return node != null && node.typeId === 96; },
   },
-  OptionalGraphPattern: {
+  GroupOrUnionGraphPattern: {
     typeId: 97,
-    type: "OptionalGraphPattern",
+    type: "GroupOrUnionGraphPattern",
     is(node) { return node != null && node.typeId === 97; },
   },
-  MinusGraphPattern: {
+  OptionalGraphPattern: {
     typeId: 98,
-    type: "MinusGraphPattern",
+    type: "OptionalGraphPattern",
     is(node) { return node != null && node.typeId === 98; },
   },
-  GraphGraphPattern: {
+  MinusGraphPattern: {
     typeId: 99,
-    type: "GraphGraphPattern",
+    type: "MinusGraphPattern",
     is(node) { return node != null && node.typeId === 99; },
+  },
+  GraphGraphPattern: {
+    typeId: 100,
+    type: "GraphGraphPattern",
+    is(node) { return node != null && node.typeId === 100; },
     graph(node) {
       return node ? node.childForFieldId(5) : null;
     },
@@ -7439,9 +7448,9 @@ export const Cst = {
     },
   },
   ServiceGraphPattern: {
-    typeId: 100,
+    typeId: 101,
     type: "ServiceGraphPattern",
-    is(node) { return node != null && node.typeId === 100; },
+    is(node) { return node != null && node.typeId === 101; },
     endpoint(node) {
       return node ? node.childForFieldId(6) : null;
     },
@@ -7450,19 +7459,19 @@ export const Cst = {
     },
   },
   FilterClause: {
-    typeId: 101,
-    type: "FilterClause",
-    is(node) { return node != null && node.typeId === 101; },
-  },
-  Constraint: {
     typeId: 102,
-    type: "Constraint",
+    type: "FilterClause",
     is(node) { return node != null && node.typeId === 102; },
   },
-  BindClause: {
+  Constraint: {
     typeId: 103,
-    type: "BindClause",
+    type: "Constraint",
     is(node) { return node != null && node.typeId === 103; },
+  },
+  BindClause: {
+    typeId: 104,
+    type: "BindClause",
+    is(node) { return node != null && node.typeId === 104; },
     expr(node) {
       return node ? node.childForFieldId(3) : null;
     },
@@ -7477,29 +7486,29 @@ export const Cst = {
     },
   },
   ValuesClause: {
-    typeId: 104,
-    type: "ValuesClause",
-    is(node) { return node != null && node.typeId === 104; },
-  },
-  ValuesRow: {
     typeId: 105,
-    type: "ValuesRow",
+    type: "ValuesClause",
     is(node) { return node != null && node.typeId === 105; },
   },
-  DataBlockValue: {
+  ValuesRow: {
     typeId: 106,
-    type: "DataBlockValue",
+    type: "ValuesRow",
     is(node) { return node != null && node.typeId === 106; },
   },
-  TriplesBlock: {
+  DataBlockValue: {
     typeId: 107,
-    type: "TriplesBlock",
+    type: "DataBlockValue",
     is(node) { return node != null && node.typeId === 107; },
   },
-  TriplesSameSubject: {
+  TriplesBlock: {
     typeId: 108,
-    type: "TriplesSameSubject",
+    type: "TriplesBlock",
     is(node) { return node != null && node.typeId === 108; },
+  },
+  TriplesSameSubject: {
+    typeId: 109,
+    type: "TriplesSameSubject",
+    is(node) { return node != null && node.typeId === 109; },
     subject(node) {
       return node ? node.childForFieldId(8) : null;
     },
@@ -7508,14 +7517,14 @@ export const Cst = {
     },
   },
   PropertyListNotEmpty: {
-    typeId: 109,
+    typeId: 110,
     type: "PropertyListNotEmpty",
-    is(node) { return node != null && node.typeId === 109; },
+    is(node) { return node != null && node.typeId === 110; },
   },
   PropertyObjectPair: {
-    typeId: 110,
+    typeId: 111,
     type: "PropertyObjectPair",
-    is(node) { return node != null && node.typeId === 110; },
+    is(node) { return node != null && node.typeId === 111; },
     verb(node) {
       return node ? node.childForFieldId(9) : null;
     },
@@ -7530,109 +7539,98 @@ export const Cst = {
     },
   },
   VerbPathOrSimple: {
-    typeId: 111,
-    type: "VerbPathOrSimple",
-    is(node) { return node != null && node.typeId === 111; },
-  },
-  PathAlternative: {
     typeId: 112,
-    type: "PathAlternative",
+    type: "VerbPathOrSimple",
     is(node) { return node != null && node.typeId === 112; },
   },
-  PathSequence: {
+  PathAlternative: {
     typeId: 113,
-    type: "PathSequence",
+    type: "PathAlternative",
     is(node) { return node != null && node.typeId === 113; },
   },
-  PathEltOrInverse: {
+  PathSequence: {
     typeId: 114,
-    type: "PathEltOrInverse",
+    type: "PathSequence",
     is(node) { return node != null && node.typeId === 114; },
   },
-  PathElt: {
+  PathEltOrInverse: {
     typeId: 115,
-    type: "PathElt",
+    type: "PathEltOrInverse",
     is(node) { return node != null && node.typeId === 115; },
   },
-  PathMod: {
+  PathElt: {
     typeId: 116,
-    type: "PathMod",
+    type: "PathElt",
     is(node) { return node != null && node.typeId === 116; },
   },
-  PathNegatedPropertySet: {
+  PathMod: {
     typeId: 117,
-    type: "PathNegatedPropertySet",
+    type: "PathMod",
     is(node) { return node != null && node.typeId === 117; },
   },
-  PathPrimary: {
+  PathNegatedPropertySet: {
     typeId: 118,
-    type: "PathPrimary",
+    type: "PathNegatedPropertySet",
     is(node) { return node != null && node.typeId === 118; },
   },
-  BlankNodePropertyList: {
+  PathPrimary: {
     typeId: 119,
-    type: "BlankNodePropertyList",
+    type: "PathPrimary",
     is(node) { return node != null && node.typeId === 119; },
   },
-  Collection: {
+  BlankNodePropertyList: {
     typeId: 120,
-    type: "Collection",
+    type: "BlankNodePropertyList",
     is(node) { return node != null && node.typeId === 120; },
   },
-  ObjectList: {
+  Collection: {
     typeId: 121,
-    type: "ObjectList",
+    type: "Collection",
     is(node) { return node != null && node.typeId === 121; },
   },
-  SolutionModifier: {
+  ObjectList: {
     typeId: 122,
-    type: "SolutionModifier",
+    type: "ObjectList",
     is(node) { return node != null && node.typeId === 122; },
   },
-  GroupClause: {
+  SolutionModifier: {
     typeId: 123,
-    type: "GroupClause",
+    type: "SolutionModifier",
     is(node) { return node != null && node.typeId === 123; },
   },
-  GroupCondition: {
+  GroupClause: {
     typeId: 124,
-    type: "GroupCondition",
+    type: "GroupClause",
     is(node) { return node != null && node.typeId === 124; },
   },
-  HavingClause: {
+  GroupCondition: {
     typeId: 125,
-    type: "HavingClause",
+    type: "GroupCondition",
     is(node) { return node != null && node.typeId === 125; },
   },
-  OrderClause: {
+  HavingClause: {
     typeId: 126,
-    type: "OrderClause",
+    type: "HavingClause",
     is(node) { return node != null && node.typeId === 126; },
   },
-  OrderCondition: {
+  OrderClause: {
     typeId: 127,
-    type: "OrderCondition",
+    type: "OrderClause",
     is(node) { return node != null && node.typeId === 127; },
   },
-  LimitOffsetClauses: {
+  OrderCondition: {
     typeId: 128,
-    type: "LimitOffsetClauses",
+    type: "OrderCondition",
     is(node) { return node != null && node.typeId === 128; },
   },
-  LimitClause: {
+  LimitOffsetClauses: {
     typeId: 129,
-    type: "LimitClause",
+    type: "LimitOffsetClauses",
     is(node) { return node != null && node.typeId === 129; },
-    count(node) {
-      return node ? node.childForFieldId(11) : null;
-    },
-    countList(node) {
-      return node ? node.childrenForFieldId(11) : [];
-    },
   },
-  OffsetClause: {
+  LimitClause: {
     typeId: 130,
-    type: "OffsetClause",
+    type: "LimitClause",
     is(node) { return node != null && node.typeId === 130; },
     count(node) {
       return node ? node.childForFieldId(11) : null;
@@ -7641,60 +7639,71 @@ export const Cst = {
       return node ? node.childrenForFieldId(11) : [];
     },
   },
-  Expression: {
+  OffsetClause: {
     typeId: 131,
-    type: "Expression",
+    type: "OffsetClause",
     is(node) { return node != null && node.typeId === 131; },
+    count(node) {
+      return node ? node.childForFieldId(11) : null;
+    },
+    countList(node) {
+      return node ? node.childrenForFieldId(11) : [];
+    },
   },
-  ConditionalOrExpression: {
+  Expression: {
     typeId: 132,
-    type: "ConditionalOrExpression",
+    type: "Expression",
     is(node) { return node != null && node.typeId === 132; },
   },
-  ConditionalAndExpression: {
+  ConditionalOrExpression: {
     typeId: 133,
-    type: "ConditionalAndExpression",
+    type: "ConditionalOrExpression",
     is(node) { return node != null && node.typeId === 133; },
   },
-  RelationalExpression: {
+  ConditionalAndExpression: {
     typeId: 134,
-    type: "RelationalExpression",
+    type: "ConditionalAndExpression",
     is(node) { return node != null && node.typeId === 134; },
   },
-  AdditiveExpression: {
+  RelationalExpression: {
     typeId: 135,
-    type: "AdditiveExpression",
+    type: "RelationalExpression",
     is(node) { return node != null && node.typeId === 135; },
   },
-  MultiplicativeExpression: {
+  AdditiveExpression: {
     typeId: 136,
-    type: "MultiplicativeExpression",
+    type: "AdditiveExpression",
     is(node) { return node != null && node.typeId === 136; },
   },
-  UnaryExpression: {
+  MultiplicativeExpression: {
     typeId: 137,
-    type: "UnaryExpression",
+    type: "MultiplicativeExpression",
     is(node) { return node != null && node.typeId === 137; },
   },
-  PrimaryExpression: {
+  UnaryExpression: {
     typeId: 138,
-    type: "PrimaryExpression",
+    type: "UnaryExpression",
     is(node) { return node != null && node.typeId === 138; },
   },
-  BrackettedExpression: {
+  PrimaryExpression: {
     typeId: 139,
-    type: "BrackettedExpression",
+    type: "PrimaryExpression",
     is(node) { return node != null && node.typeId === 139; },
   },
-  ExpressionList: {
+  BrackettedExpression: {
     typeId: 140,
-    type: "ExpressionList",
+    type: "BrackettedExpression",
     is(node) { return node != null && node.typeId === 140; },
   },
-  BuiltInCall: {
+  ExpressionList: {
     typeId: 141,
-    type: "BuiltInCall",
+    type: "ExpressionList",
     is(node) { return node != null && node.typeId === 141; },
+  },
+  BuiltInCall: {
+    typeId: 142,
+    type: "BuiltInCall",
+    is(node) { return node != null && node.typeId === 142; },
     fn(node) {
       return node ? node.childForFieldId(12) : null;
     },
@@ -7703,29 +7712,29 @@ export const Cst = {
     },
   },
   VarOrTerm: {
-    typeId: 142,
-    type: "VarOrTerm",
-    is(node) { return node != null && node.typeId === 142; },
-  },
-  Iri: {
     typeId: 143,
-    type: "Iri",
+    type: "VarOrTerm",
     is(node) { return node != null && node.typeId === 143; },
   },
-  RDFLiteral: {
+  Iri: {
     typeId: 144,
-    type: "RDFLiteral",
+    type: "Iri",
     is(node) { return node != null && node.typeId === 144; },
   },
-  NumericLiteral: {
+  RDFLiteral: {
     typeId: 145,
-    type: "NumericLiteral",
+    type: "RDFLiteral",
     is(node) { return node != null && node.typeId === 145; },
   },
-  BooleanLiteral: {
+  NumericLiteral: {
     typeId: 146,
-    type: "BooleanLiteral",
+    type: "NumericLiteral",
     is(node) { return node != null && node.typeId === 146; },
+  },
+  BooleanLiteral: {
+    typeId: 147,
+    type: "BooleanLiteral",
+    is(node) { return node != null && node.typeId === 147; },
   },
   VAR: {
     typeId: 232,

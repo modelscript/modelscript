@@ -2,9 +2,21 @@
 
 // Chunked Array for Zero-GC Memory Growth
 
+const CHUNK_ALLOC_LOCK_PTR: usize = memory.data(4);
+
+@inline function acquireChunkAllocLock(): void {
+  while (atomic.cmpxchg<u32>(CHUNK_ALLOC_LOCK_PTR, 0, 1) != 0) { /* spin */ }
+}
+
+@inline function releaseChunkAllocLock(): void {
+  atomic.store<u32>(CHUNK_ALLOC_LOCK_PTR, 0);
+}
+
 export function atomicChunkAlloc(size: u32): u32 {
   if (size == 0) return 0;
+  acquireChunkAllocLock();
   let rawPtr = heap.alloc(size + 32);
+  releaseChunkAllocLock();
   if (rawPtr == 0) return 0;
   let alignedPtr = (rawPtr + sizeof<usize>() + 15) & ~15;
   store<usize>(alignedPtr - sizeof<usize>(), rawPtr);
@@ -17,7 +29,9 @@ export function atomicChunkFree(ptr: usize): void {
   let rawPtr = load<usize>(ptr - sizeof<usize>());
   if (rawPtr != 0) {
     store<usize>(ptr - sizeof<usize>(), 0);
+    acquireChunkAllocLock();
     heap.free(rawPtr);
+    releaseChunkAllocLock();
   }
 }
 

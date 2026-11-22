@@ -5,3 +5,6 @@ export * from "./engine.js";
 export * from "./language.js";
 export { default, default as sparqlLanguage } from "./language.js";
 export * from "./lints.js";
+export * from "./owl2ql-rewriter.js";
+export * from "./reactive.js";
+export * from "./virtual-arena.js";

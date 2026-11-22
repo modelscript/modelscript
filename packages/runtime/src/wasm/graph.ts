@@ -239,7 +239,7 @@ const FQN_HASH_TABLE_CAPACITY = 4096;
 
 export let graphArenaStart: u32 = 0;
 export let graphArenaOffset: u32 = 0;
-const GRAPH_ARENA_CAPACITY = 16 * 1024 * 1024; // 16MB
+const GRAPH_ARENA_CAPACITY = 1024 * 1024; // 1MB initial CodeGraph arena (falls back to heap.alloc on overflow)
 
 /**
  * Allocates a block of memory from the 16MB CodeGraph linear arena.

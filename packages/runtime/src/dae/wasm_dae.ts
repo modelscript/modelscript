@@ -5464,6 +5464,9 @@ export function eliminateArenaAliases(dae: WasmDaeBridge): void {
         if (kind === EqKind.Connect && ((vIdx1 >= 0 && dae.isVarFlow(vIdx1)) || (vIdx2 >= 0 && dae.isVarFlow(vIdx2)))) {
           continue;
         }
+        if (vIdx1 < 0 && vIdx2 < 0) {
+          continue;
+        }
         if (vIdx1 >= 0 && vIdx2 >= 0 && dae.getVarType(vIdx1) !== dae.getVarType(vIdx2)) {
           continue;
         }

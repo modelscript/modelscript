@@ -9,6 +9,7 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
+    "inlineSources": true,
     "strict": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
@@ -23,6 +24,7 @@
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
+    "composite": true,
     "incremental": true,
     "tsBuildInfoFile": "${configDir}/dist/tsconfig.tsbuildinfo"
   }
