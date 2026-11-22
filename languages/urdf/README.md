@@ -3,6 +3,8 @@
 
 # @modelscript/urdf
 
+**Maturity:** Beta · **Extensions:** `.urdf`, `.sdf`, `.xacro` · **Docs:** [modelscript.org/languages/urdf](https://modelscript.org/languages/urdf)
+
 ROS **URDF**, **SDFormat (SDF)**, and **Xacro** (`.urdf`, `.sdf`, `.xacro`) robotics modeling and articulated multibody dynamics engine for ModelScript. Features streaming XML parsing (`@modelscript/dsl/xml`), parameterized Xacro macro expansion, pre-flight robotics linter diagnostics (`M7501`–`M7508`), Featherstone's $O(N)$ Articulated Body Algorithm (ABA) and Recursive Newton-Euler Algorithm (RNEA), direct lowering to WebAssembly `DAEBuilder`, and cross-domain projections (`Modelica.Mechanics.MultiBody`, SIMPACK, MSC Adams, and `@modelscript/cad` CSG/STEP).
 
 ---
@@ -18,7 +20,7 @@ ROS **URDF**, **SDFormat (SDF)**, and **Xacro** (`.urdf`, `.sdf`, `.xacro`) robo
 - **Direct Linear-Memory DAE Arena Lowering (`lowerUrdfToDae`)**: Lowers joint generalized coordinates ($q_i, \dot{q}_i$), actuator torques, damping, and articulated equations of motion directly into `@modelscript/runtime`'s `DAEBuilder`.
 - **Pre-Flight Robotics Linter (`lintUrdfRobot`, `UrdfErrorCode`)**: 8 static structural, inertial, and kinematic rules (`M7501`–`M7508`) checking parent/child link resolution, kinematic loops, physical inertia tensor triangle inequalities, joint limits, and axis norms.
 - **Polyglot MBD & CAD Projections (`urdfToModelica`, `urdfToSimpack`, `urdfToAdams`, `urdfToCadAssembly`)**: Translates URDF robots into `Modelica.Mechanics.MultiBody`, SIMPACK `.spck`, MSC Adams `.adm`, and 3D CSG/STEP CAD assemblies.
-- **Kinematic Tree Diagrams & Workspace Indexing (`buildUrdfDiagram`, `renderUrdfDiagramSvg`, `UrdfWorkspaceIndex`)**: Interactive kinematic graph generation, headless SVG rendering, and `IWorkspaceIndex` multi-file symbol indexing.
+- **Kinematic Tree Diagrams & Workspace Indexing (`buildUrdfDiagram`, `renderUrdfDiagramSvg`)**: Interactive kinematic graph generation, headless SVG rendering, and workspace symbol indexing multi-file symbol indexing.
 
 ---
 
@@ -46,7 +48,6 @@ ROS **URDF**, **SDFormat (SDF)**, and **Xacro** (`.urdf`, `.sdf`, `.xacro`) robo
 | `src/projections/index.ts`       | Projections module re-exports                                                             |
 | `src/diagram/urdf-diagram.ts`    | `buildUrdfDiagram` and `renderUrdfDiagramSvg` kinematic tree visualizer                   |
 | `src/diagram/index.ts`           | Diagram module re-exports                                                                 |
-| `src/workspace-index.ts`         | `UrdfWorkspaceIndex` implementing `IWorkspaceIndex`                                       |
 | `src/lsp.ts`                     | LSP diagnostics, document symbols, and hover providers                                    |
 
 ---
@@ -72,15 +73,15 @@ ROS **URDF**, **SDFormat (SDF)**, and **Xacro** (`.urdf`, `.sdf`, `.xacro`) robo
 
 ```bash
 # Expand Xacro macros and lint a URDF robot model (M7501–M7508)
-npx msx urdf lint panda_arm.urdf
+msx urdf lint panda_arm.urdf
 
 # Lower articulated robot dynamics to the ModelScript DAE arena
-npx msx urdf flatten panda_arm.urdf
+msx urdf flatten panda_arm.urdf
 
 # Project URDF robot to Modelica MultiBody, SIMPACK, MSC Adams, or STEP CAD
-npx msx urdf to-modelica panda_arm.urdf
-npx msx urdf to-simpack panda_arm.urdf
-npx msx urdf to-adams panda_arm.urdf
+msx urdf to-modelica panda_arm.urdf
+msx urdf to-simpack panda_arm.urdf
+msx urdf to-adams panda_arm.urdf
 ```
 
 ### Programmatic API

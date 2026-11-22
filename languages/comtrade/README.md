@@ -1,7 +1,9 @@
 <div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
 <div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-# `@modelscript/comtrade`
+# @modelscript/comtrade
+
+**Maturity:** Alpha · **Extensions:** `.cfg`, `.dat`, `.cff`, `.soe`, `.comfede` · **Docs:** [modelscript.org/languages/comtrade](https://modelscript.org/languages/comtrade)
 
 IEEE C37.111 / IEC 60255-24 COMTRADE (Common Format for Transient Data Exchange) language engine for ModelScript.
 

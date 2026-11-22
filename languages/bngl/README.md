@@ -3,7 +3,9 @@
 
 # @modelscript/bngl
 
-BioNetGen rule-based biochemical and cell-signaling modeling language package (`.bngl`) for ModelScript. Features a zero-regex character-by-character parser and serializer (`parseBngl`, `serializeBngl`), multi-file workspace indexing (`BnglWorkspaceIndex`), automated rule-based network expansion via graph canonicalization and subgraph isomorphism (`generateBnglNetwork`), a deterministic RK4 ODE and observable trajectory solver (`solveBngl`), direct linear-memory `DAEBuilder` stoichiometric lowering (`lowerBnglToDae`), 10 pre-flight rule-based biochemical lint rules (`M9051`–`M9060`), Modelica 3.x (`bnglToModelica`) and SBML Level 3 XML (`bnglToSbmlXml`) projections, and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.bngl` · **Docs:** [modelscript.org/languages/bngl](https://modelscript.org/languages/bngl)
+
+BioNetGen rule-based biochemical and cell-signaling modeling language package (`.bngl`) for ModelScript. Features a zero-regex character-by-character parser and serializer (`parseBngl`, `serializeBngl`), multi-file workspace indexing, automated rule-based network expansion via graph canonicalization and subgraph isomorphism (`generateBnglNetwork`), a deterministic RK4 ODE and observable trajectory solver (`solveBngl`), direct linear-memory `DAEBuilder` stoichiometric lowering (`lowerBnglToDae`), 10 pre-flight rule-based biochemical lint rules (`M9051`–`M9060`), Modelica 3.x (`bnglToModelica`) and SBML Level 3 XML (`bnglToSbmlXml`) projections, and Language Server Protocol (LSP) services.
 
 ---
 
@@ -18,7 +20,7 @@ BioNetGen rule-based biochemical and cell-signaling modeling language package (`
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerBnglToDae`)**: Compiles compartments, parameters, concrete expanded species, algebraic observable group equations, reaction fluxes, and molar balance ODEs directly into ModelScript's zero-GC WebAssembly `DAEBuilder` arena.
 - **10 Pre-Flight Rule-Based Lint Rules (`M9051`–`M9060`, `lintBngl`)**: Static verification of undeclared molecule types, undeclared component sites, invalid internal phosphorylation/conformational states, dangling bond labels (`!1` appearing $\ne 2$ times), undefined rate parameters, reversible rules missing reverse rate constants, negative seed concentrations, empty models, duplicate observable names, and unbounded polymerization rules.
 - **Modelica 3.x & SBML Level 3 Projections (`bnglToModelica`, `bnglToSbmlXml`)**: Synthesizes standalone Modelica 3.x biochemical pathway models and standard SBML Level 3 Version 2 Core XML documents from expanded rule networks.
-- **Multi-File Workspace Indexing & LSP (`BnglWorkspaceIndex`, `getBnglHover`, `provideBnglCompletions`)**: Implements `IWorkspaceIndex` across `.bngl` files with molecule/observable/rule hover inspection, completions, document outlines, and AST writeback.
+- **Multi-File Workspace Indexing & LSP (`getBnglHover`, `provideBnglCompletions`)**: Provides workspace symbol indexing across `.bngl` files with molecule/observable/rule hover inspection, completions, document outlines, and AST writeback.
 
 ---
 
@@ -40,7 +42,6 @@ BioNetGen rule-based biochemical and cell-signaling modeling language package (`
 | `src/dae/index.ts`                    | DAE lowering barrel exports                                                                                        |
 | `src/projections/bngl-projections.ts` | `bnglToModelica` and `bnglToSbmlXml` translators to Modelica 3.x and SBML Level 3 XML                              |
 | `src/projections/index.ts`            | Projections barrel exports                                                                                         |
-| `src/workspace-index.ts`              | `BnglWorkspaceIndex` implementing `IWorkspaceIndex` across `.bngl` files                                           |
 | `src/lsp.ts`                          | LSP validation, document symbol outline, hover, completion, and action handlers                                    |
 
 ---

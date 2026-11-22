@@ -39,8 +39,9 @@ export function registerCustomEditors(
 ): CustomEditorsControllerResult {
   // 1. Diagram Editor Provider
   const diagramProvider = new DiagramEditorProvider(context, client);
-  const diagramViewTypes = [
+  const diagramViewTypeSet = new Set<string>([
     DiagramEditorProvider.viewType,
+    "modelscript.owl2Diagram",
     "modelica.diagramEditor",
     "sysml2.diagramEditor",
     "sysml.diagramEditor",
@@ -54,46 +55,111 @@ export function registerCustomEditors(
     "ssp.diagramEditor",
     "modelscript.diagramEditor",
     "adams.diagramEditor",
+    "ampl.diagramEditor",
+    "antimony.diagramEditor",
+    "asm.diagramEditor",
     "aspen.diagramEditor",
+    "atp.diagramEditor",
+    "automationml.diagramEditor",
     "autosar.diagramEditor",
+    "bngl.diagramEditor",
     "c.diagramEditor",
+    "c37118.diagramEditor",
+    "cantera.diagramEditor",
     "ccsds.diagramEditor",
+    "cellml.diagramEditor",
+    "cgmes.diagramEditor",
+    "comtrade.diagramEditor",
+    "cyme.diagramEditor",
+    "dicom-rt.diagramEditor",
+    "dnp3.diagramEditor",
     "easy5.diagramEditor",
     "eclipse.diagramEditor",
     "energyplus.diagramEditor",
     "epanet.diagramEditor",
+    "febio.diagramEditor",
+    "fiber.diagramEditor",
     "fortran.diagramEditor",
+    "genbank.diagramEditor",
     "gensys.diagramEditor",
+    "gproms.diagramEditor",
+    "gridlabd.diagramEditor",
+    "gtfs.diagramEditor",
     "gtsuite.diagramEditor",
+    "hec-hms.diagramEditor",
+    "hec-ras.diagramEditor",
     "ibis.diagramEditor",
+    "iec104.diagramEditor",
+    "igtl.diagramEditor",
     "jsbsim.diagramEditor",
+    "landgem.diagramEditor",
+    "las.diagramEditor",
     "lps.diagramEditor",
+    "matpower.diagramEditor",
     "mlxtran.diagramEditor",
+    "modflow.diagramEditor",
+    "nifti.diagramEditor",
     "nmodl.diagramEditor",
+    "nmtran.diagramEditor",
+    "ocpp.diagramEditor",
     "olga.diagramEditor",
+    "oneliner.diagramEditor",
+    "openadr.diagramEditor",
     "opendrive.diagramEditor",
     "opendss.diagramEditor",
     "openscenario.diagramEditor",
+    "opensim.diagramEditor",
+    "optical.diagramEditor",
+    "oscal.diagramEditor",
+    "pdb.diagramEditor",
+    "phreeqc.diagramEditor",
     "plcopen.diagramEditor",
+    "plscadd.diagramEditor",
+    "powerfactory.diagramEditor",
+    "powerworld.diagramEditor",
+    "pslf.diagramEditor",
     "psse.diagramEditor",
+    "pypsa.diagramEditor",
+    "qif.diagramEditor",
+    "ran.diagramEditor",
     "relap5.diagramEditor",
     "reqif.diagramEditor",
     "rocets.diagramEditor",
+    "rtds.diagramEditor",
     "sbml.diagramEditor",
+    "sbol.diagramEditor",
+    "scl.diagramEditor",
+    "sedml.diagramEditor",
+    "sel.diagramEditor",
     "sima.diagramEditor",
     "simpack.diagramEditor",
     "simulink.diagramEditor",
+    "smiles.diagramEditor",
     "spice.diagramEditor",
     "swmm.diagramEditor",
+    "three-mf.diagramEditor",
+    "topas.diagramEditor",
     "touchstone.diagramEditor",
+    "tough.diagramEditor",
     "urdf.diagramEditor",
-    "verilog-a.diagramEditor",
-    "qif.diagramEditor",
-    "oscal.diagramEditor",
-    "automationml.diagramEditor",
     "usd.diagramEditor",
-  ];
-  for (const vt of diagramViewTypes) {
+    "verilog-a.diagramEditor",
+    "waterml.diagramEditor",
+  ]);
+  // Also auto-register any diagram custom editor viewTypes declared in the extension manifest so
+  // newly added languages never drift out of sync with packages/ide.
+  const manifestCustomEditors = (
+    context.extension?.packageJSON as { contributes?: { customEditors?: Array<{ viewType?: string }> } } | undefined
+  )?.contributes?.customEditors;
+  if (Array.isArray(manifestCustomEditors)) {
+    for (const entry of manifestCustomEditors) {
+      const vt = entry?.viewType;
+      if (typeof vt === "string" && (vt.endsWith(".diagramEditor") || vt === "modelscript.owl2Diagram")) {
+        diagramViewTypeSet.add(vt);
+      }
+    }
+  }
+  for (const vt of diagramViewTypeSet) {
     context.subscriptions.push(
       vscode.window.registerCustomEditorProvider(vt, diagramProvider, {
         webviewOptions: { retainContextWhenHidden: true },

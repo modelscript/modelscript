@@ -34,7 +34,7 @@ Practicing engineers in automotive, aerospace, energy, defense, and biomedical s
 ├────────────────────┼─────────────────────────────┼─────────────────────┤
 │ Interoperability   │ Isolated disciplinary silos │ Cross-domain Salsa  │
 │                    │ bridged only by static      │ hypergraph linking  │
-│                    │ PowerPoint screenshots      │ 93 format parsers   │
+│                    │ PowerPoint screenshots      │ 105 format parsers  │
 └────────────────────┴─────────────────────────────┴─────────────────────┘
 ```
 
@@ -196,4 +196,4 @@ To satisfy operational requirements in regulated and defense engineering environ
 
 1. **Client-Side Sandbox Execution:** In Ansatz, compilation, Salsa dependency resolution, and numerical integration execute inside the client's WebAssembly sandbox. Model source code and equations do not need to be transmitted to remote servers.
 2. **Cryptographic Data Sovereignty:** Every project repository is backed by standard Git Smart HTTP infrastructure with support for Ed25519 commit verification. Teams retain complete local data ownership and can clone or export full histories at any time.
-3. **Air-Gapped On-Premises Deployment:** Organizations can deploy standalone Ansatz nodes (`ansatz-ce` or `ansatz-ee`) inside sovereign VPCs, Kubernetes clusters, or air-gapped internal intranets with LDAP, SAML/SSO, and Slurm HPC cluster federation.
+3. **Air-Gapped On-Premises Deployment:** Organizations can deploy standalone Ansatz nodes (`ghcr.io/modelscript/api-ce` or `ghcr.io/modelscript/api-ee`) inside sovereign VPCs, Kubernetes clusters, or air-gapped internal intranets with LDAP, SAML/SSO, and Slurm HPC cluster federation.

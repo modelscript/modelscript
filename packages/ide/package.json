@@ -44,6 +44,7 @@
     "@modelscript/lsp": "workspace:*",
     "@modelscript/nmodl": "workspace:*",
     "@modelscript/pdb": "workspace:*",
+    "@modelscript/pscad": "workspace:*",
     "@modelscript/qif": "workspace:*",
     "@modelscript/runtime": "workspace:*",
     "@modelscript/scad": "workspace:*",

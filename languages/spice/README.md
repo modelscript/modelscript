@@ -3,7 +3,9 @@
 
 # @modelscript/spice
 
-High-performance, zero-regex **SPICE 2G6 / 3F5 / HSPICE / LTspice** (`.cir`, `.sp`, `.net`, `.lib`) analog & mixed-signal simulation language package for ModelScript. Features multi-file workspace indexing (`SpiceWorkspaceIndex`), 10 pre-flight electrical & topological lint rules (`M7101`–`M7110`), Modified Nodal Analysis (MNA) DC/AC/Transient numerical solvers, direct lowering to WebAssembly `DAEBuilder`, and bidirectional projections to `Modelica.Electrical.Analog` and `@modelscript/cad` ECAD `NetlistGraph`.
+**Maturity:** Beta · **Extensions:** `.cir`, `.sp`, `.net`, `.lib` · **Docs:** [modelscript.org/languages/spice](https://modelscript.org/languages/spice)
+
+High-performance, zero-regex **SPICE 2G6 / 3F5 / HSPICE / LTspice** (`.cir`, `.sp`, `.net`, `.lib`) analog & mixed-signal simulation language package for ModelScript. Features multi-file workspace indexing, 10 pre-flight electrical & topological lint rules (`M7101`–`M7110`), Modified Nodal Analysis (MNA) DC/AC/Transient numerical solvers, direct lowering to WebAssembly `DAEBuilder`, and bidirectional projections to `Modelica.Electrical.Analog` and `@modelscript/cad` ECAD `NetlistGraph`.
 
 ---
 
@@ -46,7 +48,6 @@ High-performance, zero-regex **SPICE 2G6 / 3F5 / HSPICE / LTspice** (`.cir`, `.s
 | `src/tgg/index.ts`             | TGG module re-exports                                                                               |
 | `src/diagram/spice-diagram.ts` | `buildSpiceDiagram` and `renderSpiceSvg` analog circuit schematic renderer                          |
 | `src/diagram/index.ts`         | Diagram module re-exports                                                                           |
-| `src/workspace-index.ts`       | `SpiceWorkspaceIndex` implementing `IWorkspaceIndex`                                                |
 | `src/lsp.ts`                   | LSP diagnostics, document symbols, and hover providers                                              |
 
 ---
@@ -74,14 +75,14 @@ High-performance, zero-regex **SPICE 2G6 / 3F5 / HSPICE / LTspice** (`.cir`, `.s
 
 ```bash
 # Lint a SPICE netlist for floating nodes, voltage loops, and cutsets (M7101–M7110)
-npx msx spice lint lowpass_filter.cir
+msx spice lint lowpass_filter.cir
 
 # Run DC operating point (.OP), transient (.TRAN), or AC (.AC) simulation
-npx msx spice simulate lowpass_filter.cir
+msx spice simulate lowpass_filter.cir
 
 # Project SPICE netlist to Modelica.Electrical.Analog or ECAD NetlistGraph
-npx msx spice to-modelica lowpass_filter.cir
-npx msx spice to-ecad lowpass_filter.cir
+msx spice to-modelica lowpass_filter.cir
+msx spice to-ecad lowpass_filter.cir
 ```
 
 ### Programmatic API

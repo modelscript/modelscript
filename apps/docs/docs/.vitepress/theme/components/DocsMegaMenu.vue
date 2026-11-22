@@ -10,7 +10,7 @@ const props = defineProps<{ screenMenu?: boolean }>();
 const totalRules = (
   Array.isArray(languagesJson)
     ? languagesJson.reduce((acc, l) => acc + ((l as { ruleCount?: number }).ruleCount || 0), 0)
-    : 416
+    : 1408
 ).toLocaleString();
 const totalLangs = Array.isArray(languagesJson) ? languagesJson.length : LANGUAGE_COUNT;
 
@@ -76,7 +76,7 @@ const columns: MegaMenuColumn[] = [
       },
       {
         name: "Modelica (.mo)",
-        tagline: "Acausal multi-domain physical systems & MSL 4.x · Stable",
+        tagline: "Acausal multi-domain physical systems & MSL 4.x · Beta",
         href: "/languages/modelica",
         icon: "activity",
         accent: "#818cf8",

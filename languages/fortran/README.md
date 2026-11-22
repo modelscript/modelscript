@@ -3,6 +3,8 @@
 
 # @modelscript/fortran
 
+**Maturity:** Alpha · **Extensions:** `.f`, `.for`, `.f77`, `.f90`, `.f95`, … (7 extensions) · **Docs:** [modelscript.org/languages/fortran](https://modelscript.org/languages/fortran)
+
 First-class Fortran 77/90 (`.f`, `.for`, `.f77`, `.f90`) DSL and engineering simulation compiler package for ModelScript. Features a native WebAssembly GLR parser (`parser.wasm` via `@modelscript/dsl`), 10 static analysis lint rules (`M4070`–`M4079`), engineering preprocessor macro resolution (`#IF`/`#STORAGE`/`#LOCAL`/`$Param`/`$#DIM`), direct linear-memory DAE arena lowering (`IDaeBuilder`), and zero-allocation simulation step compilation for EMT and dynamic solvers (PSCAD EMTDC, EASY5 `UG`, NASA ROCETS).
 
 ---
@@ -57,10 +59,10 @@ First-class Fortran 77/90 (`.f`, `.for`, `.f77`, `.f90`) DSL and engineering sim
 
 ```bash
 # Lint a Fortran subroutine or PSCAD/EASY5 segment (M4070–M4079)
-npx msx fortran lint governor.f90
+msx lint governor.f90
 
 # Lower Fortran derivative subroutine to the ModelScript DAE arena
-npx msx fortran flatten turbine_ug.f
+msx flatten turbine_ug.f
 ```
 
 ### Programmatic API

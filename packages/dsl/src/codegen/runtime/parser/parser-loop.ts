@@ -23,12 +23,12 @@ import {
     g_expectedVersion
 } from "./gss";
 import {
-    allocNode, getNodeType, getNodeFlags, getNodePadding, getNodeLeadingPad, getNodeByteLength, getNodeFirstChild,
+    allocNode, allocLeafNode, isLeafNode, getNodeType, setNodeType, getNodeFlags, getNodePadding, getNodeLeadingPad, getNodeByteLength, getNodeFirstChild,
     getNodeNextSibling, setFirstChild, setNextSibling, setNodeFlags, setNodePadding, propagateFirstChildPadding,
     setNodeByteLength, FLAG_IS_LIST, FLAG_INVISIBLE, FLAG_GC_MARK, FLAG_LSP_VISITED, FLAG_LIST_BOUNDARY, FLAG_HAS_ERROR, FLAG_IS_TAINED, FLAG_IS_INSERTED, FLAG_EXTRACTED, FLAG_IS_SHARED, FLAG_FRAGILE,
     getNodeEnvHash, getNodeStartState, setNodeStartState, getNodeReductionLookahead, setNodeReductionLookahead, setNodeReductionInfo, getInputBuffer,
     atomicChunkAlloc, resetGeneration, S, ASTNode, clearAstMarks, isNodeGen2, setParseWatermark, isCurrentParseNode,
-    setNodeMerkleHash, getNodeMerkleHash, EPHEMERAL_FLAGS
+    setNodeMerkleHash, getNodeMerkleHash, getNodeRawMerkleHash, copyNodeMerkleHash, EPHEMERAL_FLAGS
 } from "../arena";
 import { UnmanagedUint32Array, UnmanagedUint8Array, UnmanagedInt32Array, ChunkedUint32Array, createChunkedUint32Array } from "../core/array";
 import {
@@ -893,7 +893,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
         }
       }
 
-      let leaf = allocNode(token as u16, paddingLength, lexLen, curBalance & 0xff, false, currentState as u32);
+      let leaf = allocLeafNode(token as u16, paddingLength, lexLen, curBalance & 0xff, false, currentState as u32);
 
       let lh: u64 = 0xcbf29ce484222325;
       lh ^= (token as u64);
@@ -1051,10 +1051,9 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
                 let aIndex = alias_data[aliasPtr + 1 + a * 2];
                 let aSym = alias_data[aliasPtr + 1 + a * 2 + 1];
                 if (aIndex == logicalChildIndex) {
-                  let node = changetype<ASTNode>(clone);
-                  if (node.type != (aSym as u16)) {
-                    let prevM = (node.merkleLow as u64) | ((node.merkleHigh as u64) << 32);
-                    node.type = aSym as u16;
+                  if (getNodeType(clone) != (aSym as u16)) {
+                    let prevM = getNodeRawMerkleHash(clone);
+                    setNodeType(clone, aSym as u16);
                     if (prevM != 0) {
                       let ah: u64 = prevM ^ ((aSym as u64) | 0x9e3779b97f4a7c15);
                       ah = ah * 0x100000001b3;
@@ -1394,13 +1393,12 @@ function deepCloneSubtree(root: u32, _depth: i32 = 0): u32 {
     t_cloneStack.clear();
   }
 
-  let rootClone = allocNode(getNodeType(root), getNodePadding(root), getNodeByteLength(root), getNodeEnvHash(root), false, getNodeStartState(root));
+  let rootClone = isLeafNode(root)
+    ? allocLeafNode(getNodeType(root), getNodePadding(root), getNodeByteLength(root), getNodeEnvHash(root), false, 0)
+    : allocNode(getNodeType(root), getNodePadding(root), getNodeByteLength(root), getNodeEnvHash(root), false, getNodeStartState(root));
   setNodeReductionLookahead(rootClone, getNodeReductionLookahead(root));
   setNodeFlags(rootClone, getNodeFlags(root) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
-  let rootSrcNode = changetype<ASTNode>(root);
-  let rootCloneNode = changetype<ASTNode>(rootClone);
-  rootCloneNode.merkleLow = rootSrcNode.merkleLow;
-  rootCloneNode.merkleHigh = rootSrcNode.merkleHigh;
+  copyNodeMerkleHash(rootClone, root);
 
   t_cloneStack.push(root);
   t_cloneStack.push(rootClone);
@@ -1416,13 +1414,12 @@ function deepCloneSubtree(root: u32, _depth: i32 = 0): u32 {
 
     while (child != 0 && siblingCount < 500000) {
       siblingCount++;
-      let childClone = allocNode(getNodeType(child), getNodePadding(child), getNodeByteLength(child), getNodeEnvHash(child), false, getNodeStartState(child));
+      let childClone = isLeafNode(child)
+        ? allocLeafNode(getNodeType(child), getNodePadding(child), getNodeByteLength(child), getNodeEnvHash(child), false, 0)
+        : allocNode(getNodeType(child), getNodePadding(child), getNodeByteLength(child), getNodeEnvHash(child), false, getNodeStartState(child));
       setNodeReductionLookahead(childClone, getNodeReductionLookahead(child));
       setNodeFlags(childClone, getNodeFlags(child) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
-      let cSrcNode = changetype<ASTNode>(child);
-      let cCloneNode = changetype<ASTNode>(childClone);
-      cCloneNode.merkleLow = cSrcNode.merkleLow;
-      cCloneNode.merkleHigh = cSrcNode.merkleHigh;
+      copyNodeMerkleHash(childClone, child);
 
       if (lastClonedChild == 0) {
         setFirstChild(currClone, childClone);
@@ -1710,15 +1707,14 @@ export function cloneNodeShallow(gc: u32): u32 {
   // ruining the clone. We use FLAG_IS_SHARED instead of FLAG_EXTRACTED to avoid
   // confusing `injectStrandedNodes` into thinking the original node is a clone.
   setNodeFlags(gc, getNodeFlags(gc) | FLAG_IS_SHARED);
-  let clone = allocNode(getNodeType(gc), getNodePadding(gc), getNodeByteLength(gc), getNodeEnvHash(gc), false, getNodeStartState(gc));
+  let clone = isLeafNode(gc)
+    ? allocLeafNode(getNodeType(gc), getNodePadding(gc), getNodeByteLength(gc), getNodeEnvHash(gc), false, 0)
+    : allocNode(getNodeType(gc), getNodePadding(gc), getNodeByteLength(gc), getNodeEnvHash(gc), false, getNodeStartState(gc));
   setNodeReductionLookahead(clone, getNodeReductionLookahead(gc));
   // Keep FLAG_EXTRACTED on the clone so its shared children are not mutated in-place
   setNodeFlags(clone, (getNodeFlags(gc) | FLAG_EXTRACTED) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
   setFirstChild(clone, getNodeFirstChild(gc)); // Keep original children
-  let srcNode = changetype<ASTNode>(gc);
-  let cloneNode = changetype<ASTNode>(clone);
-  cloneNode.merkleLow = srcNode.merkleLow;
-  cloneNode.merkleHigh = srcNode.merkleHigh;
+  copyNodeMerkleHash(clone, gc);
   return clone;
 }
 /**
@@ -2491,6 +2487,7 @@ function appendRec(node: u32, leaf: u32, listSym: u16, envHash: u32, isBoundary:
       setNextSibling(leaf, 0);
       setNodeByteLength(owned, getNodeByteLength(owned) + getNodePadding(leaf) + getNodeByteLength(leaf));
     }
+    setNodeMerkleHash(owned, 0, 0);
     return owned;
   }
 
@@ -2757,7 +2754,7 @@ function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, 
   }
 
   diag_count_shift++;
-  let leaf = allocNode(token as u16, paddingLength, leafLen, newBalance & 0xff, false, head.state as u32);
+  let leaf = allocLeafNode(token as u16, paddingLength, leafLen, newBalance & 0xff, false, head.state as u32);
   if (isVirtual) {
     setNodeFlags(leaf, getNodeFlags(leaf) | FLAG_IS_INSERTED | FLAG_HAS_ERROR);
   } else {
@@ -2933,10 +2930,9 @@ function constructReducedParentNode(
           let aIndex = alias_data[aliasPtr + 1 + a * 2];
           let aSym = alias_data[aliasPtr + 1 + a * 2 + 1];
           if (aIndex == logicalChildIndex) {
-            let node = changetype<ASTNode>(clone);
-            if (node.type != (aSym as u16)) {
-              let prevM = (node.merkleLow as u64) | ((node.merkleHigh as u64) << 32);
-              node.type = aSym as u16;
+            if (getNodeType(clone) != (aSym as u16)) {
+              let prevM = getNodeRawMerkleHash(clone);
+              setNodeType(clone, aSym as u16);
               if (prevM != 0) {
                 let ah: u64 = prevM ^ ((aSym as u64) | 0x9e3779b97f4a7c15);
                 ah = ah * 0x100000001b3;

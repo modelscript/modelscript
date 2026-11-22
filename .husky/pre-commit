@@ -7,4 +7,4 @@ set -e
 pnpm run lint:scripts
 
 # 2. Run filename lint, ESLint, and Prettier on staged files
-NODE_OPTIONS="--max-old-space-size=8192" pnpm exec lint-staged
+NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=8192}" pnpm exec lint-staged

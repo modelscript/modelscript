@@ -11,9 +11,10 @@ import {
   type PanelKpiItem,
 } from "@modelscript/design-tokens/panel";
 import { renderPsseSvg, type PsseCaseLike, type PssePowerFlowOverlay } from "@modelscript/diagram/psse-diagram-builder";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { lintPsse } from "../lints/index.js";
 import { parseRaw } from "../parser/raw-parser.js";
+import { ensurePsseWasmParser, isPsseWasmParserReady } from "../parser/wasm-loader.js";
 import { psseToModelica } from "../projections/psse-to-modelica.js";
 import { formatPowerFlowReport, solvePowerFlow } from "../solver/ac-powerflow.js";
 import type { PsseCase } from "../types.js";
@@ -31,6 +32,28 @@ export const PssePanel: React.FC<LanguagePanelProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<PsseTabId>("sld");
   const [search, setSearch] = useState("");
+  const [parserReady, setParserReady] = useState<boolean>(() => isPsseWasmParserReady());
+  const [parserLoadError, setParserLoadError] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (parserReady) return;
+    let cancelled = false;
+    void ensurePsseWasmParser()
+      .then(() => {
+        if (!cancelled) {
+          setParserLoadError(undefined);
+          setParserReady(true);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setParserLoadError(err instanceof Error ? err.message : String(err));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [parserReady]);
 
   const computed = useMemo(() => {
     if (!code.trim()) {
@@ -39,6 +62,16 @@ export const PssePanel: React.FC<LanguagePanelProps> = ({
         pf: null as ReturnType<typeof solvePowerFlow> | null,
         lints: [] as ReturnType<typeof lintPsse>,
         parseError: undefined as string | undefined,
+        loading: false,
+      };
+    }
+    if (!parserReady) {
+      return {
+        parsed: null as PsseCase | null,
+        pf: null as ReturnType<typeof solvePowerFlow> | null,
+        lints: [] as ReturnType<typeof lintPsse>,
+        parseError: parserLoadError,
+        loading: !parserLoadError,
       };
     }
     try {
@@ -50,16 +83,17 @@ export const PssePanel: React.FC<LanguagePanelProps> = ({
         pf = null;
       }
       const lints = lintPsse(parsed);
-      return { parsed, pf, lints, parseError: undefined };
+      return { parsed, pf, lints, parseError: undefined, loading: false };
     } catch (err) {
       return {
         parsed: null,
         pf: null,
         lints: [],
         parseError: err instanceof Error ? err.message : String(err),
+        loading: false,
       };
     }
-  }, [code]);
+  }, [code, parserReady, parserLoadError]);
 
   const title = (typeof viewConfig?.["title"] === "string" && viewConfig["title"]) || "PSS/E Power Flow Grid";
 
@@ -132,11 +166,13 @@ export const PssePanel: React.FC<LanguagePanelProps> = ({
         title={title}
         subtitle={computed.parsed ? `SBASE ${computed.parsed.header?.sbase ?? 100} MVA` : "PSS/E RAW"}
         badge={
-          computed.parseError
-            ? { label: "Parse Error", tone: "danger" }
-            : computed.pf?.converged
-              ? { label: "Converged", tone: "success" }
-              : { label: "PSS/E", tone: "info" }
+          computed.loading
+            ? { label: "Loading…", tone: "info" }
+            : computed.parseError
+              ? { label: "Parse Error", tone: "danger" }
+              : computed.pf?.converged
+                ? { label: "Converged", tone: "success" }
+                : { label: "PSS/E", tone: "info" }
         }
         actions={
           <>
@@ -179,7 +215,11 @@ export const PssePanel: React.FC<LanguagePanelProps> = ({
         <PanelSvgStage
           svg={sldSvg}
           onRevealLine={host.onRevealLine}
-          emptyMessage={computed.parseError ?? "Load a PSS/E .raw file to visualize the Single-Line Diagram."}
+          emptyMessage={
+            computed.loading
+              ? "Loading PSS/E WebAssembly parser…"
+              : (computed.parseError ?? "Load a PSS/E .raw file to visualize the Single-Line Diagram.")
+          }
         />
       )}
 

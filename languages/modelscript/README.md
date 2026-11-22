@@ -3,6 +3,8 @@
 
 # @modelscript/modelscript
 
+**Maturity:** Beta · **Extensions:** `.modelscript`, `.msx` · **Docs:** [modelscript.org](https://modelscript.org)
+
 Native ModelScript (`.msx`, `.modelscript`, alias `@modelscript/lang`) systems programming and polyglot query language compiler. Combines low-level `@unmanaged struct` WebAssembly linear memory layouts, XQuery-style FLWOR relational queries, Salsa type/layout inference, static linting (`MSX1001`–`MSX5002`), and multi-target code generation (JavaScript, WebAssembly binary/WAT, and native C/binary).
 
 ---

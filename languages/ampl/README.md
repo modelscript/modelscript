@@ -3,7 +3,9 @@
 
 # @modelscript/ampl
 
-AMPL (A Mathematical Programming Language) modeling package (`.mod`, `.dat`, `.nl`) for ModelScript. Features an algebraic model and tabular data parser (`parseAmplModel`, `parseAmplData`), a relational set and multidimensional array instantiator (`instantiateAmpl`), static mathematical programming pre-flight linter (`lintAmpl`), universal AMPL Solver Library (`.nl`) serializer (`writeNlProblem`), direct linear-memory `DAEBuilder` lowering (`lowerAmplToDae`), and seamless solver bridges to ModelScript's in-WebAssembly COIN-OR solvers (CLP for LP, CBC for MILP, and IPOPT for NLP).
+**Maturity:** Beta · **Extensions:** `.mod`, `.dat`, `.run`, `.ampl`, `.mps` · **Docs:** [modelscript.org/languages/ampl](https://modelscript.org/languages/ampl)
+
+AMPL (A Mathematical Programming Language) modeling package (`.mod`, `.dat`, `.run`, `.ampl`, `.mps`) for ModelScript. Features an algebraic model and tabular data parser (`parseAmplModel`, `parseAmplData`), a relational set and multidimensional array instantiator (`instantiateAmpl`), static mathematical programming pre-flight linter (`lintAmpl`), universal AMPL Solver Library (`.nl`) serializer (`writeNlProblem`), direct linear-memory `DAEBuilder` lowering (`lowerAmplToDae`), and seamless solver bridges to ModelScript's in-WebAssembly COIN-OR solvers (CLP for LP, CBC for MILP, and IPOPT for NLP).
 
 ---
 

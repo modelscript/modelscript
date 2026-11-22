@@ -499,7 +499,7 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
     setNodeFlags(tNode, getNodeFlags(tNode) | FLAG_HAS_ERROR);
     let oldSpine = cloneNodeShallow(oldNode);
     setNodePadding(oldSpine, 0);
-    setNodeFlags(oldSpine, getNodeFlags(oldSpine) | FLAG_INVISIBLE | FLAG_IS_LIST | FLAG_HAS_ERROR);
+    setNodeFlags(oldSpine, getNodeFlags(oldSpine) | FLAG_INVISIBLE | FLAG_IS_LIST);
     let childLeaf = allocNode(childTokType, pad, tLen, 0, false);
     setNodeFlags(childLeaf, getNodeFlags(childLeaf) | FLAG_HAS_ERROR);
     setFirstChild(tNode, oldSpine);
@@ -512,7 +512,8 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
   let diagStart = srcLexPos;
   let diagEnd = srcLexPos + tLen;
   let exp = getExpectedTokensForState(head.state);
-  let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, childTokType as u32, 2, (exp & 0xffffffff) as u32, ((exp >>> 32) & 0xffffffff) as u32);
+  let skipDiagKind: u32 = isExtraCloser(head.balanceHash, token) ? 6 : 2;
+  let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, childTokType as u32, skipDiagKind, (exp & 0xffffffff) as u32, ((exp >>> 32) & 0xffffffff) as u32);
 
   let crossedNl = false;
   let p = pos;
@@ -550,7 +551,8 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
   let unconfirmedPenalty: i32 = head.successfulShifts < 2 ? 60 : 0;
   let closeBracketPenalty: i32 = 0;
   if (isExtraCloser(head.balanceHash, token)) {
-    closeBracketPenalty = -50; // Strongly prefer deleting an unmatched extra closer
+    unconfirmedPenalty = 0;
+    closeBracketPenalty = -60; // Strongly prefer deleting an unmatched extra closer over unwinding valid frames
   } else if (
     (head.balanceHash & 0xff) > 0 &&
     token >= 0 &&
@@ -622,12 +624,16 @@ function lineIndentAt(p: u32): u32 {
  */
 @inline
 function isDamerauDist1(pos: u32, inLen: u32, kwOffset: i32, kwLen: u32): bool {
-  if (inLen == 0 || kwLen < 4 || pos + inLen > inputLength) return false;
+  if (inLen == 0 || kwLen < 3 || pos + inLen > inputLength) return false;
   let diff: i32 = (inLen as i32) - (kwLen as i32);
   if (diff < -1 || diff > 1) return false;
+  // For 3-char keywords (e.g. "end", "let"), only allow same-length adjacent transposition
+  // ("edn", "lte") to avoid false-positive matches on short 2-3 char identifiers.
+  if (kwLen == 3 && diff != 0) return false;
   let i: u32 = 0;
   let j: u32 = 0;
   let edits: i32 = 0;
+  let usedTransposition = false;
   while (i < inLen && j < kwLen) {
     let c1 = peekChar(pos + i);
     if (c1 >= 65 && c1 <= 90) c1 += 32;
@@ -646,11 +652,13 @@ function isDamerauDist1(pos: u32, inLen: u32, kwOffset: i32, kwLen: u32): bool {
         let n2 = token_string_bytes[kwOffset + 1 + j + 1] as u32;
         if (n2 >= 65 && n2 <= 90) n2 += 32;
         if (c1 == n2 && n1 == c2) {
+          usedTransposition = true;
           i += 2;
           j += 2;
           continue;
         }
       }
+      if (kwLen == 3) return false;
       i++;
       j++;
     } else if (diff > 0) {
@@ -660,6 +668,7 @@ function isDamerauDist1(pos: u32, inLen: u32, kwOffset: i32, kwLen: u32): bool {
     }
   }
   if (i < inLen || j < kwLen) edits++;
+  if (kwLen == 3 && !usedTransposition) return false;
   return edits <= 1;
 }
 
@@ -673,7 +682,7 @@ function computeKeywordSimilarityPenalty(pos: u32, len: u32, sym: i32, state: i3
   let kwLen = token_string_bytes[offset] as u32;
   if (kwLen == 0) return 50;
 
-  if (kwLen >= 4 && isDamerauDist1(pos, len, offset, kwLen)) {
+  if (kwLen >= 3 && isDamerauDist1(pos, len, offset, kwLen)) {
     lastKeywordMatchChars = kwLen;
     return 10;
   }
@@ -939,6 +948,118 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
     }
   }
 
+  // 1c. Mismatched Closing Delimiter Substitution through pending reductions (e.g. `foo(a, b};` -> `)`)
+  if (depth == 0 && isMismatchedCloser(head.balanceHash, token)) {
+    let curSrcLexPosM = srcLexPos;
+    let curTLenM = lexLen > 0 ? lexLen : peekCharLen(curSrcLexPosM);
+    if (curTLenM == 0) curTLenM = 1;
+    let expCloseSym: i32 = -1;
+    let maxTerm = token_bracket_deltas.length < (MAX_TERMINAL_ID + 1) ? token_bracket_deltas.length : (MAX_TERMINAL_ID + 1);
+    for (let s: i32 = 1; s < maxTerm; s++) {
+      if (matchesTopBracketKind(head.balanceHash, s)) {
+        expCloseSym = s;
+        break;
+      }
+    }
+    if (expCloseSym > 0) {
+      let curHeadM: ParseHead = head;
+      let shiftTargetM: i32 = -1;
+      for (let step: i32 = 0; step < 8; step++) {
+        let entryIdx = findActionEntry(curHeadM.state, expCloseSym);
+        if (entryIdx == -1) break;
+        let actCountM = action_data[entryIdx + 1];
+        let actPtrM = entryIdx + 2;
+        let redProdM: i32 = -1;
+        for (let a: i32 = 0; a < actCountM; a++) {
+          let aTypeM = action_data[actPtrM + a * 2];
+          let aTargetM = action_data[actPtrM + a * 2 + 1];
+          if (aTypeM == ACTION_SHIFT) {
+            shiftTargetM = aTargetM;
+            break;
+          } else if (aTypeM == ACTION_REDUCE && redProdM == -1) {
+            redProdM = aTargetM;
+          }
+        }
+        if (shiftTargetM != -1 || redProdM == -1) break;
+        let popLen = redProdM >= 0 && redProdM < prod_lengths.length ? (prod_lengths[redProdM] as i32) : -1;
+        let lhsM = redProdM >= 0 && redProdM < prod_lhs.length ? (prod_lhs[redProdM] as i32) : -1;
+        if (popLen < 0 || lhsM < 0) break;
+        let bottom: ParseHead | null = curHeadM;
+        let okPop = true;
+        for (let k: i32 = popLen - 1; k >= 0; k--) {
+          if (bottom == null) {
+            okPop = false;
+            break;
+          }
+          t_globalChildNodes[k] = bottom.astNode;
+          bottom = bottom.prev;
+        }
+        if (!okPop || bottom == null) break;
+        let gotoSt = lookupGoto(bottom.state, lhsM);
+        if (gotoSt == -1) break;
+        let redNode = allocNode(lhsM as u16, 0, 0, curHeadM.balanceHash & 0xff, false, bottom.state as u32);
+        let firstPad: u32 = 0;
+        let lastChildM: u32 = 0;
+        for (let k: i32 = 0; k < popLen; k++) {
+          let ch = t_globalChildNodes[k];
+          if (ch == 0) continue;
+          let cloned = cloneNodeShallow(ch);
+          if (lastChildM == 0) {
+            firstPad = getNodePadding(cloned);
+            setNodePadding(cloned, 0);
+            setFirstChild(redNode, cloned);
+          } else {
+            setNextSibling(lastChildM, cloned);
+          }
+          lastChildM = cloned;
+        }
+        setNodePadding(redNode, firstPad);
+        if (lastChildM != 0) fixNodeLength(redNode);
+        curHeadM = allocParseHead(
+          gotoSt,
+          redNode,
+          bottom,
+          curHeadM.pos,
+          curHeadM.scannerState,
+          curHeadM.errorCost,
+          curHeadM.successfulShifts,
+          curHeadM.balanceHash,
+          curHeadM.consecutiveInsertions,
+          curHeadM.dynamicPrec,
+          curHeadM.pendingPadding,
+          curHeadM.errorTail
+        );
+      }
+      if (shiftTargetM != -1) {
+        let nextPosAfterM = curSrcLexPosM + curTLenM;
+        let nextTokM = cachedPeekNextTokenInState(nextPosAfterM, shiftTargetM);
+        if (stateCanAccept(curHeadM, shiftTargetM, nextTokM, 0, 1) > 0) {
+          let padM = (curSrcLexPosM > pos ? curSrcLexPosM - pos : 0) + curHeadM.pendingPadding;
+          let mutatedNodeM = allocNode(expCloseSym as u16, padM, curTLenM, 0, false);
+          setNodeFlags(mutatedNodeM, FLAG_HAS_ERROR);
+          let nextTailM = pushDiagnostic(curHeadM.errorTail, curSrcLexPosM, nextPosAfterM, expCloseSym as u32, 5, expCloseSym as u32, 0);
+          let substCostM: i32 = ERROR_COST_PER_MISSING_TREE > 50 ? ERROR_COST_PER_MISSING_TREE - 50 : 10;
+          let substHeadM = allocParseHead(
+            shiftTargetM,
+            mutatedNodeM,
+            curHeadM,
+            nextPosAfterM,
+            curHeadM.scannerState,
+            curHeadM.errorCost + substCostM,
+            0,
+            computeNextBalanceHash(curHeadM.balanceHash, expCloseSym),
+            0,
+            curHeadM.dynamicPrec,
+            0,
+            nextTailM
+          );
+          pushNextHead(changetype<u32>(substHeadM));
+          foundAny = true;
+        }
+      }
+    }
+  }
+
   let actionOffset = action_offsets[state];
   if (actionOffset < 0 || actionOffset >= action_data.length) return foundAny;
 
@@ -1000,7 +1121,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
                   let splitPad = (curSrcLexPos > pos ? curSrcLexPos - pos : 0) + head.pendingPadding;
                   let splitNode = allocNode(sym as u16, splitPad, kwLen, 0, false);
                   setNodeFlags(splitNode, FLAG_HAS_ERROR);
-                  let nextTail = pushDiagnostic(head.errorTail, curSrcLexPos, curSrcLexPos + curTLen, sym as u32, 2, sym as u32, 0);
+                  let nextTail = pushDiagnostic(head.errorTail, curSrcLexPos, curSrcLexPos + curTLen, sym as u32, 3, sym as u32, 0);
                   let splitHead = allocParseHead(
                     splitTarget,
                     splitNode,
@@ -1088,10 +1209,11 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
 
             let diagStart = curSrcLexPos;
             let diagEnd = curSrcLexPos + curTLen;
-            let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, sym as u32, 2, sym as u32, 0);
+            let isMismatchSubst = isMismatchedCloser(head.balanceHash, token) && matchesTopBracketKind(head.balanceHash, sym);
+            let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, sym as u32, isMismatchSubst ? 5 : 2, sym as u32, 0);
 
             let substCost: i32 = ERROR_COST_PER_MISSING_TREE;
-            if (isMismatchedCloser(head.balanceHash, token) && matchesTopBracketKind(head.balanceHash, sym)) {
+            if (isMismatchSubst) {
               substCost = ERROR_COST_PER_MISSING_TREE > 50 ? ERROR_COST_PER_MISSING_TREE - 50 : 10;
             }
             let substHead = allocParseHead(
@@ -1193,7 +1315,8 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
 
     let diagStart = curSrcLexPos;
     let diagEnd = curSrcLexPos + bestSubstSpan;
-    let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, bestSubstSym as u32, 2, bestSubstSym as u32, 0);
+    let substDiagKind: u32 = bestSubstPenalty == 10 ? 4 : 2;
+    let nextTail = pushDiagnostic(head.errorTail, diagStart, diagEnd, bestSubstSym as u32, substDiagKind, bestSubstSym as u32, 0);
 
     let substHead = allocParseHead(
       bestSubstResolvedHead.state,
@@ -1501,9 +1624,10 @@ export function tryLocalAStarRepair(head: ParseHead, token: i32, pos: u32): bool
           let delLen = nextP > matPos ? nextP - matPos : 1;
           let errLeaf = allocNode(NODE_TYPE_ERROR, 0, delLen, 0, false);
           setNodeFlags(errLeaf, FLAG_HAS_ERROR);
-          let nextTail = pushDiagnostic(matHead.errorTail, matPos, nextP, sym as u32, 2, 0, 0);
+          let isExtra = isExtraCloser(matBalance, sym);
+          let nextTail = pushDiagnostic(matHead.errorTail, matPos, nextP, sym as u32, isExtra ? 6 : 2, 0, 0);
           matPos = nextP;
-          let delCostMat: i32 = ERROR_COST_PER_SKIPPED_TREE + (delLen as i32) * ERROR_COST_PER_SKIPPED_CHAR + 80;
+          let delCostMat: i32 = ERROR_COST_PER_SKIPPED_TREE + (isExtra ? -50 : (delLen as i32) * ERROR_COST_PER_SKIPPED_CHAR + 80);
           matHead = allocParseHead(
             nextSt,
             errLeaf,

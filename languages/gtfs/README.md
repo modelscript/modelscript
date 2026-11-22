@@ -1,7 +1,9 @@
 <div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
 <div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-# `@modelscript/gtfs`
+# @modelscript/gtfs
+
+**Maturity:** Alpha · **Extensions:** `.gtfs`, `.gtfs.txt`, `.gtfs-rt` · **Docs:** [modelscript.org/languages/gtfs](https://modelscript.org/languages/gtfs)
 
 General Transit Feed Specification (GTFS / GTFS-RT), public transit route kinematics, electric bus (e-Bus) traction power simulation, and grid depot charging integration package for ModelScript.
 
@@ -15,10 +17,10 @@ General Transit Feed Specification (GTFS / GTFS-RT), public transit route kinema
 
 ## File Support
 
-| Extension | Description | Role |
-| :--- | :--- | :--- |
+| Extension            | Description                          | Role                                                  |
+| :------------------- | :----------------------------------- | :---------------------------------------------------- |
 | `.gtfs`, `.gtfs.txt` | GTFS Multi-table / Consolidated Feed | Transit agencies, routes, stops, schedules, and trips |
-| `.gtfs-rt`, `.pb` | GTFS Realtime Protocol Buffer / Feed | Real-time vehicle positions and trip updates |
+| `.gtfs-rt`, `.pb`    | GTFS Realtime Protocol Buffer / Feed | Real-time vehicle positions and trip updates          |
 
 ## Quick Example
 

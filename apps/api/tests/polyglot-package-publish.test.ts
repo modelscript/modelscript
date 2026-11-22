@@ -173,6 +173,38 @@ test("Polyglot Package Publishing & Extensible Artifact Indexing", async (t) => 
   });
 
   await t.test(
+    "GET /api/v1/libraries/:scope/:name/:version/index.msidx serves relocatable binary index with Range support",
+    async () => {
+      const { mountPackageIndex, parsePackageIndexHeader, MSIDX_HEADER_SIZE } = await import("@modelscript/runtime");
+
+      // 1. Full download + mount
+      const res = await request(app).get(`/api/v1/libraries/${pkgName}/${pkgVersion}/index.msidx`).responseType("blob");
+
+      assert.strictEqual(res.status, 200);
+      assert.strictEqual(res.headers["accept-ranges"], "bytes");
+      assert.ok(res.body.length >= MSIDX_HEADER_SIZE, "Response body must contain .msidx binary");
+
+      const mounted = mountPackageIndex(new Uint8Array(res.body), {
+        resolveResourceUri: (rel) => `file:///vfs/${rel}`,
+      });
+      assert.ok(mounted.symbolCount > 0, "Mounted .msidx should contain symbols");
+      assert.ok(mounted.index.byName.has("DroneFrame"), "Mounted .msidx should contain DroneFrame");
+      assert.ok(mounted.index.byName.has("Chassis"), "Mounted .msidx should contain Chassis");
+
+      // 2. HTTP 206 Partial Content Range request for 64-byte header
+      const rangeRes = await request(app)
+        .get(`/api/v1/libraries/${pkgName}/${pkgVersion}/index.msidx`)
+        .set("Range", `bytes=0-${MSIDX_HEADER_SIZE - 1}`)
+        .responseType("blob");
+
+      assert.strictEqual(rangeRes.status, 206);
+      assert.strictEqual(rangeRes.body.length, MSIDX_HEADER_SIZE);
+      const hdr = parsePackageIndexHeader(new Uint8Array(rangeRes.body));
+      assert.strictEqual(hdr.symbolCount, mounted.symbolCount);
+    },
+  );
+
+  await t.test(
     "GET /api/v1/libraries/:scope/:name/:version/logs/stream provides SSE stream with init event",
     async () => {
       const res = await request(app)

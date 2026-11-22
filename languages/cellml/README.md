@@ -3,7 +3,9 @@
 
 # @modelscript/cellml
 
-CellML 1.0 / 1.1 / 2.0 cardiac electrophysiology, ion channel gating, and multi-compartment cellular modeling language package (`.cellml`, `.xml`) for ModelScript. Features a zero-regex CellML XML & Content MathML parser with SI dimensional analysis (`parseCellml`), multi-file workspace indexing (`CellmlWorkspaceIndex`), an RK4 & Rush-Larsen gating ODE solver (`solveCellml`), direct linear-memory `DAEBuilder` lowering (`lowerCellmlToDae`), 10 biophysical & structural verification lint rules (`M9301`–`M9310`, `lintCellmlDocument`, `CellmlErrorCode`), Modelica 3.x and SBML Level 3 projections (`cellmlToModelica`, `cellmlToSbml`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.cellml`, `.xml` · **Docs:** [modelscript.org/languages/cellml](https://modelscript.org/languages/cellml)
+
+CellML 1.0 / 1.1 / 2.0 cardiac electrophysiology, ion channel gating, and multi-compartment cellular modeling language package (`.cellml`, `.xml`) for ModelScript. Features a zero-regex CellML XML & Content MathML parser with SI dimensional analysis (`parseCellml`), multi-file workspace indexing, an RK4 & Rush-Larsen gating ODE solver (`solveCellml`), direct linear-memory `DAEBuilder` lowering (`lowerCellmlToDae`), 10 biophysical & structural verification lint rules (`M9301`–`M9310`, `lintCellmlDocument`, `CellmlErrorCode`), Modelica 3.x and SBML Level 3 projections (`cellmlToModelica`, `cellmlToSbml`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -17,7 +19,7 @@ CellML 1.0 / 1.1 / 2.0 cardiac electrophysiology, ion channel gating, and multi-
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerCellmlToDae`)**: Lowers component variables, connection alias equations, algebraic equations, and state ODEs directly into ModelScript's zero-GC WebAssembly `DAEBuilder` arena.
 - **10 Biophysical & Structural Lint Rules (`M9301`–`M9310`, `lintCellmlDocument`)**: Static verification of model identifiers, SI unit resolution, interface direction compatibility, dimensional homogeneity across connected variables, ODE state initialization, encapsulation hierarchy acyclicity, connection member resolution, overconstrained variables, Content MathML `<ci>` scope checks, and duplicate declarations.
 - **Modelica 3.x & SBML Level 3 Projections (`cellmlToModelica`, `cellmlToSbml`)**: Projects CellML multi-compartment models to Modelica 3.x physical models and SBML Level 3 Version 2 XML.
-- **Multi-File Workspace Indexing & LSP (`CellmlWorkspaceIndex`, `validateCellml`, `getCellmlHover`, `getCellmlCompletions`, `getCellmlDefinition`)**: Full `IWorkspaceIndex` implementation with SI dimension vector hover cards and symbol navigation.
+- **Multi-File Workspace Indexing & LSP (`validateCellml`, `getCellmlHover`, `getCellmlCompletions`, `getCellmlDefinition`)**: Workspace symbol indexing with SI dimension vector hover cards and symbol navigation.
 
 ---
 
@@ -34,7 +36,6 @@ CellML 1.0 / 1.1 / 2.0 cardiac electrophysiology, ion channel gating, and multi-
 | `src/solvers/index.ts`     | `solveCellml` topological algebraic evaluator and RK4 / Rush-Larsen ODE integrator                  |
 | `src/dae/index.ts`         | `lowerCellmlToDae` direct lowering into `DAEBuilder` linear memory                                  |
 | `src/projections/index.ts` | `cellmlToModelica` and `cellmlToSbml` cross-language translators                                    |
-| `src/workspace-index.ts`   | `CellmlWorkspaceIndex` implementing `IWorkspaceIndex` across `.cellml` and `.xml` files             |
 | `src/lsp.ts`               | LSP validation, document symbols, SI dimensional hover, completion, and definition providers        |
 
 ---
@@ -62,15 +63,15 @@ CellML 1.0 / 1.1 / 2.0 cardiac electrophysiology, ion channel gating, and multi-
 
 ```bash
 # Lint a CellML 1.0/1.1/2.0 model (M9301-M9310)
-npx msx cellml lint hodgkin_huxley_1952.cellml
+msx cellml lint hodgkin_huxley_1952.cellml
 
 # Simulate cardiac action potential & gating kinetics (RK4 + Rush-Larsen)
-npx msx cellml simulate hodgkin_huxley_1952.cellml --duration 50 --dt 0.01
+msx cellml simulate hodgkin_huxley_1952.cellml --duration 50 --dt 0.01
 
 # Lower to DAE or project to Modelica 3.x (.mo) and SBML Level 3 (.sbml)
-npx msx cellml to-dae hodgkin_huxley_1952.cellml
-npx msx cellml to-modelica hodgkin_huxley_1952.cellml
-npx msx cellml to-sbml hodgkin_huxley_1952.cellml
+msx cellml to-dae hodgkin_huxley_1952.cellml
+msx cellml to-modelica hodgkin_huxley_1952.cellml
+msx cellml to-sbml hodgkin_huxley_1952.cellml
 ```
 
 ### Programmatic API

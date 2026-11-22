@@ -8,7 +8,7 @@
   "scripts": {
     "build": "npm run download-vscode && npm run build-extension && npm run build-github-fs",
     "build-extension": "npx tsx scripts/build-extension.ts",
-    "build-github-fs": "npm run build --workspace=modelscript-github-fs",
+    "build-github-fs": "pnpm --filter modelscript-github-fs build",
     "build-static": "npm run download-vscode && npm run build-extension && npm run build-github-fs && npx tsx src/build-static.ts",
     "clean": "rimraf dist",
     "download-model": "bash scripts/download-model.sh",

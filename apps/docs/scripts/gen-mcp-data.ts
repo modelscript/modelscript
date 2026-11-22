@@ -8,7 +8,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const toolsSourcePath = path.resolve(here, "../../../packages/mcp/src/tools.ts");
+const mcpSrcDir = path.resolve(here, "../../../packages/mcp/src");
+const toolSourceFiles = [
+  path.join(mcpSrcDir, "tools.ts"),
+  path.join(mcpSrcDir, "alm-tools.ts"),
+  path.join(mcpSrcDir, "magicdraw-tools.ts"),
+  path.join(mcpSrcDir, "uq-tools.ts"),
+];
 const outFile = path.resolve(here, "../docs/.vitepress/theme/data/mcp-tools.generated.json");
 
 export interface McpToolEntry {
@@ -19,18 +25,40 @@ export interface McpToolEntry {
 
 function inferCategory(name: string): string {
   if (name.startsWith("modelica_") || name === "hybrid_simulate") return "Modelica & DAE Simulation";
-  if (name.startsWith("sysml2_") || name.startsWith("oscal_") || name.startsWith("aml_")) {
-    return "SysML v2, AutomationML & Compliance (OSCAL)";
+  if (
+    name.startsWith("sysml2_") ||
+    name.startsWith("oscal_") ||
+    name.startsWith("aml_") ||
+    name.startsWith("magicdraw_")
+  ) {
+    return "SysML v2, MagicDraw, AutomationML & Compliance (OSCAL)";
   }
+  if (name.startsWith("alm_")) return "ALM / PLM Federation & Traceability";
   if (name.startsWith("tgg_") || name.startsWith("rtm_") || name === "validate_system_consistency") {
     return "Digital Thread (TGG & RTM)";
   }
-  if (name.startsWith("modelscript_")) return "Closed-Loop Synthesis & Workspace";
-  if (name.startsWith("pscad_") || name.startsWith("opendss_")) {
-    return "Power Systems, EMT & Distribution (PSCAD / OpenDSS)";
+  if (name.startsWith("modelscript_") || name === "workspace_lint") return "Closed-Loop Synthesis & Workspace";
+  if (
+    name.startsWith("pscad_") ||
+    name.startsWith("opendss_") ||
+    name.startsWith("atp_") ||
+    name.startsWith("comtrade_") ||
+    name.startsWith("dnp3_") ||
+    name.startsWith("oneliner_") ||
+    name.startsWith("scl_") ||
+    name.startsWith("sel_")
+  ) {
+    return "Power Systems, EMT & Distribution (PSCAD / OpenDSS / Protection)";
   }
-  if (name.startsWith("epanet_") || name.startsWith("water_audit_") || name.startsWith("swmm_")) {
-    return "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)";
+  if (
+    name.startsWith("epanet_") ||
+    name.startsWith("water_audit_") ||
+    name.startsWith("swmm_") ||
+    name.startsWith("hec_hms_") ||
+    name.startsWith("waterml_") ||
+    name.startsWith("asm_")
+  ) {
+    return "Municipal Water, Stormwater, Hydrology & Wastewater";
   }
   if (
     name.startsWith("optical_") ||
@@ -61,26 +89,34 @@ function inferCategory(name: string): string {
     name.startsWith("polyglot_") ||
     name.startsWith("ssp_") ||
     name.startsWith("formal_") ||
-    name.startsWith("twin_")
+    name.startsWith("twin_") ||
+    name === "run_uq" ||
+    name === "verify_stochastic_barrier"
   ) {
-    return "Cross-Domain Certification & Digital Twin";
+    return "Cross-Domain Certification, UQ & Digital Twin";
   }
   return "OWL2 Ontology & Fault Diagnostics";
 }
 
-const source = fs.readFileSync(toolsSourcePath, "utf8");
 const toolRegex = /server\.tool\(\s*"([^"]+)",\s*(?:"([^"]+)"|`([^`]+)`)/g;
 
 const tools: McpToolEntry[] = [];
-let match: RegExpExecArray | null;
-while ((match = toolRegex.exec(source)) !== null) {
-  const name = match[1]!;
-  const description = (match[2] ?? match[3] ?? "").trim();
-  tools.push({
-    name,
-    description,
-    category: inferCategory(name),
-  });
+const seen = new Set<string>();
+for (const file of toolSourceFiles) {
+  if (!fs.existsSync(file)) continue;
+  const source = fs.readFileSync(file, "utf8");
+  let match: RegExpExecArray | null;
+  while ((match = toolRegex.exec(source)) !== null) {
+    const name = match[1]!;
+    if (seen.has(name)) continue;
+    seen.add(name);
+    const description = (match[2] ?? match[3] ?? "").trim();
+    tools.push({
+      name,
+      description,
+      category: inferCategory(name),
+    });
+  }
 }
 
 const payload = {

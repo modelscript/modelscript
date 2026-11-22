@@ -3,7 +3,9 @@
 
 # @modelscript/easy5
 
-EASY5-compatible multidisciplinary systems dynamic modeling, simulation, and linear control systems engineering package (`.ez5`, `.ezm`, `.ezd`, `.eas`, `.tab`) for ModelScript. Features component & lookup-table parsing, GP Standard Component Library lowering to linear-memory `DAEBuilder`, embedded Fortran `UG`/`UX` block compilation, equilibrium trim & Jacobian state-space linearization, Bode/Nyquist frequency-response analysis, 12 pre-flight static lint rules (`M7001`–`M7012`), and bidirectional Modelica/SSP projections.
+**Maturity:** Beta · **Extensions:** `.ez5`, `.ezm`, `.ezd`, `.eas` · **Docs:** [modelscript.org/languages/easy5](https://modelscript.org/languages/easy5)
+
+EASY5-compatible multidisciplinary systems dynamic modeling, simulation, and linear control systems engineering package (`.ez5`, `.ezm`, `.ezd`, `.eas`) for ModelScript. Features component & lookup-table parsing, GP Standard Component Library lowering to linear-memory `DAEBuilder`, embedded Fortran `UG`/`UX` block compilation, equilibrium trim & Jacobian state-space linearization, Bode/Nyquist frequency-response analysis, 12 pre-flight static lint rules (`M7001`–`M7012`), and bidirectional Modelica/SSP projections.
 
 ---
 
@@ -20,7 +22,7 @@ EASY5-compatible multidisciplinary systems dynamic modeling, simulation, and lin
   - Frequency-response sweeps producing Bode magnitude (dB), phase (deg), and Nyquist loci.
 - **Pre-Flight Static Linter (`lintEasy5`, `Easy5ErrorCode`)**: 12 control-theoretic and structural rules (`M7001`–`M7012`) including Tarjan SCC direct-feedthrough algebraic loop detection.
 - **Polyglot Projections & Bidirectional TGG Sync (`easy5ToModelica`, `easy5ToSsp`, `synchronizeModelicaToEasy5`)**: Projects EASY5 models to `Modelica.Blocks` and FMI `SystemStructure.ssd`, with Triple Graph Grammar (TGG) synchronization back to `.ez5`.
-- **Schematic Diagramming & Workspace Indexing (`buildEasy5DiagramData`, `renderEasy5SchematicSvg`, `Easy5WorkspaceIndex`)**: AntV X6 graph generation, headless SVG schematic rendering, and `IWorkspaceIndex` multi-file symbol indexing.
+- **Schematic Diagramming & Workspace Indexing (`buildEasy5DiagramData`, `renderEasy5SchematicSvg`)**: AntV X6 graph generation, headless SVG schematic rendering, and workspace symbol indexing multi-file symbol indexing.
 
 ---
 
@@ -54,7 +56,6 @@ EASY5-compatible multidisciplinary systems dynamic modeling, simulation, and lin
 | `src/tgg/types.ts`                   | TGG synchronization types                                                                        |
 | `src/tgg/index.ts`                   | TGG module re-exports                                                                            |
 | `src/diagram/easy5-diagram.ts`       | `buildEasy5DiagramData` and `renderEasy5SchematicSvg` schematic visualizer                       |
-| `src/workspace-index.ts`             | `Easy5WorkspaceIndex` multi-file workspace indexer                                               |
 | `src/lsp.ts`                         | LSP validation, document symbols, hover, and action handlers                                     |
 
 ---
@@ -84,14 +85,14 @@ EASY5-compatible multidisciplinary systems dynamic modeling, simulation, and lin
 
 ```bash
 # Lint an EASY5 model for algebraic loops and parameter bounds
-npx msx easy5 lint flight_control.ez5
+msx easy5 lint flight_control.ez5
 
 # Trim, linearize, and lower EASY5 model to DAE arena
-npx msx easy5 flatten flight_control.ez5
+msx easy5 flatten flight_control.ez5
 
 # Project EASY5 model to Modelica 3.x or FMI SSP
-npx msx easy5 to-modelica flight_control.ez5
-npx msx easy5 to-ssp flight_control.ez5
+msx easy5 to-modelica flight_control.ez5
+msx easy5 to-ssp flight_control.ez5
 ```
 
 ### Programmatic API

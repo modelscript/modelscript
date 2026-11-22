@@ -6,6 +6,7 @@ import {
   normalizeRemoteDependency,
   PACKAGES_DIR,
   parseModelScriptYaml,
+  resolveManifestFromDir,
   upsertManifestDependency,
   type ResolvedRemoteSpec,
 } from "@modelscript/runtime";
@@ -208,7 +209,7 @@ export const Install: CommandModule<{}, InstallArgs> = {
       .option("frozen-lockfile", {
         alias: ["frozen", "ci"],
         description:
-          "Enforce zero-trust installation against msx.lock (fails if lockfile is missing, out of sync, or tampered)",
+          "Enforce zero-trust installation against modelscript.lock (fails if lockfile is missing, out of sync, or tampered)",
         type: "boolean",
         default: false,
       })
@@ -262,7 +263,7 @@ export const Install: CommandModule<{}, InstallArgs> = {
 
     if (isFrozen && !lockfile) {
       console.error(
-        "Error: Lockfile 'msx.lock' not found. Run 'msx install' without --frozen-lockfile to generate one.",
+        `Error: Lockfile '${LOCKFILE_NAME}' not found. Run 'msx install' without --frozen-lockfile to generate one.`,
       );
       process.exit(1);
     }
@@ -300,46 +301,54 @@ export const Install: CommandModule<{}, InstallArgs> = {
 
       packagesToInstall.push({ name, version });
     } else {
-      const manifestPath = path.join(cwd, MANIFEST_FILENAME);
       const remoteSpecsToPull: ResolvedRemoteSpec[] = [];
-      if (existsSync(manifestPath)) {
-        try {
-          const manifest = parseModelScriptYaml(readFileSync(manifestPath, "utf-8"), manifestPath);
-          const deps = manifest.dependencies ?? {};
-          if (isFrozen && lockfile) {
-            for (const [depName] of Object.entries(deps)) {
-              if (!lockfile.packages[depName]) {
-                console.error(
-                  `Error: Lockfile '${LOCKFILE_NAME}' is out of sync with '${MANIFEST_FILENAME}': missing "${depName}".`,
-                );
-                process.exit(1);
-              }
+      let resolved: Awaited<ReturnType<typeof resolveManifestFromDir>> = null;
+      try {
+        resolved = await resolveManifestFromDir(cwd);
+      } catch (err) {
+        console.error(
+          `Error: Failed to parse ${MANIFEST_FILENAME} at ${path.join(cwd, MANIFEST_FILENAME)}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        process.exit(1);
+      }
+
+      if (resolved) {
+        if (resolved.virtual) {
+          console.log(`Projected virtual ${MANIFEST_FILENAME} from ${resolved.sourceFile} (${resolved.projectorId}).`);
+        }
+        const manifest = resolved.manifest;
+        const deps = manifest.dependencies ?? {};
+        if (isFrozen && lockfile) {
+          for (const [depName] of Object.entries(deps)) {
+            if (!lockfile.packages[depName]) {
+              console.error(
+                `Error: Lockfile '${LOCKFILE_NAME}' is out of sync with '${resolved.sourceFile}': missing "${depName}".`,
+              );
+              process.exit(1);
             }
           }
+        }
 
-          for (const [depName, depSpec] of Object.entries(deps)) {
-            if (isRemoteDependency(depSpec)) {
-              const norm = normalizeRemoteDependency(depSpec);
-              if (norm) {
-                remoteSpecsToPull.push({ ...norm, packageName: depName });
-              }
+        for (const [depName, depSpec] of Object.entries(deps)) {
+          if (isRemoteDependency(depSpec)) {
+            const norm = normalizeRemoteDependency(depSpec);
+            if (norm) {
+              remoteSpecsToPull.push({ ...norm, packageName: depName });
+            }
+            continue;
+          }
+          if (typeof depSpec === "string") {
+            if (depSpec.startsWith("file:")) {
+              const localPath = path.resolve(cwd, depSpec.slice("file:".length));
+              installLocalArchive(localPath, cwd, false, depName);
               continue;
             }
-            if (typeof depSpec === "string") {
-              if (depSpec.startsWith("file:")) {
-                const localPath = path.resolve(cwd, depSpec.slice("file:".length));
-                installLocalArchive(localPath, cwd, false, depName);
-                continue;
-              }
-              const cleanVer = depSpec.replace(/^[\^~>=<]/, "");
-              packagesToInstall.push({ name: depName, version: cleanVer });
-            }
+            const cleanVer =
+              resolved.language === "modelica"
+                ? DependencySolver.normalizeModelicaVersion(depSpec)
+                : depSpec.replace(/^[\^~>=<]/, "");
+            packagesToInstall.push({ name: depName, version: cleanVer });
           }
-        } catch (err) {
-          console.error(
-            `Error: Failed to parse ${MANIFEST_FILENAME} at ${manifestPath}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-          process.exit(1);
         }
       }
 
@@ -685,7 +694,7 @@ export const Install: CommandModule<{}, InstallArgs> = {
               }
             }
           } else if (isFrozen) {
-            console.error(`Error: Package "${pkgName}" is not listed in 'msx.lock'.`);
+            console.error(`Error: Package "${pkgName}" is not listed in '${LOCKFILE_NAME}'.`);
             process.exit(1);
           }
 
@@ -696,30 +705,55 @@ export const Install: CommandModule<{}, InstallArgs> = {
         const destDir = path.join(cwd, PACKAGES_DIR, ...pkgName.split("/"));
         const linkResult = defaultPackageStore.linkToWorkspace(storePackageDir, destDir);
 
-        // Fetch pre-compiled salsa-index.db if provided by registry (and not offline)
+        // Fetch pre-compiled relocatable binary index (index.msidx), falling back to legacy salsa-index.db
+        const destMsidxFile = path.join(destDir, ".modelscript", "index.msidx");
         const destIndexFile = path.join(destDir, ".modelscript", "salsa-index.db");
         if (
           (installSourceType === "network" || installSourceType === "store") &&
           !isOffline &&
+          !existsSync(destMsidxFile) &&
           !existsSync(destIndexFile)
         ) {
-          const indexUrl = `${API_URL}/api/v1/libraries/${packagePath}/${encodeURIComponent(resolvedVersion)}/salsa-index.db`;
+          let cachedBinaryIndex = false;
+          const msidxUrl = `${API_URL}/api/v1/libraries/${packagePath}/${encodeURIComponent(resolvedVersion)}/index.msidx`;
           try {
-            const idxRes = await fetch(indexUrl, { headers });
-            if (idxRes.ok) {
-              const idxBuf = Buffer.from(await idxRes.arrayBuffer());
+            const msidxRes = await fetch(msidxUrl, { headers });
+            if (msidxRes.ok) {
+              const idxBuf = Buffer.from(await msidxRes.arrayBuffer());
               if (idxBuf.length > 0) {
                 const metaDir = path.join(destDir, ".modelscript");
                 mkdirSync(metaDir, { recursive: true });
-                writeFileSync(destIndexFile, idxBuf);
+                writeFileSync(destMsidxFile, idxBuf);
                 const storeMetaDir = path.join(storePackageDir, ".modelscript");
                 mkdirSync(storeMetaDir, { recursive: true });
-                writeFileSync(path.join(storeMetaDir, "salsa-index.db"), idxBuf);
-                console.log(`✓ Cached pre-compiled Salsa index: ${path.relative(cwd, destIndexFile)}`);
+                writeFileSync(path.join(storeMetaDir, "index.msidx"), idxBuf);
+                console.log(`✓ Cached pre-compiled binary package index: ${path.relative(cwd, destMsidxFile)}`);
+                cachedBinaryIndex = true;
               }
             }
           } catch {
-            // Pre-compiled index is optional
+            // Optional — fall back to legacy salsa-index.db
+          }
+
+          if (!cachedBinaryIndex) {
+            const indexUrl = `${API_URL}/api/v1/libraries/${packagePath}/${encodeURIComponent(resolvedVersion)}/salsa-index.db`;
+            try {
+              const idxRes = await fetch(indexUrl, { headers });
+              if (idxRes.ok) {
+                const idxBuf = Buffer.from(await idxRes.arrayBuffer());
+                if (idxBuf.length > 0) {
+                  const metaDir = path.join(destDir, ".modelscript");
+                  mkdirSync(metaDir, { recursive: true });
+                  writeFileSync(destIndexFile, idxBuf);
+                  const storeMetaDir = path.join(storePackageDir, ".modelscript");
+                  mkdirSync(storeMetaDir, { recursive: true });
+                  writeFileSync(path.join(storeMetaDir, "salsa-index.db"), idxBuf);
+                  console.log(`✓ Cached pre-compiled Salsa index: ${path.relative(cwd, destIndexFile)}`);
+                }
+              }
+            } catch {
+              // Pre-compiled index is optional
+            }
           }
         }
 

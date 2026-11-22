@@ -3,6 +3,8 @@
 
 # @modelscript/opendrive
 
+**Maturity:** Beta · **Extensions:** `.xodr`, `.xml` · **Docs:** [modelscript.org/languages/opendrive](https://modelscript.org/languages/opendrive)
+
 ASAM **OpenDRIVE** (v1.6 / v1.7, `.xodr`, `.xml`) roadway network and autonomous vehicle simulation language package for ModelScript. Features zero-regex XML parsing via `@modelscript/dsl/xml`, analytical 16-point Gauss-Legendre Fresnel clothoid evaluation, 8 pre-flight roadway geometry lint rules (`M7801`–`M7808`), Frenet-Serret trajectory lowering to `DAEBuilder`, GENSYS track geometry projection, headless SVG rendering, and multi-file workspace indexing.
 
 ---
@@ -14,7 +16,7 @@ ASAM **OpenDRIVE** (v1.6 / v1.7, `.xodr`, `.xml`) roadway network and autonomous
 - **Pre-Flight Roadway Geometry Linter (`lintOpenDrive`, `OpenDriveErrorCode`)**: Static geometric and topological verification (`M7801`–`M7808`) checking $C^0$/$C^1$ tangency continuity, lane linkage across sections, clothoid curvature divergence, overlapping junction paths, and extreme elevation grades.
 - **Direct Linear-Memory DAE Arena Lowering (`lowerOpenDriveToDae`)**: Lowers Frenet-Serret path-following kinematics ($s, d, \psi_e, \kappa(s)$) directly into `@modelscript/runtime`'s `DAEBuilder` arena.
 - **GENSYS Track Geometry Projection (`opendriveToGensys`)**: Translates 3D roadway coordinates, curvature, and superelevation into GENSYS `.geo` track geometry files.
-- **Top-Down Roadway SVG Renderer & Workspace Index (`renderOpenDriveSvg`, `OpenDriveWorkspaceIndex`)**: Headless SVG road network visualization and `IWorkspaceIndex` multi-file symbol indexing.
+- **Top-Down Roadway SVG Renderer & Workspace Index (`renderOpenDriveSvg`)**: Headless SVG road network visualization and workspace symbol indexing multi-file symbol indexing.
 
 ---
 
@@ -37,7 +39,6 @@ ASAM **OpenDRIVE** (v1.6 / v1.7, `.xodr`, `.xml`) roadway network and autonomous
 | `src/projections/index.ts`               | Projections module re-exports                                                                     |
 | `src/diagram/opendrive-svg.ts`           | `renderOpenDriveSvg` headless vector SVG roadway map renderer                                     |
 | `src/diagram/index.ts`                   | Diagram module re-exports                                                                         |
-| `src/workspace-index.ts`                 | `OpenDriveWorkspaceIndex` implementing `IWorkspaceIndex`                                          |
 | `src/lsp.ts`                             | LSP diagnostics, document symbols, and hover providers                                            |
 
 ---
@@ -63,13 +64,13 @@ ASAM **OpenDRIVE** (v1.6 / v1.7, `.xodr`, `.xml`) roadway network and autonomous
 
 ```bash
 # Lint an ASAM OpenDRIVE network for C0/C1 tangency and lane continuity
-npx msx opendrive lint highway_interchange.xodr
+msx opendrive lint highway_interchange.xodr
 
 # Sample 3D clothoid trajectory and lower to DAE arena
-npx msx opendrive flatten highway_interchange.xodr
+msx opendrive flatten highway_interchange.xodr
 
 # Export OpenDRIVE roadway geometry to GENSYS track format
-npx msx opendrive to-gensys highway_interchange.xodr
+msx opendrive to-gensys highway_interchange.xodr
 ```
 
 ### Programmatic API

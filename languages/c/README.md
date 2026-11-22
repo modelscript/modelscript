@@ -3,6 +3,8 @@
 
 # @modelscript/c
 
+**Maturity:** Alpha · **Extensions:** `.c`, `.h` · **Docs:** [modelscript.org/languages/c](https://modelscript.org/languages/c)
+
 First-class ANSI C / C99 (`.c`, `.h`) language and engineering simulation compiler package for ModelScript. Features a native WebAssembly GLR parser (`parser.wasm` built via `@modelscript/dsl`), static safety diagnostics (`M8401`–`M8410`), C header (`.h`) introspection and automated Modelica `external "C"` binding generation, direct linear-memory DAE arena lowering (`IDaeBuilder`), and zero-allocation simulation step compilation for embedded control algorithms, Simulink C MEX S-functions, and PSCAD C segments.
 
 ---
@@ -61,13 +63,13 @@ First-class ANSI C / C99 (`.c`, `.h`) language and engineering simulation compil
 
 ```bash
 # Lint a C source or header file for safety defects (M8401–M8410)
-npx msx c lint controller.c
+msx c lint controller.c
 
 # Generate Modelica external "C" wrappers from a C header file
-npx msx c bind controller.h
+msx c bind controller.h
 
 # Lower a C dynamic model into the ModelScript DAE arena
-npx msx c flatten plant_sfunc.c
+msx c flatten plant_sfunc.c
 ```
 
 ### Programmatic API

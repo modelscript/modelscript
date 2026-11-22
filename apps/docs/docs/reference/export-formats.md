@@ -15,13 +15,13 @@ ModelScript compiles flattened DAE systems into self-contained `.fmu` archives (
 
 ```bash
 # Export an FMI 3.0 Co-Simulation FMU with embedded C99 source and WebAssembly binary
-npx msx fmu DC_Motor motor.mo --fmi-version 3 --type cs --wasm --output DC_Motor.fmu
+msx fmu DC_Motor motor.mo --fmi-version 3 --type cs --wasm --output DC_Motor.fmu
 
 # Export a universal FMI 2.0 + 3.0 archive supporting both ME and CS
-npx msx fmu ThermalPlant plant.mo --fmi-version both --type both --target all -o ThermalPlant.fmu
+msx fmu ThermalPlant plant.mo --fmi-version both --type both --target all -o ThermalPlant.fmu
 
 # Import an external third-party FMU and synthesize a typed Modelica wrapper block
-npx msx import-fmu ./vendor/BatteryController.fmu -o BatteryControllerWrapper.mo
+msx import-fmu ./vendor/BatteryController.fmu -o BatteryControllerWrapper.mo
 ```
 
 ### Archive Layout & Capabilities
@@ -73,10 +73,10 @@ ModelScript natively parses, lints (`SSP_*` and `SSV_*` rules), simulates, and p
 
 ```bash
 # Lint an SSP architecture and its SSV parameter bindings
-npx msx lint SystemStructure.ssd NominalParams.ssv
+msx lint SystemStructure.ssd NominalParams.ssv
 
 # Export a multi-project PSCAD workspace to an SSP 1.0 container
-npx msx pscad export-ssp GridInterconnection.pswx -o GridInterconnection.ssp
+msx pscad export-ssp GridInterconnection.pswx -o GridInterconnection.ssp
 ```
 
 ---
@@ -87,13 +87,13 @@ The `msx export-formal` command translates SysML v2 models (constraints, require
 
 ```bash
 # Export constraints to SMT-LIB v2.6 for Z3 / cvc5 (logic auto-detected as QF_LRA or QF_NRA)
-npx msx export-formal FlightControl.sysml --format smt2 -o fcs.smt2
+msx export-formal FlightControl.sysml --format smt2 -o fcs.smt2
 
 # Export state machines to nuXmv with an extra safety invariant
-npx msx export-formal FlightControl.sysml --format nuxmv --module FlightControl --invariants "altitude >= 0" -o fcs.smv
+msx export-formal FlightControl.sysml --format nuxmv --module FlightControl --invariants "altitude >= 0" -o fcs.smv
 
 # Export assume-guarantee contracts to OCRA
-npx msx export-formal FlightControl.sysml --format ocra -o fcs.oss
+msx export-formal FlightControl.sysml --format ocra -o fcs.oss
 ```
 
 | Format Flag | Extension | Target Toolchains | Encoding Semantics                                                                                                                     |
@@ -110,28 +110,28 @@ The `msx verify`, `msx dhf`, `msx dossier`, and `msx gatekeeper` commands serial
 
 ```bash
 # SARIF v2.1.0 for GitHub Code Scanning / Azure DevOps Security Tab
-npx msx verify system.mo --format sarif --report linter-report.sarif
+msx verify system.mo --format sarif --report linter-report.sarif
 
 # CTRF (Common Test Report Format) JSON for unified CI dashboards
-npx msx verify system.mo --format ctrf --report ctrf-report.json
+msx verify system.mo --format ctrf --report ctrf-report.json
 
 # JUnit XML for Jenkins, GitLab CI, and CircleCI test summaries
-npx msx verify system.mo --format junit --report junit-report.xml
+msx verify system.mo --format junit --report junit-report.xml
 
 # FDA 21 CFR Part 820 / ISO 13485 / ISO 26262 Design History File (DHF) Dossier
-npx msx verify system.mo --format dhf --report dossier.md
-npx msx dhf export ./workspace --format markdown -o DHF_Dossier.md
+msx verify system.mo --format dhf --report dossier.md
+msx dhf export ./workspace --format markdown -o DHF_Dossier.md
 
 # NERC RSAW & NIST OSCAL 1.1 compliance dossier with FERC CEII watermark & Ed25519 signature
-npx msx dossier build plant-manifest.json --out plant-rsaw.md --key keys/ed25519.pem
+msx dossier build plant-manifest.json --out plant-rsaw.md --key keys/ed25519.pem
 
 # Automated 5-stage ISO / Transmission Planner Grid Code Gatekeeper scorecard
-npx msx gatekeeper evaluate submission.zip --interconnection Western --mva 150 --kv 230 --out scorecard.json
+msx gatekeeper evaluate submission.zip --interconnection Western --mva 150 --kv 230 --out scorecard.json
 ```
 
 | Format / Dossier                   | Schema / Standard                      | Key Payload Contents                                                                                                                                        |
 | :--------------------------------- | :------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **SARIF** (`sarif`)                | OASIS SARIF v2.1.0                     | Rule descriptors (`M1000`–`M6040`, `S1001`–`S5008`), physical file locations (1-indexed line/column spans), severity levels, and counterexample code flows. |
+| **SARIF** (`sarif`)                | OASIS SARIF v2.1.0                     | Rule descriptors (`M1000`–`M7808`, `S1001`–`S5008`), physical file locations (1-indexed line/column spans), severity levels, and counterexample code flows. |
 | **CTRF** (`ctrf`)                  | CTRF v0.0.0 JSON                       | Standardized `results.summary` (`tests`, `passed`, `failed`, `skipped`) and per-property verification duration and witness traces.                          |
 | **JUnit** (`junit`)                | JUnit XML                              | `<testsuites>` and `<testcase>` elements with `<failure>` stack traces for falsified invariants or lint errors.                                             |
 | **DHF** (`dhf`)                    | FDA 21 CFR 820.30 / ISO 13485          | End-to-end Requirements Traceability Matrix (RTM), formal proof summaries, simulation verification evidence, and SHA-256 artifact integrity digests.        |
@@ -159,10 +159,10 @@ For manufacturing handover, Industry 4.0 asset integration, and open-source hard
 
 ```bash
 # Pack a workspace into an ISO/PAS 81346 Digital Data Package (.ddp)
-npx msx ddp pack ./workspace -o PumpStation.ddp
+msx ddp pack ./workspace -o PumpStation.ddp
 
 # Convert a DDP archive into an IDTA Asset Administration Shell v3.0 (.aasx) package
-npx msx ddp to-aasx PumpStation.ddp -o PumpStation.aasx
+msx ddp to-aasx PumpStation.ddp -o PumpStation.aasx
 ```
 
 | Standard                      | Format / Endpoint                                  | Description                                                                                                                                                 |
@@ -208,7 +208,7 @@ The `msx surrogate` pipeline exports trained Reduced-Order Models (MLP neural ne
 
 ```bash
 # Train an MLP surrogate and export ONNX, standalone C99, and pure Modelica (.mo) simultaneously
-npx msx surrogate Compressor compressor.mo \
+msx surrogate Compressor compressor.mo \
   --inputs "rpm,pressureRatio" \
   --input-bounds "rpm:1000:12000,pressureRatio:1.1:4.5" \
   --outputs "massFlow,efficiency" \
@@ -228,10 +228,10 @@ Simulation and Monte Carlo runners (`msx simulate`, `msx mc`, and Cloud HPC work
 
 ```bash
 # Export standard RFC 4180 CSV trajectory
-npx msx simulate DC_Motor motor.mo --stop-time 5.0 --format csv > trajectory.csv
+msx simulate DC_Motor motor.mo --stop-time 5.0 --format csv > trajectory.csv
 
 # Export structured JSON trajectory with variable metadata and solver statistics
-npx msx simulate DC_Motor motor.mo --stop-time 5.0 --format json > trajectory.json
+msx simulate DC_Motor motor.mo --stop-time 5.0 --format json > trajectory.json
 ```
 
 | Format                      | Source / Consumer                                                      | Description                                                                                                                                                                                             |

@@ -3,7 +3,9 @@
 
 # @modelscript/swmm
 
-US EPA SWMM 5.x (Storm Water Management Model) urban drainage, open-channel hydrology, and sewer hydraulic routing package (`.inp`) for ModelScript. Features a zero-regex SWMM `.inp` section parser (`parseSwmm`), multi-file workspace indexing (`SwmmWorkspaceIndex`), a 1D Manning open-channel & circular-conduit hydraulic routing solver (`routeNetworkFlow`, `computeCircularSection`), direct linear-memory `DAEBuilder` Saint-Venant storage/routing lowering (`lowerSwmmToDae`), 13 pre-flight stormwater & sewer topology lint rules (`M8201`–`M8213`), Modelica 3.x hydraulic network projections (`swmmToModelica`), and Language Server Protocol (LSP) services.
+**Maturity:** Beta · **Extensions:** `.swmm`, `.inp`, `.swmm.inp` · **Docs:** [modelscript.org/languages/swmm](https://modelscript.org/languages/swmm)
+
+US EPA SWMM 5.x (Storm Water Management Model) urban drainage, open-channel hydrology, and sewer hydraulic routing package (`.inp`) for ModelScript. Features a zero-regex SWMM `.inp` section parser (`parseSwmm`), multi-file workspace indexing, a 1D Manning open-channel & circular-conduit hydraulic routing solver (`routeNetworkFlow`, `computeCircularSection`), direct linear-memory `DAEBuilder` Saint-Venant storage/routing lowering (`lowerSwmmToDae`), 13 pre-flight stormwater & sewer topology lint rules (`M8201`–`M8213`), Modelica 3.x hydraulic network projections (`swmmToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -14,7 +16,7 @@ US EPA SWMM 5.x (Storm Water Management Model) urban drainage, open-channel hydr
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerSwmmToDae`)**: Lowers junction/storage nodal continuity ODEs ($A_{\text{node}} \frac{dH_i}{dt} = Q_{\text{inflow},i} + \sum Q_{\text{in}} - \sum Q_{\text{out}}$), Manning open-channel conduit momentum equations, and weir/orifice discharge equations directly into ModelScript's zero-GC WebAssembly `DAEBuilder` struct-of-arrays arena.
 - **13 Pre-Flight Urban Drainage & Sewer Lint Rules (`M8201`–`M8213`, `lintSwmm`)**: Static verification of conduit/pump/weir/orifice endpoint nodes, adverse conduit bed slopes ($z_{\text{in}} < z_{\text{out}}$), missing `[XSECTIONS]` declarations, unsupported outfall boundary types, manhole surcharge overflow risks ($z_{\text{rim}} < z_{\text{crown}}$), duplicate node/link identifiers, non-positive Manning's roughness $n$ or conduit length, isolated junctions, dangling subcatchment outlets, negative weir crest offsets, and invalid discharge coefficients $C_d$.
 - **Modelica 3.x Stormwater Network Projection, GIS Ingestion & EPA NetDMR Export (`swmmToModelica`, `src/spatial/gis-ingestor.ts`, `src/exporters/netdmr-exporter.ts`)**: Synthesizes standalone Modelica 3.x open-channel hydraulic network models, ingests GeoJSON subcatchment/conduit layers, and exports US EPA NPDES NetDMR CSO/SSO overflow discharge monitoring reports. Exposes 3 dedicated MCP tools (`swmm_run_simulation`, `swmm_detention_pond_size`, `swmm_lid_green_infrastructure`).
-- **Multi-File Workspace Indexing & LSP (`SwmmWorkspaceIndex`, `provideSwmmHover`, `provideSwmmCompletions`)**: Implements `IWorkspaceIndex` across SWMM `.inp` drainage models with node/conduit hover cards, section/keyword completions, and AST writeback.
+- **Multi-File Workspace Indexing & LSP (`provideSwmmHover`, `provideSwmmCompletions`)**: Provides workspace symbol indexing across SWMM `.inp` drainage models with node/conduit hover cards, section/keyword completions, and AST writeback.
 
 ---
 
@@ -30,11 +32,10 @@ US EPA SWMM 5.x (Storm Water Management Model) urban drainage, open-channel hydr
 | `src/lints/swmm-linter.ts`            | `lintSwmm` sewer topology, adverse slope, surcharge risk, and Manning roughness linter                                   |
 | `src/lints/index.ts`                  | Linter barrel exports                                                                                                    |
 | `src/solver/hydraulic-solver.ts`      | `routeNetworkFlow`, Saint-Venant dynamic wave, Preissmann slot surcharge, detention pond sizing, and LID green infra     |
-| `src/spatial/gis-ingestor.ts`         | GeoJSON spatial subcatchment, junction, and conduit ingestion                                                            |
+| `src/spatial/swmm-gis-builder.ts`     | GeoJSON spatial subcatchment, junction, and conduit ingestion                                                            |
 | `src/exporters/netdmr-exporter.ts`    | US EPA NPDES NetDMR CSO/SSO overflow compliance report exporter                                                          |
 | `src/dae/swmm-to-dae.ts`              | `lowerSwmmToDae` direct lowering of junctions, storage units, and conduits into `DAEBuilder` linear memory               |
 | `src/projections/swmm-to-modelica.ts` | `swmmToModelica` translator to Modelica 3.x open-channel hydraulic models                                                |
-| `src/workspace-index.ts`              | `SwmmWorkspaceIndex` implementing `IWorkspaceIndex` across `.inp` files                                                  |
 | `src/lsp.ts`                          | LSP hover, completion, and symbol providers                                                                              |
 | `tests/swmm-benchmark-runner.ts`      | US EPA SWMM hydraulic routing and runoff verification benchmark runner                                                   |
 
@@ -66,19 +67,19 @@ US EPA SWMM 5.x (Storm Water Management Model) urban drainage, open-channel hydr
 
 ```bash
 # Inspect junctions, outfalls, conduits, cross-sections, and subcatchments
-npx msx swmm inspect urban_drainage.inp
+msx swmm inspect urban_drainage.inp
 
 # Run pre-flight sewer topology, adverse slope, and surcharge checks (M8201-M8213)
-npx msx swmm lint urban_drainage.inp
+msx swmm lint urban_drainage.inp
 
 # Solve 1D Manning open-channel flow routing and surcharge status
-npx msx swmm route-flow urban_drainage.inp
+msx swmm route-flow urban_drainage.inp
 
 # Lower stormwater network equations to the linear-memory DAE arena
-npx msx swmm to-dae urban_drainage.inp
+msx swmm to-dae urban_drainage.inp
 
 # Project SWMM drainage network to a Modelica 3.x hydraulic model
-npx msx swmm to-modelica urban_drainage.inp -o UrbanDrainage.mo
+msx swmm to-modelica urban_drainage.inp -o UrbanDrainage.mo
 ```
 
 ### Programmatic Usage

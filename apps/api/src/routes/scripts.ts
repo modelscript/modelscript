@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import express from "express";
+import express, { type Router } from "express";
 import fs from "node:fs";
 import path from "node:path";
 import { LibraryDatabase } from "../database.js";
@@ -38,7 +38,7 @@ import { enforceExportCompliance } from "../util/compliance.js";
 import { checkComputeSandboxing } from "../util/compute-sandboxing.js";
 import { getActiveCloudJob } from "./cloud.js";
 
-export function scriptsRouter(db: LibraryDatabase) {
+export function scriptsRouter(db: LibraryDatabase): Router {
   const router = express.Router();
 
   // ── 1. Study & Script Templates Gallery (SharePoint-Style Faceted Search) ──
@@ -729,15 +729,12 @@ export function scriptsRouter(db: LibraryDatabase) {
             (storedInstance?.["modelName"] as string) ||
             job.name,
           modelDomain: (req.body?.modelDomain || meta["modelDomain"] || storedInstance?.["modelDomain"]) as
-            | StudyDomain
-            | undefined,
+            StudyDomain | undefined,
           modelCode: req.body?.modelCode || (meta["modelCode"] as string | undefined),
           packageName: (req.body?.packageName || meta["packageName"] || storedInstance?.["packageName"]) as
-            | string
-            | undefined,
+            string | undefined,
           packageVersion: (req.body?.packageVersion || meta["packageVersion"] || storedInstance?.["packageVersion"]) as
-            | string
-            | undefined,
+            string | undefined,
           executionTarget,
           computeProfile,
           inputs: (req.body?.inputs || meta["inputs"] || storedInstance?.["inputs"] || {}) as Record<

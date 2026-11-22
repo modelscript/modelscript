@@ -3,7 +3,7 @@
 
 # @modelscript/runtime
 
-Core runtime engine, linear-memory WebAssembly DAE arena, Salsa incremental query engine, structural analysis kernels, 13-oracle Nelson-Oppen theory coordinator, and formal verification framework for ModelScript.
+Core runtime engine, linear-memory WebAssembly DAE arena, Salsa incremental query engine, structural analysis kernels, 19-oracle Nelson-Oppen theory coordinator, and formal verification framework for ModelScript.
 
 ---
 
@@ -29,6 +29,7 @@ Located under `src/workspace/`, incremental compilation and multi-file semantic 
 
 - **`WorkspaceIndex` (`wasm_workspace.ts`)**: Aggregates per-file `SymbolIndex` tables across multi-file workspaces, resolving cross-file `within` hierarchies, `package.mo` / `package.order`, and polyglot imports.
 - **`QueryEngine` (`wasm_query_engine.ts`, `wasm_cache_store.ts`)**: Implements the Salsa `fetch → deep_verify → execute → backdate` memoization algorithm. Semantic queries (`instantiate`, `classInstance`, `resolveSimpleName`, `variability`, `causality`, `effectiveModification`) are cached with fine-grained dependency tracking and invalidated only when upstream symbols change.
+- **Virtual Manifest Projection (`manifest-projection.ts`)**: Projects polyglot workspace files and package metadata into canonical virtual workspace manifests (`modelscript.json` / `modelscript.yaml`) for unified cross-language indexing and tooling.
 - **`WasmStringPool` & `WasmContainer` (`wasm_string_pool.ts`, `wasm_container.ts`)**: Interned string pooling and linear-memory hash tables for zero-copy symbol lookups.
 
 ---
@@ -40,30 +41,36 @@ Located under `src/analysis/` and `src/dae/`:
 - **Constant Folding & Alias Elimination (`wasm_fold.ts`)**: `foldArenaConstants` and `eliminateArenaAliases` simplify trivial equalities ($x = y$, $x = -y$, $x = c$) before structural partitioning.
 - **Pantelides Index Reduction (`wasm_pantelides.ts`)**: Detects high-index DAEs (index > 1) via bipartite matching and symbolically differentiates constraint equations to reduce the system to index-1 ODE/DAE form.
 - **Tarjan Block Lower Triangular (BLT) & Tearing (`wasm_blt.ts`)**: Computes maximum transversal variable-equation assignments, partitions equations into causal topological blocks using Tarjan's strongly connected components (SCC) algorithm, and applies tearing to minimize nonlinear algebraic loop dimensions.
-- **Implicitly Restarted Arnoldi Sparse Eigensolver (`src/solvers/sparse_arnoldi.ts`, `src/wasm/linalg/arnoldi.ts`)**: Lehoucq-Sorensen Implicitly Restarted Arnoldi Method (IRAM) with shift-invert sparse LU factorization (`computeSparseEigenvalues`, `buildSparseCscFromDense`, `computeParticipationFactors`) for large-scale small-signal modal stability and inter-area oscillation analysis.
+- **Implicitly Restarted Arnoldi Sparse Eigensolver (`src/solvers/sparse_arnoldi.ts`)**: Lehoucq-Sorensen Implicitly Restarted Arnoldi Method (IRAM) with shift-invert sparse LU factorization (`computeSparseEigenvalues`, `buildSparseCscFromDense`, `computeParticipationFactors`) for large-scale small-signal modal stability and inter-area oscillation analysis.
 - **E-Graph Equality Saturation (`wasm_egraph_simplifier.ts`)**: Algebraic term rewriting and canonical expression simplification.
 
 ---
 
-## 4. 13-Oracle Nelson-Oppen `SemanticTheoryCoordinator`
+## 4. 19-Oracle Nelson-Oppen `SemanticTheoryCoordinator`
 
-Located at `src/formal/theory_coordinator.ts` and `src/formal/oracles/`, cross-domain verification is orchestrated by a generalized **Nelson-Oppen multi-solver** that exchanges shared variable equalities (`SharedEquality`), tightened numeric intervals, congruence closures, and learned conflict clauses (`ConflictClause`) across **13 domain theory oracles**:
+Located at `src/formal/theory_coordinator.ts` and `src/formal/oracles/`, cross-domain verification is orchestrated by a generalized **Nelson-Oppen multi-solver** that exchanges shared variable equalities (`SharedEquality`), tightened numeric intervals, congruence closures, and learned conflict clauses (`ConflictClause`) across **19 domain theory oracles**:
 
-| Oracle                                              | Domain               | Responsibility                                                                                                                        |
-| --------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `OntologyTheoryOracle`                              | `ontology`           | Tableau Description Logic (DL) reasoner, OWL 2 bundle closure, BFO ISO/IEC 21838-2 alignment, concept subsumption, and disjointness   |
-| `ConstraintTheoryOracle`                            | `constraint`         | Non-linear interval contraction via HC4 contractor, DPLL(T) arithmetic solver, and bound propagation                                  |
-| `AbstractDomainOracle`                              | `abstract_domain`    | Octagon Difference Bound Matrices (DBM), 4D spatio-temporal intervals, and relational numerical bounds                                |
-| `ContinuousSafetyOracle` / `SafetyTheoryOracle`     | `continuous_safety`  | Reachability flowpipes, SOS barrier certificates, Fault Tree Analysis (FTA), Minimal Cut Sets (MCS), and ISO 26262 PMHF/SPFM metrics  |
-| `DynamicSimulationOracle`                           | `dynamic_simulation` | DAE numerical trajectory integration, Signal Temporal Logic (STL) quantitative robustness, and tolerance monitoring                   |
-| `SpatialPhysicsOracle`                              | `spatial_physics`    | Watertight B-Rep CAD solid queries, collision/clearance verification, mass properties, and 3D FEA/CFD field coupling                  |
-| `CaeContractOracle`                                 | `spatial_physics`    | FEA von Mises stress/deflection and CFD aerodynamic ($C_d$, $L/D$) contract verification synced with the Digital Thread hypergraph    |
-| `CausalizationOracle` (`CausalizationTheoryOracle`) | `constraint`         | Pantelides Index-1 structural non-singularity, algebraic loop solvability, and Nyquist-Shannon sampling stability                     |
-| `DimensionalOracle` (`DimensionalTheoryOracle`)     | `constraint`         | ISO 80000 7-element rational exponent vector (`[L, M, T, I, Θ, N, J]`) dimensional homogeneity checking                               |
-| `EntailmentOracle` (`EntailmentTheoryOracle`)       | `constraint`         | V-Model requirements decomposition completeness proving ($\bigwedge R_{\text{child},i} \models R_{\text{parent}}$) with signed proofs |
-| `FlowAlgebraOracle` (`FlowAlgebraTheoryOracle`)     | `constraint`         | SysML v2 / KerML conjugated port involution (`~Port`), Kirchhoff conservative flow balance, and 1D–3D CFD boundary flux integrals     |
-| `ToleranceStackOracle` & `UqOracle`                 | `spatial_physics`    | STEP AP242 GD&T 1D/3D tolerance stack-up (Worst-Case, RSS, Six-Sigma $C_{pk}$) and stochastic Uncertainty Quantification (CDF / MC)   |
-| `RadiologyCasTheoryOracle`                          | `spatial_physics`    | QUANTEC OAR dose-volume histogram bounds, $SE(3)$ surgical navigation frame chains, Fitzpatrick TRE bounds, and 3MF medical meshes    |
+| Oracle                      | Domain              | Responsibility                                                                                                                        |
+| --------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `OntologyTheoryOracle`      | `ontology`          | Tableau Description Logic (DL) reasoner, OWL 2 bundle closure, BFO ISO/IEC 21838-2 alignment, concept subsumption, and disjointness   |
+| `ConstraintTheoryOracle`    | `constraint`        | Non-linear interval contraction via HC4 contractor, DPLL(T) arithmetic solver, and bound propagation                                  |
+| `AbstractDomainOracle`      | `abstract_domain`   | Octagon Difference Bound Matrices (DBM), 4D spatio-temporal intervals, and relational numerical bounds                                |
+| `SafetyTheoryOracle`        | `continuous_safety` | Reachability flowpipes, SOS barrier certificates, Fault Tree Analysis (FTA), Minimal Cut Sets (MCS), and ISO 26262 PMHF/SPFM metrics  |
+| `SpatialPhysicsOracle`      | `spatial_physics`   | Watertight B-Rep CAD solid queries, collision/clearance verification, mass properties, and 3D FEA/CFD field coupling                  |
+| `CaeContractOracle`         | `spatial_physics`   | FEA von Mises stress/deflection and CFD aerodynamic ($C_d$, $L/D$) contract verification synced with the Digital Thread hypergraph    |
+| `CausalizationTheoryOracle` | `constraint`        | Pantelides Index-1 structural non-singularity, algebraic loop solvability, and Nyquist-Shannon sampling stability                     |
+| `DimensionalTheoryOracle`   | `constraint`        | ISO 80000 7-element rational exponent vector (`[L, M, T, I, Θ, N, J]`) dimensional homogeneity checking                               |
+| `EntailmentTheoryOracle`    | `constraint`        | V-Model requirements decomposition completeness proving ($\bigwedge R_{\text{child},i} \models R_{\text{parent}}$) with signed proofs |
+| `FlowAlgebraOracle`         | `constraint`        | SysML v2 / KerML conjugated port involution (`~Port`), Kirchhoff conservative flow balance, and 1D–3D CFD boundary flux integrals     |
+| `ToleranceStackOracle`      | `spatial_physics`   | STEP AP242 GD&T 1D/3D tolerance stack-up (Worst-Case, RSS, Six-Sigma $C_{pk}$)                                                        |
+| `UqTheoryOracle`            | `uncertainty`       | Stochastic Uncertainty Quantification (FOSM, PCE, analytical CDFs, P-boxes, and Monte Carlo propagation)                              |
+| `ArrayTheoryOracle`         | `array`             | Theory of arrays (McCarthy read-over-write axioms and extensionality) for indexed parameter/state tables                              |
+| `BitVectorTheoryOracle`     | `bitvector`         | Fixed-width bit-vector arithmetic, overflow, and masking constraints for embedded/AUTOSAR/PLC logic                                   |
+| `StringTheoryOracle`        | `string`            | String equality, length, concatenation, and regular-expression constraints for metadata/configuration rules                           |
+| `PowerGridTheoryOracle`     | `power_grid`        | AC power-flow voltage/thermal limits, N-1 contingency bounds, and IEEE 2800 / NERC grid-code constraints                              |
+| `TelecomTheoryOracle`       | `telecom`           | Optical DWDM GSNR budgets, RF MPE exposure limits, microwave link availability, and FAA Part 77 siting rules                          |
+| `MarineMooringTheoryOracle` | `marine_mooring`    | Inelastic catenary mooring tension bounds and DNV-OS-E301 offshore safety-factor verification                                         |
+| `PressureVesselOracle`      | `pressure_vessel`   | ASME BPVC Section VIII Division 1 shell/head wall thickness, MAWP, and allowable-stress compliance verification                       |
 
 ---
 
@@ -127,14 +134,18 @@ const flattenedText = new ArenaDAEPrinter(dae).print("ExponentialDecay");
 
 ## Scripts
 
-| Command             | Description                                                       |
-| ------------------- | ----------------------------------------------------------------- |
-| `npm run build`     | Compile AssemblyScript kernels (`npm run asbuild`) and TypeScript |
-| `npm run asbuild`   | Build WebAssembly kernels via `scripts/build-as.js`               |
-| `npm run test`      | Run unit and formal verification test suites                      |
-| `npm run lint`      | Run ESLint across `src/` and `tests/`                             |
-| `npm run typecheck` | Run TypeScript type checking (`tsc --noEmit`)                     |
-| `npm run clean`     | Remove `dist/` and `build/` artifacts                             |
+| Command                    | Description                                                                      |
+| -------------------------- | -------------------------------------------------------------------------------- |
+| `pnpm run build`           | Compile AssemblyScript kernels (`asbuild`) and TypeScript (`tsc`)                |
+| `pnpm run asbuild`         | Build WebAssembly kernels via `scripts/build-as.js`                              |
+| `pnpm run asbuild:debug`   | Compile AssemblyScript debug target (`asc assembly/index.ts --target debug`)     |
+| `pnpm run asbuild:release` | Compile AssemblyScript release target (`asc assembly/index.ts --target release`) |
+| `pnpm run asbuild:force`   | Force-rebuild WebAssembly kernels bypassing cache                                |
+| `pnpm run benchmark:scale` | Run large-scale DAE arena scaling benchmark (`tests/benchmark-dae-scale.ts`)     |
+| `pnpm run test`            | Run unit and formal verification test suites                                     |
+| `pnpm run lint`            | Run ESLint across `src/` and `tests/`                                            |
+| `pnpm run typecheck`       | Run TypeScript type checking (`tsc --noEmit`)                                    |
+| `pnpm run clean`           | Remove `dist/` and `build/` artifacts                                            |
 
 ---
 

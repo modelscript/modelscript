@@ -11,6 +11,47 @@ export enum InputEncoding {
   UTF32BE = 4,
 }
 
+const AST_FLAG_IS_LEAF_WORD0 = 8192 << 16;
+
+function _readNodeByteLength(mem32: Uint32Array, ptr: number): number {
+  const w1 = mem32[(ptr + 4) >>> 2];
+  return (mem32[ptr >>> 2] & AST_FLAG_IS_LEAF_WORD0) !== 0 ? w1 & 0xfff : w1;
+}
+
+function _readNodePadding(mem32: Uint32Array, ptr: number): number {
+  return (mem32[ptr >>> 2] & AST_FLAG_IS_LEAF_WORD0) !== 0
+    ? (mem32[(ptr + 4) >>> 2] >>> 12) & 0xfff
+    : mem32[(ptr + 8) >>> 2];
+}
+
+function _readNodeFirstChild(mem32: Uint32Array, ptr: number): number {
+  return (mem32[ptr >>> 2] & AST_FLAG_IS_LEAF_WORD0) !== 0 ? 0 : mem32[(ptr + 12) >>> 2];
+}
+
+function _readNodeNextSibling(mem32: Uint32Array, ptr: number): number {
+  return (mem32[ptr >>> 2] & AST_FLAG_IS_LEAF_WORD0) !== 0 ? mem32[(ptr + 8) >>> 2] : mem32[(ptr + 16) >>> 2];
+}
+
+function _writeNodeNextSibling(mem32: Uint32Array, ptr: number, next: number): void {
+  if ((mem32[ptr >>> 2] & AST_FLAG_IS_LEAF_WORD0) !== 0) {
+    mem32[(ptr + 8) >>> 2] = next;
+  } else {
+    mem32[(ptr + 16) >>> 2] = next;
+  }
+}
+
+function _readNodeMerkleLow(mem32: Uint32Array, ptr: number): number {
+  return ((mem32[ptr >>> 2] & AST_FLAG_IS_LEAF_WORD0) !== 0 ? mem32[(ptr + 12) >>> 2] : mem32[(ptr + 24) >>> 2]) >>> 0;
+}
+
+function _readNodeMerkleHigh(mem32: Uint32Array, ptr: number): number {
+  if ((mem32[ptr >>> 2] & AST_FLAG_IS_LEAF_WORD0) !== 0) {
+    const low = mem32[(ptr + 12) >>> 2] >>> 0;
+    return low === 0 ? 0 : (Math.imul(low, 0x85ebca6b) ^ (low >>> 16)) >>> 0;
+  }
+  return mem32[(ptr + 28) >>> 2] >>> 0;
+}
+
 /**
  * Abstract interface for interacting with the underlying WebAssembly or Native C++ runtime.
  * Provides memory read/write and parser invocation methods.
@@ -470,11 +511,11 @@ export class WasmRuntime implements RuntimeAdapter {
 
   getNodeFirstChild(ptr: number): number {
     this.ensureMemory();
-    return this.mem32[(ptr + 12) / 4];
+    return _readNodeFirstChild(this.mem32, ptr);
   }
   getNodeNextSibling(ptr: number): number {
     this.ensureMemory();
-    return this.mem32[(ptr + 16) / 4];
+    return _readNodeNextSibling(this.mem32, ptr);
   }
   getNodeType(ptr: number): number {
     this.ensureMemory();
@@ -1153,11 +1194,11 @@ export class LspFacade {
     const rootFlags = rootW0 >>> 16;
     if ((rootFlags & (128 | 256)) !== 0) return true;
 
-    let childPtr = mem32[(astRoot + 12) >>> 2];
+    let childPtr = _readNodeFirstChild(mem32, astRoot);
     while (childPtr !== 0) {
       const cFlags = mem32[childPtr >>> 2] >>> 16;
       if ((cFlags & (128 | 256)) !== 0) return true;
-      childPtr = mem32[(childPtr + 16) >>> 2];
+      childPtr = _readNodeNextSibling(mem32, childPtr);
     }
     return false;
   }
@@ -1680,11 +1721,11 @@ export class LspFacade {
         if (this.exports.getNodeLeadingPad) {
           return this.exports.getNodeLeadingPad(ptr);
         }
-        return memory[(ptr + 8) / 4];
+        return _readNodePadding(memory, ptr);
       };
 
       const getNodeLen = (ptr: number): number => {
-        return memory[(ptr + 4) / 4];
+        return _readNodeByteLength(memory, ptr);
       };
 
       stackPtrs[0] = astRoot;
@@ -1702,13 +1743,13 @@ export class LspFacade {
           if (requiredNodePtrs.size === 0) break;
         }
 
-        const child = memory[(current + 12) / 4];
+        const child = _readNodeFirstChild(memory, current);
         if (child !== 0) {
           let childCount = 0;
           let c = child;
           while (c !== 0 && childCount < 200000) {
             childCount++;
-            c = memory[(c + 16) / 4];
+            c = _readNodeNextSibling(memory, c);
           }
 
           if (stackTop + childCount >= stackPtrs.length) {
@@ -1739,7 +1780,7 @@ export class LspFacade {
               currOffset = childStart + cLen;
               _consumedInParent += cLen;
               idx++;
-              c = memory[(c + 16) / 4];
+              c = _readNodeNextSibling(memory, c);
             }
             stackTop += childCount;
           }
@@ -1774,7 +1815,7 @@ export class LspFacade {
         if (nodeStart !== undefined) {
           startByte = nodeStart;
           const mem32 = this._u32();
-          const nodeLen = mem32[(arg0 + 4) >>> 2];
+          const nodeLen = _readNodeByteLength(mem32, arg0);
           endByte = startByte + (nodeLen > 0 ? nodeLen : encStep);
         }
       }
@@ -1812,6 +1853,33 @@ export class LspFacade {
           let symName = formatSyntaxTokenName(rawArg1);
           msg = `Syntax Error: Missing '${symName}'`;
           expectedTokensList = [symName];
+        } else if (arg0 === 3 && rawArg1 > 0) {
+          const extracted = extractTokenText(startByte, tokEndByte);
+          let kwName = formatSyntaxTokenName(rawArg1);
+          msg = extracted
+            ? `Syntax Error: Missing space after '${kwName}' in '${extracted}'`
+            : `Syntax Error: Missing space after '${kwName}'`;
+          expectedTokensList = [kwName];
+        } else if (arg0 === 4 && rawArg1 > 0) {
+          const extracted = extractTokenText(startByte, tokEndByte);
+          let kwName = formatSyntaxTokenName(rawArg1);
+          msg = extracted
+            ? `Syntax Error: Unexpected '${extracted}', did you mean '${kwName}'?`
+            : `Syntax Error: Expected '${kwName}'`;
+          expectedTokensList = [kwName];
+        } else if (arg0 === 5 && rawArg1 > 0) {
+          const extracted = extractTokenText(startByte, tokEndByte);
+          let expName = formatSyntaxTokenName(rawArg1);
+          msg = extracted
+            ? `Syntax Error: Mismatched closing delimiter '${extracted}', expected '${expName}'`
+            : `Syntax Error: Expected '${expName}'`;
+          expectedTokensList = [expName];
+        } else if (arg0 === 6) {
+          const extracted = extractTokenText(startByte, tokEndByte);
+          let symName = extracted || formatSyntaxTokenName(rawArg1);
+          msg = symName
+            ? `Syntax Error: Unmatched closing delimiter '${symName}'`
+            : "Syntax Error: Unmatched closing delimiter";
         } else if (arg0 === 2) {
           const extracted = extractTokenText(startByte, tokEndByte);
           let symName = extracted;
@@ -2028,7 +2096,7 @@ export class LspFacade {
               if (actualStart < 0) return null;
               const typeFlags = memory[ptr / 4];
               const typeId = typeFlags & 0xffff;
-              const len = memory[(ptr + 4) / 4];
+              const len = _readNodeByteLength(memory, ptr);
               return new SyntaxNode(dummyTree as any, ptr, actualStart, null, 0, len, typeId);
             };
 
@@ -2192,11 +2260,15 @@ export class LspFacade {
           const prevIsSpecific =
             prev.message.startsWith("Expected ") ||
             prev.message.startsWith("Syntax Error: Missing ") ||
-            prev.message.startsWith("Syntax Error: Unexpected ");
+            prev.message.startsWith("Syntax Error: Unexpected ") ||
+            prev.message.startsWith("Syntax Error: Mismatched ") ||
+            prev.message.startsWith("Syntax Error: Unmatched ");
           const dIsSpecific =
             d.message.startsWith("Expected ") ||
             d.message.startsWith("Syntax Error: Missing ") ||
-            d.message.startsWith("Syntax Error: Unexpected ");
+            d.message.startsWith("Syntax Error: Unexpected ") ||
+            d.message.startsWith("Syntax Error: Mismatched ") ||
+            d.message.startsWith("Syntax Error: Unmatched ");
           const prevIsGeneric = prev.message === "Syntax Error";
           const dIsGeneric = d.message === "Syntax Error";
 
@@ -2714,7 +2786,7 @@ export class LspFacade {
   /** Hashes a string using FNV-1a algorithm matching WASM string hash. */
   hashString(str: string): number {
     let h = 2166136261;
-    for (let i = 0; i < str.length; ) {
+    for (let i = 0; i < str.length;) {
       const cp = str.codePointAt(i)!;
       h = Math.imul(h ^ cp, 16777619) >>> 0;
       i += cp > 0xffff ? 2 : 1;
@@ -4203,8 +4275,8 @@ export class LspFacade {
       let typeName = (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
 
-      const pad = mem32[(ptr + 8) / 4];
-      const len = mem32[(ptr + 4) / 4];
+      const pad = _readNodePadding(mem32, ptr);
+      const len = _readNodeByteLength(mem32, ptr);
 
       const startOffset = currentOffset + pad;
       const endOffset = startOffset + len;
@@ -4223,7 +4295,7 @@ export class LspFacade {
       let childStrs: string[] = [];
 
       let childOffset = startOffset;
-      let childPtr = mem32[(ptr + 12) / 4];
+      let childPtr = _readNodeFirstChild(mem32, ptr);
       let slowPtr = childPtr;
       let step = 0;
 
@@ -4239,8 +4311,8 @@ export class LspFacade {
         }
         childOffset = childResult.nextOffset;
 
-        childPtr = mem32[(childPtr + 16) / 4];
-        if (step % 2 === 1) slowPtr = mem32[(slowPtr + 16) / 4];
+        childPtr = _readNodeNextSibling(mem32, childPtr);
+        if (step % 2 === 1) slowPtr = _readNodeNextSibling(mem32, slowPtr);
         step++;
       }
 
@@ -4309,8 +4381,8 @@ export class LspFacade {
       let typeName = (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
 
-      const pad = mem32[(ptr + 8) / 4];
-      const len = mem32[(ptr + 4) / 4];
+      const pad = _readNodePadding(mem32, ptr);
+      const len = _readNodeByteLength(mem32, ptr);
 
       const startOffset = currentOffset + pad;
       const endOffset = startOffset + len;
@@ -4327,7 +4399,7 @@ export class LspFacade {
       let renderedChildren = 0;
 
       let childOffset = startOffset;
-      let childPtr = mem32[(ptr + 12) / 4];
+      let childPtr = _readNodeFirstChild(mem32, ptr);
       let slowPtr = childPtr;
       let step = 0;
 
@@ -4350,8 +4422,8 @@ export class LspFacade {
         }
         childOffset = toHtml(childPtr, childOffset, shouldPrint ? depth + 1 : depth);
         renderedChildren++;
-        childPtr = mem32[(childPtr + 16) / 4];
-        if (step % 2 === 1) slowPtr = mem32[(slowPtr + 16) / 4];
+        childPtr = _readNodeNextSibling(mem32, childPtr);
+        if (step % 2 === 1) slowPtr = _readNodeNextSibling(mem32, slowPtr);
         step++;
       }
 
@@ -4383,10 +4455,10 @@ export class LspFacade {
     const lastChild = this._childTailCache.get(parentPtr);
     if (lastChild !== undefined) {
       // Wire nextSibling of the cached tail → new child
-      mem32[(lastChild + 16) / 4] = childPtr;
+      _writeNodeNextSibling(mem32, lastChild, childPtr);
     } else {
       // Check if parent already has a firstChild
-      const firstChild = mem32[(parentPtr + 12) / 4];
+      const firstChild = _readNodeFirstChild(mem32, parentPtr);
       if (firstChild === 0) {
         mem32[(parentPtr + 12) / 4] = childPtr;
       } else if (this.exports.ast_appendChild) {
@@ -4576,7 +4648,7 @@ export class LspFacade {
     const getChildren = (ptr: number): { ptr: number; field: string | null }[] => {
       const mem32 = getMem32();
       const children: { ptr: number; field: string | null }[] = [];
-      const firstChild = mem32[(ptr + 12) / 4];
+      const firstChild = _readNodeFirstChild(mem32, ptr);
       let curr = firstChild;
       const typeFlags = mem32[ptr / 4];
       const parentTypeId = typeFlags & 0xffff;
@@ -4598,8 +4670,8 @@ export class LspFacade {
         }
         const field = fieldId >= 0 ? fieldIdToName[fieldId] : null;
         children.push({ ptr: curr, field });
-        curr = getMem32()[(curr + 16) / 4];
-        if (step % 2 === 1) slow = getMem32()[(slow + 16) / 4];
+        curr = _readNodeNextSibling(getMem32(), curr);
+        if (step % 2 === 1) slow = _readNodeNextSibling(getMem32(), slow);
         if (step > 0 && slow === curr) break;
         step++;
         childIndex++;
@@ -4623,7 +4695,7 @@ export class LspFacade {
 
       let nodePtr = startPtr;
       let parentField: string | null = null;
-      let childPtr = getMem32()[(nodePtr + 12) / 4];
+      let childPtr = _readNodeFirstChild(getMem32(), nodePtr);
       let childIndex = 0;
       let step = 0;
       let slowPtr = childPtr;
@@ -4653,9 +4725,9 @@ export class LspFacade {
           }
           const field = fieldId >= 0 ? fieldIdToName[fieldId] : isInvisible ? parentField : null;
 
-          const childPad = mem32[(childPtr + 8) / 4];
-          const childLen = mem32[(childPtr + 4) / 4];
-          const hasChildren = mem32[(childPtr + 12) / 4] !== 0;
+          const childPad = _readNodePadding(mem32, childPtr);
+          const childLen = _readNodeByteLength(mem32, childPtr);
+          const hasChildren = _readNodeFirstChild(mem32, childPtr) !== 0;
 
           if (isInvisible) {
             if (hasChildren) {
@@ -4663,15 +4735,15 @@ export class LspFacade {
               stack.push({
                 nodePtr,
                 parentField,
-                childPtr: mem32[(childPtr + 16) / 4],
+                childPtr: _readNodeNextSibling(mem32, childPtr),
                 childIndex: childIndex + 1,
                 step: step + 1,
-                slowPtr: step % 2 === 1 ? mem32[(slowPtr + 16) / 4] : slowPtr,
+                slowPtr: step % 2 === 1 ? _readNodeNextSibling(mem32, slowPtr) : slowPtr,
               });
 
               nodePtr = childPtr;
               parentField = field;
-              childPtr = mem32[(nodePtr + 12) / 4];
+              childPtr = _readNodeFirstChild(mem32, nodePtr);
               childIndex = 0;
               step = 0;
               slowPtr = childPtr;
@@ -4684,8 +4756,8 @@ export class LspFacade {
             currentAccumulatedPad = 0;
           }
 
-          childPtr = mem32[(childPtr + 16) / 4];
-          if (step % 2 === 1) slowPtr = mem32[(slowPtr + 16) / 4];
+          childPtr = _readNodeNextSibling(mem32, childPtr);
+          if (step % 2 === 1) slowPtr = _readNodeNextSibling(mem32, slowPtr);
           step++;
           childIndex++;
         } else {
@@ -4717,8 +4789,8 @@ export class LspFacade {
         const typeId = typeFlags & 0xffff;
         let typeName = (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
         if (typeName.startsWith("T_")) typeName = typeName.substring(2);
-        let pad = mem32[(ptr + 8) / 4];
-        const len = mem32[(ptr + 4) / 4];
+        let pad = _readNodePadding(mem32, ptr);
+        const len = _readNodeByteLength(mem32, ptr);
 
         const children = getFlattenedChildren(ptr);
 
@@ -4770,8 +4842,8 @@ export class LspFacade {
         const newTypeId = newTypeFlags & 0xffff;
         let typeName = (this.syntaxNames && this.syntaxNames[newTypeId]) || `node_${newTypeId}`;
         if (typeName.startsWith("T_")) typeName = typeName.substring(2);
-        let pad = mem32[(newPtr + 8) / 4];
-        const len = mem32[(newPtr + 4) / 4];
+        let pad = _readNodePadding(mem32, newPtr);
+        const len = _readNodeByteLength(mem32, newPtr);
         const flags = newTypeFlags >>> 16;
         const newCh = getFlattenedChildren(newPtr);
         pad += newInvisiblePad;
@@ -4802,8 +4874,8 @@ export class LspFacade {
       const newTypeFlags = mem32[newPtr / 4];
       let typeName = (this.syntaxNames && this.syntaxNames[newTypeId]) || `node_${newTypeId}`;
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
-      let pad = mem32[(newPtr + 8) / 4];
-      const len = mem32[(newPtr + 4) / 4];
+      let pad = _readNodePadding(mem32, newPtr);
+      const len = _readNodeByteLength(mem32, newPtr);
 
       const oldCh = getFlattenedChildren(oldPtr);
       const newCh = getFlattenedChildren(newPtr);
@@ -4951,12 +5023,12 @@ export class SyntaxNode {
   /** Extracts the substring from the original source code corresponding to this node. */
   get merkleLow(): number {
     if (!this.ptr) return 0;
-    return this.tree.mem32[(this.ptr + 24) >>> 2] >>> 0;
+    return _readNodeMerkleLow(this.tree.mem32, this.ptr);
   }
 
   get merkleHigh(): number {
     if (!this.ptr) return 0;
-    return this.tree.mem32[(this.ptr + 28) >>> 2] >>> 0;
+    return _readNodeMerkleHigh(this.tree.mem32, this.ptr);
   }
 
   get text(): string {
@@ -5102,7 +5174,7 @@ export class SyntaxNode {
       inheritedFieldId: number;
     }[] = [];
 
-    let currentChildPtr = mem32[(this.ptr + 12) / 4];
+    let currentChildPtr = _readNodeFirstChild(mem32, this.ptr);
     let currentOffset = this._startOffset + this._cachedPad;
     let parentTypeId = this._cachedTypeId;
     let childIndex = 0;
@@ -5117,8 +5189,8 @@ export class SyntaxNode {
           (this.tree.facade?.syntaxNames && this.tree.facade.syntaxNames[typeId]) ||
           (SYNTAX_NAMES && SYNTAX_NAMES[typeId]) ||
           `node_${typeId}`;
-        const pad = mem32[(currentChildPtr + 8) / 4];
-        const len = mem32[(currentChildPtr + 4) / 4];
+        const pad = _readNodePadding(mem32, currentChildPtr);
+        const len = _readNodeByteLength(mem32, currentChildPtr);
         const isInvisible = (flags & 4) !== 0;
 
         let directFieldId = -1;
@@ -5133,7 +5205,7 @@ export class SyntaxNode {
           fieldId = -1;
         }
 
-        const nextChildPtr = mem32[(currentChildPtr + 16) / 4];
+        const nextChildPtr = _readNodeNextSibling(mem32, currentChildPtr);
         const nextOffset = currentOffset + pad + len;
 
         if (name.startsWith("_") || isInvisible) {
@@ -5144,7 +5216,7 @@ export class SyntaxNode {
             childIndex: childIndex + 1,
             inheritedFieldId,
           });
-          currentChildPtr = mem32[(currentChildPtr + 12) / 4];
+          currentChildPtr = _readNodeFirstChild(mem32, currentChildPtr);
           currentOffset = currentOffset + pad;
           parentTypeId = typeId;
           childIndex = 0;
@@ -5300,14 +5372,14 @@ export class SyntaxNode {
     if (this.ptr === targetPtr) return true;
     if (this.ptr === 0 || targetPtr === 0) return false;
     const mem32 = this.tree.mem32;
-    const stack: number[] = [mem32[(this.ptr + 12) / 4]];
+    const stack: number[] = [_readNodeFirstChild(mem32, this.ptr)];
     while (stack.length > 0) {
       const p = stack.pop()!;
       if (p === 0) continue;
       if (p === targetPtr) return true;
-      const sib = mem32[(p + 16) / 4];
+      const sib = _readNodeNextSibling(mem32, p);
       if (sib !== 0) stack.push(sib);
-      const ch = mem32[(p + 12) / 4];
+      const ch = _readNodeFirstChild(mem32, p);
       if (ch !== 0) stack.push(ch);
     }
     return false;
@@ -5519,18 +5591,18 @@ export class SyntaxNode {
     const rawStart = start * encDiv;
     const rawEnd = end * encDiv;
 
-    let currentChildPtr = mem32[(this.ptr + 12) >>> 2];
+    let currentChildPtr = _readNodeFirstChild(mem32, this.ptr);
     let currentOffset = this._startOffset + this._cachedPad;
     const stack: { nextChildPtr: number; nextOffset: number }[] = [];
 
     while (true) {
       if (currentChildPtr !== 0) {
         const typeFlags = mem32[currentChildPtr >>> 2];
-        const pad = mem32[(currentChildPtr + 8) >>> 2];
-        const len = mem32[(currentChildPtr + 4) >>> 2];
+        const pad = _readNodePadding(mem32, currentChildPtr);
+        const len = _readNodeByteLength(mem32, currentChildPtr);
         const childRawStart = currentOffset + pad;
         const childRawEnd = childRawStart + len;
-        const nextChildPtr = mem32[(currentChildPtr + 16) >>> 2];
+        const nextChildPtr = _readNodeNextSibling(mem32, currentChildPtr);
         const nextOffset = childRawEnd;
 
         if (rawStart >= childRawStart && rawEnd <= childRawEnd) {
@@ -5540,7 +5612,7 @@ export class SyntaxNode {
           const name = (syntaxNames && syntaxNames[typeId]) || `node_${typeId}`;
           if (isInvisible || name.startsWith("_")) {
             stack.push({ nextChildPtr, nextOffset });
-            currentChildPtr = mem32[(currentChildPtr + 12) >>> 2];
+            currentChildPtr = _readNodeFirstChild(mem32, currentChildPtr);
             currentOffset = childRawStart;
             continue;
           } else if (currentChildPtr !== this.ptr) {
@@ -5986,8 +6058,8 @@ export class Tree {
     const mem32 = this.mem32;
     const typeFlags = mem32[this.rootPtr / 4];
     const typeId = typeFlags & 0xffff;
-    const pad = mem32[(this.rootPtr + 8) / 4];
-    const len = mem32[(this.rootPtr + 4) / 4];
+    const pad = _readNodePadding(mem32, this.rootPtr);
+    const len = _readNodeByteLength(mem32, this.rootPtr);
 
     this._rootNode = new SyntaxNode(
       this,

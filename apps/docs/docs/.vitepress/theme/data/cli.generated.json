@@ -493,6 +493,172 @@
     "subcommands": []
   },
   {
+    "name": "atopile",
+    "specs": [
+      "atopile <action>"
+    ],
+    "aliases": [],
+    "describe": "atopile (.ato) code-first hardware linting, tolerance verification, netlist elaboration, and IPC-2581 export",
+    "positionals": [],
+    "options": [],
+    "subcommands": [
+      {
+        "name": "lint",
+        "specs": [
+          "lint <file>"
+        ],
+        "aliases": [],
+        "describe": "Lint an atopile (.ato) design and verify worst-case tolerance assertions",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .ato file"
+          }
+        ],
+        "options": [
+          {
+            "name": "format",
+            "aliases": [
+              "f"
+            ],
+            "type": "string",
+            "choices": [
+              "pretty",
+              "json"
+            ],
+            "default": "pretty"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "netlist",
+        "specs": [
+          "netlist <file>"
+        ],
+        "aliases": [],
+        "describe": "Elaborate an atopile (.ato) module into a canonical NetlistGraph + BOM JSON",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .ato file"
+          }
+        ],
+        "options": [
+          {
+            "name": "entry",
+            "aliases": [
+              "e"
+            ],
+            "type": "string",
+            "description": "Entry module name"
+          },
+          {
+            "name": "out",
+            "aliases": [
+              "o"
+            ],
+            "type": "string",
+            "description": "Output JSON path"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "to-ipc2581",
+        "specs": [
+          "to-ipc2581 <file>"
+        ],
+        "aliases": [],
+        "describe": "Elaborate an atopile (.ato) module and export IPC-2581C XML",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .ato file"
+          }
+        ],
+        "options": [
+          {
+            "name": "entry",
+            "aliases": [
+              "e"
+            ],
+            "type": "string",
+            "description": "Entry module name"
+          },
+          {
+            "name": "out",
+            "aliases": [
+              "o"
+            ],
+            "type": "string",
+            "description": "Output IPC-2581 XML path"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "uq",
+        "specs": [
+          "uq <file>"
+        ],
+        "aliases": [],
+        "describe": "Run worst-case corner & Monte Carlo tolerance UQ over atopile (+/- %) physical parameters",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .ato file"
+          }
+        ],
+        "options": [
+          {
+            "name": "entry",
+            "aliases": [
+              "e"
+            ],
+            "type": "string",
+            "description": "Entry module name"
+          },
+          {
+            "name": "samples",
+            "aliases": [],
+            "type": "number",
+            "description": "Monte Carlo sample count",
+            "default": 500
+          },
+          {
+            "name": "seed",
+            "aliases": [],
+            "type": "number",
+            "description": "Deterministic PRNG seed",
+            "default": 42
+          },
+          {
+            "name": "format",
+            "aliases": [
+              "f"
+            ],
+            "type": "string",
+            "choices": [
+              "table",
+              "json"
+            ],
+            "default": "table"
+          }
+        ],
+        "subcommands": []
+      }
+    ]
+  },
+  {
     "name": "atp",
     "specs": [
       "atp <action> [files..]"
@@ -5042,7 +5208,7 @@
           "ci"
         ],
         "type": "boolean",
-        "description": "Enforce zero-trust installation against msx.lock (fails if lockfile is missing, out of sync, or tampered)",
+        "description": "Enforce zero-trust installation against modelscript.lock (fails if lockfile is missing, out of sync, or tampered)",
         "default": false
       },
       {
@@ -5436,6 +5602,290 @@
             "type": "boolean",
             "description": "Output result as JSON",
             "default": false
+          }
+        ],
+        "subcommands": []
+      }
+    ]
+  },
+  {
+    "name": "kicad",
+    "specs": [
+      "kicad <action>"
+    ],
+    "aliases": [],
+    "describe": "KiCad ECAD (.kicad_pcb, .kicad_sch) linting, ERC, DRC, RLGC parasitics, consistency, and IPC-2581 translation",
+    "positionals": [],
+    "options": [],
+    "subcommands": [
+      {
+        "name": "lint",
+        "specs": [
+          "lint <file>"
+        ],
+        "aliases": [],
+        "describe": "Run ECAD / ERC lints on a KiCad .kicad_pcb or .kicad_sch file",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .kicad_pcb or .kicad_sch"
+          }
+        ],
+        "options": [
+          {
+            "name": "format",
+            "aliases": [
+              "f"
+            ],
+            "type": "string",
+            "choices": [
+              "pretty",
+              "json"
+            ],
+            "default": "pretty"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "parasitics",
+        "specs": [
+          "parasitics <file>"
+        ],
+        "aliases": [],
+        "describe": "Extract trace RLGC parasitics, microstrip/stripline Z0, and IPC-2221 ampacity from .kicad_pcb",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .kicad_pcb"
+          }
+        ],
+        "options": [
+          {
+            "name": "temp-rise",
+            "aliases": [],
+            "type": "number",
+            "description": "Allowed temperature rise (deg C) for IPC-2221",
+            "default": 10
+          },
+          {
+            "name": "format",
+            "aliases": [
+              "f"
+            ],
+            "type": "string",
+            "choices": [
+              "table",
+              "json"
+            ],
+            "default": "table"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "consistency",
+        "specs": [
+          "consistency <schematic> <pcb>"
+        ],
+        "aliases": [],
+        "describe": "Verify schematic (.kicad_sch) ↔ PCB (.kicad_pcb) component, value, footprint, and net consistency",
+        "positionals": [
+          {
+            "name": "schematic",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .kicad_sch"
+          },
+          {
+            "name": "pcb",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .kicad_pcb"
+          }
+        ],
+        "options": [
+          {
+            "name": "format",
+            "aliases": [
+              "f"
+            ],
+            "type": "string",
+            "choices": [
+              "pretty",
+              "json"
+            ],
+            "default": "pretty"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "drc",
+        "specs": [
+          "drc <file>"
+        ],
+        "aliases": [],
+        "describe": "Run ModelScript PCB Design Rule Checks (DRC) on a .kicad_pcb or IPC-2581 XML board",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .kicad_pcb or IPC-2581 .xml/.cvg"
+          }
+        ],
+        "options": [
+          {
+            "name": "format",
+            "aliases": [
+              "f"
+            ],
+            "type": "string",
+            "choices": [
+              "pretty",
+              "json"
+            ],
+            "default": "pretty"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "to-ipc2581",
+        "specs": [
+          "to-ipc2581 <file>"
+        ],
+        "aliases": [],
+        "describe": "Export a KiCad .kicad_pcb board to IPC-2581C XML",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .kicad_pcb"
+          }
+        ],
+        "options": [
+          {
+            "name": "out",
+            "aliases": [
+              "o"
+            ],
+            "type": "string",
+            "description": "Output IPC-2581 XML path"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "from-ipc2581",
+        "specs": [
+          "from-ipc2581 <file>"
+        ],
+        "aliases": [],
+        "describe": "Convert an IPC-2581B/C XML board (Altium, Cadence, Siemens, KiCad) to KiCad 8 .kicad_pcb",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to IPC-2581 .xml/.cvg file"
+          }
+        ],
+        "options": [
+          {
+            "name": "out",
+            "aliases": [
+              "o"
+            ],
+            "type": "string",
+            "description": "Output .kicad_pcb path"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "to-idx",
+        "specs": [
+          "to-idx <file>"
+        ],
+        "aliases": [],
+        "describe": "Export a KiCad .kicad_pcb board to ProSTEP iViP IDX v4.0 ECAD-MCAD XML",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .kicad_pcb"
+          }
+        ],
+        "options": [
+          {
+            "name": "out",
+            "aliases": [
+              "o"
+            ],
+            "type": "string",
+            "description": "Output IDX .idx/.xml path"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "to-specctra",
+        "specs": [
+          "to-specctra <file>"
+        ],
+        "aliases": [],
+        "describe": "Export a KiCad .kicad_pcb board to Specctra .dsn autorouter format",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .kicad_pcb"
+          }
+        ],
+        "options": [
+          {
+            "name": "out",
+            "aliases": [
+              "o"
+            ],
+            "type": "string",
+            "description": "Output Specctra .dsn path"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "to-spice",
+        "specs": [
+          "to-spice <file>"
+        ],
+        "aliases": [],
+        "describe": "Export a KiCad .kicad_sch schematic to a SPICE .cir netlist",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to .kicad_sch"
+          }
+        ],
+        "options": [
+          {
+            "name": "out",
+            "aliases": [
+              "o"
+            ],
+            "type": "string",
+            "description": "Output SPICE .cir path"
           }
         ],
         "subcommands": []
@@ -7964,7 +8414,7 @@
           "export-index [paths..]"
         ],
         "aliases": [],
-        "describe": "Build collision-free polyglot Salsa symbol index and export to SQLite salsa-index.db",
+        "describe": "Build collision-free polyglot package index (.msidx binary or relational SQLite)",
         "positionals": [
           {
             "name": "paths",
@@ -7985,14 +8435,50 @@
             "name": "out",
             "aliases": [],
             "type": "string",
-            "description": "Output path for the generated salsa-index.db",
+            "description": "Output path for the generated index (.msidx or .db)",
             "default": "salsa-index.db"
+          },
+          {
+            "name": "format",
+            "aliases": [],
+            "type": "string",
+            "description": "Output format: 'msidx' (relocatable binary) or 'sqlite' (relational SQLite projection)",
+            "choices": [
+              "msidx",
+              "sqlite"
+            ]
           },
           {
             "name": "json",
             "aliases": [],
             "type": "boolean",
             "description": "Output summary in JSON format",
+            "default": false
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "inspect",
+        "specs": [
+          "inspect <file>"
+        ],
+        "aliases": [],
+        "describe": "Inspect a relocatable binary package index (.msidx) header, domains, and summary chunks",
+        "positionals": [
+          {
+            "name": "file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to the .msidx file"
+          }
+        ],
+        "options": [
+          {
+            "name": "json",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Output inspection summary in JSON format",
             "default": false
           }
         ],
@@ -8953,7 +9439,7 @@
             "name": "source",
             "aliases": [],
             "type": "string",
-            "description": "Protocol URI (e.g. 'oslc+https://...', 'jama+https://...', 'codebeamer+https://...', 'polarion+https://...', 'jira+https://...')"
+            "description": "Protocol URI (e.g. 'oslc+https://...', 'windchill+https://...', 'teamcenter+https://...', 'azdo+https://...', 'testrail+https://...', 'github+https://...', 'onshape+https://...', 'rest+https://...')"
           }
         ],
         "options": [
@@ -11785,6 +12271,114 @@
         ],
         "type": "string",
         "description": "Library version (used with --name instead of a path)"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "uq",
+    "specs": [
+      "uq <name> <paths..>"
+    ],
+    "aliases": [],
+    "describe": "Run analytical, spectral, or reliability Uncertainty Quantification (FOSM, UT, Sobol, gPCE, FORM, SORM, Subset)",
+    "positionals": [
+      {
+        "name": "name",
+        "aliases": [],
+        "type": "string",
+        "description": "Name of class to analyze"
+      },
+      {
+        "name": "paths",
+        "aliases": [],
+        "type": "string",
+        "description": "Paths of libraries and modules to load",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "method",
+        "aliases": [
+          "m"
+        ],
+        "description": "UQ propagation / reliability method",
+        "choices": [
+          "fosm",
+          "unscented",
+          "sobol",
+          "pce",
+          "form",
+          "sorm",
+          "subset",
+          "pbox"
+        ],
+        "default": "unscented"
+      },
+      {
+        "name": "params",
+        "aliases": [
+          "p"
+        ],
+        "type": "string",
+        "description": "Random variables: name:dist:arg1:arg2 (comma-separated, e.g. k:gaussian:1:0.1)"
+      },
+      {
+        "name": "limit",
+        "aliases": [
+          "l"
+        ],
+        "type": "string",
+        "description": "Failure limit-state for form/sorm/subset (e.g. 'x<=0.25' or 'T>350')"
+      },
+      {
+        "name": "degree",
+        "aliases": [],
+        "type": "number",
+        "description": "Polynomial degree for gPCE",
+        "default": 3
+      },
+      {
+        "name": "samples",
+        "aliases": [
+          "n"
+        ],
+        "type": "number",
+        "description": "Base sample count for sobol/pce/subset",
+        "default": 256
+      },
+      {
+        "name": "isoprobabilistic",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Use standard-normal isoprobabilistic mapping for Unscented Transform",
+        "default": false
+      },
+      {
+        "name": "seed",
+        "aliases": [],
+        "type": "number",
+        "description": "Deterministic PRNG seed",
+        "default": 42
+      },
+      {
+        "name": "format",
+        "aliases": [],
+        "description": "Output format",
+        "choices": [
+          "json",
+          "table"
+        ],
+        "default": "table"
+      },
+      {
+        "name": "output",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Write output to file instead of stdout"
       }
     ],
     "subcommands": []

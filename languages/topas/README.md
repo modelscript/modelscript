@@ -3,7 +3,9 @@
 
 # @modelscript/topas
 
-TOPAS (`.topas`, `.txt` — Tool for Particle Simulation) & Geant4 Medical Physics, Proton / Carbon-Ion Hadron Therapy Beamline Geometry, Bethe-Bloch / Bortfeld Bragg Peak Depth-Dose, and Radiation Transport language package for ModelScript. Features a zero-regex TOPAS typed parameter file parser (`parseTopas`), multi-file workspace indexing (`TopasWorkspaceIndex`), an analytical Bethe-Bloch & Bortfeld Bragg peak depth-dose and LET solver (`computeBraggPeakDepthDose`), direct linear-memory `DAEBuilder` lowering (`lowerTopasToDae`), 10 Geant4/TOPAS geometry and beam physics lint rules (`M9601`–`M9610`, `lintTopasDocument`, `TopasErrorCode`), OpenSCAD 3D CSG and Modelica 3.x projections (`topasToScad`, `topasToModelica`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.topas`, `.mac` · **Docs:** [modelscript.org/languages/topas](https://modelscript.org/languages/topas)
+
+TOPAS (`.topas`, `.mac` — Tool for Particle Simulation) & Geant4 Medical Physics, Proton / Carbon-Ion Hadron Therapy Beamline Geometry, Bethe-Bloch / Bortfeld Bragg Peak Depth-Dose, and Radiation Transport language package for ModelScript. Features a zero-regex TOPAS typed parameter file parser (`parseTopas`), multi-file workspace indexing, an analytical Bethe-Bloch & Bortfeld Bragg peak depth-dose and LET solver (`computeBraggPeakDepthDose`), direct linear-memory `DAEBuilder` lowering (`lowerTopasToDae`), 10 Geant4/TOPAS geometry and beam physics lint rules (`M9601`–`M9610`, `lintTopasDocument`, `TopasErrorCode`), OpenSCAD 3D CSG and Modelica 3.x projections (`topasToScad`, `topasToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -19,19 +21,17 @@ TOPAS (`.topas`, `.txt` — Tool for Particle Simulation) & Geant4 Medical Physi
 
 ## Package Structure
 
-| Path                       | Description                                                                                         |
-| -------------------------- | --------------------------------------------------------------------------------------------------- |
-| `src/index.ts`             | Public package exports                                                                              |
-| `src/language.ts`          | `topasLanguage` definition and compiler actions                                                     |
-| `src/types.ts`             | `TopasDocument`, `TopasParameter`, `TopasGeometryComponent`, `TopasBeamSource`, `BraggPeakResult`   |
-| `src/parser/index.ts`      | `parseTopas` zero-regex TOPAS typed parameter file parser                                           |
-| `src/lints/rules.ts`       | `TopasErrorCode` and `lintTopasDocument` Geant4/TOPAS linter (`M9601`–`M9610`)                      |
-| `src/lints/index.ts`       | Linter barrel exports                                                                               |
-| `src/solvers/index.ts`     | `computeBraggPeakDepthDose` Bethe-Bloch / Bortfeld Bragg peak depth-dose and $\text{LET}_d$ solver  |
-| `src/dae/index.ts`         | `lowerTopasToDae` direct lowering of stopping-power and scorer ODEs into `DAEBuilder` linear memory |
-| `src/projections/index.ts` | `topasToScad` and `topasToModelica` cross-language translators                                      |
-| `src/workspace-index.ts`   | `TopasWorkspaceIndex` implementing `IWorkspaceIndex` across `.topas` and `.txt` parameter files     |
-| `src/lsp.ts`               | LSP validation, document symbols, parameter hover cards, completion, and definition providers       |
+| Path                       | Description                                                                                        |
+| -------------------------- | -------------------------------------------------------------------------------------------------- |
+| `src/index.ts`             | Public package exports                                                                             |
+| `src/language.ts`          | `topasLanguage` definition and compiler actions                                                    |
+| `src/types.ts`             | `TopasDocument`, `TopasParameter`, `TopasGeometryComponent`, `TopasBeamSource`, `BraggPeakResult`  |
+| `src/parser/index.ts`      | `parseTopas` zero-regex TOPAS typed parameter file parser                                          |
+| `src/lints/rules.ts`       | `TopasErrorCode` and `lintTopasDocument` Geant4/TOPAS linter (`M9601`–`M9610`)                     |
+| `src/lints/index.ts`       | Linter barrel exports                                                                              |
+| `src/physics/index.ts`     | `computeBraggPeakDepthDose` Bethe-Bloch / Bortfeld Bragg peak depth-dose and $\text{LET}_d$ solver |
+| `src/projections/index.ts` | `topasToScad` and `topasToModelica` cross-language translators                                     |
+| `src/lsp.ts`               | LSP validation, document symbols, parameter hover cards, completion, and definition providers      |
 
 ---
 
@@ -58,15 +58,15 @@ TOPAS (`.topas`, `.txt` — Tool for Particle Simulation) & Geant4 Medical Physi
 
 ```bash
 # Lint a TOPAS proton/carbon-ion therapy parameter file (M9601-M9610)
-npx msx topas lint proton_nozzle.topas
+msx topas lint proton_nozzle.topas
 
 # Compute Bethe-Bloch / Bortfeld Bragg peak depth-dose curve and LETd
-npx msx topas bragg-peak proton_nozzle.topas
+msx topas bragg-peak proton_nozzle.topas
 
 # Lower to DAE or project beamline & phantom geometry to OpenSCAD (.scad) / Modelica (.mo)
-npx msx topas to-dae proton_nozzle.topas
-npx msx topas to-scad proton_nozzle.topas
-npx msx topas to-modelica proton_nozzle.topas
+msx topas to-dae proton_nozzle.topas
+msx topas to-scad proton_nozzle.topas
+msx topas to-modelica proton_nozzle.topas
 ```
 
 ### Programmatic API

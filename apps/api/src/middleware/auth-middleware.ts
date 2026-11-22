@@ -82,6 +82,23 @@ export interface AuthUser {
   tokenVersion?: number | undefined;
 }
 
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      user?: AuthUser | undefined;
+      tokenScopes?: string[] | undefined;
+      tokenPackagePattern?: string | undefined;
+      tokenIpAllowlist?: string | null | undefined;
+      tokenId?: number | undefined;
+      cookies?: Record<string, string> | undefined;
+      rawBody?: Buffer | string | undefined;
+      isDomainSilenced?: boolean | undefined;
+      database?: LibraryDatabase | undefined;
+    }
+  }
+}
+
 declare module "express-serve-static-core" {
   interface Request {
     user?: AuthUser | undefined;

@@ -3,7 +3,9 @@
 
 # @modelscript/antimony
 
-Antimony modular reaction network, systems biology, and biochemical pathway definition language package (`.ant`) for ModelScript. Features a zero-regex character-by-character lexer and recursive-descent parser (`parseAntimony`, `serializeAntimony`), multi-file workspace indexing (`AntimonyWorkspaceIndex`), a deterministic RK4 ODE, rate-rule, assignment-rule, submodel, and discrete event solver with zero-eval formula compilation (`solveAntimony`), direct linear-memory `DAEBuilder` stoichiometric lowering (`lowerAntimonyToDae`), 10 pre-flight biochemical & modular pathway lint rules (`M9001`–`M9010`), Modelica 3.x (`antimonyToModelica`) and SBML Level 3 XML (`antimonyToSbmlXml`) projections, and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.ant` · **Docs:** [modelscript.org/languages/antimony](https://modelscript.org/languages/antimony)
+
+Antimony modular reaction network, systems biology, and biochemical pathway definition language package (`.ant`) for ModelScript. Features a zero-regex character-by-character lexer and recursive-descent parser (`parseAntimony`, `serializeAntimony`), multi-file workspace indexing, a deterministic RK4 ODE, rate-rule, assignment-rule, submodel, and discrete event solver with zero-eval formula compilation (`solveAntimony`), direct linear-memory `DAEBuilder` stoichiometric lowering (`lowerAntimonyToDae`), 10 pre-flight biochemical & modular pathway lint rules (`M9001`–`M9010`), Modelica 3.x (`antimonyToModelica`) and SBML Level 3 XML (`antimonyToSbmlXml`) projections, and Language Server Protocol (LSP) services.
 
 ---
 
@@ -18,7 +20,7 @@ Antimony modular reaction network, systems biology, and biochemical pathway defi
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerAntimonyToDae`)**: Compiles compartment volumes, parameters, reaction velocity flux equations ($v_r$), rate/assignment rules, and species molar balance ODEs ($\frac{dS_i}{dt} = \frac{1}{V_{\text{comp}}} \sum N_{ir} v_r$) directly into ModelScript's zero-GC WebAssembly `DAEBuilder` struct-of-arrays arena.
 - **10 Pre-Flight Pathway & Stoichiometric Lint Rules (`M9001`–`M9010`, `lintAntimony`)**: Static verification of empty modules, undeclared species compartments, missing reaction rate laws, non-positive stoichiometric coefficients, undeclared rate law symbols, duplicate reaction IDs, circular submodel instantiations, conflicting `const` species variability, non-positive compartment volumes, and invalid non-relational event triggers.
 - **Modelica 3.x & SBML Level 3 Projections (`antimonyToModelica`, `antimonyToSbmlXml`)**: Synthesizes standalone Modelica 3.x biochemical pathway models and standard SBML Level 3 Version 2 Core XML documents.
-- **Multi-File Workspace Indexing & LSP (`AntimonyWorkspaceIndex`, `getAntimonyHover`, `provideAntimonyCompletions`)**: Implements `IWorkspaceIndex` across `.ant` files with species/reaction/compartment hover inspection, keyword/symbol completions, document outlines, and AST writeback.
+- **Multi-File Workspace Indexing & LSP (`getAntimonyHover`, `provideAntimonyCompletions`)**: Provides workspace symbol indexing across `.ant` files with species/reaction/compartment hover inspection, keyword/symbol completions, document outlines, and AST writeback.
 
 ---
 
@@ -40,7 +42,6 @@ Antimony modular reaction network, systems biology, and biochemical pathway defi
 | `src/dae/index.ts`                        | DAE lowering barrel exports                                                                                          |
 | `src/projections/antimony-projections.ts` | `antimonyToModelica` and `antimonyToSbmlXml` translators to Modelica 3.x and SBML Level 3 XML                        |
 | `src/projections/index.ts`                | Projections barrel exports                                                                                           |
-| `src/workspace-index.ts`                  | `AntimonyWorkspaceIndex` implementing `IWorkspaceIndex` across `.ant` files                                          |
 | `src/lsp.ts`                              | LSP validation, document symbol outline, hover, completion, and action handlers                                      |
 
 ---

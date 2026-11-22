@@ -36,7 +36,13 @@ import {
   isEphemeralDiagramNode,
   type DropPlaceholderOptions,
 } from "./drop-placeholder.js";
-import { beginGraphRenderState, getGraphState, isGraphReadOnly, peekGraphState } from "./graph-state.js";
+import {
+  beginGraphRenderState,
+  getGraphState,
+  isGraphLayoutEditable,
+  isGraphReadOnly,
+  peekGraphState,
+} from "./graph-state.js";
 import { groupSelectedNodesOnGraph, ungroupSelectedNodesOnGraph, type GroupableGraphLike } from "./group-actions.js";
 import { defaultInteractiveStateManager, type InteractiveBinding, type InteractiveWriteAction } from "./interactive.js";
 import { ensureMinimapHud, isMinimapOpen, toggleMinimapHud, updateMinimapHud } from "./minimap.js";
@@ -914,6 +920,12 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
 
   const initialEdgeStyle = resolveEdgeSelectionStyle(currentOptions?.language, currentOptions?.edgeSelectionStyle);
   container.setAttribute("data-edge-selection", initialEdgeStyle);
+  if (!container.getAttribute("role")) {
+    container.setAttribute("role", "application");
+  }
+  if (!container.getAttribute("aria-label")) {
+    container.setAttribute("aria-label", "Interactive engineering diagram canvas");
+  }
 
   const g: Graph = new Graph({
     container,
@@ -941,6 +953,13 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         return false;
       }
       if (getReadOnlyForGraph(g)) {
+        if (isGraphLayoutEditable(g)) {
+          const cellData = cellView.cell.getData?.();
+          if (cellData?.["readOnly"] || cellData?.["isInherited"]) {
+            return false;
+          }
+          return { nodeMovable: true, edgeMovable: false, edgeLabelMovable: true };
+        }
         return false;
       }
       const cellData = cellView.cell.getData?.();
@@ -1168,8 +1187,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       }
     }
     const cached = getPropertyCacheForGraph(targetGraph).get(node.id) as
-      | { parameters?: { name?: string; value?: string; defaultValue?: string }[] }
-      | undefined;
+      { parameters?: { name?: string; value?: string; defaultValue?: string }[] } | undefined;
     const firstParam = cached?.parameters?.find((p) => p.name && (p.value || p.defaultValue));
     if (firstParam?.name) {
       const val = String(firstParam.value || firstParam.defaultValue || "");
@@ -1177,8 +1195,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     }
     const data = (typeof node.getData === "function" ? node.getData() : {}) || {};
     const propParams = (data["properties"]?.["parameters"] ?? data["parameters"]) as
-      | { name?: string; value?: string; defaultValue?: string }[]
-      | undefined;
+      { name?: string; value?: string; defaultValue?: string }[] | undefined;
     const firstPropParam = propParams?.find?.((p) => p.name && (p.value || p.defaultValue));
     if (firstPropParam?.name) {
       const val = String(firstPropParam.value || firstPropParam.defaultValue || "");
@@ -1305,11 +1322,25 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
   activeFlipSelectedNodes = flipSelectedNodes;
 
   interface ClipboardNodeItem {
+    sourceId: string;
     className: string;
     centerX: number;
     screenCenterY: number;
+    rotation?: number | undefined;
+    parameters?: Record<string, unknown> | undefined;
   }
-  let diagramClipboard: ClipboardNodeItem[] = [];
+  interface ClipboardEdgeItem {
+    sourceIdx: number;
+    sourcePort?: string | undefined;
+    targetIdx: number;
+    targetPort?: string | undefined;
+  }
+  interface DiagramClipboardSnapshot {
+    format: "modelscript-diagram/v1";
+    nodes: ClipboardNodeItem[];
+    edges: ClipboardEdgeItem[];
+  }
+  let diagramClipboard: DiagramClipboardSnapshot = { format: "modelscript-diagram/v1", nodes: [], edges: [] };
   let diagramPasteCount = 1;
 
   const getSelectedNonEphemeralNodes = (targetGraph: Graph = g): Node[] =>
@@ -1317,31 +1348,72 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       .getSelectedCells()
       .filter((c: Cell) => typeof c.isNode === "function" && c.isNode() && !isEphemeralDiagramNode(c.id)) as Node[];
 
-  const snapshotNodesToClipboard = (nodes: Node[]): ClipboardNodeItem[] => {
+  const snapshotNodesToClipboard = (nodes: Node[], targetGraph: Graph = g): DiagramClipboardSnapshot => {
     const items: ClipboardNodeItem[] = [];
+    const indexByNodeId = new Map<string, number>();
     for (const node of nodes) {
       const data = node.getData?.() || {};
       const className = (data.properties?.className as string | undefined) || (data["className"] as string | undefined);
       if (!className) continue;
       const p = node.getPosition();
       const s = node.getSize();
+      const angle = typeof node.getAngle === "function" ? node.getAngle() : 0;
+      const rawParams = data["parameters"] as Record<string, unknown> | undefined;
+      indexByNodeId.set(node.id, items.length);
       items.push({
+        sourceId: node.id,
         className,
         centerX: p.x + s.width / 2,
         screenCenterY: p.y + s.height / 2,
+        rotation: angle || undefined,
+        parameters: rawParams ? { ...rawParams } : undefined,
       });
     }
-    return items;
+    const internalEdges: ClipboardEdgeItem[] = [];
+    for (const edge of targetGraph.getEdges()) {
+      const srcId = edge.getSourceCellId?.();
+      const tgtId = edge.getTargetCellId?.();
+      if (!srcId || !tgtId) continue;
+      const sourceIdx = indexByNodeId.get(srcId);
+      const targetIdx = indexByNodeId.get(tgtId);
+      if (sourceIdx === undefined || targetIdx === undefined) continue;
+      internalEdges.push({
+        sourceIdx,
+        sourcePort: edge.getSourcePortId?.() ?? edge.getSource?.()?.port,
+        targetIdx,
+        targetPort: edge.getTargetPortId?.() ?? edge.getTarget?.()?.port,
+      });
+    }
+    return { format: "modelscript-diagram/v1", nodes: items, edges: internalEdges };
   };
 
-  const emitOffsetComponentCopies = (items: ClipboardNodeItem[], offsetPx: number, targetGraph: Graph = g) => {
-    for (const item of items) {
+  const emitOffsetComponentCopies = (snapshot: DiagramClipboardSnapshot, offsetPx: number, targetGraph: Graph = g) => {
+    if (snapshot.edges.length > 0 && snapshot.nodes.length >= 2) {
+      enqueueDiagramAction(
+        {
+          type: "pasteSubgraph",
+          nodes: snapshot.nodes.map((item) => ({
+            className: item.className,
+            x: Math.round(item.centerX + offsetPx),
+            y: toSchemaY(targetGraph, item.screenCenterY + offsetPx),
+            ...(item.rotation ? { rotation: item.rotation } : {}),
+            ...(item.parameters ? { parameters: item.parameters } : {}),
+          })),
+          edges: snapshot.edges,
+        },
+        targetGraph,
+      );
+      return;
+    }
+    for (const item of snapshot.nodes) {
       enqueueDiagramAction(
         {
           type: "addComponent",
           className: item.className,
           x: Math.round(item.centerX + offsetPx),
           y: toSchemaY(targetGraph, item.screenCenterY + offsetPx),
+          ...(item.rotation ? { rotation: item.rotation } : {}),
+          ...(item.parameters ? { parameters: item.parameters } : {}),
         },
         targetGraph,
       );
@@ -1353,22 +1425,27 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     if (getReadOnlyForGraph(targetGraph)) return;
     const selectedNodes = getSelectedNonEphemeralNodes(targetGraph);
     if (selectedNodes.length === 0) return;
-    const items = snapshotNodesToClipboard(selectedNodes);
-    if (items.length === 0) return;
-    emitOffsetComponentCopies(items, 20, targetGraph);
+    const snapshot = snapshotNodesToClipboard(selectedNodes, targetGraph);
+    if (snapshot.nodes.length === 0) return;
+    emitOffsetComponentCopies(snapshot, 20, targetGraph);
   };
 
   const copySelectedNodes = (targetGraph: Graph = g): boolean => {
     const selectedNodes = getSelectedNonEphemeralNodes(targetGraph);
-    const items = snapshotNodesToClipboard(selectedNodes);
-    if (items.length === 0) return false;
-    diagramClipboard = items;
+    const snapshot = snapshotNodesToClipboard(selectedNodes, targetGraph);
+    if (snapshot.nodes.length === 0) return false;
+    diagramClipboard = snapshot;
     diagramPasteCount = 1;
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(JSON.stringify(snapshot)).catch(() => {
+        // Ignore clipboard permission denials in sandboxed iframes/webviews
+      });
+    }
     return true;
   };
 
   const pasteSelectedNodes = (targetGraph: Graph = g): boolean => {
-    if (getReadOnlyForGraph(targetGraph) || diagramClipboard.length === 0) return false;
+    if (getReadOnlyForGraph(targetGraph) || diagramClipboard.nodes.length === 0) return false;
     emitOffsetComponentCopies(diagramClipboard, 20 * diagramPasteCount, targetGraph);
     diagramPasteCount++;
     return true;
@@ -1430,9 +1507,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     }
 
     const paramBtn = alignmentToolbar?.querySelector("[data-action='edit-param'], [data-align='edit-param']") as
-      | HTMLElement
-      | null
-      | undefined;
+      HTMLElement | null | undefined;
     if (!paramBtn) return;
 
     const input = document.createElement("input");
@@ -1755,6 +1830,24 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     syncAlignmentToolbar();
     updateMinimapHud(minimapHud, g);
   });
+
+  // Two-finger trackpad pan (non-Ctrl/Meta wheel) paired with X6 Ctrl/Pinch zoom
+  if (container && typeof container.addEventListener === "function") {
+    const onTrackpadWheel = (e: WheelEvent) => {
+      if (g.disposed) {
+        container.removeEventListener("wheel", onTrackpadWheel);
+        return;
+      }
+      if (e.ctrlKey || e.metaKey) return;
+      if (e.deltaX === 0 && e.deltaY === 0) return;
+      e.preventDefault();
+      const cur = g.translate();
+      const dx = e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX;
+      const dy = e.shiftKey && e.deltaX === 0 ? 0 : e.deltaY;
+      g.translate(cur.tx - dx, cur.ty - dy);
+    };
+    container.addEventListener("wheel", onTrackpadWheel, { passive: false });
+  }
 
   g.on("node:change:position", () => {
     syncAlignmentToolbar();
@@ -3313,6 +3406,28 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       } else if ((e.key === "v" || e.key === "V") && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault();
         flipSelectedNodes("y", g);
+      } else if ((e.key === "[" || e.key === "]") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const allNodes = g
+          .getNodes()
+          .filter((n: Cell) => !isEphemeralDiagramNode(n.id))
+          .sort((a: Cell, b: Cell) => a.id.localeCompare(b.id));
+        if (allNodes.length > 0) {
+          e.preventDefault();
+          const currentSelected = g
+            .getSelectedCells()
+            .find((c: Cell) => typeof c.isNode === "function" && c.isNode() && !isEphemeralDiagramNode(c.id));
+          const curIdx = currentSelected ? allNodes.findIndex((n: Cell) => n.id === currentSelected.id) : -1;
+          const delta = e.key === "]" ? 1 : -1;
+          const nextIdx =
+            curIdx === -1
+              ? delta > 0
+                ? 0
+                : allNodes.length - 1
+              : (curIdx + delta + allNodes.length) % allNodes.length;
+          const nextNode = allNodes[nextIdx]!;
+          g.cleanSelection?.();
+          g.select?.(nextNode);
+        }
       } else if (e.key === "F2" && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const selectedNodes = g
           .getSelectedCells()
@@ -3351,9 +3466,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         const alignType = alignMap[e.key.toLowerCase()];
         if (alignType) {
           const btn = alignmentToolbar?.querySelector(`[data-action="${alignType}"], [data-align="${alignType}"]`) as
-            | HTMLButtonElement
-            | null
-            | undefined;
+            HTMLButtonElement | null | undefined;
           if (btn) {
             e.preventDefault();
             btn.click();
@@ -3904,10 +4017,7 @@ export interface RenderDiagramEdgeInput {
             }
           | undefined;
         position?:
-          | number
-          | { distance?: number | undefined; offset?: number | undefined }
-          | Record<string, unknown>
-          | undefined;
+          number | { distance?: number | undefined; offset?: number | undefined } | Record<string, unknown> | undefined;
       }[]
     | undefined;
   data?: Record<string, unknown> | undefined;
@@ -4007,9 +4117,7 @@ interface RenderEdgeData {
             }
           | undefined;
         position?:
-          | number
-          | { distance?: number | undefined; offset?: number | undefined; [key: string]: unknown }
-          | undefined;
+          number | { distance?: number | undefined; offset?: number | undefined; [key: string]: unknown } | undefined;
         [key: string]: unknown;
       }[]
     | undefined;
@@ -4036,11 +4144,13 @@ export function renderDiagram(data: RenderDiagramInput, isDark: boolean) {
 export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boolean) {
   const gs = getGraphState(g)!;
   const isReadOnly = Boolean(data.readOnly || data.metadata?.readOnly);
+  const isLayoutEditable = Boolean(data.metadata?.["layoutEditable"]);
   const opts = getOptionsForGraph(g);
   const resolvedConnector = data.metadata?.defaultConnector ?? opts?.defaultConnector;
   const resolvedMetadata = data.metadata as Record<string, unknown> | undefined;
 
   gs.readOnly = isReadOnly;
+  gs.layoutEditable = isLayoutEditable;
   gs.defaultConnector = resolvedConnector;
   gs.metadata = resolvedMetadata;
 
@@ -4386,8 +4496,7 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
     // Polyglot edges pass attrs as a full selector-keyed object;
     // Modelica edges have attrs.line specifically
     const edgeAttrs = edge.attrs as
-      | { line?: Record<string, unknown> | undefined; [key: string]: Record<string, unknown> | undefined }
-      | undefined;
+      { line?: Record<string, unknown> | undefined; [key: string]: Record<string, unknown> | undefined } | undefined;
     if (edgeAttrs?.line) {
       const lineCopy = { ...edgeAttrs.line };
       if (isDark) {

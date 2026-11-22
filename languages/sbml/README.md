@@ -3,7 +3,9 @@
 
 # @modelscript/sbml
 
-Systems Biology Markup Language (SBML Level 2/3) biochemical reaction network, enzyme kinetics, and metabolic pathway modeling package (`.sbml`, `.xml`) for ModelScript. Features a zero-regex SBML XML & Content MathML parser (`parseSbml`), multi-file workspace indexing (`SbmlWorkspaceIndex`), a deterministic RK4 chemical reaction kinetics ODE solver with zero-eval formula compilation (`solveReactions`), direct linear-memory `DAEBuilder` stoichiometric lowering (`lowerSbmlToDae`), 10 pre-flight biochemical & stoichiometric lint rules (`M8801`–`M8810`), Modelica 3.x biochemical reaction projections (`sbmlToModelica`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.sbml`, `.xml` · **Docs:** [modelscript.org/languages/sbml](https://modelscript.org/languages/sbml)
+
+Systems Biology Markup Language (SBML Level 2/3) biochemical reaction network, enzyme kinetics, and metabolic pathway modeling package (`.sbml`, `.xml`) for ModelScript. Features a zero-regex SBML XML & Content MathML parser (`parseSbml`), multi-file workspace indexing, a deterministic RK4 chemical reaction kinetics ODE solver with zero-eval formula compilation (`solveReactions`), direct linear-memory `DAEBuilder` stoichiometric lowering (`lowerSbmlToDae`), 10 pre-flight biochemical & stoichiometric lint rules (`M8801`–`M8810`), Modelica 3.x biochemical reaction projections (`sbmlToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -16,7 +18,7 @@ Systems Biology Markup Language (SBML Level 2/3) biochemical reaction network, e
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerSbmlToDae`)**: Compiles compartment volumes, global/local kinetic parameters, reaction velocity flux equations ($v_r$), and species molar balance ODEs ($\frac{dS_i}{dt} = \sum \nu_{\text{prod}} v_r - \sum \nu_{\text{react}} v_r$) directly into ModelScript's zero-GC WebAssembly `DAEBuilder` struct-of-arrays arena.
 - **10 Pre-Flight Biochemical & Stoichiometric Lint Rules (`M8801`–`M8810`, `lintSbml`)**: Static verification of `<model>` identifiers, species compartment references, reactant/product/modifier species references, compartment volume positivity, non-negative initial concentrations/amounts, empty reactions, missing `<kineticLaw>` rate equations, positive stoichiometric coefficients, undefined kinetic formula identifiers, and redundant reactant/product modifier species.
 - **Modelica 3.x Biochemical Pathway Projection (`sbmlToModelica`)**: Synthesizes standalone Modelica 3.x biochemical reaction kinetics models for coupled pharmacokinetic/pharmacodynamic (PK/PD) and physiological co-simulation.
-- **Multi-File Workspace Indexing & LSP (`SbmlWorkspaceIndex`, `provideSbmlHover`, `provideSbmlCompletions`)**: Implements `IWorkspaceIndex` across `.sbml` and `.xml` models with species/reaction hover inspection, tag completions, and AST writeback.
+- **Multi-File Workspace Indexing & LSP (`provideSbmlHover`, `provideSbmlCompletions`)**: Provides workspace symbol indexing across `.sbml` and `.xml` models with species/reaction hover inspection, tag completions, and AST writeback.
 
 ---
 
@@ -38,7 +40,6 @@ Systems Biology Markup Language (SBML Level 2/3) biochemical reaction network, e
 | `src/dae/index.ts`                    | DAE lowering barrel exports                                                                                     |
 | `src/projections/sbml-to-modelica.ts` | `sbmlToModelica` translator to Modelica 3.x biochemical reaction models                                         |
 | `src/projections/index.ts`            | Projections barrel exports                                                                                      |
-| `src/workspace-index.ts`              | `SbmlWorkspaceIndex` implementing `IWorkspaceIndex` across `.sbml` and `.xml` files                             |
 | `src/lsp.ts`                          | LSP hover, completion, and symbol providers                                                                     |
 
 ---
@@ -66,19 +67,19 @@ Systems Biology Markup Language (SBML Level 2/3) biochemical reaction network, e
 
 ```bash
 # Inspect compartments, species, parameters, and reactions in an SBML model
-npx msx sbml inspect enzyme_kinetics.sbml
+msx sbml inspect enzyme_kinetics.sbml
 
 # Run pre-flight compartment, species, stoichiometry, and kinetic law checks (M8801-M8810)
-npx msx sbml lint enzyme_kinetics.sbml
+msx sbml lint enzyme_kinetics.sbml
 
 # Simulate biochemical reaction network ODEs using 4th-order Runge-Kutta
-npx msx sbml simulate enzyme_kinetics.sbml --duration 10.0
+msx sbml simulate enzyme_kinetics.sbml --duration 10.0
 
 # Lower species stoichiometry and reaction fluxes to DAEBuilder linear memory
-npx msx sbml to-dae enzyme_kinetics.sbml
+msx sbml to-dae enzyme_kinetics.sbml
 
 # Project SBML reaction network to a Modelica 3.x biochemical model
-npx msx sbml to-modelica enzyme_kinetics.sbml -o EnzymeKinetics.mo
+msx sbml to-modelica enzyme_kinetics.sbml -o EnzymeKinetics.mo
 ```
 
 ### Programmatic Usage

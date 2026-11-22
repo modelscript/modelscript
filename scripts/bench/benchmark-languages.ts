@@ -810,7 +810,7 @@ export async function runLanguageBenchmarks(options: {
 
     // Automatically update docs data and llms.txt when recorded
     console.log("[benchmark-languages] Updating docs benchmark data and llms.txt...");
-    execSync("npm run gen:benchmarks --workspace=@modelscript/docs && npm run gen:llms --workspace=@modelscript/docs", {
+    execSync("pnpm --filter @modelscript/docs run gen:benchmarks && pnpm --filter @modelscript/docs run gen:llms", {
       cwd: REPO_ROOT,
       stdio: "inherit",
     });

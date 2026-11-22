@@ -3,6 +3,8 @@
 
 # @modelscript/cfd
 
+**Maturity:** Alpha · **Extensions:** `.cfd`, `.cfg`, `.cfgt`, `.su2`, `.foam` · **Docs:** [modelscript.org/languages/cfd](https://modelscript.org/languages/cfd)
+
 Computational Fluid Dynamics (CFD) and SU2- / OpenFOAM-compatible aerodynamic configuration DSL (`.cfd`, `.cfg`, `.cfgt`, `.su2`, `.foam`), parametric template materializer, 3D CAD boundary condition synthesizer, Reynolds/Mach theory slicer, pre-flight aerodynamic linter (`C1001`–`C1008` / `M7301`–`M7308`), and WebGPU D3Q19 Lattice Boltzmann integration package for ModelScript.
 
 ---

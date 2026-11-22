@@ -3,7 +3,9 @@
 
 # @modelscript/touchstone
 
-Touchstone 1.0/2.0 N-port microwave and high-speed interconnect scattering/admittance/impedance ($S, Y, Z, H, G$) network modeling and rational vector-fitting macromodeling package (`.s1p`, `.s2p`, `.s3p`, `.s4p`, `.s5p`, `.s6p`, `.s7p`, `.s8p`, `.s9p`, `.s10p`, `.s12p`, `.s16p`, `.s24p`, `.s32p`, `.ts2`) for ModelScript. Features a Touchstone v1/v2 parser (`parseTouchstone`), multi-file workspace indexing (`TouchstoneWorkspaceIndex`), spectral-norm passivity verification and Gustavsen-Semlyen rational vector fitting (`verifyPassivity`, `fitStateSpaceModel`), direct linear-memory `DAEBuilder` state-space macromodel lowering (`lowerTouchstoneToDae`), 10 pre-flight RF/microwave lint rules (`M8301`–`M8312`), Modelica 3.x N-port state-space projections (`touchstoneToModelica`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.s1p`, `.s2p`, `.s3p`, `.s4p`, `.s5p`, … (15 extensions) · **Docs:** [modelscript.org/languages/touchstone](https://modelscript.org/languages/touchstone)
+
+Touchstone 1.0/2.0 N-port microwave and high-speed interconnect scattering/admittance/impedance ($S, Y, Z, H, G$) network modeling and rational vector-fitting macromodeling package (`.s1p`, `.s2p`, `.s3p`, `.s4p`, `.s5p`, `.s6p`, `.s7p`, `.s8p`, `.s9p`, `.s10p`, `.s12p`, `.s16p`, `.s24p`, `.s32p`, `.ts2`) for ModelScript. Features a Touchstone v1/v2 parser (`parseTouchstone`), multi-file workspace indexing, spectral-norm passivity verification and Gustavsen-Semlyen rational vector fitting (`verifyPassivity`, `fitStateSpaceModel`), direct linear-memory `DAEBuilder` state-space macromodel lowering (`lowerTouchstoneToDae`), 10 pre-flight RF/microwave lint rules (`M8301`–`M8312`), Modelica 3.x N-port state-space projections (`touchstoneToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -17,7 +19,7 @@ Touchstone 1.0/2.0 N-port microwave and high-speed interconnect scattering/admit
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerTouchstoneToDae`)**: Lowers vector-fitted companion state-space ODEs ($\dot{\mathbf{x}} = \mathbf{A}\mathbf{x} + \mathbf{B}\mathbf{u}$, $\mathbf{y} = \mathbf{C}\mathbf{x} + \mathbf{D}\mathbf{u}$) and port incident/reflected wave relations ($a_k = \frac{V_k + R_0 I_k}{2\sqrt{R_0}}$, $b_k = \frac{V_k - R_0 I_k}{2\sqrt{R_0}}$) directly into ModelScript's zero-GC WebAssembly `DAEBuilder` struct-of-arrays arena.
 - **10 Pre-Flight RF/Microwave & Signal-Integrity Lint Rules (`M8301`–`M8312`, `lintTouchstone`)**: Static verification of N-port passivity ($\|\mathbf{S}(f)\|_2 \le 1.0$), Kramers-Kronig Hilbert-transform causality, strictly increasing frequency grids, `#` option line completeness, incomplete $N \times N$ matrix rows, reference impedance positivity ($R_0 > 0$), passive reciprocity symmetry ($|S_{ij} - S_{ji}|$), and duplicate frequency points.
 - **Modelica 3.x N-Port State-Space Projection (`touchstoneToModelica`)**: Synthesizes standalone Modelica 3.x time-domain N-port state-space macromodels for transient circuit and high-speed channel co-simulation.
-- **Multi-File Workspace Indexing & LSP (`TouchstoneWorkspaceIndex`, `provideTouchstoneHover`, `provideTouchstoneCompletions`)**: Implements `IWorkspaceIndex` across `.sNp` and `.ts2` files with insertion-loss / return-loss dB hover cards, option-line completions, and AST writeback.
+- **Multi-File Workspace Indexing & LSP (`provideTouchstoneHover`, `provideTouchstoneCompletions`)**: Provides workspace symbol indexing across `.sNp` and `.ts2` files with insertion-loss / return-loss dB hover cards, option-line completions, and AST writeback.
 
 ---
 
@@ -35,7 +37,6 @@ Touchstone 1.0/2.0 N-port microwave and high-speed interconnect scattering/admit
 | `src/solvers/vector-fitting.ts`             | `verifyPassivity` and `fitStateSpaceModel` spectral-norm passivity and rational pole-residue vector fitting engine                                                      |
 | `src/dae/touchstone-to-dae.ts`              | `lowerTouchstoneToDae` direct lowering of N-port state-space macromodels into `DAEBuilder` linear memory                                                                |
 | `src/projections/touchstone-to-modelica.ts` | `touchstoneToModelica` translator to Modelica 3.x time-domain N-port state-space models                                                                                 |
-| `src/workspace-index.ts`                    | `TouchstoneWorkspaceIndex` implementing `IWorkspaceIndex` across `.sNp` and `.ts2` files                                                                                |
 | `src/lsp.ts`                                | LSP hover, completion, and symbol providers                                                                                                                             |
 
 ---
@@ -63,20 +64,20 @@ Touchstone 1.0/2.0 N-port microwave and high-speed interconnect scattering/admit
 
 ```bash
 # Inspect Touchstone version, port count, reference impedance, and frequency range
-npx msx touchstone inspect backplane.s2p
+msx touchstone inspect backplane.s2p
 
 # Run pre-flight passivity, causality, reciprocity, and grid monotonicity checks (M8301-M8312)
-npx msx touchstone lint backplane.s2p
+msx touchstone lint backplane.s2p
 
 # Verify spectral-norm passivity (||S(f)||_2 <= 1.0) across all frequency points
-npx msx touchstone passivity backplane.s2p
+msx touchstone passivity backplane.s2p
 
 # Fit a rational pole-residue state-space macromodel via vector fitting
-npx msx touchstone fit backplane.s2p --order 4
+msx touchstone fit backplane.s2p --order 4
 
 # Lower N-port state-space macromodel to DAEBuilder linear memory or export to Modelica
-npx msx touchstone to-dae backplane.s2p --order 4
-npx msx touchstone to-modelica backplane.s2p -o BackplaneChannel.mo
+msx touchstone to-dae backplane.s2p --order 4
+msx touchstone to-modelica backplane.s2p -o BackplaneChannel.mo
 ```
 
 ### Programmatic Usage

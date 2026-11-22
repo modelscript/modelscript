@@ -225,38 +225,43 @@ Beyond visual UI embedding, you can embed the ModelScript compiler, linear-memor
 
 ### 9.1 Linear-Memory DAE Construction & Salsa Queries (`@modelscript/runtime`)
 
-Use `DAEBuilder`, `ArenaDAEPrinter`, `foldArenaConstants`, `eliminateArenaAliases`, and `QueryEngine` to construct or lower Differential-Algebraic Equation systems in contiguous WebAssembly linear memory without allocating AST wrapper objects:
+Use `DAEBuilder`, `printArenaDAE`, `foldArenaConstants`, `eliminateArenaAliases`, and `QueryEngine` to construct or lower Differential-Algebraic Equation systems in contiguous WebAssembly linear memory without allocating AST wrapper objects:
 
 ```typescript
 import {
-  ArenaDAEPrinter,
-  BinaryOp,
+  BinOp,
   Causality,
   DAEBuilder,
   eliminateArenaAliases,
+  EqKind,
   foldArenaConstants,
+  printArenaDAE,
+  UnaryOp,
   Variability,
   VarType,
 } from "@modelscript/runtime";
 
 // Allocate a Struct-of-Arrays DAE arena in linear memory
-const dae = new DAEBuilder("RLCDamper");
+const dae = new DAEBuilder(undefined, "RLCDamper");
 
 // Declare parameters and continuous state variables
-const R = dae.addVariable("R", VarType.Real, Variability.Parameter, Causality.Local, dae.addRealLiteral(10.0));
-const C = dae.addVariable("C", VarType.Real, Variability.Parameter, Causality.Local, dae.addRealLiteral(1e-3));
-const v = dae.addVariable("v", VarType.Real, Variability.Continuous, Causality.Local, dae.addRealLiteral(5.0));
+dae.addVariable("R", VarType.Real, Variability.Parameter, Causality.Local, 10.0);
+dae.addVariable("C", VarType.Real, Variability.Parameter, Causality.Local, 1e-3);
+dae.addVariable("v", VarType.Real, Variability.Continuous, Causality.Local, 5.0);
 
 // Emit equation: der(v) = -v / (R * C)
-const rcProd = dae.addBinary(BinaryOp.Mul, dae.addVarRef(R), dae.addVarRef(C));
-const rhs = dae.addUnaryMinus(dae.addBinary(BinaryOp.Div, dae.addVarRef(v), rcProd));
-dae.addEquation(dae.addDer(dae.addVarRef(v)), rhs);
+const rExpr = dae.addNameExpr("R");
+const cExpr = dae.addNameExpr("C");
+const vExpr = dae.addNameExpr("v");
+const rcProd = dae.addBinaryExpr(BinOp.Mul, rExpr, cExpr);
+const rhs = dae.addUnaryExpr(UnaryOp.Negate, dae.addBinaryExpr(BinOp.Div, vExpr, rcProd));
+dae.addEquation(EqKind.Simple, dae.addDerExpr(vExpr), rhs);
 
 // Run arena-level constant folding and alias elimination
 foldArenaConstants(dae);
 eliminateArenaAliases(dae);
 
-console.log(ArenaDAEPrinter.print(dae));
+console.log(printArenaDAE(dae));
 ```
 
 ### 9.2 Numerical Integration & Ensemble Sweeps (`@modelscript/simulate`)
@@ -282,17 +287,7 @@ console.log("Final capacitor voltage v(0.1):", trajectory.series["v"]?.at(-1));
 Author custom engineering DSLs with `language()`, compile native `.wasm` GLR parsers via `buildParser`, and attach zero-allocation linear CST lint rules (`CompilerLint`):
 
 ```typescript
-import {
-  choice,
-  type CodeGraph,
-  type CompilerLint,
-  language,
-  prec,
-  repeat,
-  seq,
-  token,
-  type u32,
-} from "@modelscript/dsl";
+import { type CodeGraph, type CompilerLint, field, language, repeat, seq, token, type u32 } from "@modelscript/dsl";
 
 export const thermalNetlistLints: Record<string, CompilerLint> = {
   nonPositiveConductance: {
@@ -324,15 +319,24 @@ export default language({
 
 ### 9.4 FMI 2.0 / 3.0 FMU Packaging & SSP Co-Simulation (`@modelscript/exchange`)
 
-Export flattened `DAEBuilder` models to portable FMI 2.0/3.0 Functional Mock-up Units (`.fmu` ZIP archives with C99 and WebAssembly binaries) or orchestrate multi-FMU System Structure and Parameterization (`.ssp`) graphs:
+Export flattened `DAEBuilder` models to portable FMI 2.0/3.0 Functional Mock-up Units (`.fmu` ZIP archives with C99 and WebAssembly sources) or orchestrate multi-FMU System Structure and Parameterization (`.ssp`) graphs:
 
 ```typescript
-import { generateFmu } from "@modelscript/exchange/fmu";
+import { buildFmuArchive, type FmuOptions, generateFmu } from "@modelscript/exchange/fmu";
 
-const fmuBytes = await generateFmu(dae, {
+const options: FmuOptions = {
   modelIdentifier: "RLCDamper",
-  fmiVersion: "3.0",
-  fmuType: "cs",
-  includeWasmBinary: true,
+  fmuType: { modelExchange: true, coSimulation: true },
+};
+
+// Generate FMI modelDescription.xml metadata synchronously
+const fmuResult = generateFmu(dae, options);
+
+// Package a complete FMI 2.0 / 3.0 .fmu ZIP archive synchronously
+const { archive, files } = buildFmuArchive(dae, {
+  ...options,
+  fmiVersion: "3",
+  includeSources: true,
+  includeWasm: true,
 });
 ```

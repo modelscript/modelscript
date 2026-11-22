@@ -1,7 +1,9 @@
 <div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
 <div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-# `@modelscript/landgem`
+# @modelscript/landgem
+
+**Maturity:** Alpha · **Extensions:** `.landgem`, `.lfg`, `.biogas` · **Docs:** [modelscript.org/languages/landgem](https://modelscript.org/languages/landgem)
 
 US EPA Landfill Gas Emissions Model (LandGEM v3.02), IPCC Tier 2 first-order decay methane generation kinetics, and anaerobic digestion (ADM1) biogas / RNG recovery package for ModelScript.
 
@@ -17,10 +19,10 @@ US EPA Landfill Gas Emissions Model (LandGEM v3.02), IPCC Tier 2 first-order dec
 
 ## File Support
 
-| Extension | Description | Role |
-| :--- | :--- | :--- |
-| `.landgem`, `.lfg` | EPA LandGEM Model Deck | Landfill site metadata, kinetic rates ($k, L_0$), and historical waste acceptance cohorts |
-| `.biogas` | Biogas / ADM1 Digester Deck | Biochemical digester parameters, feed COD, HRT, and CHP engine specifications |
+| Extension          | Description                 | Role                                                                                      |
+| :----------------- | :-------------------------- | :---------------------------------------------------------------------------------------- |
+| `.landgem`, `.lfg` | EPA LandGEM Model Deck      | Landfill site metadata, kinetic rates ($k, L_0$), and historical waste acceptance cohorts |
+| `.biogas`          | Biogas / ADM1 Digester Deck | Biochemical digester parameters, feed COD, HRT, and CHP engine specifications             |
 
 ## Quick Example
 

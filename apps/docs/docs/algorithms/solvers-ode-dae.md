@@ -140,11 +140,11 @@ Implemented in `EmtSolver` (`packages/simulate/src/solvers/emt/emt-solver.ts`), 
 Implemented in `TaylorModel` (`packages/runtime/src/analysis/wasm_taylor_model.ts`), validated Taylor Model arithmetic bounds all trajectories of a non-linear ODE/DAE system subject to uncertain initial sets $x(0) \in X_0$ and parameter intervals without wrapping-effect blowup:
 
 - **Polynomial + Interval Remainder Representation**: Represents each state reachable tube over normalized domain $\mathbf{z} \in [-1, 1]^d$ as a multivariate polynomial $P_k(\mathbf{z})$ of order $k$ plus a sound interval remainder $I = [\underline{r}, \overline{r}]$, where truncated higher-order terms ($> k$) are conservatively swept into $I$.
-- **Picard-Lindelöf Validated Operator**: Evaluates the contractive Picard integral operator $\mathcal{P}(X)(t) = X_0 + \int_0^t f(s, X(s))\,ds$ directly on Taylor models to construct guaranteed continuous-time flowpipes consumed by `ContinuousSafetyOracle` and SysML v2 hybrid state-machine reachability (`hybrid-flowpipe-bridge.ts`).
+- **Picard-Lindelöf Validated Operator**: Evaluates the contractive Picard integral operator $\mathcal{P}(X)(t) = X_0 + \int_0^t f(s, X(s))\,ds$ directly on Taylor models to construct guaranteed continuous-time flowpipes consumed by `SafetyTheoryOracle` and SysML v2 hybrid state-machine reachability (`hybrid-flowpipe-bridge.ts`).
 
 ---
 
-## 8. Pseudo-Arclength Continuation (PALC) & Hopf Bifurcation Analysis (`bifurcation.ts`)
+## 8. Pseudo-Arclength Continuation (PALC) & Hopf Bifurcation Analysis (`bifurcation-palc.ts`)
 
 ### Academic Citations
 
@@ -155,14 +155,14 @@ Implemented in `TaylorModel` (`packages/runtime/src/analysis/wasm_taylor_model.t
 
 ### ModelScript Rationale & Modifications
 
-Implemented in `runBifurcationContinuation` (`packages/simulate/src/solvers/bifurcation.ts` and `msx bifurcation`), this engine traces nonlinear equilibrium manifolds $f(x, \mu) = 0$ past fold turning points (voltage collapse nose curves, snap-through buckling, thermal runaway) where standard parameter stepping fails due to singular $f_x$:
+Implemented in `runBifurcationContinuation` (`packages/simulate/src/analysis/bifurcation-palc.ts` and `msx bifurcation`), this engine traces nonlinear equilibrium manifolds $f(x, \mu) = 0$ past fold turning points (voltage collapse nose curves, snap-through buckling, thermal runaway) where standard parameter stepping fails due to singular $f_x$:
 
 - **Bordered Arclength Parameterization**: Augments $f(x, \mu) = 0$ with the pseudo-arclength hyperplane constraint $\dot{x}_0^T (x - x_0) + \dot{\mu}_0 (\mu - \mu_0) - \Delta s = 0$, solving the nonsingular $(n + 1) \times (n + 1)$ bordered Newton-Raphson system at each step $\Delta s$.
-- **Saddle-Node (Fold) & Hopf Bifurcation Localization**: Monitors the sign of $\dot{\mu}$ and real parts of complex-conjugate eigenvalues $\lambda = \alpha(\mu) \pm i \omega(\mu)$ of the state Jacobian $J_x = \partial f / \partial x$ (via `eigenvaluesQR`), localizing exact Saddle-Node turning points ($\det J_x = 0$) and oscillatory Hopf instability boundaries ($\alpha(\mu^*) = 0, \omega(\mu^*) > 0$).
+- **Saddle-Node (Fold) & Hopf Bifurcation Localization**: Monitors the sign of $\dot{\mu}$ and real parts of complex-conjugate eigenvalues $\lambda = \alpha(\mu) \pm i \omega(\mu)$ of the state Jacobian $J_x = \partial f / \partial x$ (via `eigenvaluesQR`), localizing exact Saddle-Node turning points ($\det J_x = 0$) and oscillatory Hopf instability boundaries ($\alpha(\mu^_) = 0, \omega(\mu^_) > 0$).
 
 ---
 
-## 9. WebGPU Batched $N-1$ Contingency & Transient Stability Screener (`contingency-screener.ts`)
+## 9. WebGPU Batched $N-1$ Contingency & Transient Stability Screener (`webgpu-batched-contingency.ts`)
 
 ### Academic Citations
 
@@ -171,10 +171,28 @@ Implemented in `runBifurcationContinuation` (`packages/simulate/src/solvers/bifu
 
 ### ModelScript Rationale & Modifications
 
-Implemented in `WebGpuContingencyScreener` (`packages/simulate/src/webgpu/contingency-screener.ts`), this engine screens hundreds of $N-1$ transmission branch outages and 3-phase fault-clearing sequences concurrently:
+Implemented in `packages/simulate/src/solvers/powerflow/webgpu-batched-contingency.ts`, this engine screens hundreds of $N-1$ transmission branch outages and 3-phase fault-clearing sequences concurrently:
 
-- **WGSL Compute-Shader Parallel Rollout**: Encodes all $K$ contingency reduced admittance matrices $Y_{\text{red}}^{(k)}$ into packed `Float32Array` storage buffers and dispatches a single WGSL compute shader (`@workgroup_size(64)`) that integrates the multi-machine classical swing equations $2 H_i \ddot{\delta}_i + D_i \dot{\delta}_i = P_{m,i} - P_{e,i}^{(k)}(\boldsymbol{\delta})$ via 4th-order Runge-Kutta across pre-fault, fault-on, and post-fault stages.
+- **WGSL Compute-Shader Parallel Rollout**: Encodes all $K$ contingency reduced admittance matrices $Y_{\text{red}}^{(k)}$ into packed `Float32Array` storage buffers and dispatches a single WGSL compute shader (`@workgroup_size(64)`) that integrates the multi-machine classical swing equations $2 H_i \ddot{\delta}_i + D_i \dot{\delta}*i = P*{m,i} - P_{e,i}^{(k)}(\boldsymbol{\delta})$ via 4th-order Runge-Kutta across pre-fault, fault-on, and post-fault stages.
 - **SIME Stability Margin & CPU Fallback**: Computes maximum Center-of-Inertia (COI) rotor angle separation $\Delta\delta_{\max}$, transient stability margin $\eta = (180^\circ - \Delta\delta_{\max}) / 180^\circ$, and minimum bus voltage dip envelopes, with an identical deterministic TypeScript CPU fallback for headless CI runners.
+
+---
+
+## 10. Unified Solver Foundation (`@modelscript/solve`) & Extended Solver Suite
+
+[`packages/solve/`](https://github.com/modelscript/modelscript/tree/main/packages/solve/) (`@modelscript/solve`) provides a shared SciML-inspired interface (`problems.ts`, `algorithms.ts`, `solve.ts`), IEEE-754 outward-rounded intervals (`outward-interval.ts`), formal verification certificates (`certificate.ts`), and scoped WASM scratch pools (`wasm-scratch-pool.ts`). On top of this foundation, `packages/simulate/src/solvers/` provides additional specialized integrators:
+
+| Solver Module      | Method Family & Target Domain                                                                                       |
+| :----------------- | :------------------------------------------------------------------------------------------------------------------ |
+| `radau-iia.ts`     | 3-stage, 5th-order L-stable implicit Runge-Kutta (Radau IIA) for very stiff ODEs and index-1/2 DAEs                 |
+| `rodas5p.ts`       | 5th-order L-stable Rosenbrock-Wanner method for stiff systems requiring tighter tolerances than Rodas4P             |
+| `imex-kencarp4.ts` | Kennedy-Carpenter 4th-order Additive Runge-Kutta (IMEX) splitting stiff linear/diffusion and non-stiff advection    |
+| `verner.ts`        | High-order explicit Verner Runge-Kutta pairs (`Vern6`/`Vern7`/`Vern8`/`Vern9`) with lazy dense interpolation        |
+| `sprk.ts`          | Symplectic Partitioned Runge-Kutta (Störmer-Verlet / Yoshida) preserving energy and phase volume in Hamiltonian ODE |
+| `qss-solver.ts`    | Event-driven Quantized State Systems (QSS1/QSS2/LIQSS) for sparse, loosely coupled hybrid and discrete-event models |
+| `dde-solver.ts`    | Delay Differential Equations (DDE) using method-of-steps with continuous Hermite history interpolation              |
+| `jump-process.ts`  | Gillespie Direct SSA and Tau-Leaping solvers for discrete stochastic chemical kinetics and biological networks      |
+| `pde-mol.ts`       | 1D/2D PDE Method-of-Lines spatial discretization (finite difference / WENO) coupled to stiff/IMEX time integrators  |
 
 ---
 
@@ -182,7 +200,7 @@ Implemented in `WebGpuContingencyScreener` (`packages/simulate/src/webgpu/contin
 
 - **Upstream Inputs**:
   - DAE blocks partitioned and torn by [`BltEngine`](./blt.md) and [`TornBlock`](./tearing.md).
-  - Sparse Jacobians computed via [`Dual Numbers & Graph Coloring`](./surrogates-linear-algebra.md).
+  - Sparse Jacobians computed via [`Dual Numbers & Graph Coloring`](./autodiff.md).
 - **Downstream Consumers**:
   - Powers `msx simulate`, `msx bifurcation`, `msx psse contingency`, `msx optimize`, and the Studio charting canvas.
   - Feeds state trajectories and validated flowpipes into [`Signal Temporal Logic (STL) Monitor & Theory Coordinator`](./theory-coordinator.md) and formal verification oracles.

@@ -3,7 +3,9 @@
 
 # @modelscript/genbank
 
-GenBank (`.gb`, `.gbk`) and FASTA (`.fasta`, `.fa`) genomic sequence analysis, plasmid map engineering, restriction endonuclease digestion, 6-frame Open Reading Frame (ORF) discovery, and Codon Adaptation Index (CAI) translational modeling package for ModelScript. Features a zero-regex character-by-character GenBank & FASTA parser and serializer (`parseGenbank`, `parseFasta`, `serializeGenbank`, `serializeFasta`), multi-file workspace indexing (`GenbankWorkspaceIndex`), a biophysics & sequence analysis solver (`analyzeGenbankSequence`), direct linear-memory `DAEBuilder` lowering (`lowerGenbankToDae`), 10 pre-flight sequence & NCBI Table 11 CDS translation lint rules (`M9351`–`M9360`, `lintGenbank`), Modelica 3.x and SBOL3 RDF/XML projections (`genbankToModelica`, `genbankToSbolXml`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.gb`, `.gbk`, `.fasta`, `.fa` · **Docs:** [modelscript.org/languages/genbank](https://modelscript.org/languages/genbank)
+
+GenBank (`.gb`, `.gbk`) and FASTA (`.fasta`, `.fa`) genomic sequence analysis, plasmid map engineering, restriction endonuclease digestion, 6-frame Open Reading Frame (ORF) discovery, and Codon Adaptation Index (CAI) translational modeling package for ModelScript. Features a zero-regex character-by-character GenBank & FASTA parser and serializer (`parseGenbank`, `parseFasta`, `serializeGenbank`, `serializeFasta`), multi-file workspace indexing, a biophysics & sequence analysis solver (`analyzeGenbankSequence`), direct linear-memory `DAEBuilder` lowering (`lowerGenbankToDae`), 10 pre-flight sequence & NCBI Table 11 CDS translation lint rules (`M9351`–`M9360`, `lintGenbank`), Modelica 3.x and SBOL3 RDF/XML projections (`genbankToModelica`, `genbankToSbolXml`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -15,11 +17,11 @@ GenBank (`.gb`, `.gbk`) and FASTA (`.fasta`, `.fa`) genomic sequence analysis, p
   - Performs 6-frame Open Reading Frame (`+1, +2, +3, -1, -2, -3`) discovery and NCBI Table 11 translation across sense and reverse-complement strands.
   - Maps restriction endonuclease cleavage sites and computes linear/circular digestion fragment size distributions for `EcoRI`, `BamHI`, `HindIII`, `XbaI`, `SpeI`, `PstI`, `NotI`, and Golden Gate Type IIS `BsaI`.
   - Evaluates Sharp & Li (1987) Codon Adaptation Index ($\text{CAI} = \left(\prod_{k=1}^{L} w_k\right)^{1/L}$) against _E. coli_ highly expressed reference genes.
-- **Direct Linear-Memory `DAEBuilder` Lowering (`lowerGenbankToDae`)**: Compiles plasmid copy numbers ($N_{\text{copy}}$), mRNA concentrations ($[\text{mRNA}_i]$), protein concentrations ($[\text{Protein}_i]$), promoter-dependent transcription rates ($k_{\text{tx},i}$), CAI-weighted translation rates ($k_{\text{tl},i}$), and degradation terms directly into ModelScript's zero-GC WebAssembly `DAEBuilder` arena:
+- **Direct Linear-Memory `DAEBuilder` Lowering (`lowerGenbankToDae`)**: Compiles plasmid copy numbers ($N_{\text{copy}}$), mRNA concentrations ($[\text{mRNA}_i]$), protein concentrations ($[\text{Protein}*i]$), promoter-dependent transcription rates ($k*{\text{tx},i}$), CAI-weighted translation rates ($k_{\text{tl},i}$), and degradation terms directly into ModelScript's zero-GC WebAssembly `DAEBuilder` arena:
   $$\frac{d[\text{mRNA}_i]}{dt} = k_{\text{tx},i} N_{\text{copy}} - \gamma_{m,i} [\text{mRNA}_i], \qquad \frac{d[\text{Protein}_i]}{dt} = k_{\text{tl},i} [\text{mRNA}_i] - \gamma_{p,i} [\text{Protein}_i]$$
 - **10 Pre-Flight Genomic Sequence & CDS Translation Lint Rules (`M9351`–`M9360`, `lintGenbank`)**: Static verification of `LOCUS` vs `ORIGIN` base-pair counts, IUPAC nucleotide/protein alphabets, feature coordinate bounds, sense & complement `CDS` start/stop codons (`ATG`/`GTG`/`TTG` and `TAA`/`TAG`/`TGA`), internal premature stop codons, NCBI Genetic Code Table 11 `/translation` verification, empty `ORIGIN` blocks, inverted non-circular feature spans, and duplicate `LOCUS`/FASTA identifiers.
 - **Modelica 3.x & SBOL3 Projections (`genbankToModelica`, `genbankToSbolXml`)**: Synthesizes standalone Modelica 3.x transcription/translation ODE models and SBOL3 RDF/XML component hierarchies annotated with Sequence Ontology (`SO:0000167`, `SO:0000139`, `SO:0000316`, `SO:0000141`, `SO:0000296`) roles.
-- **Multi-File Workspace Indexing & LSP (`GenbankWorkspaceIndex`, `getGenbankHover`, `provideGenbankCompletions`)**: Implements `IWorkspaceIndex` across `.gb`, `.gbk`, `.fasta`, and `.fa` files with locus/feature hover cards, restriction site completions, and AST writeback.
+- **Multi-File Workspace Indexing & LSP (`getGenbankHover`, `provideGenbankCompletions`)**: Provides workspace symbol indexing across `.gb`, `.gbk`, `.fasta`, and `.fa` files with locus/feature hover cards, restriction site completions, and AST writeback.
 
 ---
 
@@ -41,7 +43,6 @@ GenBank (`.gb`, `.gbk`) and FASTA (`.fasta`, `.fa`) genomic sequence analysis, p
 | `src/dae/index.ts`                       | DAE lowering barrel exports                                                                                           |
 | `src/projections/genbank-projections.ts` | `genbankToModelica` and `genbankToSbolXml` translators to Modelica 3.x and SBOL3 RDF/XML                              |
 | `src/projections/index.ts`               | Projections barrel exports                                                                                            |
-| `src/workspace-index.ts`                 | `GenbankWorkspaceIndex` implementing `IWorkspaceIndex` across `.gb`, `.gbk`, `.fasta`, and `.fa` files                |
 | `src/lsp.ts`                             | LSP validation, document symbols, hover, completion, and action handlers                                              |
 
 ---

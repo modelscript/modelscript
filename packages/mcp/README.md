@@ -3,21 +3,21 @@
 
 # @modelscript/mcp
 
-Model Context Protocol (`@modelscript/mcp`) server, tools, and resources for ModelScript — exposing **92 specialized engineering tools** across **90 engineering languages**, covering multi-physics compilation, arena simulation, LTI linearization & SIMC PID tuning, nonlinear bifurcation & stochastic jump dynamics, OWL 2 ontology reasoning, Triple Graph Grammar (TGG) digital thread synchronization, Requirements Traceability Matrix (RTM) intelligence, autonomous closed-loop model synthesis, PSCAD IEEE 2800 & OpenDSS grid analysis, EPANET & SWMM municipal water/stormwater compliance, Optical DWDM / 3GPP RAN / Fiber OSP telecommunications, ECAD DFM & BOM supply-chain auditing, OLGA multiphase flow assurance, GENSYS railway EN 14363 homologation, SIMPACK multibody kinematics, 3D CAD/FEA sizing, ISO 26262 legacy migration, formal IC3/SOS verification, ISO 23952 QIF metrology, NIST OSCAL cybersecurity compliance, IEC 62714 AutomationML virtual commissioning, and radiology/biomechanics/surgical CAS verification to AI coding agents.
+Model Context Protocol (`@modelscript/mcp`) server, tools, and resources for ModelScript — exposing **121 specialized engineering tools** across **106 engineering languages**, covering multi-physics compilation, arena simulation, LTI linearization & SIMC PID tuning, nonlinear bifurcation & stochastic jump dynamics, OWL 2 ontology reasoning, Triple Graph Grammar (TGG) digital thread synchronization, Requirements Traceability Matrix (RTM) intelligence, ALM remote synchronization, MagicDraw / Cameo migration, Uncertainty Quantification & stochastic barriers, autonomous closed-loop model synthesis, PSCAD IEEE 2800 / ATP-EMTP / OpenDSS / OneLiner / SEL / COMTRADE / SCL / DNP3 grid analysis, EPANET / SWMM / HEC-HMS / WaterML / IWA ASM water & biokinetics, Optical DWDM / 3GPP RAN / Fiber OSP telecommunications, KiCad / atopile / IPC-2581 ECAD DFM & BOM supply-chain auditing, OLGA multiphase flow assurance, GENSYS railway EN 14363 homologation, SIMPACK multibody kinematics, 3D CAD/FEA sizing, ISO 26262 legacy migration, formal IC3/SOS verification, ISO 23952 QIF metrology, NIST OSCAL cybersecurity compliance, IEC 62714 AutomationML virtual commissioning, and radiology/biomechanics/surgical CAS verification to AI coding agents.
 
 ---
 
 ## Transports & Deployment Modes
 
-1. **`modelscript-mcp` Stdio Binary (`src/main.ts`)**: Standard MCP `StdioServerTransport` binary for local desktop AI assistants (Claude Desktop, Claude Code, Cursor, VS Code Copilot, Windsurf, Zed, Antigravity).
+1. **Stdio Binaries (`mcp` & `modelscript-mcp`, `src/main.ts`)**: Standard MCP `StdioServerTransport` binaries (exposed as both `mcp` and `modelscript-mcp` in `package.json#bin`) for local desktop AI assistants (Claude Desktop, Claude Code, Cursor, VS Code Copilot, Windsurf, Zed, Antigravity).
 2. **`PolyglotMcpHost` In-WASM AOT Dispatch (`src/polyglot-server.ts`)**: Dynamically mounts declarative MCP manifests (`language({ mcp })`) and dispatches tool calls directly into compiled WebAssembly linear memory (`mcpDispatchTool`) with zero JS object marshaling overhead, plus real-time `DigitalThreadHypergraph` conflict tracking.
 3. **HTTP / SSE Cloud Transport**: Integrates with the ModelScript API server (`/api/v1/mcp/sse` and `/api/v1/mcp/messages`) with built-in compute quota pre-flight checks (`ctx.checkQuota`).
 
 ---
 
-## All 92 Registered MCP Tools (Across 15 Categories)
+## All 121 Registered MCP Tools (Across 18 Categories)
 
-The MCP server (`src/tools.ts` + `src/polyglot-server.ts`) provides **92 specialized engineering tools** organized across 15 categories:
+The MCP server (`src/tools.ts`, `src/alm-tools.ts`, `src/magicdraw-tools.ts`, `src/uq-tools.ts`, and `src/polyglot-server.ts`) provides **121 specialized engineering tools** organized across 18 categories:
 
 ### 1. Modelica Compilation, Inspection & Control Linearization (6 Tools)
 
@@ -186,6 +186,50 @@ The MCP server (`src/tools.ts` + `src/polyglot-server.ts`) provides **92 special
 | `fiber_generate_bdc_fabric`    | Generate FCC Broadband Data Collection (BDC) and NTIA BEAD compliant spatial datasets discretized into Uber H3 Resolution 8 or 9 hexagonal bins.                                              |
 | `telecom_evaluate_nors_outage` | Evaluate whether a telecom network outage meets mandatory FCC Part 4 (`47 CFR § 4.9`) NORS reporting thresholds ($900\text{k}$ user-minutes or 911/PSAP impact) and generate filing dossiers. |
 
+### 16. ALM GitOps, MagicDraw Migration & Multi-File Formal Verification (13 Tools)
+
+| Tool                        | Description                                                                                                                                                          |
+| :-------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `alm_list_requirements`     | List locally synced ALM requirements and change requests from `modelscript.yaml` remotes (offline, zero-network).                                                    |
+| `alm_trace_coverage`        | Run offline ALM workspace linting (`ALM001`–`ALM004`) against synced requirements and `modelscript.yaml` bindings.                                                   |
+| `alm_blast_radius`          | Find locally synced ALM requirements and Jira issues impacted by a symbol, parameter, or keyword.                                                                    |
+| `alm_list_protocols`        | List all built-in ALM, PLM, MBSE, CAD, ECAD, DevOps, Test, SQL/Excel, and RESTful connector protocols.                                                               |
+| `alm_discover_remote`       | Probe a remote ALM/PLM/CAD repository URI and discover available collections, projects, and capabilities.                                                            |
+| `magicdraw_inspect`         | Inspect a MagicDraw / Cameo (`.mdzip`, `.mdxml`, `.xmi`) model: packages, blocks, requirements, diagrams, and profiles.                                              |
+| `magicdraw_diagram`         | Render a specific MagicDraw / Cameo diagram (by `diagramId` or `diagramKind`) to SVG or structured JSON.                                                             |
+| `magicdraw_diff`            | Semantically diff two MagicDraw / Cameo (`.mdzip`, `.mdxml`, `.xmi`) models by stable `xmi:id`.                                                                      |
+| `magicdraw_migrate_sysml2`  | Migrate a MagicDraw / Cameo SysML 1.x model into a multi-file OMG SysML v2 workspace with a migration report.                                                        |
+| `workspace_lint`            | Run multi-file / workspace-graph linting across companion files for cross-file engineering languages.                                                                |
+| `sysml2_verify_formal`      | Run deep formal verification (`S7001`–`S7006`: IC3/PDR state reachability, ISO 26262 MOCUS/ASIL fault trees, contract checks).                                       |
+| `run_uq`                    | Run analytical, spectral, reliability, or rigorous P-box Uncertainty Quantification (`fosm`, `unscented`, `sobol`, `gpce`, `form`, `sorm`, `subset`).                |
+| `verify_stochastic_barrier` | Certify finite-horizon probabilistic safety $P(\sup_{0 \le t \le T} \|x(t)\| \ge r_{\text{unsafe}}) \le \delta$ via supermartingale stochastic barrier certificates. |
+
+### 17. Power Protection, Grid Transients & Substation Automation (6 Tools)
+
+| Tool                       | Description                                                                                                                              |
+| :------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------- |
+| `atp_simulate_transient`   | Simulate electromagnetic transient companion-matrix trapezoidal response from an ATP-EMTP card deck (`.atp`, `.dat`).                    |
+| `comtrade_extract_phasor`  | Extract dynamic discrete Fourier transform (DFT) RMS phasors from IEEE C37.111 COMTRADE fault recordings (`.cfg`, `.dat`, `.cff`).       |
+| `scl_validate_goose`       | Validate IEC 61850 GOOSE and Sampled Values publisher/subscriber communication stream latency and dataset integrity (`.scd`, `.cid`).    |
+| `dnp3_process_telemetry`   | Filter telemetry analog stream using IEEE 1815 / DNP3 deadband thresholding and evaluate signal reconstruction.                          |
+| `oneliner_calculate_fault` | Calculate symmetrical components 3-phase and SLG short-circuit fault currents from ASPEN OneLiner (`.olx`, `.dxt`) cases.                |
+| `sel_evaluate_protection`  | Evaluate Schweitzer Engineering Laboratories (SEL) relay trip logic, 50P instantaneous, and 51P TOC pickup/trip curves (`.rcf`, `.rdb`). |
+
+### 18. Water/Hydrology Extensions & Code-First ECAD (10 Tools)
+
+| Tool                                 | Description                                                                                                                                  |
+| :----------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
+| `epanet_screen_contingencies_webgpu` | Parallelize thousands of N-1 pipe break isolations and hydrant fire-flow capacity tests simultaneously via WebGPU.                           |
+| `epanet_convert_watergems`           | Extract water distribution and surge models directly from Bentley WaterGEMS / HAMMER (`.wtg.sqlite`) databases.                              |
+| `swmm_convert_infoworks`             | Extract collection system models directly from Autodesk / Innovyze InfoWorks ICM database tables into SWMM (`.inp`).                         |
+| `swmm_inundation_2d`                 | Simulate 2D shallow-water surface inundation and street overland flooding dynamically coupled to 1D SWMM conduits.                           |
+| `waterml_fit_rating_curve`           | Fit a non-linear stage-discharge power-law rating curve $Q = a (h - h_0)^b$ from OGC WaterML hydrologic telemetry.                           |
+| `hec_hms_simulate_runoff`            | Simulate SCS Runoff Curve Number (CN) excess precipitation and unit hydrograph outflow from HEC-HMS basin models (`.basin`, `.hms`).         |
+| `asm_evaluate_biokinetics`           | Evaluate IWA Activated Sludge Model (ASM1) biological process rates and net substrate/biomass conversion rates.                              |
+| `ecad_kicad_analyze`                 | Analyze a KiCad `.kicad_pcb` or `.kicad_sch` file: run ECAD/ERC lints, extract netlist, and compute RLGC/$Z_0$/IPC-2221 parasitics.          |
+| `ecad_atopile_analyze`               | Analyze an atopile (`.ato`) code-first hardware design: run static & worst-case tolerance `assert` lints, BOM elaboration, and MNA lowering. |
+| `ecad_ipc2581_convert`               | Import an IPC-2581B/C XML board (Altium, Cadence, Siemens, KiCad) and convert to KiCad 8 (`.kicad_pcb`).                                     |
+
 ---
 
 ## MCP Resources (`src/resources.ts`)
@@ -266,12 +310,13 @@ await server.connect(transport);
 
 ```bash
 # Build TypeScript package
-npm run build --workspace=@modelscript/mcp
+pnpm --filter @modelscript/mcp run build
 
 # Run MCP tool and resource test suite
-npm run test --workspace=@modelscript/mcp
+pnpm --filter @modelscript/mcp run test
 
-# Typecheck and lint
-npm run typecheck --workspace=@modelscript/mcp
-npm run lint --workspace=@modelscript/mcp
+# Typecheck, lint, and clean
+pnpm --filter @modelscript/mcp run typecheck
+pnpm --filter @modelscript/mcp run lint
+pnpm --filter @modelscript/mcp run clean
 ```

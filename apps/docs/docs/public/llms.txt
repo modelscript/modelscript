@@ -1,6 +1,6 @@
 # ModelScript
 
-> Open-core computable digital thread for polyglot engineering and simulation. Imports 93 simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.
+> Open-core computable digital thread for polyglot engineering and simulation. Imports 105 simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.
 
 ## Quick Links
 - [Official Website](https://modelscript.org/)
@@ -57,19 +57,20 @@
 
 ## Command-Line Interface (`msx`)
 - [CLI Overview](https://modelscript.org/cli/overview): Overview of the `msx` binary, global flags, and architecture.
-- [Commands Reference](https://modelscript.org/cli/commands): Comprehensive reference for all 143 CLI commands and subcommands.
+- [Commands Reference](https://modelscript.org/cli/commands): Comprehensive reference for all 146 CLI commands and subcommands.
 
-## Polyglot Languages (93 Formats)
-- [Polyglot Overview & Capability Matrix](https://modelscript.org/languages/overview): Cross-language capability matrix across all 93 formats.
+## Polyglot Languages (105 Formats)
+- [Polyglot Overview & Capability Matrix](https://modelscript.org/languages/overview): Cross-language capability matrix across all 105 formats.
 - [Modelica (.mo) [beta]](https://modelscript.org/languages/modelica): Acausal multi-domain physics.
 - [AMPL (.mod, .dat, .run, .nl, .mps) [beta]](https://modelscript.org/languages/ampl): Mathematical programming & optimization (LP, MILP, NLP).
 - [SysML v2 / KerML (.sysml) [beta]](https://modelscript.org/languages/sysml2): Systems architecture & requirements.
 - [ReqIF (.reqif) [beta]](https://modelscript.org/languages/reqif): Requirements interchange & contract entailment.
-- [MagicDraw / Cameo (.mdzip) [alpha]](https://modelscript.org/languages/magicdraw): SysML 1.x / UML 2.x archive inspection, diagrams & SysML v2 migration.
+- [MagicDraw / Cameo (.mdzip) [beta]](https://modelscript.org/languages/magicdraw): SysML 1.x / UML 2.x archive inspection, diagrams & SysML v2 migration.
 - [NIST OSCAL (.oscal.json) [alpha]](https://modelscript.org/languages/oscal): Cyber-physical security controls & SP 800-53 assessment.
 - [SSP (.ssp) [beta]](https://modelscript.org/languages/ssp): FMU system structure & parameterization.
 - [OWL2 (.owl) [beta]](https://modelscript.org/languages/owl2): Ontologies & description-logic reasoning.
-- [STEP (ISO 10303) (.step) [alpha]](https://modelscript.org/languages/step): B-Rep CAD assemblies & AP242 PMI.
+- [SPARQL 1.1 (.rq, .sparql) [beta]](https://modelscript.org/languages/sparql): RDF knowledge-graph & digital-thread semantic queries.
+- [STEP (ISO 10303) (.step) [beta]](https://modelscript.org/languages/step): B-Rep CAD assemblies & AP242 PMI.
 - [QIF (ISO 23952) (.qif) [alpha]](https://modelscript.org/languages/qif): ASME Y14.5 / ISO 1101 GD&T metrology & SPC capability.
 - [OpenSCAD (.scad) [beta]](https://modelscript.org/languages/scad): Parametric constructive solid geometry.
 - [CFD (SU2 / OpenFOAM) (.su2) [alpha]](https://modelscript.org/languages/cfd): Computational fluid dynamics meshes.
@@ -83,7 +84,7 @@
 - [CCSDS (.xtce) [beta]](https://modelscript.org/languages/ccsds): Astrodynamics & spacecraft telemetry.
 - [EASY5 (.ez5) [beta]](https://modelscript.org/languages/easy5): Dynamic simulation & linear control.
 - [AUTOSAR (.arxml) [alpha]](https://modelscript.org/languages/autosar): Classic & Adaptive software architecture.
-- [MATLAB Simulink (.slx) [alpha]](https://modelscript.org/languages/simulink): Block diagrams & control systems.
+- [MATLAB Simulink (.slx) [beta]](https://modelscript.org/languages/simulink): Block diagrams & control systems.
 - [GT-SUITE (.gtm) [alpha]](https://modelscript.org/languages/gtsuite): Engine, powertrain & thermal flow.
 - [ASAM OpenDRIVE (.xodr) [beta]](https://modelscript.org/languages/opendrive): Road network geometry.
 - [ASAM OpenSCENARIO (.xosc) [alpha]](https://modelscript.org/languages/openscenario): Driving scenarios & RSS safety margins.
@@ -106,12 +107,23 @@
 - [IEEE 1815 / DNP3 (.xml, .json, .dnp3) [alpha]](https://modelscript.org/languages/dnp3): Utility digital twin & SCADA deadband telemetry.
 - [ASPEN OneLiner / CAPE (.olx, .dxt) [alpha]](https://modelscript.org/languages/oneliner): Short-circuit fault currents & TOC protection coordination.
 - [SEL Relay Settings (.rdb, .rcf, .sel, .txt) [alpha]](https://modelscript.org/languages/sel): Schweitzer relay settings, SELogic & 50/51/21 protection.
+- [IEEE C37.118 Synchrophasor (.c37118, .pmu) [alpha]](https://modelscript.org/languages/c37118): Synchrophasor PMU streaming telemetry & wide-area monitoring.
+- [Eaton CYME (.sxst, .cyme) [alpha]](https://modelscript.org/languages/cyme): Distribution network load flow, hosting capacity & protection.
+- [GridLAB-D (.glm) [alpha]](https://modelscript.org/languages/gridlabd): Agent-based distribution grid & transactive energy simulation.
+- [IEC 60870-5-104 (.iec104, .104) [alpha]](https://modelscript.org/languages/iec104): Substation telecontrol & SCADA protocol telemetry.
+- [PLS-CADD (.pol, .loa, .plscadd) [alpha]](https://modelscript.org/languages/plscadd): Overhead transmission line sag-tension & structure clearances.
+- [PowerWorld Simulator (.aux, .cdf) [alpha]](https://modelscript.org/languages/powerworld): Transmission power flow, contingency screening & OPF.
+- [PyPSA (.pypsa, .pypsa.json) [alpha]](https://modelscript.org/languages/pypsa): Sector-coupled power & energy system capacity expansion.
+- [RTDS / RSCAD (.dft, .rtds) [alpha]](https://modelscript.org/languages/rtds): Real-time digital simulator EMT drafts & HIL models.
 - [OLGA (.opi, .genkey) [beta]](https://modelscript.org/languages/olga): Transient multiphase flow assurance.
 - [PipelineStudio (.lps) [beta]](https://modelscript.org/languages/lps): Gas & liquid pipeline hydraulics.
 - [ECLIPSE (.data) [alpha]](https://modelscript.org/languages/eclipse): Reservoir engineering.
+- [CWLS LAS Well Logs (.las) [pre-alpha]](https://modelscript.org/languages/las): Petrophysical wireline well-log curves & formation evaluation.
 - [RELAP5-3D (.r5, .inp) [beta]](https://modelscript.org/languages/relap5): Reactor thermal-hydraulics & kinetics.
 - [SIMA / SIMO / RIFLEX (.sima) [alpha]](https://modelscript.org/languages/sima): Marine operations & riser dynamics.
 - [SPICE (.cir) [beta]](https://modelscript.org/languages/spice): Analog circuit simulation.
+- [atopile (.ato) [beta]](https://modelscript.org/languages/atopile): Code-first electronic hardware & PCB design.
+- [KiCad ECAD (.kicad_pcb, .kicad_sch, .kicad_sym, .kicad_mod) [beta]](https://modelscript.org/languages/kicad): PCB layouts, schematics, footprints & DRC/DFM verification.
 - [Verilog-A / AMS (.va, .vams) [alpha]](https://modelscript.org/languages/verilog-a): Analog compact device models.
 - [IBIS (.ibs) [alpha]](https://modelscript.org/languages/ibis): I/O buffer behavioral models.
 - [Touchstone (.sNp) [alpha]](https://modelscript.org/languages/touchstone): RF & signal-integrity S-parameters.
@@ -171,7 +183,7 @@
 - [Life Sciences, Healthcare & Medical](https://modelscript.org/industries/life-sciences): Systems biology, pharmacometrics, radiotherapy & surgical CAS (SBML L2/L3 & SED-ML, SBOL3 & GenBank, NONMEM NMTRAN & Monolix MLXTRAN).
 
 ## Reference & Tooling
-- [Linter Rules Catalog](https://modelscript.org/reference/linter-rules): Directory of 1408 diagnostics across 85 engineering languages.
+- [Linter Rules Catalog](https://modelscript.org/reference/linter-rules): Directory of 1432 diagnostics across 85 engineering languages.
 - [Export Formats](https://modelscript.org/reference/export-formats): Exporting to FMI 2.0/3.0 FMUs, SSP, STEP, CSV, and C code.
 - [MCP & IDE Integration](https://modelscript.org/reference/mcp-and-ide): Model Context Protocol server for AI coding agents and VS Code integration.
 - [Radiology & Surgical CAS](https://modelscript.org/reference/radiology-and-surgery): Radiation oncology, medical imaging, and computer-assisted surgery suite.

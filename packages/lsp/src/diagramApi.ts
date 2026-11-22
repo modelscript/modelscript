@@ -1942,9 +1942,7 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
         const fs = await import("node:fs");
         const { fileURLToPath } = await import("node:url");
         const filePath = targetUri.startsWith("file://") ? fileURLToPath(targetUri) : targetUri;
-        if (fs.existsSync(filePath)) {
-          return fs.readFileSync(filePath, "utf-8");
-        }
+        return await fs.promises.readFile(filePath, "utf-8");
       } catch {
         // ignore fs errors
       }
@@ -2109,7 +2107,45 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
     },
 
     async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
-      return await getBackend(params.uri).applyEdits(params);
+      // Expand high-level `pasteSubgraph` actions into atomic `addComponent` + `connect` actions
+      // so every language backend gets topology-preserving copy/paste automatically.
+      const expandedActions: DiagramApplyEditsParams["actions"] = [];
+      let pasteCounter = Date.now() % 10000;
+      for (const action of params.actions) {
+        if (action.type === "pasteSubgraph") {
+          const generatedNames: string[] = [];
+          for (const node of action.nodes) {
+            const shortType = (node.className.split(".").pop() || "comp").replace(/[^A-Za-z0-9_]/g, "");
+            const base = shortType.charAt(0).toLowerCase() + shortType.slice(1);
+            const genName = `${base}_${++pasteCounter}`;
+            generatedNames.push(genName);
+            expandedActions.push({
+              type: "addComponent",
+              className: node.className,
+              name: genName,
+              x: node.x,
+              y: node.y,
+              rotation: node.rotation,
+              parameters: node.parameters,
+            });
+          }
+          for (const edge of action.edges) {
+            const srcName = generatedNames[edge.sourceIdx];
+            const tgtName = generatedNames[edge.targetIdx];
+            if (!srcName || !tgtName) continue;
+            expandedActions.push({
+              type: "connect",
+              source: edge.sourcePort ? `${srcName}.${edge.sourcePort}` : srcName,
+              target: edge.targetPort ? `${tgtName}.${edge.targetPort}` : tgtName,
+              sourcePort: edge.sourcePort,
+              targetPort: edge.targetPort,
+            });
+          }
+        } else {
+          expandedActions.push(action);
+        }
+      }
+      return await getBackend(params.uri).applyEdits({ ...params, actions: expandedActions });
     },
 
     async getPalette(params: DiagramGetPaletteParams): Promise<DiagramPalette | null> {
@@ -2239,6 +2275,15 @@ function hasWordTokenOutsideStrings(text: string, token: string): boolean {
   return found;
 }
 
+const NON_DECLARATION_LINE_PREFIX = /^(?:import|connect|extends|equation|algorithm|end|return|\/\/|\/\*|\*|#|--)\b/i;
+
+function isLikelyNonDeclarationReference(maskedLine: string): boolean {
+  const trimmed = maskedLine.trimStart();
+  if (!trimmed) return true;
+  if (NON_DECLARATION_LINE_PREFIX.test(trimmed)) return true;
+  return false;
+}
+
 function emitInlinePlacementEdit(
   item: PlacementItem,
   lines: string[],
@@ -2247,43 +2292,51 @@ function emitInlinePlacementEdit(
   allEdits: TextEdit[],
   appendAtEolIfNoSemi: boolean,
 ): void {
+  let targetLineIdx = -1;
+  let fallbackLineIdx = -1;
   for (let i = 0; i < lines.length; i++) {
-    if (hasWordTokenOutsideStrings(maskedLines[i]!, item.name)) {
-      const line = lines[i]!;
-      const placementStr = formatPlacement
-        ? formatPlacement(item.x, item.y, item.width, item.height, item.rotation)
-        : `@layout(x=${Math.round(item.x)}, y=${Math.round(item.y)})`;
+    const masked = maskedLines[i]!;
+    if (!hasWordTokenOutsideStrings(masked, item.name)) continue;
+    if (fallbackLineIdx === -1) fallbackLineIdx = i;
+    if (isLikelyNonDeclarationReference(masked)) continue;
+    targetLineIdx = i;
+    break;
+  }
+  const i = targetLineIdx !== -1 ? targetLineIdx : fallbackLineIdx;
+  if (i === -1) return;
 
-      const span = findInlinePlacementSpan(line);
-      if (span) {
-        allEdits.push({
-          range: {
-            start: { line: i, character: span.start },
-            end: { line: i, character: span.end },
-          },
-          newText: placementStr,
-        });
-      } else {
-        const semiIdx = line.lastIndexOf(";");
-        if (semiIdx !== -1) {
-          allEdits.push({
-            range: {
-              start: { line: i, character: semiIdx },
-              end: { line: i, character: semiIdx },
-            },
-            newText: ` ${placementStr}`,
-          });
-        } else if (appendAtEolIfNoSemi) {
-          allEdits.push({
-            range: {
-              start: { line: i, character: line.length },
-              end: { line: i, character: line.length },
-            },
-            newText: ` ${placementStr}`,
-          });
-        }
-      }
-      break;
+  const line = lines[i]!;
+  const placementStr = formatPlacement
+    ? formatPlacement(item.x, item.y, item.width, item.height, item.rotation)
+    : `@layout(x=${Math.round(item.x)}, y=${Math.round(item.y)})`;
+
+  const span = findInlinePlacementSpan(line);
+  if (span) {
+    allEdits.push({
+      range: {
+        start: { line: i, character: span.start },
+        end: { line: i, character: span.end },
+      },
+      newText: placementStr,
+    });
+  } else {
+    const semiIdx = line.lastIndexOf(";");
+    if (semiIdx !== -1) {
+      allEdits.push({
+        range: {
+          start: { line: i, character: semiIdx },
+          end: { line: i, character: semiIdx },
+        },
+        newText: ` ${placementStr}`,
+      });
+    } else if (appendAtEolIfNoSemi) {
+      allEdits.push({
+        range: {
+          start: { line: i, character: line.length },
+          end: { line: i, character: line.length },
+        },
+        newText: ` ${placementStr}`,
+      });
     }
   }
 }

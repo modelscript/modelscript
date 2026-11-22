@@ -50,6 +50,8 @@ describe("Browser node:url shim & Vite bundle resolution", () => {
     assert.match(content, /\^readline\$/);
     assert.match(content, /\^node:module\$/);
     assert.match(content, /\^module\$/);
+    assert.match(content, /\^node:worker_threads\$/);
+    assert.match(content, /\^worker_threads\$/);
   });
 
   it("node-shims provides browser-safe stubs without throwing on access", async () => {
@@ -76,5 +78,10 @@ describe("Browser node:url shim & Vite bundle resolution", () => {
     const rl = nodeShims.createInterface();
     assert.strictEqual(typeof rl.on, "function");
     assert.strictEqual(typeof rl.close, "function");
+    assert.strictEqual(nodeShims.isMainThread, true);
+    assert.strictEqual(nodeShims.parentPort, null);
+    const worker = new nodeShims.Worker();
+    assert.strictEqual(typeof worker.postMessage, "function");
+    assert.strictEqual(typeof worker.terminate, "function");
   });
 });

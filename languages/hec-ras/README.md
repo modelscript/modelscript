@@ -1,7 +1,9 @@
 <div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
 <div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-# `@modelscript/hec-ras`
+# @modelscript/hec-ras
+
+**Maturity:** Alpha · **Extensions:** `.g01`, `.g02`, `.rasgeo`, `.u01`, `.f01`, `.prj` · **Docs:** [modelscript.org/languages/hec-ras](https://modelscript.org/languages/hec-ras)
 
 US Army Corps of Engineers (USACE) HEC-RAS 1D/2D river hydraulics, open-channel conveyance, dam breach, and flood routing language package for ModelScript.
 
@@ -15,12 +17,12 @@ US Army Corps of Engineers (USACE) HEC-RAS 1D/2D river hydraulics, open-channel 
 
 ## File Support
 
-| Extension | Description | Role |
-| :--- | :--- | :--- |
-| `.g01` | HEC-RAS River Geometry File | Cross sections, river reaches, bridges & weirs |
-| `.u01` | HEC-RAS Unsteady Flow File | Boundary hydrographs & lateral inflows |
-| `.f01` | HEC-RAS Steady Flow File | Peak profile discharge boundary conditions |
-| `.prj` | HEC-RAS Project File | Master plan and file association manifest |
+| Extension | Description                 | Role                                           |
+| :-------- | :-------------------------- | :--------------------------------------------- |
+| `.g01`    | HEC-RAS River Geometry File | Cross sections, river reaches, bridges & weirs |
+| `.u01`    | HEC-RAS Unsteady Flow File  | Boundary hydrographs & lateral inflows         |
+| `.f01`    | HEC-RAS Steady Flow File    | Peak profile discharge boundary conditions     |
+| `.prj`    | HEC-RAS Project File        | Master plan and file association manifest      |
 
 ## Quick Example
 

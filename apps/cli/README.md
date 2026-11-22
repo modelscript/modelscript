@@ -3,7 +3,7 @@
 
 # @modelscript/cli
 
-Unified command-line interface (`modelscript`, alias `msx`) for ModelScript. Provides **157 commands and subcommands** across compilation, DAE flattening, numerical simulation, optimal control, nonlinear bifurcation continuation, formal verification, enterprise digital thread coexistence, 3D CAD/CAE extraction, package management, and domain-specific engineering solvers across all **90 supported languages and simulation formats**.
+Unified command-line interface (`modelscript`, alias `msx`) for ModelScript. Provides **146 commands and subcommands** across compilation, DAE flattening, numerical simulation, optimal control, nonlinear bifurcation continuation, formal verification, enterprise digital thread coexistence, 3D CAD/CAE extraction, package management, and domain-specific engineering solvers across all **106 supported languages and simulation formats**.
 
 ---
 
@@ -23,25 +23,28 @@ npx msx --daemon <command>
 
 ---
 
-## Command Reference (157 Commands)
+## Command Reference (146 Commands)
 
 ### 1. Core Modeling, Flattening, Simulation & Optimization
 
-| Command                             | Description                                                                                                   |
-| :---------------------------------- | :------------------------------------------------------------------------------------------------------------ |
-| `msx inspect <files...>`            | Inspect and summarize engineering models across any of the 90 supported languages (`info`, `summary`)         |
-| `msx compile <name> <paths...>`     | Flatten a Modelica or ModelScript model into a flat DAE arena (aliases: `msx flatten`, `msx convert`)         |
-| `msx simulate <name> <paths...>`    | Numerically simulate a model and output CSV or JSON trajectories (`msx sim`)                                  |
-| `msx instantiate <name> <paths...>` | Instantiate and query the hierarchical AST structure of a Modelica model                                      |
-| `msx fmu <name> <paths...>`         | Export, validate, inspect, build, or simulate a standalone FMI 2.0/3.0 FMU archive (`export-fmu`)             |
-| `msx import-fmu <fmu>`              | Import an external FMU archive and synthesize a strongly typed Modelica wrapper (`fmu-import`)                |
-| `msx cosim`                         | Manage multi-FMU co-simulation sessions, HIL participants, and signal replay                                  |
-| `msx optimize <name> <paths...>`    | Solve optimal control problems via direct collocation with state/control boundary constraints                 |
-| `msx grad <name> <paths...>`        | Compute exact parameter sensitivities through simulation using hybrid continuous adjoints                     |
-| `msx bifurcation <name>`            | Trace nonlinear steady-state equilibrium curves and detect Fold (LP), Hopf (HB), and Branch (BP) bifurcations |
-| `msx mc <name> <paths...>`          | Run Monte Carlo & Sobol sensitivity simulations for parametric uncertainty quantification                     |
-| `msx surrogate <name> [paths...]`   | Train or import an AI surrogate Reduced Order Model (ROM) and emit ONNX, C99, or Modelica code                |
-| `msx csg <name> <paths...>`         | Evaluate Constructive Solid Geometry (CSG) topologies to STEP B-Rep or 3D meshes                              |
+| Command                             | Description                                                                                                     |
+| :---------------------------------- | :-------------------------------------------------------------------------------------------------------------- |
+| `msx inspect <files...>`            | Inspect and summarize engineering models across any of the 106 supported languages (`info`, `summary`)          |
+| `msx compile <name> <paths...>`     | Flatten a Modelica or ModelScript model into a flat DAE arena (aliases: `msx flatten`, `msx convert`)           |
+| `msx simulate <name> <paths...>`    | Numerically simulate a model and output CSV or JSON trajectories (`msx sim`)                                    |
+| `msx instantiate <name> <paths...>` | Instantiate and query the hierarchical AST structure of a Modelica model                                        |
+| `msx fmu <name> <paths...>`         | Export, validate, inspect, build, or simulate a standalone FMI 2.0/3.0 FMU archive (`export-fmu`)               |
+| `msx import-fmu <fmu>`              | Import an external FMU archive and synthesize a strongly typed Modelica wrapper (`fmu-import`)                  |
+| `msx cosim`                         | Manage multi-FMU co-simulation sessions (`msx cosim sessions`), HIL participants, and signal replay             |
+| `msx optimize <name> <paths...>`    | Solve optimal control problems via direct collocation with state/control boundary constraints                   |
+| `msx grad <name> <paths...>`        | Compute exact parameter sensitivities through simulation using hybrid continuous adjoints                       |
+| `msx bifurcation <name>`            | Trace nonlinear steady-state equilibrium curves and detect Fold (LP), Hopf (HB), and Branch (BP) bifurcations   |
+| `msx mc <name> <paths...>`          | Run Monte Carlo & Sobol sensitivity simulations for parametric uncertainty quantification                       |
+| `msx uq <name> <paths...>`          | Run analytical, spectral, or reliability Uncertainty Quantification (FOSM, UT, Sobol, gPCE, FORM, SORM, Subset) |
+| `msx study <action> [target]`       | Execute parametric trade studies, design-of-experiments sweeps, and comparative scenario packs                  |
+| `msx benchmark [suite]`             | Run industrial SOTA verification and scalability benchmarks (e.g., PSS/E, PSCAD, MSL)                           |
+| `msx surrogate <name> [paths...]`   | Train or import an AI surrogate Reduced Order Model (ROM) and emit ONNX, C99, or Modelica code                  |
+| `msx csg <name> <paths...>`         | Evaluate Constructive Solid Geometry (CSG) topologies to STEP B-Rep or 3D meshes                                |
 
 ### 2. Domain-Specific Engineering Solvers & Toolkits
 
@@ -57,10 +60,18 @@ npx msx --daemon <command>
 | Command                                | Description                                                                                                          |
 | :------------------------------------- | :------------------------------------------------------------------------------------------------------------------- |
 | `msx pscad <action> [files...]`        | Inspect, lint (`M6001`–`M6017`), simulate EMT, verify IEEE 2800-2022, run PMR benchmarks, and export PSCAD (`.pscx`) |
+| `msx atp <action> [files...]`          | Inspect, lint, simulate, and convert ATP-EMTP transient card decks (`.atp`, `.dat`)                                  |
 | `msx psse <action> [files...]`         | Inspect, lint (`P1001`–`P4001`), solve AC power flow & WebGPU ACCC, calibrate `.dyr`, and render SLDs (`.raw`)       |
 | `msx pslf <action> [files...]`         | Inspect, lint, solve, and convert GE PSLF transmission cases (`.epc`, `.dyd`)                                        |
 | `msx powerfactory <action> [files...]` | Inspect, solve, lint, and visualize DIgSILENT PowerFactory models (`.dz`, `.pfd`, `.xml`; alias: `msx pf`)           |
 | `msx cgmes <action> [files...]`        | Inspect, lint (`C1001`–`C1010`), convert, and solve ENTSO-E CIM / CGMES European grid models (`.xml`)                |
+| `msx matpower <action> [files...]`     | Inspect, lint, solve, and convert MATPOWER power network cases (`.m`)                                                |
+| `msx opf <action> [files...]`          | Optimal Power Flow: solve DC/AC OPF, export to AMPL or ExaGO, and compute locational marginal prices (LMPs)          |
+| `msx oneliner <action> [files...]`     | Inspect, lint, solve short-circuit faults, and convert ASPEN OneLiner / CAPE cases (`.olx`, `.dxt`)                  |
+| `msx sel <action> [files...]`          | Inspect, lint, evaluate protection, and convert SEL relay settings (`.rcf`, `.rdb`, `.sel`, `.txt`)                  |
+| `msx comtrade <action> [files...]`     | Inspect, lint, analyze, and convert IEEE C37.111 COMTRADE fault recordings (`.cfg`, `.dat`, `.cff`)                  |
+| `msx scl <action> [files...]`          | Inspect, lint, audit, and convert IEC 61850 Substation Configuration files (`.scd`, `.cid`, `.ssd`)                  |
+| `msx dnp3 <action> [files...]`         | Inspect, lint, process telemetry, and convert IEEE 1815 / DNP3 SCADA device profiles (`.dnp3`, `.xml`, `.json`)      |
 | `msx opendss <action> [files...]`      | Parse, lint (`M8401`–`M8408`), solve unbalanced multi-phase power flow / faults / harmonics, and project (`.dss`)    |
 | `msx ocpp <action> [files...]`         | Inspect, lint, solve priority smart charging schedules, and lower OCPP 2.0.1/1.6J EV charging networks (`.ocpp`)     |
 | `msx openadr <action> [files...]`      | Inspect, lint, evaluate curtailment shed, and lower OpenADR 2.0b/3.0 demand response events (`.oadr`; alias: `oadr`) |
@@ -80,9 +91,12 @@ npx msx --daemon <command>
 | `msx frac <action> [files...]`       | Real-time hydraulic completions, slurry hydraulics, perforation erosion, and screen-out analytics                   |
 | `msx lps <action> [files...]`        | Solve steady-state hydraulics and dynamic gas/liquid Euler surge transients for PipelineStudio (`.lps`)             |
 | `msx aspen <action> [files...]`      | Parse flowsheets, run Rachford-Rice VLE flash, lint (`M8101`–`M8115`), and project Aspen Plus (`.inp`)              |
+| `msx asm <action> [files...]`        | Inspect, lint, simulate biokinetics, and convert IWA Activated Sludge Models (`.asm`, `.bsm`, `.wrrf`)              |
+| `msx waterml <action> [files...]`    | Inspect, lint, fit rating curves, and convert OGC WaterML timeseries (`.waterml`, `.wml2`, `.xml`, `.json`)         |
 | `msx eclipse <action> [files...]`    | Parse black-oil reservoir decks (`.data`), lint (`M8701`–`M8710`), and solve Darcy/Peaceman depletion               |
 | `msx epanet <action> [files...]`     | Parse water networks (`.inp`), lint (`M8101`–`M8108`), solve Todini GGM & MOC surge, ingest GIS, and export LCRR    |
 | `msx swmm <action> [files...]`       | Parse urban drainage models (`.inp`), lint (`M8201`–`M8213`), route Saint-Venant flows, ingest GIS, & export NetDMR |
+| `msx hec-hms <action> [files...]`    | Inspect, lint, simulate watershed runoff, and convert USACE HEC-HMS basin models (`.basin`, `.hms`)                 |
 | `msx hec-ras <action> [files...]`    | Inspect, lint, solve 1D backwater surface profiles, and lower USACE HEC-RAS river geometry (`.g01`; alias: `ras`)   |
 | `msx tough <action> [files...]`      | Inspect, lint, solve geothermal wellbore flashing thermodynamics, and lower LBNL TOUGH2/3 decks (`.tough`, `.tgh`)  |
 | `msx modflow <action> [files...]`    | Inspect, lint, solve 3D Darcy groundwater balances, and lower USGS MODFLOW 6 aquifer packages (`.dis`, `.npf`)      |
@@ -107,21 +121,22 @@ npx msx --daemon <command>
 
 #### Aerospace, Flight Dynamics, Continuum CAE, Metrology, Compliance, Biology & Scientific Code
 
-| Command                            | Description                                                                                               |
-| :--------------------------------- | :-------------------------------------------------------------------------------------------------------- |
-| `msx simulink <action> [files...]` | Parse MATLAB Simulink `.slx`/`.mdl`, lint control loops (`M7201`–`M7210`), and project to Modelica        |
-| `msx easy5 <action> [files...]`    | Parse Boeing/MSC EASY5 (`.ez5`), extract state-space Jacobians ($A,B,C,D$), and analyze Bode response     |
-| `msx jsbsim <action> [files...]`   | Parse JSBSim 6-DOF flight dynamics XML, lint (`M8901`–`M8910`), simulate trajectories, and project        |
-| `msx rocets <action> [files...]`   | Parse NASA ROCETS decks (`.roc`), balance turbomachinery power cycles, and simulate propulsion            |
-| `msx ccsds <action> [files...]`    | Parse CCSDS OEM/OPM/OMM & XTCE telemetry, propagate 6-DOF $J_2$ orbits, and lint (`M8201`–`M8208`)        |
-| `msx plcopen <action> [files...]`  | Parse IEC 61131-3 `.st` / `.plcxml`, lint scan-cycle logic (`M7801`–`M7806`), and lower clocked DAEs      |
-| `msx aml <action> [files...]`      | Parse IEC 62714 AutomationML / CAEX (`.aml`), lint (`M8301`–`M8307`), run virtual commissioning, & lower  |
-| `msx qif <action> [files...]`      | Parse ISO 23952 QIF (`.qif`), lint ASME Y14.5 GD&T (`M8101`–`M8108`), compute SPC ($C_p, C_{pk}$), & sync |
-| `msx oscal <action> [files...]`    | Parse NIST OSCAL 1.1.x, resolve SP 800-53/82 CPS baselines, lint (`M8201`–`M8208`), and audit compliance  |
-| `msx fea <action> [files...]`      | Parse CalculiX/Nastran `.inp`/`.bdf`/`.fea`, lint mesh/BCs (`M7401`–`M7408`), and run 3D Tet4/Tet10 FEA   |
-| `msx cfd <action> [files...]`      | Parse SU2/OpenFOAM `.cfg`/`.su2`/`.foam`, lint CFL/$y^+$ (`M7301`–`M7308`), and run aerodynamic solvers   |
-| `msx sbml <action> [files...]`     | Parse Systems Biology Markup Language (`.sbml`), lint stoichiometry (`M8801`–`M8810`), and solve ODEs     |
-| `msx c <action> [files...]`        | Parse ISO C99 control code (`.c`/`.h`), build SSA CFGs, lint safety rules, and lower to DAE arena         |
+| Command                            | Description                                                                                                   |
+| :--------------------------------- | :------------------------------------------------------------------------------------------------------------ |
+| `msx magicdraw <action> <file>`    | MagicDraw / Cameo (`.mdzip`, `.mdxml`, `.xmi`) inspection, linting, diagramming, and SysML v2/ReqIF migration |
+| `msx simulink <action> [files...]` | Parse MATLAB Simulink `.slx`/`.mdl`, lint control loops (`M7201`–`M7210`), and project to Modelica            |
+| `msx easy5 <action> [files...]`    | Parse Boeing/MSC EASY5 (`.ez5`), extract state-space Jacobians ($A,B,C,D$), and analyze Bode response         |
+| `msx jsbsim <action> [files...]`   | Parse JSBSim 6-DOF flight dynamics XML, lint (`M8901`–`M8910`), simulate trajectories, and project            |
+| `msx rocets <action> [files...]`   | Parse NASA ROCETS decks (`.roc`), balance turbomachinery power cycles, and simulate propulsion                |
+| `msx ccsds <action> [files...]`    | Parse CCSDS OEM/OPM/OMM & XTCE telemetry, propagate 6-DOF $J_2$ orbits, and lint (`M8201`–`M8208`)            |
+| `msx plcopen <action> [files...]`  | Parse IEC 61131-3 `.st` / `.plcxml`, lint scan-cycle logic (`M7801`–`M7806`), and lower clocked DAEs          |
+| `msx aml <action> [files...]`      | Parse IEC 62714 AutomationML / CAEX (`.aml`), lint (`M8301`–`M8307`), run virtual commissioning, & lower      |
+| `msx qif <action> [files...]`      | Parse ISO 23952 QIF (`.qif`), lint ASME Y14.5 GD&T (`M8101`–`M8108`), compute SPC ($C_p, C_{pk}$), & sync     |
+| `msx oscal <action> [files...]`    | Parse NIST OSCAL 1.1.x, resolve SP 800-53/82 CPS baselines, lint (`M8201`–`M8208`), and audit compliance      |
+| `msx fea <action> [files...]`      | Parse CalculiX/Nastran `.inp`/`.bdf`/`.fea`, lint mesh/BCs (`M7401`–`M7408`), and run 3D Tet4/Tet10 FEA       |
+| `msx cfd <action> [files...]`      | Parse SU2/OpenFOAM `.cfg`/`.su2`/`.foam`, lint CFL/$y^+$ (`M7301`–`M7308`), and run aerodynamic solvers       |
+| `msx sbml <action> [files...]`     | Parse Systems Biology Markup Language (`.sbml`), lint stoichiometry (`M8801`–`M8810`), and solve ODEs         |
+| `msx c <action> [files...]`        | Parse ISO C99 control code (`.c`/`.h`), build SSA CFGs, lint safety rules, and lower to DAE arena             |
 
 #### Radiology, Radiation Oncology & Computer-Assisted Surgery
 
@@ -146,6 +161,7 @@ npx msx --daemon <command>
 | `msx decompose <paths...>`        | Perform symbolic state-space region decomposition over SysML v2 decision conditions                          |
 | `msx generate-tests <paths...>`   | Synthesize formal boundary-condition and 100% MC/DC test suites from SysML v2 models                         |
 | `msx export-formal <paths...>`    | Export SysML v2 models to standard formal verification formats (SMT-LIB2, nuXmv, OCRA)                       |
+| `msx sysml-run <file>`            | Compile AssemblyScript/TypeScript kernels and verify SysML v2 definitions headlessly                         |
 
 ### 4. Linting, Formatting, Diffing, Merging & Rendering
 
@@ -162,17 +178,18 @@ npx msx --daemon <command>
 
 ### 5. Digital Thread, Enterprise Coexistence, Grid Screening & Compliance
 
-| Command                              | Description                                                                                             |
-| :----------------------------------- | :------------------------------------------------------------------------------------------------------ |
-| `msx polyglot <action>`              | Multi-domain Triple Graph Grammar (TGG) projection, formal verification, and digital thread tracking    |
-| `msx align <source> <target>`        | Fuzzy-align and correlate brownfield engineering assets (STEP CAD, Modelica, SysML v2, ReqIF)           |
-| `msx sysml <action>`                 | OMG SysML v2 engineering toolkit: standard interchange (`.sysmlx`), validation, and container export    |
-| `msx oslc <action>`                  | OSLC Core 3.0 enterprise coexistence gateway for Teamcenter, Windchill, and DOORS                       |
-| `msx reqif <action>`                 | Lossless OMG ReqIF 1.2 requirements interchange with DOORS, Polarion, and Teamcenter                    |
-| `msx ddp <action>`                   | Digital Data Package (prostep ivip PSI 21 / OMG CASCaRA) packaging, inspection, and AASX bridging       |
-| `msx dhf <action> [paths...]`        | Design History File (FDA 21 CFR 820.30 / ISO 14971 / IEC 62304) regulatory compliance exporter          |
-| `msx dossier <action> [files...]`    | Compile, watermark, and cryptographically sign NERC RSAW & NIST OSCAL compliance dossiers               |
-| `msx gatekeeper <action> [files...]` | Run automated 5-stage ISO Grid Code interconnection screening pipeline or start gatekeeper CI/CD daemon |
+| Command                              | Description                                                                                                          |
+| :----------------------------------- | :------------------------------------------------------------------------------------------------------------------- |
+| `msx polyglot <action>`              | Multi-domain TGG projection (`msx polyglot project <sourceFile>`), formal verification, and digital thread tracking  |
+| `msx align <source> <target>`        | Fuzzy-align and correlate brownfield engineering assets (STEP CAD, Modelica, SysML v2, ReqIF)                        |
+| `msx sysml <action>`                 | OMG SysML v2 toolkit: `export`, `import`, `pull`, standard interchange (`.sysmlx`), validation, and container export |
+| `msx oslc <action>`                  | OSLC Core 3.0 enterprise coexistence gateway (`msx oslc export`) for Teamcenter, Windchill, and DOORS                |
+| `msx reqif <action>`                 | Lossless OMG ReqIF 1.2 requirements interchange (`msx reqif import`, `msx reqif export`) with DOORS & Polarion       |
+| `msx pull [name]`                    | Pull and synchronize artifacts from configured ALM/SysML remotes (`sync.ts`)                                         |
+| `msx ddp <action>`                   | Digital Data Package (prostep ivip PSI 21 / OMG CASCaRA) packaging, inspection, and AASX bridging                    |
+| `msx dhf <action> [paths...]`        | Design History File (FDA 21 CFR 820.30 / ISO 14971 / IEC 62304) regulatory compliance exporter                       |
+| `msx dossier <action> [files...]`    | Compile, watermark, and cryptographically sign NERC RSAW & NIST OSCAL compliance dossiers                            |
+| `msx gatekeeper <action> [files...]` | Run automated 5-stage ISO Grid Code interconnection screening pipeline or start gatekeeper CI/CD daemon              |
 
 ### 6. Language Engineering & DSL Workbench
 
@@ -181,7 +198,8 @@ npx msx --daemon <command>
 | `msx daemon <action>`                | Manage the background compiler daemon for instant compilation                         |
 | `msx build [entry]`                  | Compile generated parser AssemblyScript into WASM and native platform binaries        |
 | `msx generate [target] [entries...]` | Generate parser tables or a full VS Code extension from DSL language specifications   |
-| `msx parse <file>`                   | Parse a file using its language DSL parser (supports any of the 90 languages)         |
+| `msx init-kernel <name>`             | Scaffold a SysML v2 + AssemblyScript or TypeScript capability kernel package          |
+| `msx parse <file>`                   | Parse a file using its language DSL parser (supports any of the 106 languages)        |
 | `msx language <action> [target]`     | Manage registered language DSLs (`list`, `register`, `unregister`; alias: `msx lang`) |
 | `msx lsp`                            | Start the ModelScript polyglot Language Server over stdio for editor integration      |
 | `msx playground`                     | Launch the interactive dual-editor DSL grammar workbench                              |
@@ -189,27 +207,27 @@ npx msx --daemon <command>
 
 ### 7. Cloud HPC, Registry, Hub & Database Operations
 
-| Command                            | Description                                                                                         |
-| :--------------------------------- | :-------------------------------------------------------------------------------------------------- |
-| `msx cloud <action> [target]`      | Manage cloud HPC jobs, compute profiles, credit wallet, and live telemetry                          |
-| `msx init [path]`                  | Initialize a `package.json` manifest for a ModelScript, Modelica, or SysML project                  |
-| `msx login` / `msx logout`         | Authenticate with or log out from the ModelScript Registry                                          |
-| `msx token <action>`               | Create, list, and revoke scoped personal/CI authentication tokens                                   |
-| `msx keys <action>`                | Manage cryptographic signing keys and signed account identity (alias: `msx key`)                    |
-| `msx sign <file>`                  | Cryptographically sign a post or verify a W3C Data Integrity proof                                  |
-| `msx whoami`                       | Display information about the currently authenticated registry user                                 |
-| `msx install [package]`            | Install a package from the ModelScript Registry into the local workspace                            |
-| `msx publish <path>`               | Publish a library directory or model file to the ModelScript Registry                               |
-| `msx pack [path]`                  | Create an offline distribution `.zip` archive from a package                                        |
-| `msx vendor [path]`                | Vendor all workspace dependencies into a local directory for offline air-gap execution              |
-| `msx mirror [packages...]`         | Mirror packages to an air-gap directory or bundle, or import an air-gap bundle into the local store |
-| `msx stdlib [action] [pack]`       | Manage, list, and synchronize polyglot standard libraries across 90 languages                       |
-| `msx unpublish [path]`             | Remove a published library version from the ModelScript Registry                                    |
-| `msx deprecate <package> [reason]` | Deprecate or un-deprecate (`msx undeprecate`) a package release in the registry                     |
-| `msx yank <package> [reason]`      | Yank (tombstone) or restore (`msx unyank`) a package release in the registry                        |
-| `msx hub <command>`                | Manage, configure, and inspect federated ModelScript hub nodes                                      |
-| `msx db <action>`                  | Database schema migration, health verification, and pre-flight snapshot management                  |
-| `msx archive [action] [users..]`   | GDPR Art. 20 / CCPA data archive export with async worker queue and concurrency limits              |
+| Command                            | Description                                                                                            |
+| :--------------------------------- | :----------------------------------------------------------------------------------------------------- |
+| `msx cloud <action> [target]`      | Manage cloud HPC jobs, compute profiles, credit wallet, and live telemetry                             |
+| `msx init [path]`                  | Initialize a `package.json` manifest for a ModelScript, Modelica, or SysML project                     |
+| `msx login` / `msx logout`         | Authenticate with or log out from the ModelScript Registry                                             |
+| `msx token <action>`               | Create, list, and revoke scoped personal/CI authentication tokens                                      |
+| `msx keys <action>`                | Manage cryptographic signing keys and signed account identity (alias: `msx key`)                       |
+| `msx sign <file>`                  | Cryptographically sign a post or verify a W3C Data Integrity proof                                     |
+| `msx whoami`                       | Display information about the currently authenticated registry user                                    |
+| `msx install [package]`            | Install a package from the ModelScript Registry into the local workspace (aliases: `msx i`, `msx add`) |
+| `msx publish <path>`               | Publish a library directory or model file to the ModelScript Registry                                  |
+| `msx pack [path]`                  | Create an offline distribution `.zip` archive from a package                                           |
+| `msx vendor [path]`                | Vendor all workspace dependencies into a local directory for offline air-gap execution                 |
+| `msx mirror [packages...]`         | Mirror packages to an air-gap directory or bundle, or import an air-gap bundle into the local store    |
+| `msx stdlib [action] [pack]`       | Manage, list, and synchronize polyglot standard libraries across 106 languages                         |
+| `msx unpublish [path]`             | Remove a published library version from the ModelScript Registry                                       |
+| `msx deprecate <package> [reason]` | Deprecate or un-deprecate (`msx undeprecate`) a package release in the registry                        |
+| `msx yank <package> [reason]`      | Yank (tombstone) or restore (`msx unyank`) a package release in the registry                           |
+| `msx hub <command>`                | Manage, configure, and inspect federated ModelScript hub nodes                                         |
+| `msx db <action>`                  | Database schema migration, health verification, and pre-flight snapshot management                     |
+| `msx archive [action] [users..]`   | GDPR Art. 20 / CCPA data archive export with async worker queue and concurrency limits                 |
 
 ---
 
@@ -242,11 +260,11 @@ npx msx render DroneSimulation packages/examples/drone-reachability/modelica/Dro
 
 ## Scripts
 
-| Command             | Description                                                  |
-| :------------------ | :----------------------------------------------------------- |
-| `npm run build`     | Compile TypeScript and copy vendor assets to `dist/`         |
-| `npm run clean`     | Remove `dist/` build artifacts                               |
-| `npm run lint`      | Run ESLint across `src/` and `tests/`                        |
-| `npm test`          | Run CLI unit and end-to-end integration test suites          |
-| `npm run typecheck` | Run TypeScript type checking (`tsc --noEmit`)                |
-| `npm run watch`     | Compile TypeScript in incremental watch mode (`tsc --watch`) |
+| Command              | Description                                                  |
+| :------------------- | :----------------------------------------------------------- |
+| `pnpm run build`     | Compile TypeScript and copy vendor assets to `dist/`         |
+| `pnpm run clean`     | Remove `dist/` build artifacts                               |
+| `pnpm run lint`      | Run ESLint across `src/` and `tests/`                        |
+| `pnpm test`          | Run CLI unit and end-to-end integration test suites          |
+| `pnpm run typecheck` | Run TypeScript type checking (`tsc --noEmit`)                |
+| `pnpm run watch`     | Compile TypeScript in incremental watch mode (`tsc --watch`) |

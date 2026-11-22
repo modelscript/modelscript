@@ -124,7 +124,7 @@ Renders clean multi-segment connection polylines:
 
 Beyond acausal block schematics, ModelScript provides domain-specific geometric layout engines tailored to safety, behavioral, and power-systems engineering notations:
 
-1. **Fault Tree Gate Hierarchy Layout (`fault-tree.ts` / `fault-tree-layout.ts`)**:
+1. **Fault Tree Gate Hierarchy Layout (`fault-tree.ts`)**:
    - `synthesizeFaultTreeDiagram` transforms Minimal Cut Sets ($\text{MCS} = \{ C_1, \dots, C_m \}$) into four-tier standardized Fault Tree Analysis (FTA) diagrams:
      - **Tier 1 ($y = 40$)**: Top Hazard Event rect node centered at $x_{\text{center}} = W / 2$.
      - **Tier 2 ($y = 160$)**: Root Boolean `OR` gate (`createGateMarkup("OR")` SVG bezier shield) aggregating cut-set branches.
@@ -144,16 +144,13 @@ Beyond acausal block schematics, ModelScript provides domain-specific geometric 
 
 ---
 
-### 5. Semantic Visual Diffing, CST 3-Way Merge & Collaborative Presence
+### 5. Semantic Visual Diffing & Collaborative Presence
 
-1. **AST-Aware Structural Graph Diffing & Mental-Map Stabilization (`visual-diff-graph.ts`, `visual-diff-renderer.ts` / `visual-diff.ts`)**:
+1. **AST-Aware Structural Graph Diffing & Mental-Map Stabilization (`visual-diff-graph.ts`, `visual-diff-renderer.ts`)**:
    - `buildVisualDiffGraph` computes a semantic delta between `Base` and `Head` diagram revisions, classifying nodes and edges into `added`, `deleted`, `modified`, and `unchanged` states (`DiffStatus`).
    - **Breaking Interface Detection**: Inspects property and port changes (`diffProperties`) against architectural breaking keys (`direction`, `isAbstract`, `typeName`, `multiplicity`, `causality`, `variability`, `flowDirection`) and flags deleted components or port-count mutations as `MODIFIED (BREAKING)`.
    - **Anchor-Preserving Layout Stabilization (`computeIncrementalStabilization`)**: Locks `Base` node coordinates as immutable spatial anchors while iteratively relaxing newly added/modified `Head` nodes to eliminate bounding-box overlaps without destroying the reviewer's spatial mental map.
-2. **Tree-Edit-Distance CST Semantic Diff & 3-Way Merge Engine (`semantic_diff.ts` in `@modelscript/dsl`)**:
-   - `diffEntities` and `mergeEntities3Way` (`msx merge`) match declarations across `base`, `ours`, and `theirs` revisions by stable semantic key (`kind::name`) and dice-coefficient structural similarity ($\ge 0.55$) to detect renames, equations, and parameter modifications while ignoring formatting whitespace.
-   - Automatically merges non-overlapping edits and isolates true concurrent collisions (`modify-modify`, `delete-modify`, `add-add`) with line/column spans.
-3. **CRDT / WebSocket Cursor, Selection Lock & Spatial Delta Synchronization (`collab-manager.ts`)**:
+2. **CRDT / WebSocket Cursor, Selection Lock & Spatial Delta Synchronization (`collab-manager.ts`)**:
    - `CollabManager` coordinates real-time multi-user diagramming over WebSocket and VS Code Live Share transports:
      - **60 FPS Spatial Delta Streaming (`broadcastSpatialDelta`)**: Streams live component drag transformations (`PlacementItem`) with Last-Write-Wins (`LWW`) timestamp conflict resolution (`d.timestamp >= existing.timestamp`).
      - **Component Selection Locks (`SelectionLock`)**: Broadcasts per-peer component locks with distinct peer colors and automatic stale-peer heartbeat eviction (`purgeStalePeers`).

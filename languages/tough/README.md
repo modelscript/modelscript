@@ -1,7 +1,9 @@
 <div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
 <div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-# `@modelscript/tough`
+# @modelscript/tough
+
+**Maturity:** Alpha · **Extensions:** `.tough`, `.dat`, `.tgh` · **Docs:** [modelscript.org/languages/tough](https://modelscript.org/languages/tough)
 
 Lawrence Berkeley National Laboratory (LBNL) TOUGH2/TOUGH3 non-isothermal multiphase flow, deep geothermal reservoir, steam-water flashing, and hydrothermal energy simulation package for ModelScript.
 
@@ -15,11 +17,11 @@ Lawrence Berkeley National Laboratory (LBNL) TOUGH2/TOUGH3 non-isothermal multip
 
 ## File Support
 
-| Extension | Description | Role |
-| :--- | :--- | :--- |
-| `.tough` | TOUGH2 / TOUGH3 Master Input Deck | Grid blocks, rock physics & production wells |
-| `.dat` | Traditional TOUGH Deck Data File | Standard LBNL simulation deck |
-| `.incon` | TOUGH Initial Conditions File | Primary thermodynamic state variables ($P, T, S$) |
+| Extension | Description                       | Role                                              |
+| :-------- | :-------------------------------- | :------------------------------------------------ |
+| `.tough`  | TOUGH2 / TOUGH3 Master Input Deck | Grid blocks, rock physics & production wells      |
+| `.dat`    | Traditional TOUGH Deck Data File  | Standard LBNL simulation deck                     |
+| `.incon`  | TOUGH Initial Conditions File     | Primary thermodynamic state variables ($P, T, S$) |
 
 ## Quick Example
 

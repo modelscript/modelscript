@@ -3,14 +3,16 @@
 
 # @modelscript/reqif
 
-OMG ReqIF 1.2 / 1.1 / 1.0 (Requirements Interchange Format - ISO/IEC 17506) engineering language package (`.reqif`, `.reqifz`) for ModelScript. Features zero-regex WebAssembly XML parsing (`@modelscript/dsl/xml`), multi-file workspace indexing (`ReqIfWorkspaceIndex`), formal contract entailment proving via Nelson-Oppen (`EntailmentTheoryOracle`), 10 pre-flight requirements engineering lint rules (`M7001`–`M7010`), and bidirectional projections / 6 TGG rules linking ReqIF with SysML v2 and Modelica.
+**Maturity:** Beta · **Extensions:** `.reqif`, `.reqifz` · **Docs:** [modelscript.org/languages/reqif](https://modelscript.org/languages/reqif)
+
+OMG ReqIF 1.2 / 1.1 / 1.0 (Requirements Interchange Format - ISO/IEC 17506) engineering language package (`.reqif`, `.reqifz`) for ModelScript. Features zero-regex WebAssembly XML parsing (`@modelscript/dsl/xml`), multi-file workspace indexing, formal contract entailment proving via Nelson-Oppen (`EntailmentTheoryOracle`), 10 pre-flight requirements engineering lint rules (`M7001`–`M7010`), and bidirectional projections / 6 TGG rules linking ReqIF with SysML v2 and Modelica.
 
 ---
 
 ## Core Capabilities
 
 - **Lossless WASM XML Parser (`parseReqIf`, `serializeReqIf`)**: Parses standard OMG ReqIF 1.2 XML (`.reqif`, `.reqifz`) with 1-indexed source line/column coordinates, typed attribute definitions (`String`, `Integer`, `Real`, `Boolean`, `Enumeration`, `XHTML`), hierarchical specifications, and semantic relations (`satisfies`, `verifies`, `refines`, `derives`).
-- **Multi-File Workspace Indexer (`ReqIfWorkspaceIndex`)**: Implements `IWorkspaceIndex` to catalog all requirement specifications, individual requirements (`SPEC-OBJECT`), and traceability links across multi-document repositories for instant LSP navigation and cross-file reference finding.
+- **Multi-File Workspace Indexer**: Provides workspace symbol indexing to catalog all requirement specifications, individual requirements (`SPEC-OBJECT`), and traceability links across multi-document repositories for instant LSP navigation and cross-file reference finding.
 - **Formal V-Model Entailment Prover (`verifyReqIfEntailment`)**: Extracts numeric requirement contracts and couples them directly with `@modelscript/runtime`'s `EntailmentTheoryOracle`. Proves whether sub-requirements mathematically guarantee parent specifications ($\bigwedge R_{\text{child}} \models R_{\text{parent}}$) and emits cryptographically signed proof manifests.
 - **Pre-Flight Diagnostic Linter (`lintReqIf`, `M7001`–`M7010`)**: 10 static semantics and quality rules detecting dangling relations, circular hierarchies, unbounded safety contracts, unverified leaf requirements, and type mismatches with 1-click Quick-Fix actions.
 - **SysML v2 Bidirectional Projection (`reqifToSysml2`, `sysml2ToReqIf`)**: Translates ReqIF requirement trees directly into KerML / SysML v2 `requirement def` blocks, usages, and satisfaction declarations.
@@ -32,7 +34,6 @@ OMG ReqIF 1.2 / 1.1 / 1.0 (Requirements Interchange Format - ISO/IEC 17506) engi
 | `src/verification/multi-domain.ts` | Cross-domain requirement contract satisfaction verification across Modelica and SysML v2                             |
 | `src/projections/sysml2.ts`        | `reqifToSysml2` and `sysml2ToReqIf` bidirectional translators                                                        |
 | `src/projections/modelica.ts`      | `reqifToModelicaVerifier` Modelica runtime monitor and assertion block generator                                     |
-| `src/workspace-index.ts`           | `ReqIfWorkspaceIndex` multi-file symbol and traceability link indexer                                                |
 | `src/lsp.ts`                       | LSP diagnostics, hover cards, document symbols, and code actions                                                     |
 
 ---

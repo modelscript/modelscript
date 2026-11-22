@@ -3,14 +3,16 @@
 
 # @modelscript/pscad
 
-PSCAD-compatible electromagnetic transients (EMT) and power systems engineering package (`.pscx`, `.pslx`, `.pswx`, `.psmx`, `.psout`, `.cfg`, `.dat`) for ModelScript. Features multi-file workspace indexing (`PscadWorkspaceIndex`), Dommel companion-circuit & Bergeron traveling-wave EMT netlist extraction, IEEE 2800-2022 & NERC PRC-029-1 grid-code compliance verification, IEEE C37.111 COMTRADE & PSCAD V5 `.psout` waveform I/O, 17 pre-flight electrical & control lint rules (`M6001`–`M6017`), Single-Line Diagram (SLD) synthesis, and Modelica/SSP co-simulation projections.
+**Maturity:** Beta · **Extensions:** `.pscx`, `.pslx`, `.pswx`, `.psmx`, `.psout` · **Docs:** [modelscript.org/languages/pscad](https://modelscript.org/languages/pscad)
+
+PSCAD-compatible electromagnetic transients (EMT) and power systems engineering package (`.pscx`, `.pslx`, `.pswx`, `.psmx`, `.psout`) for ModelScript. Features multi-file workspace indexing, Dommel companion-circuit & Bergeron traveling-wave EMT netlist extraction, IEEE 2800-2022 & NERC PRC-029-1 grid-code compliance verification, IEEE C37.111 COMTRADE & PSCAD V5 `.psout` waveform I/O, 17 pre-flight electrical & control lint rules (`M6001`–`M6017`), Single-Line Diagram (SLD) synthesis, and Modelica/SSP co-simulation projections.
 
 ---
 
 ## Core Capabilities
 
 - **PSCAD Schematic & Library XML Parser (`parsePscx`)**: Parses PSCAD cases (`.pscx`), user component libraries (`.pslx`), workspaces (`.pswx`), and master definitions (`.psmx`), preserving schematic coordinates, multi-module hierarchies (`<Definition classid="UserCmpDefn">`), Master Library port layouts, wire nets, virtual wireless adapters (`datalabel`, `xnode`, `radio_link`), and source line/column locations.
-- **Multi-File Workspace Indexing & Dynamic `master.pslx` Ingestion (`PscadWorkspaceIndex`, `registerMasterLibrary`)**: Implements `IWorkspaceIndex` to index `.pslx` libraries, user workspaces, and local user-provided `master.pslx` library files. When a local `master.pslx` is provided or auto-discovered, all Master Library component definitions, multi-tab parameter forms, port configurations, and FlyBy documentation are dynamically synthesized into LSP catalogs and UI palettes with zero manual authoring.
+- **Multi-File Workspace Indexing & Dynamic `master.pslx` Ingestion (`registerMasterLibrary`)**: Provides workspace symbol indexing to index `.pslx` libraries, user workspaces, and local user-provided `master.pslx` library files. When a local `master.pslx` is provided or auto-discovered, all Master Library component definitions, multi-tab parameter forms, port configurations, and FlyBy documentation are dynamically synthesized into LSP catalogs and UI palettes with zero manual authoring.
 - **Dommel Companion-Circuit & Bergeron Traveling-Wave EMT Netlist (`extractEmtNetlist`, `netlistToEmtCircuit`, `EmtSolver`)**: Lowers schematic graphs into a structured `EmtNetlist` with 100% component lowering coverage on industrial benchmarks, supporting:
   - 3-phase Thévenin AC & DC voltage sources, battery energy storage systems (`battery`), controlled current sources (`src_ccin_1`), RLC branches, timed circuit breakers, and multi-winding linear/saturable transformers with Jiles-Atherton dynamic core hysteresis ($M_s, a, \alpha, k, c$) and core remanence $B_r$
   - Distributed-parameter Bergeron traveling-wave and lumped $\pi$-section transmission lines / cables
@@ -43,7 +45,6 @@ PSCAD-compatible electromagnetic transients (EMT) and power systems engineering 
 | `src/index.ts`                          | Public package exports                                                                                                                             |
 | `src/language.ts`                       | `pscadLanguage` definition, `runPscadSimulationPipeline`, and LSP actions (`lint_pscad_project`, `inspect_pscad_schematic`, `simulate_hybrid_emt`) |
 | `src/parser/pscx-parser.ts`             | `parsePscx` XML parser for `.pscx`, `.pslx`, `.pswx`, and `.psmx` files                                                                            |
-| `src/workspace-index.ts`                | `PscadWorkspaceIndex` multi-file symbol indexer for PSCAD libraries and cases                                                                      |
 | `src/netlist/emt-netlist.ts`            | `extractEmtNetlist` and `netlistToEmtCircuit` lowering schematics to Dommel/Bergeron EMT circuits                                                  |
 | `src/solver/vector-fitting.ts`          | Gustavsen-Semlyen rational vector fitting and passivity enforcement for frequency-dependent lines                                                  |
 | `src/benchmarking/pmr-benchmarker.ts`   | Automated EMT vs. reference waveform PMR and IEEE 2800 benchmark harness                                                                           |

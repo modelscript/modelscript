@@ -1,6 +1,6 @@
 ---
 title: Introduction
-description: Overview of the ModelScript computable digital thread platform, polyglot WebAssembly compiler, 13 Nelson-Oppen theory oracles, and 93 engineering languages.
+description: Overview of the ModelScript computable digital thread platform, polyglot WebAssembly compiler, 13 Nelson-Oppen theory oracles, and 105 documented engineering formats.
 ---
 
 # Introduction
@@ -11,7 +11,7 @@ Welcome to **ModelScript**, the open-core **computable digital thread** platform
 
 ## What is the Computable Digital Thread?
 
-Modern cyber-physical systems — from electric vehicles, utility power grids, and satellites to surgical robots, proton therapy nozzles, and subsea flowlines — require tight coordination across **93 engineering languages and file formats** spanning **12 industry verticals**:
+Modern cyber-physical systems — from electric vehicles, utility power grids, and satellites to surgical robots, proton therapy nozzles, and subsea flowlines — require tight coordination across **105 documented engineering formats** (**32 Beta, 72 Alpha, 1 Pre-Alpha**) spanning **12 industry verticals**:
 
 - **System Architecture, Requirements, Security & Ontologies** (`SysML v2`, `KerML`, `ReqIF`, `NIST OSCAL`, `OSLC 3.0`, `OWL2`, `AAS / DDP`)
 - **Multi-Domain Acausal, Optimization & Block-Diagram Simulation** (`Modelica 3.x`, `ModelScript .msx`, `AMPL`, `MATLAB Simulink`, `EASY5`, `FMI 2.0/3.0 FMU`, `SSP 1.0/2.0`)
@@ -31,7 +31,7 @@ flowchart LR
     A["Architecture & Requirements<br/>(SysML v2 / ReqIF / OSCAL / OWL2)"] <-->|"Bidirectional TGG"| P["1D & Multibody Physics<br/>(Modelica / Simulink / PSCAD)"]
     P <-->|"Dynamic Kinematic & CSG Binding"| G["3D CAD, Metrology & Robotics<br/>(STEP / QIF / OpenSCAD / URDF)"]
     P <-->|"ROM Surrogates & Field Coupling"| C["Continuum CAE, Process & Bio/Med<br/>(FEA / CFD / OLGA / DICOM-RT)"]
-    A & P & G & C -->|"13 Nelson-Oppen Theory Oracles"| V["SARIF Proof Manifests<br/>& Regulatory DHF Dossiers"]
+    A & P & G & C -->|"19 Nelson-Oppen Theory Oracles"| V["SARIF Proof Manifests<br/>& Regulatory DHF Dossiers"]
     M["AI Agents (@modelscript/mcp)"] <-->|"Closed-Loop Synthesis"| P & V
 ```
 
@@ -41,7 +41,7 @@ flowchart LR
 | :--------------------------- | :---------------------------------------------------------- | :--------------------------------------------------------------------------------------------- |
 | **Artifact Storage**         | Proprietary binary blobs in centralized SQL/PLM vaults      | Plain-text, human-readable source files versioned in Git                                       |
 | **Cross-Domain Links**       | Manual, untyped hyperlinks that silently go stale           | Typed `@satisfies` / `@verifies` bindings & bidirectional Triple Graph Grammars (TGG)          |
-| **Static Analysis**          | Checked manually during design reviews                      | **1,160 static lint rules** across **93 languages** evaluated on every keystroke and CI push   |
+| **Static Analysis**          | Checked manually during design reviews                      | **1,432 static lint rules** across **105 formats** evaluated on every keystroke and CI push    |
 | **Requirement Verification** | Post-hoc spreadsheet sign-offs                              | Automated $\text{CDCL}(\mathcal{T})$ SMT, IC3/PDR, and Taylor-model reachability proofs        |
 | **Code Review & Diffs**      | Opaque binary attachments or screenshot exports             | Structural AST/DAE diffs and visual schematic PR diffs (`msx pr-diff`)                         |
 | **AI Copilot Integration**   | Unverified text generation prone to physical hallucinations | Closed-loop MCP server (`@modelscript/mcp`) grounded in DAE solvers and formal counterexamples |
@@ -50,7 +50,7 @@ flowchart LR
 
 ## Core Pillars of ModelScript
 
-### 1. Code-First Engineering Across 93 Languages (26 Beta & 67 Alpha)
+### 1. Code-First Engineering Across 105 Documented Formats (32 Beta, 72 Alpha, 1 Pre-Alpha)
 
 Every model, schematic, requirement, netlist, and mesh configuration lives as clean text in Git. Engineers diff, review, merge, and gate physical hardware designs using standard pull requests, SARIF code scanning, and reproducible CI/CD pipelines.
 
@@ -86,7 +86,7 @@ A single background worker pool (`@modelscript/lsp`) indexes polyglot workspaces
 
 ### 6. AI-Native Closed-Loop Engineering (`@modelscript/mcp`)
 
-Large language models struggle with physical engineering when left to guess differential equations in free text. `@modelscript/mcp` exposes **105 deterministic compiler, simulation, CAD, TGG, grid/water/telecom, and formal verification tools** over the Model Context Protocol (MCP). AI agents iteratively draft code, run `modelica_lint`, integrate stiff DAEs with `modelica_simulate`, falsify requirements, and calibrate parameters via `modelica_diff_calibrate` until every formal proof passes.
+Large language models struggle with physical engineering when left to guess differential equations in free text. `@modelscript/mcp` exposes **121 static deterministic compiler, simulation, CAD, ECAD, TGG, ALM, MagicDraw, grid/water/telecom, UQ, and formal verification tools** over the Model Context Protocol (MCP). AI agents iteratively draft code, run `modelica_lint`, integrate stiff DAEs with `modelica_simulate`, falsify requirements, and calibrate parameters via `modelica_diff_calibrate` until every formal proof passes.
 
 ---
 

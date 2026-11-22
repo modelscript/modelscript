@@ -22,7 +22,7 @@
         "FMU"
       ]
     },
-    "ruleCount": 308
+    "ruleCount": 316
   },
   {
     "slug": "ampl",
@@ -88,7 +88,7 @@
         "ReqIF"
       ]
     },
-    "ruleCount": 108
+    "ruleCount": 115
   },
   {
     "slug": "reqif",
@@ -130,17 +130,29 @@
     "group": "core",
     "pkgName": "@modelscript/magicdraw",
     "version": "0.1.0",
-    "tier": "alpha",
-    "cliCommand": null,
-    "actions": [],
+    "tier": "beta",
+    "cliCommand": "msx magicdraw",
+    "actions": [
+      "inspect",
+      "lint",
+      "to-sysml",
+      "to-reqif",
+      "to-modelica",
+      "render",
+      "diff",
+      "migrate"
+    ],
     "capabilities": {
       "parse": true,
-      "lint": false,
+      "lint": true,
       "dae": true,
       "simulate": false,
-      "projections": []
+      "projections": [
+        "SysML v2",
+        "Modelica"
+      ]
     },
-    "ruleCount": 0
+    "ruleCount": 14
   },
   {
     "slug": "oscal",
@@ -223,6 +235,27 @@
     "ruleCount": 24
   },
   {
+    "slug": "sparql",
+    "name": "SPARQL 1.1",
+    "sidebar": "SPARQL Queries",
+    "ext": ".rq, .sparql",
+    "role": "RDF knowledge-graph & digital-thread semantic queries",
+    "group": "core",
+    "pkgName": "@modelscript/sparql",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": null,
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": false,
+      "dae": false,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
+  },
+  {
     "slug": "step",
     "name": "STEP (ISO 10303)",
     "sidebar": "STEP CAD (ISO 10303)",
@@ -231,7 +264,7 @@
     "group": "geometry",
     "pkgName": "@modelscript/step",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx csg",
     "actions": [],
     "capabilities": {
@@ -639,7 +672,7 @@
     "group": "automotive",
     "pkgName": "@modelscript/simulink",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx simulink",
     "actions": [
       "lint",
@@ -884,7 +917,10 @@
       "psout",
       "extract",
       "build-fmu",
-      "benchmark"
+      "benchmark",
+      "insulation",
+      "harmonics",
+      "ssci"
     ],
     "capabilities": {
       "parse": true,
@@ -896,7 +932,7 @@
         "SSP"
       ]
     },
-    "ruleCount": 53
+    "ruleCount": 55
   },
   {
     "slug": "psse",
@@ -922,6 +958,10 @@
       "fault",
       "modes",
       "n1",
+      "n11",
+      "fcitc",
+      "breaker-duty",
+      "cct",
       "cpf",
       "sld",
       "idv",
@@ -948,7 +988,7 @@
         "Modelica"
       ]
     },
-    "ruleCount": 64
+    "ruleCount": 86
   },
   {
     "slug": "powerfactory",
@@ -1379,6 +1419,174 @@
     "ruleCount": 0
   },
   {
+    "slug": "c37118",
+    "name": "IEEE C37.118 Synchrophasor",
+    "sidebar": "IEEE C37.118 PMU",
+    "ext": ".c37118, .pmu",
+    "role": "Synchrophasor PMU streaming telemetry & wide-area monitoring",
+    "group": "power",
+    "pkgName": "@modelscript/c37118",
+    "version": "0.1.0",
+    "tier": "alpha",
+    "cliCommand": null,
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": false,
+      "dae": true,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
+  },
+  {
+    "slug": "cyme",
+    "name": "Eaton CYME",
+    "sidebar": "Eaton CYME Distribution",
+    "ext": ".sxst, .cyme",
+    "role": "Distribution network load flow, hosting capacity & protection",
+    "group": "power",
+    "pkgName": "@modelscript/cyme",
+    "version": "0.1.0",
+    "tier": "alpha",
+    "cliCommand": null,
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": false,
+      "dae": true,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
+  },
+  {
+    "slug": "gridlabd",
+    "name": "GridLAB-D",
+    "sidebar": "GridLAB-D (.glm)",
+    "ext": ".glm",
+    "role": "Agent-based distribution grid & transactive energy simulation",
+    "group": "power",
+    "pkgName": "@modelscript/gridlabd",
+    "version": "0.1.0",
+    "tier": "alpha",
+    "cliCommand": null,
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": false,
+      "dae": true,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
+  },
+  {
+    "slug": "iec104",
+    "name": "IEC 60870-5-104",
+    "sidebar": "IEC 60870-5-104 SCADA",
+    "ext": ".iec104, .104",
+    "role": "Substation telecontrol & SCADA protocol telemetry",
+    "group": "power",
+    "pkgName": "@modelscript/iec104",
+    "version": "0.1.0",
+    "tier": "alpha",
+    "cliCommand": null,
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": false,
+      "dae": true,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
+  },
+  {
+    "slug": "plscadd",
+    "name": "PLS-CADD",
+    "sidebar": "PLS-CADD Transmission Lines",
+    "ext": ".pol, .loa, .plscadd",
+    "role": "Overhead transmission line sag-tension & structure clearances",
+    "group": "power",
+    "pkgName": "@modelscript/plscadd",
+    "version": "0.1.0",
+    "tier": "alpha",
+    "cliCommand": null,
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": false,
+      "dae": true,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
+  },
+  {
+    "slug": "powerworld",
+    "name": "PowerWorld Simulator",
+    "sidebar": "PowerWorld (.aux/.cdf)",
+    "ext": ".aux, .cdf",
+    "role": "Transmission power flow, contingency screening & OPF",
+    "group": "power",
+    "pkgName": "@modelscript/powerworld",
+    "version": "0.1.0",
+    "tier": "alpha",
+    "cliCommand": null,
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": false,
+      "dae": true,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
+  },
+  {
+    "slug": "pypsa",
+    "name": "PyPSA",
+    "sidebar": "PyPSA Energy Systems",
+    "ext": ".pypsa, .pypsa.json",
+    "role": "Sector-coupled power & energy system capacity expansion",
+    "group": "power",
+    "pkgName": "@modelscript/pypsa",
+    "version": "0.1.0",
+    "tier": "alpha",
+    "cliCommand": null,
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": false,
+      "dae": true,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
+  },
+  {
+    "slug": "rtds",
+    "name": "RTDS / RSCAD",
+    "sidebar": "RTDS / RSCAD (.dft)",
+    "ext": ".dft, .rtds",
+    "role": "Real-time digital simulator EMT drafts & HIL models",
+    "group": "power",
+    "pkgName": "@modelscript/rtds",
+    "version": "0.1.0",
+    "tier": "alpha",
+    "cliCommand": null,
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": false,
+      "dae": true,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
+  },
+  {
     "slug": "olga",
     "name": "OLGA",
     "sidebar": "OLGA Multiphase Flow",
@@ -1486,6 +1694,27 @@
     "ruleCount": 10
   },
   {
+    "slug": "las",
+    "name": "CWLS LAS Well Logs",
+    "sidebar": "CWLS LAS Well Logs",
+    "ext": ".las",
+    "role": "Petrophysical wireline well-log curves & formation evaluation",
+    "group": "oil-gas",
+    "pkgName": "@modelscript/las",
+    "version": "0.1.0",
+    "tier": "pre-alpha",
+    "cliCommand": null,
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": false,
+      "simulate": true,
+      "projections": []
+    },
+    "ruleCount": 7
+  },
+  {
     "slug": "relap5",
     "name": "RELAP5-3D",
     "sidebar": "RELAP5 Nuclear Loops",
@@ -1582,6 +1811,65 @@
       ]
     },
     "ruleCount": 13
+  },
+  {
+    "slug": "atopile",
+    "name": "atopile",
+    "sidebar": "atopile (.ato)",
+    "ext": ".ato",
+    "role": "Code-first electronic hardware & PCB design",
+    "group": "electronics",
+    "pkgName": "@modelscript/atopile",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx atopile",
+    "actions": [
+      "lint",
+      "netlist",
+      "to-ipc2581",
+      "uq"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
+  },
+  {
+    "slug": "kicad",
+    "name": "KiCad ECAD",
+    "sidebar": "KiCad PCB & Schematics",
+    "ext": ".kicad_pcb, .kicad_sch, .kicad_sym, .kicad_mod",
+    "role": "PCB layouts, schematics, footprints & DRC/DFM verification",
+    "group": "electronics",
+    "pkgName": "@modelscript/kicad",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx kicad",
+    "actions": [
+      "lint",
+      "parasitics",
+      "consistency",
+      "drc",
+      "to-ipc2581",
+      "from-ipc2581",
+      "to-idx",
+      "to-specctra",
+      "to-spice"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": false,
+      "projections": [
+        "SPICE"
+      ]
+    },
+    "ruleCount": 0
   },
   {
     "slug": "verilog-a",

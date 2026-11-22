@@ -256,6 +256,37 @@ export const Pack: CommandModule<{}, PackArgs> = {
       );
 
       zip.addFile("index.json", Buffer.from(indexJson, "utf-8"));
+      try {
+        const { encodePackageIndex } = await import("@modelscript/runtime");
+        const symMap = new Map(
+          symbolsArr.map(([id, s]) => [
+            id,
+            {
+              id: s.id,
+              kind: s.kind,
+              name: s.name,
+              ruleName: "class_definition",
+              namePath: "name",
+              startOffset: s.startOffset,
+              endOffset: s.endOffset,
+              parentId: null,
+              exports: [],
+              inherits: [],
+              metadata: {},
+              fieldName: null,
+              resourceId: s.resourceId,
+            },
+          ]),
+        );
+        const msidxBytes = encodePackageIndex({
+          symbols: symMap,
+          byName: byNameMap,
+          childrenOf: new Map([[null, symbolsArr.map(([id]) => id)]]),
+        });
+        zip.addFile("index.msidx", Buffer.from(msidxBytes.buffer, msidxBytes.byteOffset, msidxBytes.byteLength));
+      } catch {
+        // Non-fatal: index.json remains present
+      }
       zip.addFile("metadata.json", Buffer.from(metadataJson, "utf-8"));
       zip.addFile("manifest.json", Buffer.from(manifestJson, "utf-8"));
       zip.addFile("icons.json", Buffer.from(JSON.stringify({}), "utf-8"));

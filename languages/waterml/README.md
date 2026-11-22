@@ -1,7 +1,9 @@
 <div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
 <div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-# `@modelscript/waterml`
+# @modelscript/waterml
+
+**Maturity:** Alpha · **Extensions:** `.waterml`, `.wml2`, `.xml`, `.json` · **Docs:** [modelscript.org/languages/waterml](https://modelscript.org/languages/waterml)
 
 OGC WaterML 2.0 (OGC 12-031r4 / WMO No. 1083) and TimeseriesML hydrologic telemetry engine, stage-discharge power-law rating curve fitting, hydraulic engine boundary projections (HEC-RAS, EPANET, SWMM), and zero-GC linear-memory `DAEBuilder` arena lowering for ModelScript.
 

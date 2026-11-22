@@ -3,6 +3,8 @@
 
 # @modelscript/autosar
 
+**Maturity:** Alpha · **Extensions:** `.arxml` · **Docs:** [modelscript.org/languages/autosar](https://modelscript.org/languages/autosar)
+
 Native AUTOSAR Classic (R4.0–R22-11) and Adaptive ARXML (`.arxml`) compiler, pre-flight automotive architecture linter (`M7401`–`M7410`), cycle-accurate Virtual RTE execution scheduler, and direct WebAssembly `DAEBuilder` lowering for ModelScript.
 
 ---
@@ -14,32 +16,31 @@ Native AUTOSAR Classic (R4.0–R22-11) and Adaptive ARXML (`.arxml`) compiler, p
 - **Cycle-Accurate Virtual RTE Simulator (`VirtualRte`)**: Deterministic discrete-event execution scheduler simulating `INIT-EVENT`, periodic `TIMING-EVENT`, and `DATA-RECEIVED-EVENT` triggers with implicit/explicit inter-runnable communication buffers.
 - **Direct Linear-Memory DAE Arena Lowering (`lowerAutosarToDae`)**: Lowers atomic and composition SWC port topologies and control laws directly into `@modelscript/runtime`'s `DAEBuilder` arena with optional 1D vehicle plant coupling.
 - **Polyglot Projections (`autosarToModelica`, `autosarToSysml`, `fmuToAutosar`)**: Bidirectional translation between AUTOSAR `.arxml`, `Modelica.Blocks`, SysML v2 `part def` architectures, and FMI 2.0/3.0 Functional Mock-up Units.
-- **Multi-File Workspace Indexer & LSP (`AutosarWorkspaceIndex`, `validateAutosar`, `getAutosarDocumentSymbols`, `getAutosarHover`)**: Implements `IWorkspaceIndex` for distributed multi-file `.arxml` repositories.
+- **Multi-File Workspace Indexer & LSP (`validateAutosar`, `getAutosarDocumentSymbols`, `getAutosarHover`)**: Provides workspace symbol indexing for distributed multi-file `.arxml` repositories.
 
 ---
 
 ## Package Structure
 
-| Path                                | Description                                                                            |
-| :---------------------------------- | :------------------------------------------------------------------------------------- |
-| `src/index.ts`                      | Public package exports                                                                 |
-| `src/language.ts`                   | `autosarLanguage` grammar and `.arxml` file extension registration                     |
-| `src/types.ts`                      | Core TypeScript interfaces (`AutosarModel`, `AutosarSwComponent`, `AutosarPdu`, etc.)  |
-| `src/errors.ts`                     | `AutosarErrorCode` standard error catalog (`M7401`–`M7408`)                            |
-| `src/parser/arxml-parser.ts`        | `parseArxml` zero-regex XML parser for AUTOSAR Classic & Adaptive `.arxml`             |
-| `src/parser/index.ts`               | Parser module re-exports                                                               |
-| `src/lints/rules.ts`                | `lintAutosarModel` pre-flight automotive verification engine (`M7401`–`M7410`)         |
-| `src/lints/index.ts`                | Linter module re-exports                                                               |
-| `src/rte/virtual-rte.ts`            | `VirtualRte` cycle-accurate discrete RTE scheduler and communication buffer engine     |
-| `src/rte/index.ts`                  | Virtual RTE module re-exports                                                          |
-| `src/dae/autosar-to-dae.ts`         | `lowerAutosarToDae` direct WebAssembly `DAEBuilder` lowering                           |
-| `src/dae/index.ts`                  | DAE lowering module re-exports                                                         |
-| `src/projections/modelica.ts`       | `autosarToModelica` projection to `Modelica.Blocks`                                    |
-| `src/projections/sysml.ts`          | `autosarToSysml` projection to SysML v2 `part def` and port connectors                 |
-| `src/projections/fmu-to-autosar.ts` | `fmuToAutosar` synthesizer generating ARXML SWCs and RTE glue from FMU descriptors     |
-| `src/projections/index.ts`          | Projections module re-exports                                                          |
-| `src/workspace-index.ts`            | `AutosarWorkspaceIndex` implementing `IWorkspaceIndex` for multi-file ARXML workspaces |
-| `src/lsp.ts`                        | LSP diagnostics, document symbols, and hover providers                                 |
+| Path                                | Description                                                                           |
+| :---------------------------------- | :------------------------------------------------------------------------------------ |
+| `src/index.ts`                      | Public package exports                                                                |
+| `src/language.ts`                   | `autosarLanguage` grammar and `.arxml` file extension registration                    |
+| `src/types.ts`                      | Core TypeScript interfaces (`AutosarModel`, `AutosarSwComponent`, `AutosarPdu`, etc.) |
+| `src/errors.ts`                     | `AutosarErrorCode` standard error catalog (`M7401`–`M7408`)                           |
+| `src/parser/arxml-parser.ts`        | `parseArxml` zero-regex XML parser for AUTOSAR Classic & Adaptive `.arxml`            |
+| `src/parser/index.ts`               | Parser module re-exports                                                              |
+| `src/lints/rules.ts`                | `lintAutosarModel` pre-flight automotive verification engine (`M7401`–`M7410`)        |
+| `src/lints/index.ts`                | Linter module re-exports                                                              |
+| `src/rte/virtual-rte.ts`            | `VirtualRte` cycle-accurate discrete RTE scheduler and communication buffer engine    |
+| `src/rte/index.ts`                  | Virtual RTE module re-exports                                                         |
+| `src/dae/autosar-to-dae.ts`         | `lowerAutosarToDae` direct WebAssembly `DAEBuilder` lowering                          |
+| `src/dae/index.ts`                  | DAE lowering module re-exports                                                        |
+| `src/projections/modelica.ts`       | `autosarToModelica` projection to `Modelica.Blocks`                                   |
+| `src/projections/sysml.ts`          | `autosarToSysml` projection to SysML v2 `part def` and port connectors                |
+| `src/projections/fmu-to-autosar.ts` | `fmuToAutosar` synthesizer generating ARXML SWCs and RTE glue from FMU descriptors    |
+| `src/projections/index.ts`          | Projections module re-exports                                                         |
+| `src/lsp.ts`                        | LSP diagnostics, document symbols, and hover providers                                |
 
 ---
 
@@ -81,14 +82,14 @@ Native AUTOSAR Classic (R4.0–R22-11) and Adaptive ARXML (`.arxml`) compiler, p
 
 ```bash
 # Lint an AUTOSAR ARXML architecture file
-npx msx autosar lint powertrain_swc.arxml
+msx autosar lint powertrain_swc.arxml
 
 # Simulate periodic RTE events and lower to DAE arena
-npx msx autosar simulate powertrain_swc.arxml
+msx autosar simulate powertrain_swc.arxml
 
 # Project AUTOSAR composition to Modelica 3.x or SysML v2
-npx msx autosar to-modelica powertrain_swc.arxml
-npx msx autosar to-sysml powertrain_swc.arxml
+msx autosar to-modelica powertrain_swc.arxml
+msx autosar to-sysml powertrain_swc.arxml
 ```
 
 ### Programmatic API

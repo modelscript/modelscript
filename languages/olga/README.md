@@ -3,6 +3,8 @@
 
 # @modelscript/olga
 
+**Maturity:** Beta · **Extensions:** `.opi`, `.olga`, `.key`, `.genkey`, `.inp` · **Docs:** [modelscript.org/languages/olga](https://modelscript.org/languages/olga)
+
 High-fidelity transient multiphase dynamic flow assurance package (`.opi`, `.olga`, `.key`, `.genkey`, `.inp`) for ModelScript. Features zero-GC in-WASM 1D Drift-Flux and 3-Fluid 9-equation DAE lowering to `DAEBuilder`, XML ingestion via `@modelscript/dsl/xml`, legacy keyword deck parsing & serialization, formal SysML v2 requirements & operational state machine verification, and 13 pre-flight multiphase stability & integrity lint rules (`M7001`–`M7013`).
 
 ---

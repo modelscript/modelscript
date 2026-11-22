@@ -282,6 +282,26 @@ export function createRequire(_filename?: string | URL) {
 }
 export const module = { builtinModules, isBuiltin, createRequire };
 
+// --- worker_threads ---
+export const isMainThread = true;
+export const parentPort = null;
+export const workerData = undefined;
+export class Worker {
+  postMessage() {}
+  on() {
+    return this;
+  }
+  once() {
+    return this;
+  }
+  off() {
+    return this;
+  }
+  async terminate() {
+    return 0;
+  }
+}
+
 const defaultExport = {
   sep,
   delimiter,
@@ -356,6 +376,10 @@ const defaultExport = {
   isBuiltin,
   createRequire,
   module,
+  isMainThread,
+  parentPort,
+  workerData,
+  Worker,
 };
 
 export default defaultExport;

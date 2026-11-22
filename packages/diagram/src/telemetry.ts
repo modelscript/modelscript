@@ -184,3 +184,70 @@ export interface SimulationFrame {
   stateVector: Record<string, number> | Float64Array;
   varIndexMap?: Map<string, number> | Record<string, number>;
 }
+
+export interface LiveValueBadgeOptions {
+  /** Number of decimal places to display (default: 2). */
+  precision?: number | undefined;
+  /** Optional unit lookup keyed by variable or cell ID. */
+  units?: Record<string, string> | undefined;
+  /** Optional [min, max] range for heat-map stroke coloring on edges/nodes. */
+  heatmapRange?: [number, number] | undefined;
+}
+
+/**
+ * Applies inline live simulation value badges (and optional Turbo heat-map stroke coloring)
+ * to diagram nodes and edges whose IDs match keys in `values` (e.g., `R1.v`, `bus_1`, `wire_2`).
+ * Shared across Morsel and VS Code for unified live telemetry overlays.
+ */
+export function applyLiveValueBadges(
+  cells: {
+    nodes: Array<AnimatableCell & { setAttrs?: ((attrs: Record<string, unknown>) => void) | undefined }>;
+    edges: Array<AnimatableCell & { setLabels?: ((labels: unknown[]) => void) | undefined }>;
+  },
+  values: Record<string, number>,
+  options: LiveValueBadgeOptions = {},
+): number {
+  const precision = options.precision ?? 2;
+  const units = options.units;
+  const range = options.heatmapRange;
+  let updated = 0;
+
+  const formatVal = (key: string, v: number): string => {
+    const unit = units?.[key] ? ` ${units[key]}` : "";
+    return `${v.toFixed(precision)}${unit}`;
+  };
+
+  const colorFor = (v: number): string | null => {
+    if (!range || range[1] <= range[0]) return null;
+    return turboColormap((v - range[0]) / (range[1] - range[0]));
+  };
+
+  for (const node of cells.nodes) {
+    const id = node.id;
+    if (!id) continue;
+    const val = values[id];
+    if (typeof val !== "number" || !Number.isFinite(val)) continue;
+    node.attr?.("badge/text", formatVal(id, val));
+    const col = colorFor(val);
+    if (col) node.attr?.("body/stroke", col);
+    updated++;
+  }
+
+  for (const edge of cells.edges) {
+    const id = edge.id;
+    if (!id) continue;
+    const val = values[id];
+    if (typeof val !== "number" || !Number.isFinite(val)) continue;
+    const text = formatVal(id, val);
+    if (typeof edge.setLabels === "function") {
+      edge.setLabels([{ attrs: { text: { text } }, position: 0.5 }]);
+    } else {
+      edge.attr?.("label/text", text);
+    }
+    const col = colorFor(val);
+    if (col) edge.attr?.("line/stroke", col);
+    updated++;
+  }
+
+  return updated;
+}

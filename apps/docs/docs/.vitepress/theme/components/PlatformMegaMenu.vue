@@ -148,7 +148,7 @@ const footerLinks = computed<MegaMenuFooterLink[]>(() => [
   { label: "Self-Hosting Guide", href: "/ansatz/self-hosting", icon: "database" },
   { label: "Package Registry", href: "/ansatz/package-registry", icon: "box" },
   { label: "Compiler Architecture", href: "/architecture/overview", icon: "cpu" },
-  { label: "Algorithms Catalog (16 engines)", href: "/algorithms/overview", icon: "activity" },
+  { label: "Algorithms Catalog (15 engines)", href: "/algorithms/overview", icon: "activity" },
   { label: "Documentation Home", href: "/guide/introduction", icon: "globe" },
 ]);
 </script>

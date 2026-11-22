@@ -3,6 +3,8 @@
 
 # @modelscript/modelica
 
+**Maturity:** Beta · **Extensions:** `.mo` · **Docs:** [modelscript.org/languages/modelica](https://modelscript.org/languages/modelica)
+
 Flagship Modelica 3.x physical modeling and simulation compiler (`.mo`) for ModelScript. Features a custom WebAssembly GLR incremental parser, high-performance AssemblyScript flattening kernel, direct DAE arena lowering, port balancing, unit verification, 70+ compiler lint rules (`M1xxx`–`M6xxx`), and bidirectional Triple Graph Grammar (TGG) rules for cross-domain synchronization.
 
 ---

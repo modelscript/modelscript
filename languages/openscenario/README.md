@@ -3,7 +3,9 @@
 
 # @modelscript/openscenario
 
-ASAM OpenSCENARIO 1.x/2.0 autonomous driving traffic scenario orchestration, Time-To-Collision (TTC), and Responsibility-Sensitive Safety (RSS) verification package (`.xosc`, `.osc`) for ModelScript. Features dual XML (`.xosc`) and DSL (`.osc`) parsers (`parseOpenScenario`), multi-file workspace indexing (`OpenScenarioWorkspaceIndex`), a traffic storyboard orchestrator with Mobileye RSS & TTC safety verification (`simulateScenario`), direct linear-memory `DAEBuilder` kinematic lowering (`lowerOpenScenarioToDae`), 10 pre-flight scenario & safety lint rules (`M8501`–`M8510`), Modelica 3.x vehicle kinematics projections (`openScenarioToModelica`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.xosc`, `.osc`, `.xml` · **Docs:** [modelscript.org/languages/openscenario](https://modelscript.org/languages/openscenario)
+
+ASAM OpenSCENARIO 1.x/2.0 autonomous driving traffic scenario orchestration, Time-To-Collision (TTC), and Responsibility-Sensitive Safety (RSS) verification package (`.xosc`, `.osc`) for ModelScript. Features dual XML (`.xosc`) and DSL (`.osc`) parsers (`parseOpenScenario`), multi-file workspace indexing, a traffic storyboard orchestrator with Mobileye RSS & TTC safety verification (`simulateScenario`), direct linear-memory `DAEBuilder` kinematic lowering (`lowerOpenScenarioToDae`), 10 pre-flight scenario & safety lint rules (`M8501`–`M8510`), Modelica 3.x vehicle kinematics projections (`openScenarioToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -18,7 +20,7 @@ ASAM OpenSCENARIO 1.x/2.0 autonomous driving traffic scenario orchestration, Tim
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerOpenScenarioToDae`)**: Compiles multi-actor longitudinal/lateral kinematic state equations ($\dot{x}_i = v_i$, $\dot{v}_i = a_i$), relative headway distances, and RSS safety margin equations directly into ModelScript's zero-GC WebAssembly `DAEBuilder` struct-of-arrays arena.
 - **10 Pre-Flight Autonomous Driving Scenario Lint Rules (`M8501`–`M8510`, `lintOpenScenario`)**: Static verification of actor entity references, unsatisfiable trigger thresholds, unreachable road/lane positions, circular `StoryboardElementStateCondition` event triggers, missing `ego` vehicle under test, negative target velocities, deceleration demands exceeding `<Performance>` physical limits, initial bounding-box collisions at $t = 0$, empty maneuver groups, and negative trigger delays.
 - **Modelica 3.x Vehicle Kinematics Projection (`openScenarioToModelica`)**: Synthesizes standalone Modelica 3.x multi-vehicle longitudinal kinematics and RSS safety monitor models.
-- **Multi-File Workspace Indexing & LSP (`OpenScenarioWorkspaceIndex`, `provideOpenScenarioHover`, `provideOpenScenarioCompletions`)**: Implements `IWorkspaceIndex` across `.xosc` and `.osc` scenario catalogs with entity/maneuver hover cards, tag completions, and AST writeback.
+- **Multi-File Workspace Indexing & LSP (`provideOpenScenarioHover`, `provideOpenScenarioCompletions`)**: Provides workspace symbol indexing across `.xosc` and `.osc` scenario catalogs with entity/maneuver hover cards, tag completions, and AST writeback.
 
 ---
 
@@ -40,7 +42,6 @@ ASAM OpenSCENARIO 1.x/2.0 autonomous driving traffic scenario orchestration, Tim
 | `src/dae/index.ts`                            | DAE lowering barrel exports                                                                                                                         |
 | `src/projections/openscenario-to-modelica.ts` | `openScenarioToModelica` translator to Modelica 3.x multi-actor vehicle kinematics models                                                           |
 | `src/projections/index.ts`                    | Projections barrel exports                                                                                                                          |
-| `src/workspace-index.ts`                      | `OpenScenarioWorkspaceIndex` implementing `IWorkspaceIndex` across `.xosc` and `.osc` files                                                         |
 | `src/lsp.ts`                                  | LSP hover, completion, and symbol providers                                                                                                         |
 
 ---
@@ -68,19 +69,19 @@ ASAM OpenSCENARIO 1.x/2.0 autonomous driving traffic scenario orchestration, Tim
 
 ```bash
 # Inspect entities, initial actions, stories, acts, and maneuver groups
-npx msx openscenario inspect cut_in.xosc
+msx openscenario inspect cut_in.xosc
 
 # Run pre-flight actor, trigger cycle, deceleration limit, and collision checks (M8501-M8510)
-npx msx openscenario lint cut_in.xosc
+msx openscenario lint cut_in.xosc
 
 # Simulate scenario storyboard and verify TTC and Mobileye RSS safety margins
-npx msx openscenario simulate cut_in.xosc --duration 10.0
+msx openscenario simulate cut_in.xosc --duration 10.0
 
 # Lower vehicle kinematics and RSS safety equations to DAEBuilder linear memory
-npx msx openscenario to-dae cut_in.xosc
+msx openscenario to-dae cut_in.xosc
 
 # Project OpenSCENARIO storyboard to a Modelica 3.x vehicle dynamics model
-npx msx openscenario to-modelica cut_in.xosc -o CutInScenario.mo
+msx openscenario to-modelica cut_in.xosc -o CutInScenario.mo
 ```
 
 ### Programmatic Usage

@@ -3,18 +3,38 @@
 
 # @modelscript/design-tokens
 
-Shared ModelScript design system: one set of CSS custom properties and primitive component classes used by the docs site (`apps/docs`, VitePress), the web app (`apps/web`, React + Primer), and IDE webviews. It keeps colours, type, radii, and button sizing identical across every surface.
+Shared ModelScript design system: CSS custom properties, primitive component classes, and lightweight TypeScript runtime/panel contract helpers used by the docs site (`apps/docs`, VitePress), the web app (`apps/web`, React + Primer), and IDE webviews (`packages/ide`). It keeps colours, type, radii, and button sizing identical across every surface.
 
-CSS only, with no build step and no runtime.
+Compiled with `tsc` (`pnpm --filter @modelscript/design-tokens run build`) to emit typed ESM modules (`dist/runtime.js`, `dist/panel.js`) alongside CSS entrypoints.
+
+---
+
+## Subpath Exports
+
+| Subpath                                        | Description                                                               |
+| ---------------------------------------------- | ------------------------------------------------------------------------- |
+| `@modelscript/design-tokens/tokens.css`        | Core `--ms-*` design tokens (brand, surfaces, text, status, hues, type)   |
+| `@modelscript/design-tokens/tokens-vscode.css` | VS Code webview theme bridge mapping `--vscode-*` variables onto `--ms-*` |
+| `@modelscript/design-tokens/tokens-web.css`    | Web application theme bridge mapping Primer / web surfaces onto `--ms-*`  |
+| `@modelscript/design-tokens/components.css`    | Shared primitive `.ms-btn` and `.ms-chip` component styles                |
+| `@modelscript/design-tokens/runtime`           | TypeScript runtime theme helpers (`src/runtime.ts`)                       |
+| `@modelscript/design-tokens/panel`             | Shared engineering panel host contract & types (`src/panel.ts`)           |
 
 ---
 
 ## Usage
 
 ```ts
-// Entry point (before app-specific CSS)
+// CSS entry points (import before app-specific CSS)
 import "@modelscript/design-tokens/tokens.css";
 import "@modelscript/design-tokens/components.css";
+// Surface-specific token bridges:
+// import "@modelscript/design-tokens/tokens-web.css";
+// import "@modelscript/design-tokens/tokens-vscode.css";
+
+// TypeScript runtime & panel contract helpers
+import * as themeRuntime from "@modelscript/design-tokens/runtime";
+import type * as panelContract from "@modelscript/design-tokens/panel";
 ```
 
 ### Theming
@@ -53,6 +73,14 @@ Consumers map their framework variables onto these tokens rather than hard-codin
 
 - **Variants:** `-primary` (alias `-brand`), `-secondary` (alias `-ghost`), `-quiet`, `-danger`
 - **Sizes:** `-sm` (30px), default (36px), `-lg` (44px, marketing heroes), plus `-block`
+
+## Scripts
+
+```bash
+pnpm --filter @modelscript/design-tokens run build      # Compile TypeScript (tsc)
+pnpm --filter @modelscript/design-tokens run typecheck  # Typecheck (tsc --noEmit)
+pnpm --filter @modelscript/design-tokens run clean      # Remove dist/ & tsbuildinfo
+```
 
 ## License
 

@@ -3,7 +3,9 @@
 
 # @modelscript/sbol
 
-Synthetic Biology Open Language (SBOL3 RDF/XML & Turtle) genetic circuit design, Sequence Ontology (SO) feature verification, and transcriptional regulatory network modeling package (`.sbol`, `.ttl`) for ModelScript. Features a zero-regex SBOL3 XML/RDF and Turtle parser & serializer (`parseSbol`, `serializeSbol`), multi-file workspace indexing (`SbolWorkspaceIndex`), a deterministic RK4 Hill-function transcriptional activation/repression ODE solver (`solveGeneticCircuit`), direct linear-memory `DAEBuilder` lowering (`lowerSbolToDae`), 10 pre-flight genetic circuit & ontology lint rules (`M9501`–`M9510`, `lintSbol`), Modelica 3.x and SBML Level 3 projections (`sbolToModelica`, `sbolToSbmlXml`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.sbol`, `.ttl` · **Docs:** [modelscript.org/languages/sbol](https://modelscript.org/languages/sbol)
+
+Synthetic Biology Open Language (SBOL3 RDF/XML & Turtle) genetic circuit design, Sequence Ontology (SO) feature verification, and transcriptional regulatory network modeling package (`.sbol`, `.ttl`) for ModelScript. Features a zero-regex SBOL3 XML/RDF and Turtle parser & serializer (`parseSbol`, `serializeSbol`), multi-file workspace indexing, a deterministic RK4 Hill-function transcriptional activation/repression ODE solver (`solveGeneticCircuit`), direct linear-memory `DAEBuilder` lowering (`lowerSbolToDae`), 10 pre-flight genetic circuit & ontology lint rules (`M9501`–`M9510`, `lintSbol`), Modelica 3.x and SBML Level 3 projections (`sbolToModelica`, `sbolToSbmlXml`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -15,7 +17,7 @@ Synthetic Biology Open Language (SBOL3 RDF/XML & Turtle) genetic circuit design,
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerSbolToDae`)**: Compiles protein concentration state variables ($P_i$), basal and maximal transcription rates ($\alpha_{0,i}, \alpha_i$), Hill cooperativity factors ($K, n$), synthesis fluxes ($v_{\text{synth},i}$), and first-order degradation terms directly into ModelScript's zero-GC WebAssembly `DAEBuilder` struct-of-arrays arena.
 - **10 Pre-Flight Genetic Circuit & Sequence Ontology Lint Rules (`M9501`–`M9510`, `lintSbol`)**: Static verification of IUPAC nucleotide alphabets, sequence feature coordinate bounds, CDS triplet codon lengths and start/stop codons, unresolved `SubComponent` references, transcriptional unit ordering (terminator upstream of promoter without CDS), dangling interaction participants, missing SBO participation roles, circular `SubComponent` containment hierarchies, duplicate `displayId` declarations, and bacterial CDS units missing upstream ribosome binding sites (`SO:0000139`).
 - **Modelica 3.x & SBML Level 3 Projections (`sbolToModelica`, `sbolToSbmlXml`)**: Synthesizes standalone Modelica 3.x ODE models and SBML Level 3 Version 2 biochemical reaction networks from SBOL3 genetic circuit topologies.
-- **Multi-File Workspace Indexing & LSP (`SbolWorkspaceIndex`, `getSbolHover`, `provideSbolCompletions`)**: Implements `IWorkspaceIndex` across `.sbol` and `.ttl` files with component/sequence/interaction hover cards, ontology completions, and AST writeback.
+- **Multi-File Workspace Indexing & LSP (`getSbolHover`, `provideSbolCompletions`)**: Provides workspace symbol indexing across `.sbol` and `.ttl` files with component/sequence/interaction hover cards, ontology completions, and AST writeback.
 
 ---
 
@@ -37,7 +39,6 @@ Synthetic Biology Open Language (SBOL3 RDF/XML & Turtle) genetic circuit design,
 | `src/dae/index.ts`                      | DAE lowering barrel exports                                                                                           |
 | `src/projections/sbol-projections.ts`   | `sbolToModelica` and `sbolToSbmlXml` translators to Modelica 3.x and SBML Level 3                                     |
 | `src/projections/index.ts`              | Projections barrel exports                                                                                            |
-| `src/workspace-index.ts`                | `SbolWorkspaceIndex` implementing `IWorkspaceIndex` across `.sbol` and `.ttl` files                                   |
 | `src/lsp.ts`                            | LSP validation, document symbols, hover, completion, and action handlers                                              |
 
 ---

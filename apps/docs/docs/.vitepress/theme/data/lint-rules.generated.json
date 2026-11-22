@@ -1855,6 +1855,54 @@
         "rule": "formal-dimension-mismatch-inferred",
         "severity": "warning",
         "message": "Inferred physical dimension mismatch in '<contextExpr>': '<lhsDim>' vs '<rhsDim>'."
+      },
+      {
+        "code": "M7801",
+        "rule": "cfa-uninitialized-or-dead-algorithm",
+        "severity": "warning",
+        "message": "Algorithm control-flow hazard in '<target>': <detail>."
+      },
+      {
+        "code": "M7802",
+        "rule": "sbg-array-equation-imbalance",
+        "severity": "error",
+        "message": "Set-Based Graph symbolic slice imbalance on array '<arrayName>': <detail>."
+      },
+      {
+        "code": "M7803",
+        "rule": "egraph-duplicate-or-contradictory-equation",
+        "severity": "error",
+        "message": "E-graph canonicalizer detected <detail> between '<eq1>' and '<eq2>'."
+      },
+      {
+        "code": "M7804",
+        "rule": "hc4-parameter-bound-infeasible",
+        "severity": "error",
+        "message": "HC4 interval contractor proved parameter/start infeasibility for '<paramName>': <detail>."
+      },
+      {
+        "code": "M7805",
+        "rule": "dde-delay-instability",
+        "severity": "warning",
+        "message": "DDE delay-differential stability check flagged '<expr>': <detail>."
+      },
+      {
+        "code": "M7806",
+        "rule": "hybrid-when-zeno-or-ambiguity",
+        "severity": "error",
+        "message": "Hybrid event Star-Set verifier flagged 'when/reinit' hazard on '<varName>': <detail>."
+      },
+      {
+        "code": "M7807",
+        "rule": "chc-algorithm-loop-unbounded",
+        "severity": "warning",
+        "message": "CHC inductive loop verifier flagged while-loop in '<funcName>': <detail>."
+      },
+      {
+        "code": "M7808",
+        "rule": "hji-disturbance-barrier-breach",
+        "severity": "warning",
+        "message": "HJI/Stochastic disturbance barrier indicates '<varName>' can breach safety bounds: <detail>."
       }
     ]
   },
@@ -2597,6 +2645,48 @@
         "rule": "continuous-flowpipe-or-barrier-violation",
         "severity": "error",
         "message": "[DAE/Barrier] Continuous safety reachability violation in '<modelName>': <detail>."
+      },
+      {
+        "code": "S7007",
+        "rule": "egraph-requirement-contradiction-or-redundancy",
+        "severity": "error",
+        "message": "[E-Graph] Requirement '<reqA>' and '<reqB>' exhibit <detail>."
+      },
+      {
+        "code": "S7008",
+        "rule": "hc4-rollup-budget-infeasible",
+        "severity": "error",
+        "message": "[HC4] Rollup budget infeasibility on '<attrName>': <detail>."
+      },
+      {
+        "code": "S7009",
+        "rule": "tarjan-cyclic-binding-or-flow-deadlock",
+        "severity": "error",
+        "message": "[Tarjan SCC] Cyclic binding or synchronous item-flow deadlock detected: <cycleDesc>."
+      },
+      {
+        "code": "S7010",
+        "rule": "chc-action-loop-termination",
+        "severity": "warning",
+        "message": "[CHC/Invariant] Looping action '<actionName>' failed inductive termination check: <detail>."
+      },
+      {
+        "code": "S7011",
+        "rule": "dde-cyberphysical-latency-instability",
+        "severity": "error",
+        "message": "[DDE Flowpipe] Cyber-physical latency chain in '<partName>' exceeds stability phase margin: <detail>."
+      },
+      {
+        "code": "S7012",
+        "rule": "hji-adversarial-hazard-reachable",
+        "severity": "error",
+        "message": "[HJI Reachability] Adversarial disturbance can trigger hazard '<hazardName>': <detail>."
+      },
+      {
+        "code": "S7013",
+        "rule": "starset-decision-table-gap-or-breach",
+        "severity": "warning",
+        "message": "[Star-Set] Piecewise-linear calc/decision table '<calcName>' violates output envelope: <detail>."
       }
     ]
   },
@@ -2696,7 +2786,7 @@
     "sources": [
       "languages/magicdraw/src/lints/rules.ts"
     ],
-    "cli": null,
+    "cli": "msx magicdraw lint",
     "rules": [
       {
         "code": "M9921",
@@ -2791,7 +2881,7 @@
     "sources": [
       "languages/oscal/src/lints/rules.ts"
     ],
-    "cli": null,
+    "cli": "msx oscal",
     "rules": [
       {
         "code": "M8201",
@@ -3249,7 +3339,7 @@
     "sources": [
       "languages/qif/src/lints/rules.ts"
     ],
-    "cli": null,
+    "cli": "msx qif validate",
     "rules": [
       {
         "code": "M8101",
@@ -5611,6 +5701,60 @@
         "rule": "polyglot-parameter-drift",
         "severity": "warning",
         "message": "Cross-language parameter drift detected for '<component>.<param>' (<value>% relative discrepancy across models)."
+      },
+      {
+        "code": "P8011",
+        "rule": "n1-unslacked-island-bridge",
+        "severity": "warning",
+        "message": "N-1 topological bridge on branch <fromBus>-<toBus> (ckt '<ckt>'): single outage isolates <isolatedCount> bus(es) with no slack bus."
+      },
+      {
+        "code": "P8012",
+        "rule": "dyr-raw-mismatch-or-monotonicity",
+        "severity": "error",
+        "message": "DYR model '<model>' on bus <busId> (id '<genId>') failed static check: <detail>."
+      },
+      {
+        "code": "P8013",
+        "rule": "seq-ungrounded-zero-island",
+        "severity": "error",
+        "message": "Zero-sequence network contains an ungrounded island of <busCount> bus(es) (including bus <sampleBus>) with no Yg/generator ground path; Y0 is singular for SLG faults."
+      },
+      {
+        "code": "P8014",
+        "rule": "hc4-static-transfer-infeasible",
+        "severity": "error",
+        "message": "HC4 interval contractor proved static power-flow infeasibility at <location>: <detail>."
+      },
+      {
+        "code": "P8015",
+        "rule": "dyr-protection-deadband-overlap",
+        "severity": "warning",
+        "message": "Protection model '<model>' on bus <busId> has overlapping/inverted stage thresholds: <detail>."
+      },
+      {
+        "code": "P8016",
+        "rule": "smt-prc024-protection-selectivity",
+        "severity": "error",
+        "message": "SMT(LRA) NERC PRC-024 selectivity check failed for '<model>' on bus <busId>: witness <witness> trips inside the mandatory no-trip ride-through envelope."
+      },
+      {
+        "code": "P8017",
+        "rule": "nlsat-parametric-voltage-collapse",
+        "severity": "error",
+        "message": "NLSAT parametric voltage-collapse proof found saddle-node bifurcation at bus <busId> at load factor <value>x (below required <value>x margin)."
+      },
+      {
+        "code": "P8018",
+        "rule": "sos-multi-machine-cct-unsafe",
+        "severity": "warning",
+        "message": "SOS energy-barrier certificate indicates generator <busId>:<genId> has insufficient critical clearing margin (estimated CCT <value> ms < target <value> ms)."
+      },
+      {
+        "code": "P8019",
+        "rule": "formal-proof-manifest-summary",
+        "severity": "info",
+        "message": "Formal verification proof manifest generated (<passed>/<total> obligations certified, digest=<digest>)."
       }
     ]
   },
@@ -5621,7 +5765,7 @@
     "sources": [
       "languages/powerfactory/src/lints/index.ts"
     ],
-    "cli": null,
+    "cli": "msx powerfactory",
     "rules": [
       {
         "code": "PF1001",
@@ -6253,6 +6397,59 @@
     ]
   },
   {
+    "slug": "las",
+    "name": "CWLS LAS Well Logs",
+    "packageName": "@modelscript/las",
+    "sources": [
+      "languages/las/src/errors.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "LAS1001",
+        "rule": "las-missing-version",
+        "severity": "error",
+        "message": "Missing ~V (Version Information) section or VERS entry in LAS file."
+      },
+      {
+        "code": "LAS1002",
+        "rule": "las-missing-curves",
+        "severity": "error",
+        "message": "Missing or empty ~C (Curve Information) section in LAS file."
+      },
+      {
+        "code": "LAS1003",
+        "rule": "las-missing-ascii-data",
+        "severity": "error",
+        "message": "Missing ~A (ASCII Log Data) section in LAS file."
+      },
+      {
+        "code": "LAS1004",
+        "rule": "las-column-count-mismatch",
+        "severity": "error",
+        "message": "Data record <row> has <actual> values, expected <expected> to match ~C curve definitions."
+      },
+      {
+        "code": "LAS1005",
+        "rule": "las-invalid-numeric-value",
+        "severity": "error",
+        "message": "Invalid numeric value '<val>' for curve '<curve>' at data record <row>."
+      },
+      {
+        "code": "LAS1006",
+        "rule": "las-duplicate-curve",
+        "severity": "error",
+        "message": "Duplicate curve mnemonic '<mnemonic>' in ~C section (already defined on line <prevLine>)."
+      },
+      {
+        "code": "LAS1007",
+        "rule": "las-non-monotonic-index",
+        "severity": "warning",
+        "message": "Non-monotonic index value <val> at record <row> (previous value was <prevVal>)."
+      }
+    ]
+  },
+  {
     "slug": "relap5",
     "name": "RELAP5-3D",
     "packageName": "@modelscript/relap5",
@@ -6780,7 +6977,7 @@
     "sources": [
       "languages/ran/src/errors.ts"
     ],
-    "cli": null,
+    "cli": "msx ran",
     "rules": [
       {
         "code": "M2001",
@@ -6821,7 +7018,7 @@
     "sources": [
       "languages/fiber/src/lints/index.ts"
     ],
-    "cli": null,
+    "cli": "msx fiber",
     "rules": [
       {
         "code": "FIBER1001",
@@ -8620,7 +8817,7 @@
     "sources": [
       "languages/cellml/src/lints/rules.ts"
     ],
-    "cli": null,
+    "cli": "msx cellml validate",
     "rules": [
       {
         "code": "M9301",
@@ -8762,7 +8959,7 @@
     "sources": [
       "languages/opensim/src/lints/rules.ts"
     ],
-    "cli": null,
+    "cli": "msx opensim validate",
     "rules": [
       {
         "code": "M9101",
@@ -8833,7 +9030,7 @@
     "sources": [
       "languages/febio/src/lints/rules.ts"
     ],
-    "cli": null,
+    "cli": "msx febio validate",
     "rules": [
       {
         "code": "M9401",
@@ -8904,7 +9101,7 @@
     "sources": [
       "languages/dicom-rt/src/lints/rules.ts"
     ],
-    "cli": null,
+    "cli": "msx dicom-rt validate",
     "rules": [
       {
         "code": "M9201",
@@ -8975,7 +9172,7 @@
     "sources": [
       "languages/topas/src/lints/rules.ts"
     ],
-    "cli": null,
+    "cli": "msx topas validate",
     "rules": [
       {
         "code": "M9601",
@@ -9046,7 +9243,7 @@
     "sources": [
       "languages/nifti/src/lints/rules.ts"
     ],
-    "cli": null,
+    "cli": "msx nifti validate",
     "rules": [
       {
         "code": "M9501",
@@ -9117,7 +9314,7 @@
     "sources": [
       "languages/three-mf/src/lints/rules.ts"
     ],
-    "cli": null,
+    "cli": "msx three-mf validate",
     "rules": [
       {
         "code": "M9701",
@@ -9188,7 +9385,7 @@
     "sources": [
       "languages/igtl/src/lints/rules.ts"
     ],
-    "cli": null,
+    "cli": "msx igtl validate",
     "rules": [
       {
         "code": "M9801",
@@ -9249,59 +9446,6 @@
         "rule": "igtl-duplicate-transform-edge",
         "severity": "error",
         "message": "Duplicate '<Transform>' defined for coordinate frame pair '(<from>, <to>)'."
-      }
-    ]
-  },
-  {
-    "slug": "las",
-    "name": "las",
-    "packageName": "@modelscript/las",
-    "sources": [
-      "languages/las/src/errors.ts"
-    ],
-    "cli": "msx lint",
-    "rules": [
-      {
-        "code": "LAS1001",
-        "rule": "las-missing-version",
-        "severity": "error",
-        "message": "Missing ~V (Version Information) section or VERS entry in LAS file."
-      },
-      {
-        "code": "LAS1002",
-        "rule": "las-missing-curves",
-        "severity": "error",
-        "message": "Missing or empty ~C (Curve Information) section in LAS file."
-      },
-      {
-        "code": "LAS1003",
-        "rule": "las-missing-ascii-data",
-        "severity": "error",
-        "message": "Missing ~A (ASCII Log Data) section in LAS file."
-      },
-      {
-        "code": "LAS1004",
-        "rule": "las-column-count-mismatch",
-        "severity": "error",
-        "message": "Data record <row> has <actual> values, expected <expected> to match ~C curve definitions."
-      },
-      {
-        "code": "LAS1005",
-        "rule": "las-invalid-numeric-value",
-        "severity": "error",
-        "message": "Invalid numeric value '<val>' for curve '<curve>' at data record <row>."
-      },
-      {
-        "code": "LAS1006",
-        "rule": "las-duplicate-curve",
-        "severity": "error",
-        "message": "Duplicate curve mnemonic '<mnemonic>' in ~C section (already defined on line <prevLine>)."
-      },
-      {
-        "code": "LAS1007",
-        "rule": "las-non-monotonic-index",
-        "severity": "warning",
-        "message": "Non-monotonic index value <val> at record <row> (previous value was <prevVal>)."
       }
     ]
   },

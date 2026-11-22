@@ -3,6 +3,8 @@
 
 # @modelscript/adams
 
+**Maturity:** Beta · **Extensions:** `.adm`, `.cmd`, `.acf` · **Docs:** [modelscript.org/languages/adams](https://modelscript.org/languages/adams)
+
 MSC Adams-compatible Multibody Dynamics (MBD) and Kinematics Domain Module (`.adm`, `.cmd`, `.acf`) for ModelScript. Features zero-regex AST parsing, pre-flight kinematic linter diagnostics (`M7301`–`M7310`), Grübler-Kutzbach spatial mobility analysis, direct linear-memory WebAssembly `DAEBuilder` lowering with Baumgarte constraint stabilization, cross-format bidirectional projections (SIMPACK `.spck`, Modelica `MultiBody`), multi-file workspace indexing, and Language Server Protocol (LSP) services.
 
 ---
@@ -15,7 +17,7 @@ MSC Adams-compatible Multibody Dynamics (MBD) and Kinematics Domain Module (`.ad
 - **Pre-Flight Multibody Linter (`lintAdamsModel`, `AdamsErrorCode`)**: Static structural, inertial, and kinematic validation (`M7301`–`M7310`) with 1-click LSP quick-fix code actions.
 - **Polyglot MBD Projections (`adamsToModelica`, `adamsToSimpack`)**: Translates MSC Adams parts, markers, joints, and force elements into `Modelica.Mechanics.MultiBody` models and SIMPACK `.spck` multibody decks.
 - **Schematic & Kinematic Topology Diagrams (`buildAdamsDiagram`, `renderAdamsDiagramSvg`)**: Generates interactive multibody topology graphs and headless SVG schematics.
-- **Multi-File Workspace Indexing & LSP (`AdamsWorkspaceIndex`, `validateAdams`, `getAdamsDocumentSymbols`, `getAdamsHover`)**: Full `IWorkspaceIndex` implementation and language server endpoints for `.adm`, `.cmd`, and `.acf` workspaces.
+- **Multi-File Workspace Indexing & LSP (`validateAdams`, `getAdamsDocumentSymbols`, `getAdamsHover`)**: Workspace symbol indexing and language server endpoints for `.adm`, `.cmd`, and `.acf` workspaces.
 
 ---
 
@@ -40,7 +42,6 @@ MSC Adams-compatible Multibody Dynamics (MBD) and Kinematics Domain Module (`.ad
 | `src/projections/index.ts`           | Projections module re-exports                                                               |
 | `src/diagram/adams-diagram.ts`       | Kinematic topology diagram builder and SVG renderer                                         |
 | `src/diagram/index.ts`               | Diagram module re-exports                                                                   |
-| `src/workspace-index.ts`             | `AdamsWorkspaceIndex` implementing `IWorkspaceIndex` for multi-file MBD repositories        |
 | `src/lsp.ts`                         | LSP diagnostics, document symbols, and hover providers                                      |
 
 ---
@@ -67,14 +68,14 @@ MSC Adams-compatible Multibody Dynamics (MBD) and Kinematics Domain Module (`.ad
 
 ```bash
 # Lint an MSC Adams dataset or command script
-npx msx adams lint mechanism.adm
+msx adams lint mechanism.adm
 
 # Compute Grübler-Kutzbach mobility and lower to DAE arena
-npx msx adams flatten mechanism.adm
+msx adams flatten mechanism.adm
 
 # Project MSC Adams dataset to Modelica MultiBody or SIMPACK
-npx msx adams to-modelica mechanism.adm
-npx msx adams to-simpack mechanism.adm
+msx adams to-modelica mechanism.adm
+msx adams to-simpack mechanism.adm
 ```
 
 ### Programmatic API

@@ -3,6 +3,8 @@
 
 # @modelscript/ssp
 
+**Maturity:** Beta · **Extensions:** `.ssp`, `.ssd`, `.ssv`, `.ssm`, `.ssb` · **Docs:** [modelscript.org/languages/ssp](https://modelscript.org/languages/ssp)
+
 Modelica Association System Structure and Parameterization (SSP 1.0) language package (`.ssp`, `.ssd`, `.ssv`, `.ssm`) for ModelScript. Provides high-speed XML parsing (`parseSsd`, `parseSsv`), virtual filesystem (`.ssp`) container extraction, 20 semantic lint rules (`SSP_*` and `SSV_*`), interactive 2D system architecture diagram generation & bidirectional XML writeback (`buildSspDiagramData`, `applySspDiagramEdits`), `sspToModelicaBlock` code generation, and 8 polyglot TGG rules.
 
 ---

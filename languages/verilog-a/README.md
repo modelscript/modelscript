@@ -3,6 +3,8 @@
 
 # @modelscript/verilog-a
 
+**Maturity:** Alpha · **Extensions:** `.va`, `.vams` · **Docs:** [modelscript.org/languages/verilog-a](https://modelscript.org/languages/verilog-a)
+
 **Verilog-A** and **Verilog-AMS** (Accellera Verilog-AMS LRM, `.va`, `.vams`) compact semiconductor device modeling and analog behavioral simulation language package for ModelScript. Features zero-regex AST parsing, 10 pre-flight analog convergence & discipline lint rules (`M7601`–`M7610`), direct linear-memory WebAssembly `DAEBuilder` lowering, bidirectional projections to Modelica 3.x and SPICE `.SUBCKT` netlists, and multi-file workspace indexing.
 
 ---
@@ -15,7 +17,7 @@
 - **Polyglot Projections (`verilogAToModelica`, `verilogAToSpice`)**:
   - `verilogAToModelica`: Translates Verilog-A modules into acausal Modelica 3.x electrical components (`Modelica.Electrical.Analog.Interfaces.Pin`)
   - `verilogAToSpice`: Synthesizes SPICE `.SUBCKT` definitions with non-linear behavioral `B`-sources and companion capacitances.
-- **Multi-File Workspace Indexer & LSP (`VerilogAWorkspaceIndex`, `validateVerilogA`, `getVerilogADocumentSymbols`, `getVerilogAHover`)**: Implements `IWorkspaceIndex` for `.va`/`.vams` model libraries.
+- **Multi-File Workspace Indexer & LSP (`validateVerilogA`, `getVerilogADocumentSymbols`, `getVerilogAHover`)**: Provides workspace symbol indexing for `.va`/`.vams` model libraries.
 
 ---
 
@@ -35,7 +37,6 @@
 | `src/projections/verilog-a-to-modelica.ts` | `verilogAToModelica` translator to acausal Modelica 3.x electrical models                    |
 | `src/projections/verilog-a-to-spice.ts`    | `verilogAToSpice` translator to SPICE `.SUBCKT` behavioral netlists                          |
 | `src/projections/index.ts`                 | Projections module re-exports                                                                |
-| `src/workspace-index.ts`                   | `VerilogAWorkspaceIndex` implementing `IWorkspaceIndex`                                      |
 | `src/lsp.ts`                               | LSP diagnostics, document symbols, and hover providers                                       |
 
 ---
@@ -63,14 +64,14 @@
 
 ```bash
 # Lint a Verilog-A compact device model (M7601–M7610)
-npx msx verilog-a lint bsim_mosfet.va
+msx verilog-a lint bsim_mosfet.va
 
 # Lower Verilog-A module to the ModelScript DAE arena
-npx msx verilog-a flatten bsim_mosfet.va
+msx verilog-a flatten bsim_mosfet.va
 
 # Project Verilog-A module to Modelica 3.x or SPICE .SUBCKT
-npx msx verilog-a to-modelica bsim_mosfet.va
-npx msx verilog-a to-spice bsim_mosfet.va
+msx verilog-a to-modelica bsim_mosfet.va
+msx verilog-a to-spice bsim_mosfet.va
 ```
 
 ### Programmatic API

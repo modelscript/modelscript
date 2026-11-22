@@ -299,7 +299,10 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
 
     const safeSpeedFactor = Math.min(Math.max(Number(speedFactor) || 1.0, 0.01), 100);
     const replayId = `replay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const replayer = new HistorianReplayer(pool, mqttClient);
+    const replayer = new HistorianReplayer(
+      pool as unknown as ConstructorParameters<typeof HistorianReplayer>[0],
+      mqttClient,
+    );
     activeReplayers.set(replayId, replayer);
 
     // Start replay asynchronously (bounded to max 7-day window; defaults to 1h lookback)

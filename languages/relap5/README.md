@@ -3,7 +3,9 @@
 
 # @modelscript/relap5
 
-RELAP5-3D-compatible nuclear reactor transient thermal-hydraulics, two-phase hydrodynamic volume/junction networks, and 6-group point reactor kinetics engineering package (`.i`, `.inp`, `.r5`) for ModelScript. Features a zero-regex RELAP5 card deck parser (`parseRelap5`), multi-file workspace indexing (`Relap5WorkspaceIndex`), an AssemblyScript WebAssembly 6-group delayed neutron point kinetics & Doppler/moderator thermal feedback kernel (`assembly/point_kinetics.ts` → `dist/point_kinetics.wasm`, `solvePointKinetics`), direct linear-memory `DAEBuilder` lowering (`lowerRelap5ToDae`), 10 pre-flight nuclear safety & thermal-hydraulic lint rules (`M8601`–`M8610`), Modelica 3.x nuclear system projections (`relap5ToModelica`), and Language Server Protocol (LSP) services.
+**Maturity:** Beta · **Extensions:** `.i`, `.inp`, `.r5` · **Docs:** [modelscript.org/languages/relap5](https://modelscript.org/languages/relap5)
+
+RELAP5-3D-compatible nuclear reactor transient thermal-hydraulics, two-phase hydrodynamic volume/junction networks, and 6-group point reactor kinetics engineering package (`.i`, `.inp`, `.r5`) for ModelScript. Features a zero-regex RELAP5 card deck parser (`parseRelap5`), multi-file workspace indexing, an AssemblyScript WebAssembly 6-group delayed neutron point kinetics & Doppler/moderator thermal feedback kernel (`assembly/point_kinetics.ts` → `dist/point_kinetics.wasm`, `solvePointKinetics`), direct linear-memory `DAEBuilder` lowering (`lowerRelap5ToDae`), 10 pre-flight nuclear safety & thermal-hydraulic lint rules (`M8601`–`M8610`), Modelica 3.x nuclear system projections (`relap5ToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -19,7 +21,7 @@ RELAP5-3D-compatible nuclear reactor transient thermal-hydraulics, two-phase hyd
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerRelap5ToDae`)**: Compiles hydrodynamic control volume mass/energy balances, junction momentum equations, fuel-cladding heat structure conduction, and 6-group point kinetics ODEs directly into ModelScript's zero-GC WebAssembly `DAEBuilder` struct-of-arrays arena.
 - **10 Pre-Flight Nuclear Safety & Thermal-Hydraulic Lint Rules (`M8601`–`M8610`, `lintRelap5`)**: Static verification of junction `from`/`to` hydrodynamic volume connectivity, logical trip cutset references, heat structure thermal conductivity and volumetric heat capacity positivity, sonic choked-flow singularities, 6-group delayed neutron completeness, prompt neutron generation time $\Lambda > 0$, geometric elevation consistency ($|\Delta z| \le L$), non-negative junction loss coefficients ($K_f, K_r \ge 0$), time-step bounds ($\Delta t_{\min} \le \Delta t_{\max}$), and positive initial thermodynamic pressures.
 - **Modelica 3.x Nuclear Plant Projection (`relap5ToModelica`)**: Synthesizes standalone Modelica 3.x reactor core kinetics and primary coolant loop thermal-hydraulic models.
-- **Multi-File Workspace Indexing & LSP (`Relap5WorkspaceIndex`, `provideRelap5Hover`, `provideRelap5Completions`)**: Implements `IWorkspaceIndex` across RELAP5 input decks with card-range hover documentation, component completions, and AST writeback.
+- **Multi-File Workspace Indexing & LSP (`provideRelap5Hover`, `provideRelap5Completions`)**: Provides workspace symbol indexing across RELAP5 input decks with card-range hover documentation, component completions, and AST writeback.
 
 ---
 
@@ -44,7 +46,6 @@ RELAP5-3D-compatible nuclear reactor transient thermal-hydraulics, two-phase hyd
 | `src/dae/index.ts`                      | DAE lowering barrel exports                                                                                                 |
 | `src/projections/relap5-to-modelica.ts` | `relap5ToModelica` translator to Modelica 3.x nuclear thermal-hydraulic and kinetics models                                 |
 | `src/projections/index.ts`              | Projections barrel exports                                                                                                  |
-| `src/workspace-index.ts`                | `Relap5WorkspaceIndex` implementing `IWorkspaceIndex` across `.i`, `.inp`, and `.r5` decks                                  |
 | `src/lsp.ts`                            | LSP hover, completion, and symbol providers                                                                                 |
 
 ---
@@ -72,19 +73,19 @@ RELAP5-3D-compatible nuclear reactor transient thermal-hydraulics, two-phase hyd
 
 ```bash
 # Inspect hydrodynamic volumes, junctions, heat structures, trips, and reactor kinetics
-npx msx relap5 inspect pwr_loop.i
+msx relap5 inspect pwr_loop.i
 
 # Run pre-flight hydrodynamic topology, trip logic, and point kinetics checks (M8601-M8610)
-npx msx relap5 lint pwr_loop.i
+msx relap5 lint pwr_loop.i
 
 # Solve 6-group delayed neutron reactor point kinetics with Doppler/moderator feedback
-npx msx relap5 kinetics pwr_loop.i --duration 10.0
+msx relap5 kinetics pwr_loop.i --duration 10.0
 
 # Lower two-phase thermal-hydraulics and point kinetics to DAEBuilder linear memory
-npx msx relap5 to-dae pwr_loop.i
+msx relap5 to-dae pwr_loop.i
 
 # Project RELAP5 deck to a Modelica 3.x nuclear thermal-hydraulics model
-npx msx relap5 to-modelica pwr_loop.i -o PwrPrimaryLoop.mo
+msx relap5 to-modelica pwr_loop.i -o PwrPrimaryLoop.mo
 ```
 
 ### Programmatic Usage

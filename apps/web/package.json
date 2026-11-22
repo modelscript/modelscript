@@ -37,6 +37,7 @@
     "@modelscript/pscad": "workspace:*",
     "@modelscript/psse": "workspace:*",
     "@modelscript/qif": "workspace:*",
+    "@modelscript/react": "workspace:*",
     "@modelscript/reqif": "workspace:*",
     "@modelscript/sima": "workspace:*",
     "@modelscript/simulate": "workspace:*",

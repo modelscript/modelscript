@@ -15,10 +15,11 @@ ModelScript embeds a multi-tier suite of numerical solvers in `@modelscript/simu
 flowchart TD
     DAE["Flat DAE Representation"] --> ROUTE{"Problem Type"}
 
+    ROUTE -->|Unified Dispatch & Certificates| SOLVE_PKG["@modelscript/solve (Typed Problems, Outward Intervals, Scratch Pool)"]
     ROUTE -->|Stiff / Non-Stiff ODE| SUNDIALS_CVODE["SUNDIALS CVODE (BDF & Adams-Moulton)"]
     ROUTE -->|Index-1 DAE| SUNDIALS_IDA["SUNDIALS IDA (Variable-order BDF)"]
-    ROUTE -->|Stiff Rosenbrock / ESDIRK| STIFF_WASM["Rodas4P (4th-Order Rosenbrock) & TR-BDF2"]
-    ROUTE -->|Browser / Lightweight| WASM_SOLVER["WASM Integrators (Tsit5, DOPRI5 & RK4)"]
+    ROUTE -->|Stiff Implicit / Rosenbrock / IMEX| STIFF_WASM["Radau IIA, Rodas4P/5P, TR-BDF2 & KenCarp4 IMEX"]
+    ROUTE -->|Explicit / Symplectic / QSS / DDE| WASM_SOLVER["Tsit5, Verner, DOPRI5, SPRK, QSS, DDE & Jump Processes"]
     ROUTE -->|Batched / N-1 Grid Screening| WEBGPU["WebGPU Batched SIMD & Contingency Screener"]
     ROUTE -->|Equilibria & Fold/Hopf| BIFURCATION["PALC Continuation & Bifurcation"]
     ROUTE -->|Optimal Control| COLLOCATION["Direct Collocation (Interior Point)"]
@@ -27,17 +28,28 @@ flowchart TD
 
 ---
 
-## 1. SUNDIALS CVODE, IDA, Rodas4P, TR-BDF2 & Tsit5 Integrators
+## 0. Unified Solver Foundation (`@modelscript/solve`)
 
-For high-precision industrial models, ModelScript integrates Lawrence Livermore National Laboratory's **SUNDIALS** suite compiled to WebAssembly alongside native stiff and non-stiff integrators:
+`packages/solve/` (`@modelscript/solve`) provides a SciML-inspired shared solver and formal verification layer consumed by both `@modelscript/runtime` and `@modelscript/simulate`:
+
+- **Typed Problem & Algorithm Dispatch (`problems.ts`, `algorithms.ts`, `solve.ts`)**: Unified `solve(problem, algorithm)` interface covering ODE, DAE, SDE, DDE, BVP, PDE Method-of-Lines, and reachability problems.
+- **Canonical Outward-Rounded Intervals (`outward-interval.ts`)**: IEEE-754 outward-rounded interval arithmetic for sound reachability enclosures and formal bounds.
+- **Verification Certificates & WASM Scratch Pool (`certificate.ts`, `wasm-scratch-pool.ts`)**: Structured `VerificationCertificate` emission and zero-allocation scoped WebAssembly scratch memory arenas.
+
+---
+
+## 1. SUNDIALS CVODE, IDA, Stiff, Explicit & Specialized Integrators
+
+For high-precision industrial models, ModelScript integrates Lawrence Livermore National Laboratory's **SUNDIALS** suite compiled to WebAssembly alongside native stiff, explicit, symplectic, quantized-state, delay, stochastic, and PDE integrators:
 
 - **CVODE**: Solves Initial Value Problems (IVPs) for stiff and non-stiff systems of ordinary differential equations (ODEs). Uses Variable-Order Variable-Step-size Adams-Moulton methods for non-stiff systems and Backward Differentiation Formulas (BDF) for stiff systems.
 - **IDA**: Solves Initial Value Problems for implicit systems of differential-algebraic equations (DAEs) of index up to 1:
   $$F(t, y, y') = 0$$
   where $t \in \mathbb{R}$ ($\text{s}$) is simulation time, $y \in \mathbb{R}^n$ is the combined differential-algebraic state vector, $y' = dy/dt \in \mathbb{R}^n/\text{s}$ is its time derivative, and $F(\cdot) \in \mathbb{R}^n$ is the implicit DAE residual vector. Includes dense and sparse linear solvers with adaptive step-size control.
-- **Rodas4P & TR-BDF2**: L-stable 4th-order Rosenbrock-Wanner (`rodas4p.ts`) and 2nd-order Trapezoidal-BDF2 (`trbdf2.ts`) integrators for stiff power-electronic, chemical kinetics, and thermal-hydraulic transients without nonlinear Newton convergence failures.
-- **Tsit5 & DOPRI5**: 5th-order explicit Runge-Kutta pairs (`tsit5.ts`, `dopri5.ts`) with FSAL (First Same As Last) and dense cubic Hermite interpolation for fast non-stiff simulation.
-- **PALC Bifurcation & Continuation (`msx bifurcation`)**: Pseudo-Arclength Continuation (`bifurcation.ts`) for tracing steady-state equilibrium curves and automatically detecting saddle-node (fold) and Hopf bifurcations (e.g., power grid voltage nose curves and nonlinear oscillators).
+- **Radau IIA, Rodas4P/5P, TR-BDF2 & KenCarp4 IMEX**: L-stable 5th-order implicit Runge-Kutta (`radau-iia.ts`), 4th/5th-order Rosenbrock-Wanner (`rodas4p.ts`, `rodas5p.ts`), 2nd-order Trapezoidal-BDF2 (`trbdf2.ts`), and 4th-order Additive Runge-Kutta IMEX (`imex-kencarp4.ts`) integrators for stiff power-electronic, chemical kinetics, and thermal-hydraulic transients.
+- **Tsit5, Verner, DOPRI5 & SPRK**: High-order explicit Runge-Kutta pairs (`tsit5.ts`, `verner.ts`, and `wasm_dopri5.ts` in `@modelscript/runtime`) with FSAL and dense interpolation, plus Partitioned Symplectic Runge-Kutta (`sprk.ts`) for long-horizon Hamiltonian/orbital conservation.
+- **QSS, DDE, Jump Processes, Stiff SDE & PDE Method-of-Lines**: Event-driven Quantized State Systems (`qss-solver.ts`), Delay Differential Equations (`dde-solver.ts`), Gillespie/Tau-Leaping stochastic jump processes (`jump-process.ts`), stabilized explicit ROCK / stiff SDEs (`stiff-sde-and-rock.ts`), and 1D/2D PDE Method-of-Lines (`pde-mol.ts`).
+- **PALC Bifurcation & Continuation (`msx bifurcation`)**: Pseudo-Arclength Continuation (`analysis/bifurcation-palc.ts`) for tracing steady-state equilibrium curves and automatically detecting saddle-node (fold) and Hopf bifurcations (e.g., power grid voltage nose curves and nonlinear oscillators).
 
 ---
 
@@ -45,9 +57,9 @@ For high-precision industrial models, ModelScript integrates Lawrence Livermore 
 
 When performing Monte Carlo uncertainty analysis, hyperparameter sweeps, or bulk power grid $N-1$ contingency screening, sequential simulation is a bottleneck.
 
-ModelScript compiles linearized DAE blocks into WebGPU compute shaders (`@modelscript/simulate/gpu`):
+ModelScript compiles linearized DAE blocks into WebGPU compute shaders (`@modelscript/simulate/webgpu`):
 
-- Runs thousands of parameter combinations and $N-1$ transmission outage contingencies (`contingency-screener.ts`) in parallel on GPU hardware.
+- Runs thousands of parameter combinations and $N-1$ transmission outage contingencies (`solvers/powerflow/webgpu-batched-contingency.ts`) in parallel on GPU hardware.
 - Scales efficiently across client GPUs in browsers and headless datacenter instances.
 - Returns statistical distributions, mean trajectories, voltage/thermal violation severity indices, and variance envelopes directly.
 

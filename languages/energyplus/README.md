@@ -3,7 +3,9 @@
 
 # @modelscript/energyplus
 
-US DOE EnergyPlus building energy performance, envelope heat transfer, and HVAC thermal simulation package (`.idf`, `.epjson`) for ModelScript. Features dual IDF and epJSON parsers (`parseEnergyPlus`, `parseIdf`, `parseEpJson`), multi-file workspace indexing (`EnergyPlusWorkspaceIndex`), direct linear-memory `DAEBuilder` multi-zone thermal RC lowering (`lowerEnergyPlusToDae`), 8 pre-flight building physics & 3D surface geometry lint rules (`M7901`–`M7908`), bidirectional Modelica `Modelica.Thermal.HeatTransfer` projection & synchronization (`energyPlusToModelica`, `synchronizeModelicaToEnergyPlus`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.idf`, `.epjson` · **Docs:** [modelscript.org/languages/energyplus](https://modelscript.org/languages/energyplus)
+
+US DOE EnergyPlus building energy performance, envelope heat transfer, and HVAC thermal simulation package (`.idf`, `.epjson`) for ModelScript. Features dual IDF and epJSON parsers (`parseEnergyPlus`, `parseIdf`, `parseEpJson`), multi-file workspace indexing, direct linear-memory `DAEBuilder` multi-zone thermal RC lowering (`lowerEnergyPlusToDae`), 8 pre-flight building physics & 3D surface geometry lint rules (`M7901`–`M7908`), bidirectional Modelica `Modelica.Thermal.HeatTransfer` projection & synchronization (`energyPlusToModelica`, `synchronizeModelicaToEnergyPlus`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -15,7 +17,7 @@ US DOE EnergyPlus building energy performance, envelope heat transfer, and HVAC 
   - Formulates zone air & thermal mass capacitance differential equations ($C_{\text{zone}} \frac{dT_z}{dt} = \sum UA_{\text{ext}}(T_{\text{amb}} - T_z) + \sum UA_{\text{gnd}}(T_{\text{gnd}} - T_z) + \sum UA_{ij}(T_j - T_z) + Q_{\text{inf}} + Q_{\text{internal}} + Q_{\text{solar}} + Q_{\text{HVAC}}$).
 - **8 Pre-Flight Building Physics & 3D Geometry Lint Rules (`M7901`–`M7908`, `lintEnergyPlus`)**: Static thermodynamic and geometric verification checking reciprocal interzone boundary surfaces, 3D planar polygon convexity (cross-product edge normal verification for solar raytracing and view-factor validity), material conductivity/density/specific-heat positivity, solar absorptance bounds ($\alpha \in [0, 1]$), duplicate zone identifiers, undefined constructions, and HVAC zone connectivity.
 - **Bidirectional Modelica Projection & Reconciliation (`energyPlusToModelica`, `synchronizeModelicaToEnergyPlus`)**: Translates EnergyPlus thermal zones, constructions, and internal loads into `Modelica.Thermal.HeatTransfer` models and supports reverse parameter reconciliation (`target-wins`, `source-wins`, `physics-simplex`) back into `.idf` / `.epjson` sources.
-- **Multi-File Workspace Indexing & LSP (`EnergyPlusWorkspaceIndex`, `getEnergyPlusHover`, `getEnergyPlusCompletions`)**: Implements `IWorkspaceIndex` for cross-file building element lookups with rich thermal resistance ($R$-value / $U$-value) hover cards and completion providers.
+- **Multi-File Workspace Indexing & LSP (`getEnergyPlusHover`, `getEnergyPlusCompletions`)**: Provides workspace symbol indexing for cross-file building element lookups with rich thermal resistance ($R$-value / $U$-value) hover cards and completion providers.
 
 ---
 
@@ -36,7 +38,6 @@ US DOE EnergyPlus building energy performance, envelope heat transfer, and HVAC 
 | `src/projections/energyplus-to-modelica.ts` | `energyPlusToModelica` translator to `Modelica.Thermal.HeatTransfer` models                                          |
 | `src/projections/energyplus-sync.ts`        | `synchronizeModelicaToEnergyPlus` bidirectional parameter reconciliation engine                                      |
 | `src/projections/index.ts`                  | Projections barrel exports                                                                                           |
-| `src/workspace-index.ts`                    | `EnergyPlusWorkspaceIndex` implementing `IWorkspaceIndex` across building models                                     |
 | `src/lsp.ts`                                | LSP hover, completion, and diagnostic providers                                                                      |
 
 ---
@@ -62,20 +63,20 @@ US DOE EnergyPlus building energy performance, envelope heat transfer, and HVAC 
 
 ```bash
 # Inspect thermal zones, envelope surfaces, materials, and constructions
-npx msx energyplus inspect office.idf
+msx energyplus inspect office.idf
 
 # Run pre-flight building physics and 3D surface convexity checks (M7901-M7908)
-npx msx energyplus lint office.idf
+msx energyplus lint office.idf
 
 # Compute steady-state zone UA, internal gains, and free-floating temperatures
-npx msx energyplus thermal-balance office.idf --tamb 10.0
+msx energyplus thermal-balance office.idf --tamb 10.0
 
 # Lower multi-zone building thermal network to the linear-memory DAE arena
-npx msx energyplus to-dae office.idf
+msx energyplus to-dae office.idf
 
 # Project EnergyPlus model to Modelica.Thermal and synchronize changes back
-npx msx energyplus to-modelica office.idf -o OfficeThermal.mo
-npx msx energyplus sync office.idf --from-modelica OfficeThermal.mo --strategy target-wins
+msx energyplus to-modelica office.idf -o OfficeThermal.mo
+msx energyplus sync office.idf --from-modelica OfficeThermal.mo --strategy target-wins
 ```
 
 ### Programmatic Usage

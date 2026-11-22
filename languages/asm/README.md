@@ -1,7 +1,9 @@
 <div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
 <div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-# `@modelscript/asm`
+# @modelscript/asm
+
+**Maturity:** Alpha · **Extensions:** `.asm`, `.bsm`, `.wrrf` · **Docs:** [modelscript.org/languages/asm](https://modelscript.org/languages/asm)
 
 IWA Activated Sludge Models (ASM1, ASM2d, ASM3, ADM1) biokinetics engine, Petersen stoichiometric matrix compiler, Takács 10-layer clarifier settling flux, and zero-GC linear-memory `DAEBuilder` arena lowering for ModelScript.
 

@@ -5,6 +5,7 @@ import {
   analyzeSmallSignalStability,
   calculateGic,
   calculateShortCircuit,
+  ensurePsseWasmParser,
   parseDyr,
   parseRaw,
   solveContinuationPowerFlow,
@@ -86,6 +87,7 @@ export const PsseStudyPanel: React.FC<PsseStudyPanelProps> = ({
   const runSelectedStudy = async () => {
     setRunning(true);
     try {
+      await ensurePsseWasmParser();
       const parsed = parseRaw(code);
       if (dyrText) parsed.dyr = parseDyr(dyrText);
 

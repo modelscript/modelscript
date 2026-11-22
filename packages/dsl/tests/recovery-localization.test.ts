@@ -25,8 +25,9 @@ const recoveryLang = language({
   extras: () => [/[ \t\r\n]+/],
   rules: {
     Program: ($) => repeat($.Stmt),
-    Stmt: ($) => choice($.Decl, $.CallStmt, $.Block),
+    Stmt: ($) => choice($.Decl, $.ExportDecl, $.CallStmt, $.Block),
     Decl: ($) => seq("let", field("name", $.Ident), "=", field("value", $.Expr), ";"),
+    ExportDecl: ($) => seq("export", "let", field("name", $.Ident), "=", field("value", $.Expr), ";"),
     CallStmt: ($) => seq(field("callee", $.Ident), "(", optional(seq($.Expr, repeat(seq(",", $.Expr)))), ")", ";"),
     Block: ($) => seq("block", field("name", $.Ident), "{", repeat($.Stmt), "}", "end", ";"),
     Expr: ($) => choice(prec.left(1, seq($.Expr, "+", $.Expr)), seq("(", $.Expr, ")"), $.Number, $.Ident),
@@ -145,10 +146,14 @@ describe("GLR Error Recovery Localization, Determinism & Memory Isolation", () =
     assert.ok(names.includes("w"), `Expected 'w' preserved in ${JSON.stringify(names)}`);
   });
 
-  it("splits merged keyword prefix (`letx = 1;`) without mutating input buffer", () => {
-    const code = `letx = 1;\nlet y = 2;\n`;
+  it("splits merged keyword prefix (`export letx = 1;`) without mutating input buffer", () => {
+    const code = `export letx = 1;\nlet y = 2;\n`;
     const { tree, diags } = parseCode(code);
     assert.ok(diags.length >= 1, "Expected diagnostic for merged 'letx'");
+    assert.ok(
+      diags.some((d: any) => d.message.includes("Missing space after 'let'")),
+      `Expected contextual merged-keyword diagnostic, got ${JSON.stringify(diags)}`,
+    );
     const decls = tree.rootNode.descendantsOfType("Decl");
     const names = decls.map((d: any) => d.childForFieldName("name")?.text);
     assert.ok(names.includes("y"), `Expected 'y' preserved in ${JSON.stringify(names)}: ${tree.rootNode.toString()}`);
@@ -245,10 +250,14 @@ describe("GLR Error Recovery Localization, Determinism & Memory Isolation", () =
     assert.ok(elapsedMs < 250, `Expected recovery parse < 250ms, took ${elapsedMs.toFixed(1)}ms`);
   });
 
-  it("recovers Damerau-Levenshtein distance-1 keyword typos (`blcok Main { ... }`) without mutating input", () => {
-    const code = `blcok Main {\n  let x = 1;\n} end;\nlet y = 2;\n`;
+  it("recovers Damerau-Levenshtein distance-1 keyword typos (`edn;` -> `end;`) with contextual diagnostic", () => {
+    const code = `block Main {\n  let x = 1;\n} edn;\nlet y = 2;\n`;
     const { tree, diags } = parseCode(code);
-    assert.ok(diags.length >= 1, "Expected diagnostic for typo 'blcok'");
+    assert.ok(diags.length >= 1, "Expected diagnostic for typo 'edn'");
+    assert.ok(
+      diags.some((d: any) => d.message.includes("did you mean 'end'?")),
+      `Expected contextual typo diagnostic, got ${JSON.stringify(diags)}`,
+    );
     const decls = tree.rootNode.descendantsOfType("Decl");
     const names = decls.map((d: any) => d.childForFieldName("name")?.text);
     assert.ok(names.includes("x"), `Expected 'x' preserved in ${JSON.stringify(names)}: ${tree.rootNode.toString()}`);
@@ -256,13 +265,30 @@ describe("GLR Error Recovery Localization, Determinism & Memory Isolation", () =
     assert.equal(tree.rootNode.text.trim(), code.trim());
   });
 
-  it("handles extra closing brackets (`foo(a, b));`) and newline-separated unclosed expressions cleanly", () => {
+  it("handles extra closing brackets (`foo(a, b));`) with contextual diagnostic and newline-separated unclosed expressions", () => {
     const code = `foo(a, b));\nlet a = (1 + 2\nlet b = 2;\nlet c = 3;\n`;
     const { tree, diags } = parseCode(code);
     assert.ok(diags.length >= 2, `Expected >= 2 diagnostics, got ${diags.length}`);
+    assert.ok(
+      diags.some((d: any) => d.message.includes("Unmatched closing delimiter ')'")),
+      `Expected contextual unmatched closer diagnostic, got ${JSON.stringify(diags)}`,
+    );
     const decls = tree.rootNode.descendantsOfType("Decl");
     const names = decls.map((d: any) => d.childForFieldName("name")?.text);
     assert.ok(names.includes("b"), `Expected 'b' preserved in ${JSON.stringify(names)}: ${tree.rootNode.toString()}`);
     assert.ok(names.includes("c"), `Expected 'c' preserved in ${JSON.stringify(names)}: ${tree.rootNode.toString()}`);
+  });
+
+  it("diagnoses mismatched closing delimiters (`foo(a, b};`) with expected delimiter", () => {
+    const code = `foo(a, b};\nlet y = 2;\n`;
+    const { tree, diags } = parseCode(code);
+    assert.ok(diags.length >= 1, "Expected diagnostic for mismatched '}'");
+    assert.ok(
+      diags.some((d: any) => d.message.includes("Mismatched closing delimiter '}', expected ')'")),
+      `Expected contextual mismatched-delimiter diagnostic, got ${JSON.stringify(diags)}`,
+    );
+    const decls = tree.rootNode.descendantsOfType("Decl");
+    const names = decls.map((d: any) => d.childForFieldName("name")?.text);
+    assert.ok(names.includes("y"), `Expected 'y' preserved in ${JSON.stringify(names)}: ${tree.rootNode.toString()}`);
   });
 });

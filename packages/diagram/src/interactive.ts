@@ -216,7 +216,12 @@ export class InteractiveStateManager {
       node.attr("button/transform", isDown ? "translate(0, 2)" : "translate(0, 0)");
       node.attr("button/filter", isDown ? "brightness(0.85)" : "none");
     } else if (binding.action === "toggle") {
-      const isTrue = value === (binding.onValue ?? true) || Boolean(value);
+      const isTrue =
+        binding.onValue !== undefined
+          ? value === binding.onValue
+          : binding.offValue !== undefined
+            ? value !== binding.offValue
+            : Boolean(value);
       // Update LED indicator
       node.attr("indicator/fill", isTrue ? "#2da44e" : "#57606a");
       node.attr("handle/transform", isTrue ? "rotate(30 20 20)" : "rotate(-30 20 20)");

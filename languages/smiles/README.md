@@ -3,7 +3,9 @@
 
 # @modelscript/smiles
 
-Cheminformatics molecular graph parser for **SMILES / SMARTS** (`.smi`, `.smarts`) and **MDL Molfile V2000 / SDF** (`.mol`, `.sdf`), with automated **Joback & Reid group-contribution thermophysical property estimation** for ModelScript. Features a zero-regex character-by-character SMILES/SMARTS & MDL Molfile V2000/SDF parser (`parseSmiles`, `parseMolfile`, `parseSdf`, `parseSmilesDocument`), multi-file workspace indexing (`SmilesWorkspaceIndex`), exact Hill formula & molar mass calculation, Euler characteristic ring counting ($R = E - V + C$), Ertl topological polar surface area (TPSA), Wildman-Crippen $\log P$, Joback & Reid (1987) critical & thermochemical property estimation (`estimateThermophysicalProperties`, `solveMolecularProperties`), direct linear-memory `DAEBuilder` lowering (`lowerSmilesToDae`), 10 pre-flight cheminformatics & valence lint rules (`M9301`–`M9310`, `lintSmiles`), Modelica 3.x & Aspen Plus property projections (`smilesToModelica`, `smilesToAspenDeck`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.smi`, `.smarts`, `.mol`, `.sdf` · **Docs:** [modelscript.org/languages/smiles](https://modelscript.org/languages/smiles)
+
+Cheminformatics molecular graph parser for **SMILES / SMARTS** (`.smi`, `.smarts`) and **MDL Molfile V2000 / SDF** (`.mol`, `.sdf`), with automated **Joback & Reid group-contribution thermophysical property estimation** for ModelScript. Features a zero-regex character-by-character SMILES/SMARTS & MDL Molfile V2000/SDF parser (`parseSmiles`, `parseMolfile`, `parseSdf`, `parseSmilesDocument`), multi-file workspace indexing, exact Hill formula & molar mass calculation, Euler characteristic ring counting ($R = E - V + C$), Ertl topological polar surface area (TPSA), Wildman-Crippen $\log P$, Joback & Reid (1987) critical & thermochemical property estimation (`estimateThermophysicalProperties`, `solveMolecularProperties`), direct linear-memory `DAEBuilder` lowering (`lowerSmilesToDae`), 10 pre-flight cheminformatics & valence lint rules (`M9301`–`M9310`, `lintSmiles`), Modelica 3.x & Aspen Plus property projections (`smilesToModelica`, `smilesToAspenDeck`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -41,7 +43,6 @@ Cheminformatics molecular graph parser for **SMILES / SMARTS** (`.smi`, `.smarts
 | `src/dae/index.ts`                      | DAE lowering barrel exports                                                                                      |
 | `src/projections/smiles-to-modelica.ts` | `smilesToModelica`, `smilesToAspenDeck`, and `smilesToAspenComponent` translators to Modelica 3.x and Aspen Plus |
 | `src/projections/index.ts`              | Projections barrel exports                                                                                       |
-| `src/workspace-index.ts`                | `SmilesWorkspaceIndex` implementing `IWorkspaceIndex` across `.smi`, `.smarts`, `.mol`, and `.sdf` files         |
 | `src/lsp.ts`                            | LSP hover, completion, diagnostic, and symbol providers                                                          |
 
 ---

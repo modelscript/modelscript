@@ -3,6 +3,8 @@
 
 # @modelscript/fea
 
+**Maturity:** Alpha · **Extensions:** `.fea`, `.inp`, `.inpt`, `.bdf`, `.dat` · **Docs:** [modelscript.org/languages/fea](https://modelscript.org/languages/fea)
+
 Finite Element Analysis (FEA) solver deck DSL supporting CalculiX- and Abaqus-compatible (`.inp`, `.inpt`), NASTRAN-compatible Bulk Data (`.bdf`), and `.fea` files, with a WebAssembly GLR parser, `{{ expr }}` parametric deck materializer, 3D CAD boundary/load card synthesizer, pre-flight structural linter (`F1001`–`F1008` / `M7401`–`M7408`), structural theory slicer, and 3D Tet4/Tet10 FEA solver integration.
 
 ---

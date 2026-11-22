@@ -1,7 +1,9 @@
 <div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
 <div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-# `@modelscript/hec-hms`
+# @modelscript/hec-hms
+
+**Maturity:** Alpha · **Extensions:** `.basin`, `.hms`, `.met`, `.control` · **Docs:** [modelscript.org/languages/hec-hms](https://modelscript.org/languages/hec-hms)
 
 US Army Corps of Engineers HEC-HMS watershed rainfall-runoff hydrology and channel routing package for ModelScript.
 

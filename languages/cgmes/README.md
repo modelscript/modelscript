@@ -3,6 +3,8 @@
 
 # @modelscript/cgmes
 
+**Maturity:** Alpha · **Extensions:** `.cgmes`, `.xml`, `.rdf` · **Docs:** [modelscript.org/languages/cgmes](https://modelscript.org/languages/cgmes)
+
 IEC 61970 / IEC 61968 Common Information Model (CIM16 / CIM17) and ENTSO-E Common Grid Model Exchange Standard (CGMES v2.4.15 & v3.0) RDF/XML power grid exchange package for ModelScript. Features a streaming RDF/XML parser (`parseCgmesRdf`, `parseCgmesFiles`), bus-branch/node-breaker topology processor (`processTopology`), 10 ENTSO-E grid validation lint rules (`C1001`–`C1010`, `lintCgmesModel`, `CgmesErrorCode`), and cross-language projections to PSS/E `.raw` v33 (`cgmesToPsse`) and OpenIPSL-compatible Modelica 3.x (`cgmesToModelica`).
 
 ---
@@ -18,16 +20,16 @@ IEC 61970 / IEC 61968 Common Information Model (CIM16 / CIM17) and ENTSO-E Commo
 
 ## Package Structure
 
-| Path                         | Description                                                                                        |
-| ---------------------------- | -------------------------------------------------------------------------------------------------- |
-| `src/index.ts`               | Public package exports                                                                             |
-| `src/language.ts`            | `cgmesLanguage` declarative specification, lint rules, and LSP actions                             |
-| `src/types.ts`               | `CgmesModel`, `Substation`, `VoltageLevel`, `TopologicalNode`, `ACLineSegment`, `PowerTransformer` |
-| `src/parser/rdf-parser.ts`   | `parseCgmesRdf`, `parseCgmesFiles`, and `createEmptyCgmesModel` CIM16/CIM17 RDF/XML profile parser |
-| `src/parser/topology.ts`     | `processTopology` node-breaker to bus-branch converter and island analyzer                         |
-| `src/lints/index.ts`         | `CgmesErrorCode` and `lintCgmesModel` ENTSO-E CGMES diagnostic engine (`C1001`–`C1010`)            |
-| `src/projections/to-psse.ts` | `cgmesToPsse` translator to PSS/E v33 `.raw` power flow format                                     |
-| `src/projections/to-mo.ts`   | `cgmesToModelica` translator to OpenIPSL-compatible Modelica 3.x power grid models                 |
+| Path                                   | Description                                                                                        |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `src/index.ts`                         | Public package exports                                                                             |
+| `src/language.ts`                      | `cgmesLanguage` declarative specification, lint rules, and LSP actions                             |
+| `src/types.ts`                         | `CgmesModel`, `Substation`, `VoltageLevel`, `TopologicalNode`, `ACLineSegment`, `PowerTransformer` |
+| `src/parser/cgmes-rdf-parser.ts`       | `parseCgmesRdf`, `parseCgmesFiles`, and `createEmptyCgmesModel` CIM16/CIM17 RDF/XML profile parser |
+| `src/topology/topology-processor.ts`   | `processTopology` node-breaker to bus-branch converter and island analyzer                         |
+| `src/lints/index.ts`                   | `CgmesErrorCode` and `lintCgmesModel` ENTSO-E CGMES diagnostic engine (`C1001`–`C1010`)            |
+| `src/projections/cgmes-to-psse.ts`     | `cgmesToPsse` translator to PSS/E v33 `.raw` power flow format                                     |
+| `src/projections/cgmes-to-modelica.ts` | `cgmesToModelica` translator to OpenIPSL-compatible Modelica 3.x power grid models                 |
 
 ---
 
@@ -54,14 +56,14 @@ IEC 61970 / IEC 61968 Common Information Model (CIM16 / CIM17) and ENTSO-E Commo
 
 ```bash
 # Inspect CGMES EQ/SSH/TP/SV profile counts and bus-branch topology
-npx msx cgmes inspect grid_EQ.xml grid_SSH.xml grid_TP.xml grid_SV.xml
+msx cgmes inspect grid_EQ.xml grid_SSH.xml grid_TP.xml grid_SV.xml
 
 # Run ENTSO-E CGMES validation rules (C1001-C1010)
-npx msx cgmes lint grid_EQ.xml grid_SSH.xml grid_TP.xml grid_SV.xml
+msx cgmes lint grid_EQ.xml grid_SSH.xml grid_TP.xml grid_SV.xml
 
 # Project CGMES network to PSS/E v33 .raw or Modelica 3.x
-npx msx cgmes to-psse grid_EQ.xml grid_SSH.xml grid_TP.xml -o grid.raw
-npx msx cgmes to-modelica grid_EQ.xml grid_SSH.xml grid_TP.xml -o GridNetwork.mo
+msx cgmes to-psse grid_EQ.xml grid_SSH.xml grid_TP.xml -o grid.raw
+msx cgmes to-modelica grid_EQ.xml grid_SSH.xml grid_TP.xml -o GridNetwork.mo
 ```
 
 ### Programmatic API

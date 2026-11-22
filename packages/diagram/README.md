@@ -56,18 +56,33 @@ ModelScript polyglot diagramming and visual schematic engine — AntV X6 interac
 
 ## Subpath Exports
 
-| Subpath                                 | Module                            | Description                                                                                     |
-| :-------------------------------------- | :-------------------------------- | :---------------------------------------------------------------------------------------------- |
-| `@modelscript/diagram`                  | `src/index.ts`                    | Interactive AntV X6 graph controller, drag-and-drop placement, and bidirectional code writeback |
-| `@modelscript/diagram/builder`          | `src/polyglot-diagram-builder.ts` | Language-agnostic `PolyglotDiagramBuilder` and `GraphicsConfig` types                           |
-| `@modelscript/diagram/svg`              | `src/svg-renderer.ts`             | Headless SVG schematic and Modelica icon renderer                                               |
-| `@modelscript/diagram/port-router`      | `src/port-router.ts`              | Obstacle-avoiding Manhattan A\* router, jumpovers, and fillets                                  |
-| `@modelscript/diagram/fault-tree`       | `src/fault-tree.ts`               | IEC 61025 Fault Tree layout and gate renderers                                                  |
-| `@modelscript/diagram/sequence-layout`  | `src/sequence-layout.ts`          | Lifeline and message ordering layout for sequence diagrams                                      |
-| `@modelscript/diagram/swimlane-layout`  | `src/swimlane-layout.ts`          | Partitioned swimlane layout for activity workflows                                              |
-| `@modelscript/diagram/visual-diff`      | `src/visual-diff-graph.ts`        | Semantic diagram diff engine (`VisualDiffGraph`)                                                |
-| `@modelscript/diagram/html-diff-bundle` | `src/html-diff-bundle.ts`         | Self-contained interactive HTML visual diff generator                                           |
-| `@modelscript/diagram/protocol`         | `src/protocol.ts`                 | Typed RPC message protocol between IDE host and diagram webviews                                |
+| Subpath                                          | Module                            | Description                                                                                     |
+| :----------------------------------------------- | :-------------------------------- | :---------------------------------------------------------------------------------------------- |
+| `@modelscript/diagram`                           | `src/index.ts`                    | Interactive AntV X6 graph controller, drag-and-drop placement, and bidirectional code writeback |
+| `@modelscript/diagram/builder`                   | `src/polyglot-diagram-builder.ts` | Language-agnostic `PolyglotDiagramBuilder` and `GraphicsConfig` types                           |
+| `@modelscript/diagram/polyglot-diagram-builders` | `src/polyglot-diagram-builder.ts` | Consolidated polyglot diagram builder exports across all 106 languages                          |
+| `@modelscript/diagram/svg`                       | `src/svg-renderer.ts`             | Headless SVG schematic and Modelica icon renderer                                               |
+| `@modelscript/diagram/browser`                   | `dist/diagram.browser.js`         | Pre-bundled browser webview bundle for VS Code and web hosts                                    |
+| `@modelscript/diagram/port-router`               | `src/port-router.ts`              | Obstacle-avoiding Manhattan A\* router, jumpovers, and fillets                                  |
+| `@modelscript/diagram/fault-tree`                | `src/fault-tree.ts`               | IEC 61025 Fault Tree layout and gate renderers                                                  |
+| `@modelscript/diagram/sequence-layout`           | `src/sequence-layout.ts`          | Lifeline and message ordering layout for sequence diagrams                                      |
+| `@modelscript/diagram/swimlane-layout`           | `src/swimlane-layout.ts`          | Partitioned swimlane layout for activity workflows                                              |
+| `@modelscript/diagram/visual-diff`               | `src/visual-diff-graph.ts`        | Semantic diagram diff engine (`VisualDiffGraph`)                                                |
+| `@modelscript/diagram/visual-diff-renderer`      | `src/visual-diff-renderer.ts`     | Visual diff SVG/canvas renderer                                                                 |
+| `@modelscript/diagram/html-diff-bundle`          | `src/html-diff-bundle.ts`         | Self-contained interactive HTML visual diff generator                                           |
+| `@modelscript/diagram/water-network-diff`        | `src/water-network-diff.ts`       | Spatial EPANET/SWMM water network diff engine and diagram builder                               |
+| `@modelscript/diagram/protocol`                  | `src/protocol.ts`                 | Typed RPC message protocol between IDE host and diagram webviews                                |
+| `@modelscript/diagram/properties`                | `src/properties/`                 | Schematic property inspector schema, evaluator, and validator                                   |
+| `@modelscript/diagram/action-dispatch`           | `src/action-dispatch.ts`          | Command & action dispatcher for interactive diagram edits                                       |
+| `@modelscript/diagram/glyphs`                    | `src/glyphs.ts`                   | Reusable schematic glyph primitives and icon paths                                              |
+| `@modelscript/diagram/layout-storage`            | `src/layout-storage.ts`           | Persistent layout coordinate storage helpers                                                    |
+| `@modelscript/diagram/solder-dots`               | `src/solder-dots.ts`              | Orthogonal wire T-junction solder-dot synthesis                                                 |
+| `@modelscript/diagram/telemetry`                 | `src/telemetry.ts`                | Live simulation telemetry animation bindings for cells                                          |
+| `@modelscript/diagram/affine-matrix`             | `src/affine-matrix.ts`            | 2D affine transform utilities for Modelica `Placement`                                          |
+| `@modelscript/diagram/spinner`                   | `src/spinner.ts`                  | Loading/busy overlay primitives for diagram canvases                                            |
+| `@modelscript/diagram/code-thumbnail-builder`    | `src/code-thumbnail-builder.ts`   | Compact code/schematic thumbnail SVG generator                                                  |
+
+Specialized scientific visualization subpath exports are also available: `./reaction-coordinate`, `./molecular`, `./climate-raster`, `./segy-trace`, `./crystallography`, `./plasma-fusion`, `./fits-astro`, `./accelerator-lattice`, `./hep-event`, `./quantum-chemistry`, `./neural-spike`, `./optical-bench`, `./nmodl`, and `./pk`.
 
 ---
 
@@ -93,12 +108,13 @@ const darkStroke = adaptColorForDarkMode("#0000ff");
 
 ```bash
 # Compile TypeScript and bundle browser webview script (dist/diagram.browser.js)
-npm run build --workspace=@modelscript/diagram
+pnpm --filter @modelscript/diagram run build
 
 # Run unit tests (layout, port routing, SVG rendering, visual diff, color inversion)
-npm run test --workspace=@modelscript/diagram
+pnpm --filter @modelscript/diagram run test
 
-# Typecheck and lint
-npm run typecheck --workspace=@modelscript/diagram
-npm run lint --workspace=@modelscript/diagram
+# Typecheck, lint, and clean
+pnpm --filter @modelscript/diagram run typecheck
+pnpm --filter @modelscript/diagram run lint
+pnpm --filter @modelscript/diagram run clean
 ```

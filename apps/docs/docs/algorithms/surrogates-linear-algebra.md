@@ -209,13 +209,6 @@ ModelScript provides two complementary calibration engines for offline test-stan
   | $\dot{D}(\sigma_{\text{duty}})$                        | Damage accumulation rate under nominal duty stress $\sigma_{\text{duty}}$ | $\text{s}^{-1}$ or $\text{h}^{-1}$            |
   | $\sigma_{\text{load}}$                                 | Log-normal standard deviation of operational load variability             | Dimensionless ($\ge 0$)                       |
 
-### 5. Subsurface PKN Hydraulic Fracturing & ISIP Real-Time Digital Twin (`hydraulic-fracturing.ts`)
-
-`HydraulicFracturingDigitalTwin` couples wellhead treating pressure, slurry flow rate, and proppant concentration telemetry with Perkins-Kern-Nordgren (PKN) fracture mechanics and Nolte $G$-function pressure falloff analysis:
-
-- **Eaton Breakdown & Fracture Gradient**: Computes formation breakdown pressure $P_{\text{bd}} = 3 \sigma_{h,\min} - \sigma_{H,\max} - P_p + T_0$ and instantaneous shut-in pressure $\text{ISIP} = P_{\text{wh,shut-in}} + P_{\text{hydrostatic}}$ (`msx frac`).
-- **PKN Fracture Aperture & Screenout Risk Index**: Tracks maximum wellbore fracture width $w_0 \propto \left(\frac{\mu Q L}{E'}\right)^{1/4}$ and evaluates real-time proppant bridging / tip screenout risk when net pressure slope $d\log(\Delta p_{\text{net}})/d\log(t) \ge 1$.
-
 ---
 
 ## 8. Shift-and-Invert Sparse Arnoldi Krylov Eigensolver (`sparse_arnoldi.ts`)
@@ -243,6 +236,6 @@ Large-scale interconnected transmission grids (10,000+ buses in PSS/E, PSLF, and
   - 3D CFD and FEA continuum field snapshots from [`CFD`](../languages/cfd.md) and [`FEA`](../languages/fea.md).
   - Live telemetry streams (CSV, ASAM MDF4, MCAP) and `DAEBuilder` adjoint sensitivities.
 - **Downstream Consumers**:
-  - Embedded into real-time Modelica plant loops via `msx surrogate` and operational digital twins (`msx frac`).
+  - Embedded into real-time Modelica plant loops via `msx surrogate` and operational digital twins.
   - Feeds calibrated posterior parameters and RUL health metrics back into the `DigitalThreadHypergraph`.
   - Accelerates linear solves and small-signal modal analysis across all numerical integrators, power grid eigensolvers, and optimal control routines.

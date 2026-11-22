@@ -109,16 +109,26 @@ const drcReport = runDRC(layout);
 
 ---
 
+## Subpath Exports
+
+| Subpath                 | Description                                                                               |
+| :---------------------- | :---------------------------------------------------------------------------------------- |
+| `@modelscript/cad`      | Root barrel exporting CSG primitives, transforms, STEP/USD I/O, clearance, GD&T, and BVH  |
+| `@modelscript/cad/ecad` | PCB layout, RS-274X Gerber & Excellon drill generation, A\* autorouter, DRC, and renderer |
+
+---
+
 ## Scripts
 
 ```bash
 # Build TypeScript declarations and ES modules
-npm run build --workspace=@modelscript/cad
+pnpm --filter @modelscript/cad run build
 
 # Run unit tests (CSG, STEP, clearance, tolerance stack-up, Gerber, DRC)
-npm run test --workspace=@modelscript/cad
+pnpm --filter @modelscript/cad run test
 
-# Typecheck and lint
-npm run typecheck --workspace=@modelscript/cad
-npm run lint --workspace=@modelscript/cad
+# Typecheck, lint, and clean
+pnpm --filter @modelscript/cad run typecheck
+pnpm --filter @modelscript/cad run lint
+pnpm --filter @modelscript/cad run clean
 ```

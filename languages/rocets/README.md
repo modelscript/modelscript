@@ -3,6 +3,8 @@
 
 # @modelscript/rocets
 
+**Maturity:** Beta · **Extensions:** `.roc`, `.rct`, `.inp`, `.dat`, `.deck` · **Docs:** [modelscript.org/languages/rocets](https://modelscript.org/languages/rocets)
+
 Native **NASA ROCETS (Rocket Engine Transient Simulator)** liquid propulsion system modeling, steady-state power balance, and transient startup/shutdown simulation package (`.roc`, `.rct`, `.inp`) for ModelScript. Features cryogenic propellant thermodynamics ($\text{LOX}$, $\text{LH}_2$, $\text{LCH}_4$, RP-1), NASA CEA combustion equilibrium & Bartz nozzle heat-transfer correlations, Newton-Raphson engine power-balance solving, direct linear-memory `DAEBuilder` lowering, 14 pre-flight propulsion lint rules (`M8001`–`M8014`), P&ID schematic generation, and Modelica/SSP projections.
 
 ---
@@ -51,7 +53,6 @@ Native **NASA ROCETS (Rocket Engine Transient Simulator)** liquid propulsion sys
 | `src/projections/index.ts`            | Projections module re-exports                                                               |
 | `src/diagram/pid-diagram.ts`          | `buildRocetsDiagramData` and `renderRocetsPidSvg` P&ID schematic generator                  |
 | `src/diagram/index.ts`                | Diagram module re-exports                                                                   |
-| `src/workspace-index.ts`              | `RocetsWorkspaceIndex` multi-file workspace indexer                                         |
 | `src/lsp.ts`                          | LSP validation, document symbols, hover, and action handlers                                |
 
 ---
@@ -83,14 +84,14 @@ Native **NASA ROCETS (Rocket Engine Transient Simulator)** liquid propulsion sys
 
 ```bash
 # Lint a NASA ROCETS propulsion deck (M8001–M8014)
-npx msx rocets lint ssme_cycle.roc
+msx rocets lint ssme_cycle.roc
 
 # Solve steady-state engine balance and simulate startup transient
-npx msx rocets simulate ssme_cycle.roc
+msx rocets simulate ssme_cycle.roc
 
 # Project ROCETS deck to Modelica 3.x or FMI SSP
-npx msx rocets to-modelica ssme_cycle.roc
-npx msx rocets to-ssp ssme_cycle.roc
+msx rocets to-modelica ssme_cycle.roc
+msx rocets to-ssp ssme_cycle.roc
 ```
 
 ### Programmatic API

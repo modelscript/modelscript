@@ -5,16 +5,10 @@
 // and posts it to the webview for X6 rendering.
 
 import { isOptimisticDiagramActionBatch, SerializedDiagramEditRunner } from "@modelscript/diagram/action-dispatch";
+import { DiagramMethods } from "@modelscript/diagram/protocol";
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { getNonce } from "./utils/nonce.js";
-
-/** JSON-RPC method constants for the unified Diagram API protocol. */
-const DiagramMethods = {
-  getData: "modelscript/diagram.getData",
-  applyEdits: "modelscript/diagram.applyEdits",
-  getComponentProperties: "modelscript/diagram.getComponentProperties",
-} as const;
 
 /**
  * Custom text editor provider that renders interactive graphical schematic diagrams
@@ -299,6 +293,9 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
               actions = [{ type: "addComponent", className: message.className, x: message.x, y: message.y }];
               isAddComponentPending = true;
               break;
+            case "pasteSubgraph":
+              actions = [{ type: "pasteSubgraph", nodes: message.nodes, edges: message.edges }];
+              break;
             case "updateName":
               actions = [{ type: "updateName", oldName: message.oldName, newName: message.newName }];
               break;
@@ -479,6 +476,80 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                   visibleEditor.revealRange(selection, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
                 }
               }
+              break;
+            }
+            case "getPalette": {
+              this.client
+                .sendRequest(DiagramMethods.getPalette, {
+                  uri: uriString,
+                })
+                .then((palette) => {
+                  webviewPanel.webview.postMessage({
+                    type: "palette",
+                    palette,
+                  });
+                })
+                .catch((e) => {
+                  console.error("[diagram] Error fetching palette:", e);
+                  webviewPanel.webview.postMessage({
+                    type: "palette",
+                    palette: null,
+                  });
+                });
+              break;
+            }
+            case "getPropertySchema": {
+              this.client
+                .sendRequest(DiagramMethods.getPropertySchema, {
+                  uri: uriString,
+                  componentName: message.componentName,
+                  className: currentClassName,
+                })
+                .then((schema) => {
+                  webviewPanel.webview.postMessage({
+                    type: "propertySchema",
+                    componentName: message.componentName,
+                    schema,
+                  });
+                })
+                .catch((e) => {
+                  console.error("[diagram] Error fetching property schema:", e);
+                  webviewPanel.webview.postMessage({
+                    type: "propertySchema",
+                    componentName: message.componentName,
+                    schema: null,
+                  });
+                });
+              break;
+            }
+            case "drillDown": {
+              this.client
+                .sendRequest<{ targetUri?: string; className?: string; diagramType?: string } | null>(
+                  DiagramMethods.drillDown,
+                  {
+                    uri: uriString,
+                    componentId: message.componentId,
+                    componentName: message.componentName,
+                    className: message.className ?? currentClassName,
+                    nodeId: message.nodeId,
+                  },
+                )
+                .then((res) => {
+                  if (res?.className !== undefined) {
+                    currentClassName = res.className;
+                  }
+                  if (res?.diagramType) {
+                    currentDiagramType = res.diagramType;
+                    webviewPanel.webview.postMessage({
+                      type: "setDiagramType",
+                      diagramType: res.diagramType,
+                    });
+                  }
+                  immediateUpdate();
+                })
+                .catch((e) => {
+                  console.error("[diagram] Error during drillDown:", e);
+                });
               break;
             }
             case "navigateTo": {
@@ -690,10 +761,16 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       debouncedUpdate(100, false);
     });
 
+    // Sync dark/light theme changes live to the diagram webview
+    const colorThemeSubscription = vscode.window.onDidChangeActiveColorTheme(() => {
+      immediateUpdate(false);
+    });
+
     // Make sure we get rid of the listeners when our editor is closed.
     webviewPanel.onDidDispose(() => {
       changeDocumentSubscription.dispose();
       projectTreeListener.dispose();
+      colorThemeSubscription.dispose();
     });
 
     // Initial load

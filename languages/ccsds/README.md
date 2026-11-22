@@ -3,7 +3,9 @@
 
 # @modelscript/ccsds
 
-CCSDS space mission astrodynamics, orbit ephemeris, and OMG XTCE satellite telemetry & telecommand language package (`.oem`, `.opm`, `.omm`, `.xtce`) for ModelScript. Features dual KVN and XTCE XML parsers (`parseCcsds`, `parseKvn`, `parseXtce`), multi-file workspace indexing (`CcsdsWorkspaceIndex`), a 6-DOF Cowell perturbed orbit propagator (`propagateOrbit`, `keplerianToCartesian`, `cartesianToKeplerian`), direct linear-memory `DAEBuilder` lowering (`lowerCcsdsToDae`), 8 pre-flight astrodynamic and bit-packing lint rules (`M8201`–`M8208`), Modelica and SysML v2 projections (`ccsdsToModelica`, `ccsdsToSysml`), and Language Server Protocol (LSP) services.
+**Maturity:** Beta · **Extensions:** `.oem`, `.opm`, `.omm`, `.xtce`, `.xml` · **Docs:** [modelscript.org/languages/ccsds](https://modelscript.org/languages/ccsds)
+
+CCSDS space mission astrodynamics, orbit ephemeris, and OMG XTCE satellite telemetry & telecommand language package (`.oem`, `.opm`, `.omm`, `.xtce`) for ModelScript. Features dual KVN and XTCE XML parsers (`parseCcsds`, `parseKvn`, `parseXtce`), multi-file workspace indexing, a 6-DOF Cowell perturbed orbit propagator (`propagateOrbit`, `keplerianToCartesian`, `cartesianToKeplerian`), direct linear-memory `DAEBuilder` lowering (`lowerCcsdsToDae`), 8 pre-flight astrodynamic and bit-packing lint rules (`M8201`–`M8208`), Modelica and SysML v2 projections (`ccsdsToModelica`, `ccsdsToSysml`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -16,7 +18,7 @@ CCSDS space mission astrodynamics, orbit ephemeris, and OMG XTCE satellite telem
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerCcsdsToDae`)**: Emits 6-DOF Cowell perturbed orbital differential equations ($\dot{\mathbf{r}} = \mathbf{v}$, $\dot{\mathbf{v}} = -\frac{\mu}{r^3}\mathbf{r} + \mathbf{a}_{J_2}$) directly into ModelScript's zero-GC WebAssembly `DAEBuilder` struct-of-arrays arena (`ExprId`, `EqId`, `VarId`).
 - **8 Pre-Flight Astrodynamic & Telemetry Lint Rules (`M8201`–`M8208`, `lintCcsds`)**: Static verification of pericenter impact trajectories ($r_p < R_\oplus$), XTCE `<SequenceContainer>` bit-packing overlaps, hyperbolic/parabolic escape eccentricity ($e \ge 1$), non-inertial reference frames, missing or non-monotonic OEM ephemeris epochs, duplicate telemetry parameters, and non-physical spacecraft mass.
 - **Modelica & SysML v2 Mission Architecture Projections (`ccsdsToModelica`, `ccsdsToSysml`)**: Translates orbital state vectors into continuous Modelica 3.x astrodynamics models and projects XTCE telemetry/telecommand dictionaries into SysML v2 `part def`, `port def`, and packet container definitions.
-- **Multi-File Workspace Indexing & LSP (`CcsdsWorkspaceIndex`, `getCcsdsHover`, `getCcsdsCompletions`)**: Implements `IWorkspaceIndex` across multi-satellite constellations and telemetry dictionaries with hover inspection and completion providers.
+- **Multi-File Workspace Indexing & LSP (`getCcsdsHover`, `getCcsdsCompletions`)**: Provides workspace symbol indexing across multi-satellite constellations and telemetry dictionaries with hover inspection and completion providers.
 
 ---
 
@@ -39,7 +41,6 @@ CCSDS space mission astrodynamics, orbit ephemeris, and OMG XTCE satellite telem
 | `src/projections/ccsds-to-modelica.ts`   | `ccsdsToModelica` translator to Modelica 3.x orbital mechanics models                                                              |
 | `src/projections/ccsds-to-sysml.ts`      | `ccsdsToSysml` translator to SysML v2 mission & telemetry architecture models                                                      |
 | `src/projections/index.ts`               | Projections barrel exports                                                                                                         |
-| `src/workspace-index.ts`                 | `CcsdsWorkspaceIndex` implementing `IWorkspaceIndex` across spacecraft ephemeris and XTCE files                                    |
 | `src/lsp.ts`                             | LSP hover, completion, and diagnostic providers                                                                                    |
 
 ---
@@ -65,20 +66,20 @@ CCSDS space mission astrodynamics, orbit ephemeris, and OMG XTCE satellite telem
 
 ```bash
 # Inspect CCSDS ephemeris (.oem, .opm, .omm) or OMG XTCE telemetry dictionary (.xtce)
-npx msx ccsds inspect satellite.opm
+msx ccsds inspect satellite.opm
 
 # Run pre-flight astrodynamics and telemetry bit-packing checks (M8201-M8208)
-npx msx ccsds lint satellite.opm telemetry.xtce
+msx ccsds lint satellite.opm telemetry.xtce
 
 # Propagate spacecraft orbit using Cowell 6-DOF perturbed dynamics (with J2 oblateness)
-npx msx ccsds propagate satellite.opm --duration 5400 --step 30
+msx ccsds propagate satellite.opm --duration 5400 --step 30
 
 # Lower 6-DOF orbital equations of motion to the linear-memory DAE arena
-npx msx ccsds to-dae satellite.opm
+msx ccsds to-dae satellite.opm
 
 # Project to Modelica 3.x astrodynamics model or SysML v2 mission architecture
-npx msx ccsds to-modelica satellite.opm --out OrbitModel.mo
-npx msx ccsds to-sysml telemetry.xtce --out TelemetryArchitecture.sysml
+msx ccsds to-modelica satellite.opm --out OrbitModel.mo
+msx ccsds to-sysml telemetry.xtce --out TelemetryArchitecture.sysml
 ```
 
 ### Programmatic Usage

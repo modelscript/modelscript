@@ -196,8 +196,10 @@ export class DiagramService {
         let text = this.documentManager.documents.get(params.uri)?.getText();
         if (!text) {
           const filePath = params.uri.startsWith("file://") ? fileURLToPath(params.uri) : params.uri;
-          if (fs.existsSync(filePath)) {
-            text = fs.readFileSync(filePath, "utf-8");
+          try {
+            text = await fs.promises.readFile(filePath, "utf-8");
+          } catch {
+            // File not readable on disk or running in browser worker
           }
         }
         if (text) {

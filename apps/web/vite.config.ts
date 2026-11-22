@@ -712,6 +712,8 @@ export default defineConfig({
       { find: /^events$/, replacement: path.resolve(import.meta.dirname, "src/util/node-shims.ts") },
       { find: /^node:module$/, replacement: path.resolve(import.meta.dirname, "src/util/node-shims.ts") },
       { find: /^module$/, replacement: path.resolve(import.meta.dirname, "src/util/node-shims.ts") },
+      { find: /^node:worker_threads$/, replacement: path.resolve(import.meta.dirname, "src/util/node-shims.ts") },
+      { find: /^worker_threads$/, replacement: path.resolve(import.meta.dirname, "src/util/node-shims.ts") },
     ],
     dedupe: ["react", "react-dom", "react-router-dom", "styled-components", "@primer/react", "three"],
   },

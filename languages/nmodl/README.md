@@ -3,6 +3,8 @@
 
 # @modelscript/nmodl
 
+**Maturity:** Alpha · **Extensions:** `.mod` · **Docs:** [modelscript.org/languages/nmodl](https://modelscript.org/languages/nmodl)
+
 NEURON Model Description Language (NMODL, `.mod`) biophysical electrophysiology and neural simulation modeling package for ModelScript. Features a zero-regex block parser (`parseNmodl`, `serializeNmodl`), direct linear-memory `DAEBuilder` lowering (`lowerNmodlToDae`), pre-flight biophysical and ionic current lints (`M9441`–`M9450`), deterministic Hodgkin-Huxley action potential solver with voltage clamp and current clamp integration (`solveNmodlActionPotential`), Modelica 3.x continuous projection (`nmodlToModelica`), and Language Server Protocol (LSP) services.
 
 ---

@@ -3,7 +3,9 @@
 
 # @modelscript/three-mf
 
-3MF Consortium (`.3mf` — 3D Manufacturing Format) Patient-Specific Surgical Guides, Osteotomy Cutting Blocks, CranioMaxilloFacial (CMF) / Orthopaedic Lattice Implants, and Watertight 2-Manifold Additive Manufacturing verification package for ModelScript. Features a 3MF Core Specification 1.2.3 XML & surgical extension parser (`parseThreeMf`), multi-file workspace indexing (`ThreeMfWorkspaceIndex`), an Euler-Poincaré 2-manifold mesh & signed divergence volume analyzer (`verifyMeshTopology`), direct linear-memory `DAEBuilder` lowering (`lowerThreeMfToDae`), 10 additive manufacturing & ISO 10993 clinical safety lint rules (`M9701`–`M9710`, `lintThreeMfDocument`, `ThreeMfErrorCode`), ISO 10303-21 STEP AP242 and OpenSCAD 3D CSG projections (`threeMfToStep`, `threeMfToScad`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.3mf` · **Docs:** [modelscript.org/languages/three-mf](https://modelscript.org/languages/three-mf)
+
+3MF Consortium (`.3mf` — 3D Manufacturing Format) Patient-Specific Surgical Guides, Osteotomy Cutting Blocks, CranioMaxilloFacial (CMF) / Orthopaedic Lattice Implants, and Watertight 2-Manifold Additive Manufacturing verification package for ModelScript. Features a 3MF Core Specification 1.2.3 XML & surgical extension parser (`parseThreeMf`), multi-file workspace indexing, an Euler-Poincaré 2-manifold mesh & signed divergence volume analyzer (`verifyMeshTopology`), direct linear-memory `DAEBuilder` lowering (`lowerThreeMfToDae`), 10 additive manufacturing & ISO 10993 clinical safety lint rules (`M9701`–`M9710`, `lintThreeMfDocument`, `ThreeMfErrorCode`), ISO 10303-21 STEP AP242 and OpenSCAD 3D CSG projections (`threeMfToStep`, `threeMfToScad`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -27,10 +29,8 @@
 | `src/parser/index.ts`      | `parseThreeMf` 3MF Core 1.2.3 XML and surgical guide metadata parser                                 |
 | `src/lints/rules.ts`       | `ThreeMfErrorCode` and `lintThreeMfDocument` 2-manifold & ISO 10993 linter (`M9701`–`M9710`)         |
 | `src/lints/index.ts`       | Linter barrel exports                                                                                |
-| `src/solvers/index.ts`     | `verifyMeshTopology` Euler-Poincaré 2-manifold edge, genus, signed volume, and surface area analyzer |
-| `src/dae/index.ts`         | `lowerThreeMfToDae` LPBF/SLA additive thermal build ODE lowering into `DAEBuilder` linear memory     |
+| `src/topology/index.ts`    | `verifyMeshTopology` Euler-Poincaré 2-manifold edge, genus, signed volume, and surface area analyzer |
 | `src/projections/index.ts` | `threeMfToStep` and `threeMfToScad` translators to STEP AP242 CAD and OpenSCAD 3D CSG                |
-| `src/workspace-index.ts`   | `ThreeMfWorkspaceIndex` implementing `IWorkspaceIndex` across `.3mf` files                           |
 | `src/lsp.ts`               | LSP validation, document symbols, mesh topology hover cards, completion, and definition providers    |
 
 ---
@@ -58,15 +58,15 @@
 
 ```bash
 # Lint a 3MF surgical guide or orthopaedic implant model (M9701-M9710)
-npx msx three-mf lint mandibular_osteotomy_guide.3mf
+msx three-mf lint mandibular_osteotomy_guide.3mf
 
 # Verify watertight 2-manifold mesh topology, Euler characteristic, and signed volume
-npx msx three-mf topology mandibular_osteotomy_guide.3mf
+msx three-mf topology mandibular_osteotomy_guide.3mf
 
 # Lower additive build thermal ODEs to DAE or project to STEP AP242 (.step) / OpenSCAD (.scad)
-npx msx three-mf to-dae mandibular_osteotomy_guide.3mf
-npx msx three-mf to-step mandibular_osteotomy_guide.3mf
-npx msx three-mf to-scad mandibular_osteotomy_guide.3mf
+msx three-mf to-dae mandibular_osteotomy_guide.3mf
+msx three-mf to-step mandibular_osteotomy_guide.3mf
+msx three-mf to-scad mandibular_osteotomy_guide.3mf
 ```
 
 ### Programmatic API

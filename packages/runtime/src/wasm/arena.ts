@@ -16,10 +16,39 @@ export declare function debugLog(id: i32, p1: i32, p2: i32, p3: i32): void;
 
 
 
-/** Fixed byte size of every `ASTNode` record in linear memory (32 bytes, 8-byte aligned). */
+/** Fixed byte size of every interior `ASTNode` record in linear memory (32 bytes, 8-byte aligned). */
 const NODE_SIZE: u32 = 32;
+/** Fixed byte size of every compact `LeafNode` record in linear memory (16 bytes, 8-byte aligned). */
+const LEAF_NODE_SIZE: u32 = 16;
 /** Reserved base offset (0) representing a null `ASTNode` pointer. */
 const GLOBAL_BUMP_PTR: usize = 0;
+
+/**
+ * Compact 16-byte linear-memory record for terminal leaf tokens (`FLAG_IS_LEAF` set in `word0.flags`).
+ *
+ * LeafNode Memory Layout (16 bytes, 8-byte aligned):
+ * - `offset + 0`  (`word0`): `type` (16 bits, bits 0..15) | `flags` (16 bits, bits 16..31; bit 13 = `FLAG_IS_LEAF`)
+ * - `offset + 4`  (`packedMeta`): `byteLength` (12 bits, 0..4095) | `paddingLength` (12 bits, 0..4095) | `envHash` (8 bits, 0..255)
+ * - `offset + 8`  (`nextSibling`): arena pointer to next sibling node
+ * - `offset + 12` (`merkleLow`): 32-bit FNV-1a structural + token Merkle hash (`0` = uncomputed)
+ */
+@unmanaged
+export class LeafNode {
+  word0: u32;
+  packedMeta: u32;
+  nextSibling: u32;
+  merkleLow: u32;
+}
+
+@inline
+export function isLeafNode(ptr: u32): boolean {
+  return ptr != 0 && (load<u32>(ptr as usize) & ((FLAG_IS_LEAF as u32) << 16)) != 0;
+}
+
+@inline
+function deriveLeafMerkleHigh(low: u32): u32 {
+  return low == 0 ? 0 : (((low * 0x85ebca6b) ^ (low >>> 16)) as u32);
+}
 
 /**
  * Arena Allocator Node for CST/AST Trees (Persistent / Structural Sharing).
@@ -799,7 +828,8 @@ export function evictDocumentArena(fileId: u32): void {
   s.releaseLock();
 }
 
-export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHash: u32, isTainted: boolean = false, startState: u32 = 0): u32 {
+@inline
+function claimNodeSlot(size: u32): u32 {
   let s = S();
   s.allocCount++;
   let ptr: u32 = 0;
@@ -809,7 +839,10 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
     ensureDocMaps(s);
     let chunk = s.docActiveChunk.get(currentDocFileId as u64);
     let offset = s.docActiveOffset.get(currentDocFileId as u64);
-    if (chunk == 0 || offset + NODE_SIZE > chunk + AST_CHUNK_SIZE) {
+    if (chunk == 0 || offset + size > chunk + AST_CHUNK_SIZE) {
+      if (chunk != 0 && offset < chunk + AST_CHUNK_SIZE) {
+        store<u32>(offset as usize, 0);
+      }
       let newChunk = allocAlignedAstChunk();
       s.activeDocChunkCount++;
       stampChunkPages(newChunk, 1, ++s.chunkSequence);
@@ -823,27 +856,28 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
       s.docActiveChunk.set(currentDocFileId as u64, chunk);
     }
     ptr = offset;
-    s.docActiveOffset.set(currentDocFileId as u64, offset + NODE_SIZE);
+    s.docActiveOffset.set(currentDocFileId as u64, offset + size);
     s.releaseLock();
   } else {
     // Perform atomic bump allocation in the currently active generation (Immutable Append-Only)
     let endLimit = s.activeGeneration == 0 ? s.gen0_endLimit : (s.activeGeneration == 1 ? s.gen1_endLimit : s.gen2_endLimit);
 
-    // Atomically claim a 32-byte slot (8-byte aligned)
-    ptr = s.atomicAddOffset(NODE_SIZE);
+    // Atomically claim a `size`-byte slot (16 or 32 bytes, 8-byte aligned)
+    ptr = s.atomicAddOffset(size);
 
     // Request a new chunk if the claimed slot exceeds the current chunk boundary
-    if (ptr + NODE_SIZE > endLimit) {
+    if (ptr + size > endLimit) {
       let isGen0 = s.activeGeneration == 0;
       let isGen2 = s.activeGeneration == 2;
-      // 3.1 Acquire spinlock to safely handle the rollover and prevent data corruption
       s.acquireLock();
 
       let currentPtrLoc = s.atomicLoadOffset();
       let currentEndLimit = isGen0 ? s.gen0_endLimit : (isGen2 ? s.gen2_endLimit : s.gen1_endLimit);
 
-      if (currentPtrLoc + NODE_SIZE > currentEndLimit) {
-        // 3.2 Chunk is genuinely exhausted, we must allocate a new one
+      if (currentPtrLoc + size > currentEndLimit) {
+        if (ptr < endLimit) {
+          store<u32>(ptr as usize, 0);
+        }
         let activeChunk = isGen0 ? s.gen0_active_chunk : (isGen2 ? s.gen2_active_chunk : s.gen1_active_chunk);
         let chunkCount = isGen0 ? s.gen0_chunk_count : (isGen2 ? s.gen2_chunk_count : s.gen1_chunk_count);
 
@@ -874,21 +908,24 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
           if (!usingRecycled) appendGenChunk(s, 1, newChunk);
           s.gen1_endLimit = newChunk + AST_CHUNK_SIZE;
         }
-        s.atomicStoreOffset(newChunk + NODE_SIZE);
+        s.atomicStoreOffset(newChunk + size);
         ptr = newChunk;
       } else {
-        // 3.3 Another thread already rolled over the chunk while we were spinning.
-        ptr = s.atomicAddOffset(NODE_SIZE);
+        ptr = s.atomicAddOffset(size);
       }
 
-      // 3.4 Release spinlock
       s.releaseLock();
     }
 
     if (s.activeGeneration == 1) {
-      s.arenaOffset = ptr + NODE_SIZE;
+      s.arenaOffset = ptr + size;
     }
   }
+  return ptr;
+}
+
+export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHash: u32, isTainted: boolean = false, startState: u32 = 0): u32 {
+  let ptr = claimNodeSlot(NODE_SIZE);
 
   // Assemble node using clean 32-byte layout
   let initialFlags: u16 = 0;
@@ -912,6 +949,27 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   return ptr;
 }
 
+/**
+ * Allocates a compact 16-byte `LeafNode` for terminal tokens whose byteLength and paddingLength
+ * fit in 12 bits (<= 4095 bytes). Falls back transparently to a full 32-byte `ASTNode` otherwise.
+ */
+export function allocLeafNode(type: u16, paddingLength: u32, byteLength: u32, envHash: u32, isTainted: boolean = false, startState: u32 = 0): u32 {
+  if (type == 0 || paddingLength > 4095 || byteLength > 4095) {
+    return allocNode(type, paddingLength, byteLength, envHash, isTainted, startState);
+  }
+  let ptr = claimNodeSlot(LEAF_NODE_SIZE);
+  let initialFlags: u16 = FLAG_IS_LEAF;
+  if (isTainted) {
+    initialFlags |= FLAG_IS_TAINED;
+  }
+  let leaf = changetype<LeafNode>(ptr);
+  leaf.word0 = (type as u32 & 0xffff) | ((initialFlags as u32) << 16);
+  leaf.packedMeta = (byteLength & 0xfff) | ((paddingLength & 0xfff) << 12) | ((envHash & 0xff) << 24);
+  leaf.nextSibling = 0;
+  leaf.merkleLow = 0;
+  return ptr;
+}
+
 export function allocAstNode(type: u16, paddingLength: u32, byteLength: u32, envHash: u32): u32 {
   return allocNode(type, paddingLength, byteLength, envHash, false, 0);
 }
@@ -924,20 +982,29 @@ export function allocAstNode(type: u16, paddingLength: u32, byteLength: u32, env
  */
 export function computeNodeMerkleHashAt(nodeId: u32, absoluteStart: u32): u64 {
   if (nodeId == 0) return 0;
-  let node = changetype<ASTNode>(nodeId);
-  if (node.merkleLow != 0 || node.merkleHigh != 0) {
-    return (node.merkleLow as u64) | ((node.merkleHigh as u64) << 32);
+  let leaf = isLeafNode(nodeId);
+  if (leaf) {
+    let lNode = changetype<LeafNode>(nodeId);
+    if (lNode.merkleLow != 0) {
+      let hi = deriveLeafMerkleHigh(lNode.merkleLow);
+      return (lNode.merkleLow as u64) | ((hi as u64) << 32);
+    }
+  } else {
+    let node = changetype<ASTNode>(nodeId);
+    if (node.merkleLow != 0 || node.merkleHigh != 0) {
+      return (node.merkleLow as u64) | ((node.merkleHigh as u64) << 32);
+    }
   }
   let h: u64 = 0xcbf29ce484222325; // FNV-1a 64-bit offset basis
 
-  let semanticFlags = node.flags & ~EPHEMERAL_FLAGS;
-  let t: u64 = (node.type as u64) | ((semanticFlags as u64) << 16);
+  let semanticFlags = getNodeFlags(nodeId) & ~(EPHEMERAL_FLAGS | FLAG_IS_LEAF);
+  let t: u64 = (getNodeType(nodeId) as u64) | ((semanticFlags as u64) << 16);
   h ^= t;
   h = h * 0x100000001b3;
-  h ^= (node.byteLength as u64);
+  h ^= (getNodeByteLength(nodeId) as u64);
   h = h * 0x100000001b3;
 
-  let child = node.firstChild;
+  let child = leaf ? 0 : changetype<ASTNode>(nodeId).firstChild;
   if (child == 0) {
     let span = ast_getTextSpan(nodeId, absoluteStart);
     if (span != 0) {
@@ -988,7 +1055,15 @@ export function computeNodeMerkleHashAt(nodeId: u32, absoluteStart: u32): u64 {
 
   let low = (h & 0xffffffff) as u32;
   let high = (h >> 32) as u32;
+  if (leaf) {
+    let folded = (low ^ high) as u32;
+    if (folded == 0) folded = 1;
+    changetype<LeafNode>(nodeId).merkleLow = folded;
+    let dHi = deriveLeafMerkleHigh(folded);
+    return (folded as u64) | ((dHi as u64) << 32);
+  }
   if (low == 0 && high == 0) low = 1;
+  let node = changetype<ASTNode>(nodeId);
   node.merkleLow = low;
   node.merkleHigh = high;
   return (low as u64) | ((high as u64) << 32);
@@ -1001,6 +1076,13 @@ export function computeNodeMerkleHash(nodeId: u32): u64 {
 
 export function getNodeMerkleLow(nodeId: u32): u32 {
   if (nodeId == 0) return 0;
+  if (isLeafNode(nodeId)) {
+    let lNode = changetype<LeafNode>(nodeId);
+    if (lNode.merkleLow == 0) {
+      computeNodeMerkleHashAt(nodeId, 0xFFFFFFFF);
+    }
+    return lNode.merkleLow;
+  }
   let node = changetype<ASTNode>(nodeId);
   if (node.merkleLow == 0 && node.merkleHigh == 0) {
     computeNodeMerkleHashAt(nodeId, 0xFFFFFFFF);
@@ -1010,6 +1092,13 @@ export function getNodeMerkleLow(nodeId: u32): u32 {
 
 export function getNodeMerkleHigh(nodeId: u32): u32 {
   if (nodeId == 0) return 0;
+  if (isLeafNode(nodeId)) {
+    let lNode = changetype<LeafNode>(nodeId);
+    if (lNode.merkleLow == 0) {
+      computeNodeMerkleHashAt(nodeId, 0xFFFFFFFF);
+    }
+    return deriveLeafMerkleHigh(lNode.merkleLow);
+  }
   let node = changetype<ASTNode>(nodeId);
   if (node.merkleLow == 0 && node.merkleHigh == 0) {
     computeNodeMerkleHashAt(nodeId, 0xFFFFFFFF);
@@ -1019,6 +1108,13 @@ export function getNodeMerkleHigh(nodeId: u32): u32 {
 
 export function getNodeMerkleHashAt(nodeId: u32, absoluteStart: u32): u64 {
   if (nodeId == 0) return 0;
+  if (isLeafNode(nodeId)) {
+    let lNode = changetype<LeafNode>(nodeId);
+    if (lNode.merkleLow == 0) {
+      return computeNodeMerkleHashAt(nodeId, absoluteStart);
+    }
+    return (lNode.merkleLow as u64) | ((deriveLeafMerkleHigh(lNode.merkleLow) as u64) << 32);
+  }
   let node = changetype<ASTNode>(nodeId);
   if (node.merkleLow == 0 && node.merkleHigh == 0) {
     return computeNodeMerkleHashAt(nodeId, absoluteStart);
@@ -1031,8 +1127,54 @@ export function getNodeMerkleHash(nodeId: u32): u64 {
   return getNodeMerkleHashAt(nodeId, 0xFFFFFFFF);
 }
 
+/** Returns the cached 64-bit Merkle hash without triggering lazy computation (`0` if uncomputed). */
+@inline
+export function getNodeRawMerkleHash(nodeId: u32): u64 {
+  if (nodeId == 0) return 0;
+  if (isLeafNode(nodeId)) {
+    let low = changetype<LeafNode>(nodeId).merkleLow;
+    if (low == 0) return 0;
+    return (low as u64) | ((deriveLeafMerkleHigh(low) as u64) << 32);
+  }
+  let node = changetype<ASTNode>(nodeId);
+  return (node.merkleLow as u64) | ((node.merkleHigh as u64) << 32);
+}
+
+/** Copies the raw cached Merkle hash from `src` to `dst` without triggering computation. */
+@inline
+export function copyNodeMerkleHash(dst: u32, src: u32): void {
+  if (dst == 0 || src == 0) return;
+  if (isLeafNode(src)) {
+    let low = changetype<LeafNode>(src).merkleLow;
+    if (isLeafNode(dst)) {
+      changetype<LeafNode>(dst).merkleLow = low;
+    } else {
+      let d = changetype<ASTNode>(dst);
+      d.merkleLow = low;
+      d.merkleHigh = deriveLeafMerkleHigh(low);
+    }
+  } else {
+    let s = changetype<ASTNode>(src);
+    if (isLeafNode(dst)) {
+      let folded = (s.merkleLow ^ s.merkleHigh) as u32;
+      if (folded == 0 && (s.merkleLow != 0 || s.merkleHigh != 0)) folded = 1;
+      changetype<LeafNode>(dst).merkleLow = folded;
+    } else {
+      let d = changetype<ASTNode>(dst);
+      d.merkleLow = s.merkleLow;
+      d.merkleHigh = s.merkleHigh;
+    }
+  }
+}
+
 export function setNodeMerkleHash(nodeId: u32, low: u32, high: u32): void {
   if (nodeId == 0) return;
+  if (isLeafNode(nodeId)) {
+    let folded: u32 = (low == 0 && high == 0) ? 0 : ((low ^ high) as u32);
+    if (folded == 0 && (low != 0 || high != 0)) folded = 1;
+    changetype<LeafNode>(nodeId).merkleLow = folded;
+    return;
+  }
   let node = changetype<ASTNode>(nodeId);
   node.merkleLow = low;
   node.merkleHigh = high;
@@ -1040,26 +1182,31 @@ export function setNodeMerkleHash(nodeId: u32, low: u32, high: u32): void {
 
 @inline
 export function getNodeStartState(ptr: u32): u32 {
+  if (isLeafNode(ptr)) return 0;
   return changetype<ASTNode>(ptr).startState;
 }
 
 @inline
 export function getNodeReductionLookahead(ptr: u32): u32 {
+  if (isLeafNode(ptr)) return 0;
   return changetype<ASTNode>(ptr).reductionLookahead;
 }
 
 @inline
 export function setNodeStartState(ptr: u32, state: u32): void {
+  if (isLeafNode(ptr)) return;
   changetype<ASTNode>(ptr).startState = state as u16;
 }
 
 @inline
 export function setNodeReductionLookahead(ptr: u32, lookahead: u32): void {
+  if (isLeafNode(ptr)) return;
   changetype<ASTNode>(ptr).reductionLookahead = lookahead as u8;
 }
 
 @inline
 export function setNodeReductionInfo(ptr: u32, state: u32, lookahead: u32): void {
+  if (isLeafNode(ptr)) return;
   let node = changetype<ASTNode>(ptr);
   node.startState = state as u16;
   node.reductionLookahead = lookahead as u8;
@@ -1351,7 +1498,9 @@ export const FLAG_IS_SHARED: u16 = 512;
 export const FLAG_IS_SYNTHETIC: u16 = 1024;
 /** Stored in bit 31 of `startState` (see ASTNode.flags); word0 only has 12 flag bits. */
 export const FLAG_FRAGILE: u16 = 4096;
-export const EPHEMERAL_FLAGS: u16 = FLAG_GC_MARK | FLAG_EXTRACTED | FLAG_LSP_VISITED | FLAG_LSP_TRAVERSED | FLAG_IS_SHARED;
+/** Compact 16-byte `LeafNode` discriminator bit in `word0.flags` (never cleared by `setNodeFlags`). */
+export const FLAG_IS_LEAF: u16 = 8192;
+export const EPHEMERAL_FLAGS: u16 = FLAG_GC_MARK | FLAG_EXTRACTED | FLAG_LSP_VISITED | FLAG_LSP_TRAVERSED | FLAG_IS_SHARED | FLAG_IS_LEAF;
 
 export function getNodeFlags(ptr: u32): u16 {
   return changetype<ASTNode>(ptr).flags;
@@ -1362,7 +1511,9 @@ export function isNodeFragile(ptr: u32): boolean {
 }
 
 export function setNodeFlags(ptr: u32, flags: u16): void {
-  changetype<ASTNode>(ptr).flags = flags;
+  let node = changetype<ASTNode>(ptr);
+  let leafBit = node.flags & FLAG_IS_LEAF;
+  node.flags = (flags & ~FLAG_IS_LEAF) | leafBit;
 }
 
 let saved_gen_offset: u32 = 0;
@@ -1444,7 +1595,7 @@ export function nodeHasError(ptr: u32): boolean {
 }
 
 export function setFirstChild(parentPtr: u32, childPtr: u32): void {
-  if (parentPtr == 0) return;
+  if (parentPtr == 0 || isLeafNode(parentPtr)) return;
 
   assertGen(parentPtr, childPtr);
   changetype<ASTNode>(parentPtr).firstChild = childPtr;
@@ -1453,6 +1604,10 @@ export function setFirstChild(parentPtr: u32, childPtr: u32): void {
 export function setNextSibling(siblingPtr: u32, nextPtr: u32): void {
   if (siblingPtr == 0) return;
   assertGen(siblingPtr, nextPtr);
+  if (isLeafNode(siblingPtr)) {
+    changetype<LeafNode>(siblingPtr).nextSibling = nextPtr;
+    return;
+  }
   changetype<ASTNode>(siblingPtr).nextSibling = nextPtr;
 }
 
@@ -1466,41 +1621,68 @@ export function setNodeType(ptr: u32, t: u16): void {
 
 @inline
 export function getNodePadding(ptr: u32): u32 {
+  if (isLeafNode(ptr)) {
+    return (changetype<LeafNode>(ptr).packedMeta >>> 12) & 0xfff;
+  }
   return changetype<ASTNode>(ptr).paddingLength;
 }
 
 @inline
 export function setNodePadding(ptr: u32, pad: u32): void {
+  if (isLeafNode(ptr)) {
+    let leaf = changetype<LeafNode>(ptr);
+    let clamped = pad <= 4095 ? pad : 4095;
+    leaf.packedMeta = (leaf.packedMeta & ~((0xfff as u32) << 12)) | (clamped << 12);
+    return;
+  }
   changetype<ASTNode>(ptr).paddingLength = pad;
 }
 
 export function propagateFirstChildPadding(ptr: u32, pad: u32): void {
   if (ptr != 0) {
-    changetype<ASTNode>(ptr).paddingLength = pad;
+    setNodePadding(ptr, pad);
   }
 }
 
 @inline
 export function getNodeByteLength(ptr: u32): u32 {
+  if (isLeafNode(ptr)) {
+    return changetype<LeafNode>(ptr).packedMeta & 0xfff;
+  }
   return changetype<ASTNode>(ptr).byteLength;
 }
 
 @inline
 export function setNodeByteLength(ptr: u32, len: u32): void {
+  if (isLeafNode(ptr)) {
+    let leaf = changetype<LeafNode>(ptr);
+    let clamped = len <= 4095 ? len : 4095;
+    leaf.packedMeta = (leaf.packedMeta & ~0xfff) | clamped;
+    return;
+  }
   changetype<ASTNode>(ptr).byteLength = len;
 }
 
 @inline
 export function getNodeEnvHash(ptr: u32): u32 {
+  if (isLeafNode(ptr)) {
+    return (changetype<LeafNode>(ptr).packedMeta >>> 24) & 0xff;
+  }
   return changetype<ASTNode>(ptr).envHash;
 }
 
 @inline
 export function setNodeEnvHash(ptr: u32, envHash: u32): void {
+  if (isLeafNode(ptr)) {
+    let leaf = changetype<LeafNode>(ptr);
+    leaf.packedMeta = (leaf.packedMeta & 0x00ffffff) | ((envHash & 0xff) << 24);
+    return;
+  }
   changetype<ASTNode>(ptr).envHash = envHash;
 }
 
 export function getNodeFirstChild(ptr: u32): u32 {
+  if (isLeafNode(ptr)) return 0;
   return changetype<ASTNode>(ptr).firstChild;
 }
 
@@ -1526,6 +1708,9 @@ export function getNodeLeadingPad(ptr: u32): u32 {
 }
 
 export function getNodeNextSibling(ptr: u32): u32 {
+  if (isLeafNode(ptr)) {
+    return changetype<LeafNode>(ptr).nextSibling;
+  }
   return changetype<ASTNode>(ptr).nextSibling;
 }
 
@@ -1707,7 +1892,9 @@ function cloneNodeInner(nodeId: u32, deep: boolean, depth: i32): u32 {
   let byteLen = getNodeByteLength(nodeId);
   let envHash = getNodeEnvHash(nodeId);
 
-  let newPtr = allocNode(type, padding, byteLen, envHash, false, getNodeStartState(nodeId));
+  let newPtr = isLeafNode(nodeId)
+    ? allocLeafNode(type, padding, byteLen, envHash, false, 0)
+    : allocNode(type, padding, byteLen, envHash, false, getNodeStartState(nodeId));
   setNodeReductionLookahead(newPtr, getNodeReductionLookahead(nodeId));
 
   // Preserve structural ASTNode flags (FLAG_IS_LIST, FLAG_INVISIBLE, FLAG_LIST_BOUNDARY)
@@ -1904,7 +2091,9 @@ function clearSideTablesForRange(startPtr: u32, endPtr: u32): void {
   let hasTns = changetype<usize>(_nodeTensorHandles) != 0 && _nodeTensorHandles.size > 0;
   let hasScp = changetype<usize>(_nodeScopes) != 0 && _nodeScopes.size > 0;
 
-  for (let p = startPtr; p < endPtr; p += NODE_SIZE) {
+  let p = startPtr;
+  while (p < endPtr) {
+    let step = isLeafNode(p) ? LEAF_NODE_SIZE : NODE_SIZE;
     let k = p as u64;
     if (hasOv) _nodeOverrideType.delete(k);
     if (hasStr) _nodeOverrideStrings.delete(k);
@@ -1915,6 +2104,7 @@ function clearSideTablesForRange(startPtr: u32, endPtr: u32): void {
     if (hasPrv) _nodeProvenance.delete(k);
     if (hasTns) _nodeTensorHandles.delete(k);
     if (hasScp) _nodeScopes.delete(k);
+    p += step;
   }
 }
 
@@ -2484,10 +2674,10 @@ export function clearAstMarks(rootToKeep: u32): void {
       if (curr > gcHighWaterMark) gcHighWaterMark = curr;
 
       // Push all children to the stack
-      let child = currNode.firstChild;
+      let child = getNodeFirstChild(curr);
       while (child != 0) {
         stackTop = pushGcStack(child, stackTop);
-        child = changetype<ASTNode>(child).nextSibling; // follow intrusive sibling linked list
+        child = getNodeNextSibling(child); // follow intrusive sibling linked list
       }
     }
   }
@@ -2511,13 +2701,16 @@ export function clearAstMarks(rootToKeep: u32): void {
     let lastLivePtr: u32 = start;
     let hasLive = false;
 
-    for (let ptr = start; ptr < sweepEnd; ptr += NODE_SIZE) {
+    let ptr = start;
+    while (ptr < sweepEnd) {
+      let step = isLeafNode(ptr) ? LEAF_NODE_SIZE : NODE_SIZE;
       let node = changetype<ASTNode>(ptr);
       if (node.isGcMarked) {
         hasLive = true;
-        lastLivePtr = ptr + NODE_SIZE;
+        lastLivePtr = ptr + step;
         node.clearFlag((FLAG_GC_MARK | FLAG_LSP_VISITED | FLAG_IS_TAINED) as u16);
       }
+      ptr += step;
     }
 
     if (i == activeChunk) {

@@ -9,7 +9,7 @@
  * scale linearly across CPU cores.
  */
 
-import { Worker } from "node:worker_threads";
+import type { Worker } from "node:worker_threads";
 import type {
   EmtBoundaryFeedSpec,
   EmtNetworkParticipant,
@@ -319,7 +319,8 @@ export class WorkerEmtParticipant implements EmtNetworkParticipant {
   }
 
   public async initialize(options: Parameters<EmtNetworkParticipant["initialize"]>[0]): Promise<void> {
-    this.worker = new Worker(WORKER_SCRIPT, {
+    const { Worker: WorkerCtor } = await import("node:worker_threads");
+    this.worker = new WorkerCtor(WORKER_SCRIPT, {
       eval: true,
       workerData: { id: this.id, descriptor: this.descriptor },
     });

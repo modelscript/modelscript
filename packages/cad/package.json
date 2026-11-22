@@ -47,6 +47,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelscript/runtime": "workspace:*",
     "occt-import-js": "^0.0.23",
     "opencascade.js": "^1.0.0"
   },

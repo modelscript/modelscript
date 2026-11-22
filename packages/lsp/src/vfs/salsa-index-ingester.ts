@@ -24,6 +24,7 @@ function getSqlInstance(): Promise<any> {
 
     sqlPromise = initSqlJs({
       ...(wasmBinary ? { wasmBinary } : {}),
+      useOldExtensionFunctions: false,
       locateFile: (file: string) => {
         const base = (globalThis as any).serverDistBase;
         if (base) {
@@ -31,6 +32,9 @@ function getSqlInstance(): Promise<any> {
         }
         return file;
       },
+    }).catch((err: unknown) => {
+      sqlPromise = null;
+      throw err;
     });
   }
   return sqlPromise;
@@ -53,36 +57,78 @@ export async function ingestSalsaIndex(
       throw new Error(`Unsupported salsa-index schema version: ${version}`);
     }
 
-    // Stream symbols into queryEngine.index
+    // Stream symbols into queryEngine.index with collision-safe ID remapping
     let symbolCount = 0;
     const symbolRows = db.exec("SELECT id, data FROM symbols");
     if (symbolRows.length > 0 && queryEngine?.index?.symbols) {
+      const parsedEntries: Array<{ rawId: number; entry: SymbolEntry }> = [];
+      let hasCollision = false;
       for (const row of symbolRows[0].values) {
         try {
-          const id = Number(row[0]);
+          const rawId = Number(row[0]);
           const entry = JSON.parse(row[1] as string) as SymbolEntry;
-          queryEngine.index.symbols.set(id, entry);
-
-          if (entry.name && queryEngine.index.byName) {
-            const existing = queryEngine.index.byName.get(entry.name) || [];
-            if (!existing.includes(id)) {
-              existing.push(id);
-              queryEngine.index.byName.set(entry.name, existing);
-            }
+          if (queryEngine.index.symbols.has(rawId)) {
+            hasCollision = true;
           }
-
-          if (queryEngine.index.childrenOf) {
-            const parentKey = entry.parentId ?? null;
-            const siblings = queryEngine.index.childrenOf.get(parentKey) || [];
-            if (!siblings.includes(id)) {
-              siblings.push(id);
-              queryEngine.index.childrenOf.set(parentKey, siblings);
-            }
-          }
-          symbolCount++;
+          parsedEntries.push({ rawId, entry });
         } catch {
           // Ignore malformed symbol entry
         }
+      }
+
+      const idMap = new Map<number, number>();
+      if (hasCollision) {
+        let maxLocalSeq = 0;
+        for (const existingId of queryEngine.index.symbols.keys()) {
+          const seq = existingId & 0x00ffffff;
+          if (seq > maxLocalSeq) maxLocalSeq = seq;
+        }
+        let nextSeq = maxLocalSeq + 1;
+        for (const { rawId } of parsedEntries) {
+          const domain = (rawId >>> 24) & 0xff;
+          const remapped = (((domain & 0xff) << 24) | (nextSeq++ & 0x00ffffff)) >>> 0;
+          idMap.set(rawId, remapped);
+        }
+      }
+      const remapId = (id: number): number => (hasCollision ? (idMap.get(id) ?? id) : id);
+
+      for (const { rawId, entry } of parsedEntries) {
+        const id = remapId(rawId);
+        const parentId =
+          entry.parentId !== null && entry.parentId !== undefined
+            ? entry.parentId === 0
+              ? 0
+              : remapId(entry.parentId)
+            : null;
+        const hydratedEntry: SymbolEntry = hasCollision ? { ...entry, id, parentId } : entry;
+        queryEngine.index.symbols.set(id, hydratedEntry);
+
+        if (hydratedEntry.name && queryEngine.index.byName) {
+          const existing = queryEngine.index.byName.get(hydratedEntry.name) || [];
+          if (!existing.includes(id)) {
+            existing.push(id);
+            queryEngine.index.byName.set(hydratedEntry.name, existing);
+          }
+        }
+
+        if (queryEngine.index.childrenOf) {
+          const parentKey = hydratedEntry.parentId ?? null;
+          const siblings = queryEngine.index.childrenOf.get(parentKey) || [];
+          if (!siblings.includes(id)) {
+            siblings.push(id);
+            queryEngine.index.childrenOf.set(parentKey, siblings);
+          }
+        }
+
+        if (hydratedEntry.resourceId && queryEngine.index.symbolsByResource) {
+          const resList = queryEngine.index.symbolsByResource.get(hydratedEntry.resourceId) || [];
+          if (!resList.includes(id)) {
+            resList.push(id);
+            queryEngine.index.symbolsByResource.set(hydratedEntry.resourceId, resList);
+          }
+        }
+
+        symbolCount++;
       }
     }
 

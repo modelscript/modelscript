@@ -3,7 +3,9 @@
 
 # @modelscript/eclipse
 
-ECLIPSE-compatible black-oil reservoir simulation and multiphase porous-media engineering package (`.data`, `.dat`, `.inc`) for ModelScript. Features a zero-regex character-scanning ECLIPSE deck parser (`parseEclipse`), multi-file workspace indexing (`EclipseWorkspaceIndex`), a multiphase Darcy flow & Peaceman well inflow performance (IPR) depletion solver (`solveReservoirDepletion`), direct linear-memory `DAEBuilder` lowering (`lowerEclipseToDae`), 10 pre-flight reservoir & PVT lint rules (`M8701`–`M8710`), Modelica 3.x porous-media projections (`eclipseToModelica`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.data`, `.dat`, `.inc` · **Docs:** [modelscript.org/languages/eclipse](https://modelscript.org/languages/eclipse)
+
+ECLIPSE-compatible black-oil reservoir simulation and multiphase porous-media engineering package (`.data`, `.dat`, `.inc`) for ModelScript. Features a zero-regex character-scanning ECLIPSE deck parser (`parseEclipse`), multi-file workspace indexing, a multiphase Darcy flow & Peaceman well inflow performance (IPR) depletion solver (`solveReservoirDepletion`), direct linear-memory `DAEBuilder` lowering (`lowerEclipseToDae`), 10 pre-flight reservoir & PVT lint rules (`M8701`–`M8710`), Modelica 3.x porous-media projections (`eclipseToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -18,7 +20,7 @@ ECLIPSE-compatible black-oil reservoir simulation and multiphase porous-media en
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerEclipseToDae`)**: Lowers reservoir tank material-balance ODEs ($V_p c_t \frac{dP}{dt} = \sum Q_{\text{inj}} - \sum Q_{\text{prod}}$), Peaceman well inflow equations, and water-cut dynamics directly into ModelScript's zero-GC WebAssembly `DAEBuilder` struct-of-arrays arena.
 - **10 Pre-Flight Reservoir & Petrophysical Lint Rules (`M8701`–`M8710`, `lintEclipse`)**: Static verification of active reservoir phases, grid dimensions, porosity bounds ($0 < \phi < 1$), permeability positivity, `PVDO` pressure monotonicity, `SWOF`/`SGOF` saturation monotonicity, 3D grid completion bounds (`COMPDAT` vs. `DIMENS`), and `WELSPECS` well reference integrity.
 - **Modelica 3.x Porous-Media Projection (`eclipseToModelica`)**: Synthesizes standalone Modelica 3.x reservoir depletion and well inflow models for coupled subsurface-to-surface production system co-simulation.
-- **Multi-File Workspace Indexing & LSP (`EclipseWorkspaceIndex`, `provideEclipseHover`, `provideEclipseCompletions`)**: Implements `IWorkspaceIndex` across `.data` and `.inc` include files with keyword documentation hovers, completion items, and AST writeback.
+- **Multi-File Workspace Indexing & LSP (`provideEclipseHover`, `provideEclipseCompletions`)**: Provides workspace symbol indexing across `.data` and `.inc` include files with keyword documentation hovers, completion items, and AST writeback.
 
 ---
 
@@ -40,7 +42,6 @@ ECLIPSE-compatible black-oil reservoir simulation and multiphase porous-media en
 | `src/dae/index.ts`                       | DAE lowering barrel exports                                                                                                       |
 | `src/projections/eclipse-to-modelica.ts` | `eclipseToModelica` translator to Modelica 3.x porous media and well models                                                       |
 | `src/projections/index.ts`               | Projections barrel exports                                                                                                        |
-| `src/workspace-index.ts`                 | `EclipseWorkspaceIndex` implementing `IWorkspaceIndex` across `.data`, `.dat`, and `.inc` decks                                   |
 | `src/lsp.ts`                             | LSP hover, completion, and symbol providers                                                                                       |
 
 ---
@@ -68,19 +69,19 @@ ECLIPSE-compatible black-oil reservoir simulation and multiphase porous-media en
 
 ```bash
 # Inspect grid dimensions, petrophysics, PVT tables, and wells in an ECLIPSE deck
-npx msx eclipse inspect SPE1.DATA
+msx eclipse inspect SPE1.DATA
 
 # Run pre-flight reservoir, PVT, and completion diagnostics (M8701-M8710)
-npx msx eclipse lint SPE1.DATA
+msx eclipse lint SPE1.DATA
 
 # Run multiphase Darcy depletion & Peaceman well IPR simulation for 365 days
-npx msx eclipse solve SPE1.DATA --days 365
+msx eclipse solve SPE1.DATA --days 365
 
 # Lower reservoir material balance and well inflow equations to DAEBuilder linear memory
-npx msx eclipse to-dae SPE1.DATA
+msx eclipse to-dae SPE1.DATA
 
 # Project ECLIPSE deck to a Modelica 3.x reservoir model
-npx msx eclipse to-modelica SPE1.DATA -o Spe1Reservoir.mo
+msx eclipse to-modelica SPE1.DATA -o Spe1Reservoir.mo
 ```
 
 ### Programmatic Usage

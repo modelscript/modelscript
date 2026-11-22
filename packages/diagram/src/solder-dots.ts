@@ -731,3 +731,89 @@ export function wireCrossingToDiagramNode(crossing: WireCrossing, isDark: boolea
     ports: { items: [], groups: {} },
   };
 }
+
+export interface BusBundleEdge {
+  id: string;
+  sourceCell: string;
+  targetCell: string;
+  memberEdgeIds: string[];
+  width: number;
+  label: string;
+}
+
+/**
+ * Collapses parallel edges between the same pair of component nodes into named bus bundles
+ * whenever the number of parallel connections meets or exceeds `threshold` (default: 3).
+ */
+export function collapseParallelBusEdges(
+  edges: ReadonlyArray<{ id: string; sourceCell: string; targetCell: string }>,
+  threshold = 3,
+): { bundles: BusBundleEdge[]; unbundledEdgeIds: string[] } {
+  const groups = new Map<string, { sourceCell: string; targetCell: string; edgeIds: string[] }>();
+  for (const e of edges) {
+    if (!e.sourceCell || !e.targetCell) continue;
+    const [a, b] = e.sourceCell <= e.targetCell ? [e.sourceCell, e.targetCell] : [e.targetCell, e.sourceCell];
+    const key = `${a}<->${b}`;
+    let grp = groups.get(key);
+    if (!grp) {
+      grp = { sourceCell: e.sourceCell, targetCell: e.targetCell, edgeIds: [] };
+      groups.set(key, grp);
+    }
+    grp.edgeIds.push(e.id);
+  }
+
+  const bundles: BusBundleEdge[] = [];
+  const unbundledEdgeIds: string[] = [];
+  let busIdx = 1;
+  for (const grp of groups.values()) {
+    if (grp.edgeIds.length >= threshold) {
+      bundles.push({
+        id: `bus_bundle_${busIdx++}`,
+        sourceCell: grp.sourceCell,
+        targetCell: grp.targetCell,
+        memberEdgeIds: grp.edgeIds,
+        width: grp.edgeIds.length,
+        label: `[${grp.edgeIds.length}]`,
+      });
+    } else {
+      for (const id of grp.edgeIds) unbundledEdgeIds.push(id);
+    }
+  }
+  return { bundles, unbundledEdgeIds };
+}
+
+export interface VirtualNetLabel {
+  edgeId: string;
+  netName: string;
+  sourcePoint: { x: number; y: number };
+  targetPoint: { x: number; y: number };
+  spanDistance: number;
+}
+
+/**
+ * Identifies long rat's-nest edges exceeding `maxSpanDistance` (default: 900 diagram units)
+ * that can be rendered as matched virtual/off-sheet net labels instead of long cross-canvas wires.
+ */
+export function computeVirtualNetLabels(
+  edges: ReadonlyArray<EdgePath & { netName?: string | undefined }>,
+  maxSpanDistance = 900,
+): VirtualNetLabel[] {
+  const out: VirtualNetLabel[] = [];
+  let netIdx = 1;
+  for (const e of edges) {
+    if (!e.points || e.points.length < 2) continue;
+    const first = e.points[0]!;
+    const last = e.points[e.points.length - 1]!;
+    const dist = Math.hypot(last.x - first.x, last.y - first.y);
+    if (dist >= maxSpanDistance) {
+      out.push({
+        edgeId: e.id,
+        netName: e.netName || `NET_${netIdx++}`,
+        sourcePoint: { x: first.x, y: first.y },
+        targetPoint: { x: last.x, y: last.y },
+        spanDistance: Math.round(dist),
+      });
+    }
+  }
+  return out;
+}

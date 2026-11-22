@@ -132,6 +132,99 @@ export function applyOptimisticPropertyAction<
   return prev;
 }
 
+/** Sentinel value representing heterogeneous values across a multi-node selection. */
+export const MIXED_PROPERTY_VALUE = "__MODELSCRIPT_MIXED__" as const;
+
+export interface BulkPropertySummary {
+  componentNames: string[];
+  classNames: string[];
+  /** Shared parameter names present on every selected component, with either the common value or `MIXED_PROPERTY_VALUE`. */
+  sharedParameters: Array<{
+    name: string;
+    value: string | typeof MIXED_PROPERTY_VALUE;
+    isMixed: boolean;
+    unit?: string | undefined;
+    isBoolean?: boolean | undefined;
+  }>;
+  /** Shared schema/property values map across all selected components. */
+  sharedValues: Record<string, unknown>;
+}
+
+/**
+ * Aggregates multiple selected components' `ComponentPropertyData` into a single
+ * bulk-editable summary (Figma/Altium-style `"Mixed"` state for differing values).
+ */
+export function mergeMultiSelectPropertyData(
+  items: ReadonlyArray<ComponentPropertyData | null | undefined>,
+): BulkPropertySummary | null {
+  const valid = items.filter((item): item is ComponentPropertyData => Boolean(item && item.name));
+  if (valid.length === 0) return null;
+
+  const componentNames = valid.map((v) => v.name);
+  const classNames = Array.from(new Set(valid.map((v) => v.className).filter(Boolean)));
+
+  // Intersect parameter names across all selected components
+  const paramMaps = valid.map((v) => {
+    const map = new Map<string, ComponentPropertyData["parameters"][number]>();
+    for (const p of v.parameters ?? []) {
+      if (p?.name) map.set(p.name, p);
+    }
+    return map;
+  });
+
+  const firstParams = valid[0]!.parameters ?? [];
+  const sharedParameters: BulkPropertySummary["sharedParameters"] = [];
+  for (const p of firstParams) {
+    if (!p?.name) continue;
+    if (!paramMaps.every((m) => m.has(p.name))) continue;
+    const firstVal = p.value;
+    const isMixed = paramMaps.some((m) => m.get(p.name)?.value !== firstVal);
+    sharedParameters.push({
+      name: p.name,
+      value: isMixed ? MIXED_PROPERTY_VALUE : firstVal,
+      isMixed,
+      unit: p.unit,
+      isBoolean: p.isBoolean,
+    });
+  }
+
+  // Intersect schema values map
+  const sharedValues: Record<string, unknown> = {};
+  const firstValues = valid[0]!.values ?? {};
+  for (const [k, v] of Object.entries(firstValues)) {
+    if (!valid.every((item) => item.values && Object.prototype.hasOwnProperty.call(item.values, k))) continue;
+    const isMixed = valid.some((item) => item.values?.[k] !== v);
+    sharedValues[k] = isMixed ? MIXED_PROPERTY_VALUE : v;
+  }
+
+  return {
+    componentNames,
+    classNames,
+    sharedParameters,
+    sharedValues,
+  };
+}
+
+/**
+ * Generates an atomic batch of `updateParameter` or `updateProperty` actions targeting
+ * every component in a multi-node selection.
+ */
+export function createBulkPropertyEditActions(
+  componentNames: ReadonlyArray<string>,
+  key: string,
+  value: unknown,
+  kind: "parameter" | "property" = "parameter",
+): OptimisticPropertyAction[] {
+  if (!key || value === MIXED_PROPERTY_VALUE) return [];
+  return componentNames
+    .filter((n) => typeof n === "string" && n.length > 0)
+    .map((name) =>
+      kind === "parameter"
+        ? { type: "updateParameter", name, parameter: key, value: String(value ?? "") }
+        : { type: "updateProperty", name, key, value },
+    );
+}
+
 /**
  * Safely substitutes parameter assignments and component name text in a component icon SVG
  * preview without failing on regex metacharacters in keys or instance names.

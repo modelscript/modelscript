@@ -511,8 +511,20 @@ process.on(
       const polyglotEngine = new QueryEngine(unifiedSymbolIndex, polyglotHooks);
       const indexPath = storage.getIndexPath(name, version);
 
-      console.log(`[publish] ${name}@${version}: exporting polyglot salsa-index.db...`);
+      console.log(`[publish] ${name}@${version}: exporting polyglot salsa-index.db & index.msidx...`);
       await exportSalsaIndex(polyglotEngine, indexPath, libraryPath);
+      try {
+        const { encodePackageIndex, extractPackageSummaries } = await import("@modelscript/runtime");
+        const msidxPath = storage.getBinaryIndexPath(name, version);
+        const summaries = extractPackageSummaries(polyglotEngine.index, libraryPath);
+        const msidxBytes = encodePackageIndex(polyglotEngine.index, { libraryPath, summaries });
+        const msidxTmp = `${msidxPath}.${process.pid}.${Date.now()}.tmp`;
+        fs.mkdirSync(path.dirname(msidxPath), { recursive: true });
+        fs.writeFileSync(msidxTmp, msidxBytes);
+        fs.renameSync(msidxTmp, msidxPath);
+      } catch (err) {
+        console.warn(`[publish] ${name}@${version}: failed to export index.msidx:`, err);
+      }
 
       console.log(`[publish] ${name}@${version}: exporting polyglot lsp-bundle.zip...`);
       const bundlePath = path.join(path.dirname(indexPath), "lsp-bundle.zip");

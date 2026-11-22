@@ -3,7 +3,9 @@
 
 # @modelscript/jsbsim
 
-JSBSim 2.0 6-DOF aircraft flight dynamics, aerodynamics, propulsion, and flight control system (FCS) engineering package (`.xml`) for ModelScript. Features a zero-regex XML `<fdm_config>` parser (`parseJsbsim`), multi-file workspace indexing (`JsbsimWorkspaceIndex`), a rigid-body 6-DOF flight dynamics & standard atmosphere integrator (`solveFlightDynamics`), direct linear-memory `DAEBuilder` lowering (`lowerJsbsimToDae`), 10 pre-flight airframe & aerodynamic lint rules (`M8901`–`M8910`), Modelica 3.x flight mechanics projections (`jsbsimToModelica`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.jsbsim`, `.jsbsim.xml`, `.xml` · **Docs:** [modelscript.org/languages/jsbsim](https://modelscript.org/languages/jsbsim)
+
+JSBSim 2.0 6-DOF aircraft flight dynamics, aerodynamics, propulsion, and flight control system (FCS) engineering package (`.xml`) for ModelScript. Features a zero-regex XML `<fdm_config>` parser (`parseJsbsim`), multi-file workspace indexing, a rigid-body 6-DOF flight dynamics & standard atmosphere integrator (`solveFlightDynamics`), direct linear-memory `DAEBuilder` lowering (`lowerJsbsimToDae`), 10 pre-flight airframe & aerodynamic lint rules (`M8901`–`M8910`), Modelica 3.x flight mechanics projections (`jsbsimToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -18,7 +20,7 @@ JSBSim 2.0 6-DOF aircraft flight dynamics, aerodynamics, propulsion, and flight 
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerJsbsimToDae`)**: Emits longitudinal and lateral-directional 6-DOF flight mechanics differential equations ($\dot{V}, \dot{\alpha}, \dot{q}, \dot{\theta}, \dot{h}$) and aerodynamic lift/drag/pitching-moment equations directly into ModelScript's zero-GC WebAssembly `DAEBuilder` struct-of-arrays arena.
 - **10 Pre-Flight Airframe & Aerodynamics Lint Rules (`M8901`–`M8910`, `lintJsbsim`)**: Static verification of `<fdm_config>` aircraft naming, positive wing reference geometry ($S_{\text{ref}}, b, \bar{c} > 0$), empty weight and inertia tensor triangle inequalities ($I_{xx} + I_{yy} \ge I_{zz}$), `<aerodynamics>` axis definitions, landing gear presence, engine thrust positivity, FCS channel input bindings, and longitudinal static margin (`CG` vs. `AERORP`).
 - **Modelica 3.x Flight Mechanics Projection (`jsbsimToModelica`)**: Synthesizes standalone Modelica 3.x 6-DOF aircraft flight dynamics models for multi-domain avionics, actuator, and thermal co-simulation.
-- **Multi-File Workspace Indexing & LSP (`JsbsimWorkspaceIndex`, `provideJsbsimHover`, `provideJsbsimCompletions`)**: Implements `IWorkspaceIndex` for JSBSim aircraft definitions with hover documentation, XML tag/property completions, and AST writeback.
+- **Multi-File Workspace Indexing & LSP (`provideJsbsimHover`, `provideJsbsimCompletions`)**: Provides workspace symbol indexing for JSBSim aircraft definitions with hover documentation, XML tag/property completions, and AST writeback.
 
 ---
 
@@ -40,7 +42,6 @@ JSBSim 2.0 6-DOF aircraft flight dynamics, aerodynamics, propulsion, and flight 
 | `src/dae/index.ts`                      | DAE lowering barrel exports                                                                                           |
 | `src/projections/jsbsim-to-modelica.ts` | `jsbsimToModelica` translator to Modelica 3.x aircraft flight dynamics models                                         |
 | `src/projections/index.ts`              | Projections barrel exports                                                                                            |
-| `src/workspace-index.ts`                | `JsbsimWorkspaceIndex` implementing `IWorkspaceIndex` across JSBSim `.xml` models                                     |
 | `src/lsp.ts`                            | LSP hover, completion, and symbol providers                                                                           |
 
 ---
@@ -68,19 +69,19 @@ JSBSim 2.0 6-DOF aircraft flight dynamics, aerodynamics, propulsion, and flight 
 
 ```bash
 # Inspect airframe metrics, inertia tensor, landing gear, and aerodynamic axes
-npx msx jsbsim inspect c172x.xml
+msx jsbsim inspect c172x.xml
 
 # Run pre-flight airframe, inertia tensor, and aerodynamic checks (M8901-M8910)
-npx msx jsbsim lint c172x.xml
+msx jsbsim lint c172x.xml
 
 # Simulate 6-DOF rigid-body flight dynamics at 5000 ft and 180 ft/s
-npx msx jsbsim simulate c172x.xml --duration 10.0 --speed 180.0 --altitude 5000.0
+msx jsbsim simulate c172x.xml --duration 10.0 --speed 180.0 --altitude 5000.0
 
 # Lower 6-DOF flight dynamics equations of motion to DAEBuilder linear memory
-npx msx jsbsim to-dae c172x.xml
+msx jsbsim to-dae c172x.xml
 
 # Project JSBSim aircraft configuration to a Modelica 3.x flight dynamics model
-npx msx jsbsim to-modelica c172x.xml -o Cessna172.mo
+msx jsbsim to-modelica c172x.xml -o Cessna172.mo
 ```
 
 ### Programmatic Usage

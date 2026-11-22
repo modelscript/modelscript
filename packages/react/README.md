@@ -20,7 +20,7 @@ ModelScript React SDK & Engineering UI Widgets (`@modelscript/react`) — drop-i
 | `BlackboxInspector`     | `src/components/BlackboxInspector.tsx`     | Interactive inspector for compiled `.fmu`, `.dll`, `.so`, `.dylib`, and `.wasm` binaries—displaying architectures, GUIDs, and causal variable tables. |
 | `StepResponseTestbench` | `src/components/StepResponseTestbench.tsx` | Closed-loop step-response oscilloscope and parameter tuner for testing black-box FMUs and compiled DAE models in real time.                           |
 | `LintDiagnosticsTable`  | `src/components/LintDiagnosticsTable.tsx`  | Sortable, filterable compiler & pre-flight diagnostic table with severity badges, error codes (`Mxxxx`), and source line jump links.                  |
-| `ModelDropZone`         | `src/components/ModelDropZone.tsx`         | Drag-and-drop file ingestion widget supporting all 90 ModelScript engineering dialects and binary FMU/SSP archives.                                   |
+| `ModelDropZone`         | `src/components/ModelDropZone.tsx`         | Drag-and-drop file ingestion widget supporting all 106 ModelScript engineering dialects and binary FMU/SSP archives.                                  |
 | `WorkerProgressBar`     | `src/components/WorkerProgressBar.tsx`     | Real-time progress indicator for long-running background WebWorker compilation, meshing, and simulation sweeps.                                       |
 
 ### 3. WebAssembly Compiler, Linter & Worker Hooks (`src/hooks/`, `src/worker/`)
@@ -30,8 +30,17 @@ ModelScript React SDK & Engineering UI Widgets (`@modelscript/react`) — drop-i
 | `useCWasmCompiler`   | `src/hooks/useCWasmCompiler.ts`   | Compiles embedded ISO C99 control code (`.c`/`.h`) directly into executable WebAssembly modules in the browser and exposes step entry points. |
 | `useSimulinkLinter`  | `src/hooks/useSimulinkLinter.ts`  | Parses and lints MATLAB Simulink `.slx` / `.mdl` models for algebraic loops, sample-time mismatches, and unconnected ports.                   |
 | `useWorkerTask`      | `src/hooks/useWorkerTask.ts`      | React hook managing lifecycle, cancellation, progress events, and error boundaries for background `WorkerRunner` tasks.                       |
-| `useWorkspaceBridge` | `src/hooks/useWorkspaceBridge.ts` | Synchronizes React component state with the active VS Code Webview or Tauri desktop workspace filesystem.                                     |
+| `useWorkspaceBridge` | `src/hooks/useWorkspaceBridge.ts` | Synchronizes React component state with the active VS Code Webview or host workspace filesystem.                                              |
 | `WorkerRunner`       | `src/worker/worker-runner.ts`     | Sandboxed WebWorker task dispatcher (`src/worker/worker-protocol.ts`, `src/worker/sandbox-worker-code.ts`) with timeout guards.               |
+
+---
+
+## Subpath Exports
+
+| Subpath                    | Module         | Description                                                                    |
+| :------------------------- | :------------- | :----------------------------------------------------------------------------- |
+| `@modelscript/react`       | `src/index.ts` | Root barrel exporting `ModelScriptProvider`, UI widgets, compiler/linter hooks |
+| `@modelscript/react/panel` | `src/panel.ts` | Shared React panel host wrapper bridging `@modelscript/design-tokens/panel`    |
 
 ---
 
@@ -70,9 +79,10 @@ export function EngineeringDashboard() {
 
 ## Scripts
 
-| Command             | Description                                              |
-| :------------------ | :------------------------------------------------------- |
-| `npm run build`     | Compile TypeScript and React JSX declarations (`tsc -b`) |
-| `npm run test`      | Run `WorkerRunner` and `useCWasmCompiler` test suites    |
-| `npm run typecheck` | Run TypeScript type checking (`tsc --noEmit`)            |
-| `npm run clean`     | Remove `dist/` and `tsconfig.tsbuildinfo`                |
+| Command              | Description                                           |
+| :------------------- | :---------------------------------------------------- |
+| `pnpm run build`     | Compile TypeScript and React JSX declarations (`tsc`) |
+| `pnpm run test`      | Run `WorkerRunner` and `useCWasmCompiler` test suites |
+| `pnpm run lint`      | Run ESLint across `src/` and `tests/`                 |
+| `pnpm run typecheck` | Run TypeScript type checking (`tsc --noEmit`)         |
+| `pnpm run clean`     | Remove `dist/` and `tsconfig.tsbuildinfo`             |

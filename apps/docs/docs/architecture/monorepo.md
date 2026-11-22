@@ -18,27 +18,27 @@ To maintain modularity and avoid circular dependencies, the codebase is structur
 │ Layer 4: Enterprise Edition (ee/)                                     │
 │   • Air-gapped Ed25519 licensing, ITAR / NERC CIP, FDA 21 CFR Part 11  │
 ├────────────────────────────────────────────────────────────────────────┤
-│ Layer 3: The Ansatz Platform (apps/web, apps/api, packages/embed)      │
+│ Layer 3: The Ansatz Platform (apps/web, apps/api, packages/embed…)     │
 │   • ansatz.social, package registry, ActivityPub, Cloud HPC, billing   │
 ├────────────────────────────────────────────────────────────────────────┤
-│ Layer 2: Developer Tooling & Surfaces (apps/cli, desktop, ide, docs)   │
-│   • msx CLI, VS Code Web extension, Tauri desktop app, VitePress portal │
+│ Layer 2: Developer Tooling & Surfaces (apps/cli, ide, docs, pkgs/…)    │
+│   • msx CLI, VS Code Web IDE, editor core, examples, VitePress portal  │
 ├────────────────────────────────────────────────────────────────────────┤
-│ Layer 1: Core Engine & Languages (languages/*, packages/{dsl,runtime…})│
+│ Layer 1: Core Engine & Languages (languages/*, packages/{dsl,solve…})  │
 │   • WASM GLR parsers, CST arena, DAEBuilder, solvers, TGG, CAD, FMI    │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Layer 1: Core Engine & Languages
 
-- **Directories:** `languages/*` (92 documented domain languages across `Stable` [25] and `Beta` [67] tiers) and `packages/{dsl,runtime,simulate,cad,diagram,exchange,lsp,mcp}`.
+- **Directories:** `languages/*` (105 documented domain formats / 106 total workspace packages across `Beta` [33], `Alpha` [72], and `Pre-Alpha` [1] tiers) and `packages/{dsl,runtime,solve,simulate,cad,diagram,exchange,lsp,mcp,sdk}`.
 - **Rule:** Pure computation, formal theory, parsers, and solvers. Zero UI dependencies, zero database dependencies, and zero Express/HTTP servers.
 - **Independence:** Can be compiled and embedded in any JavaScript, Node.js, WebAssembly, or desktop runtime.
 
 ### Layer 2: Developer Tooling & Surfaces
 
-- **Directories:** `apps/cli`, `apps/ide`, `apps/desktop`, `apps/docs`.
-- **Rule:** User-facing toolchains and documentation. Imports from Layer 1 to expose commands (`msx`), IDE extensions, and the reference manual.
+- **Directories:** `apps/cli`, `apps/ide`, `apps/docs`, `packages/{ide,editor,examples}`.
+- **Rule:** User-facing toolchains, embeddable editor components, reference workspaces, and documentation. Imports from Layer 1 to expose commands (`msx`), IDE extensions, and the reference manual.
 
 ### Layer 3: The Ansatz Platform
 

@@ -11,7 +11,7 @@ ModelScript Grammar Workbench, native WebAssembly GLR parser compiler, linear-me
 
 ### 1. Declarative Language Workbench DSL (`@modelscript/dsl/dsl`)
 
-Every polyglot language across all **90 engineering domains** in ModelScript (`modelscript`, `modelica`, `ampl`, `sysml2`, `ssp`, `reqif`, `oscal`, `owl2`, `csv`, `pscad`, `psse`, `powerfactory`, `pslf`, `cgmes`, `opendss`, `spice`, `verilog-a`, `ibis`, `touchstone`, `ocpp`, `openadr`, `optical`, `ran`, `fiber`, `olga`, `lps`, `aspen`, `eclipse`, `epanet`, `swmm`, `hec-ras`, `relap5`, `energyplus`, `tough`, `modflow`, `landgem`, `adams`, `simpack`, `gensys`, `gtsuite`, `sima`, `urdf`, `opendrive`, `openscenario`, `autosar`, `gtfs`, `simulink`, `easy5`, `jsbsim`, `rocets`, `ccsds`, `plcopen`, `automationml`, `step`, `qif`, `scad`, `usd`, `fea`, `cfd`, `sbml`, `antimony`, `cantera`, `smiles`, `nmtran`, `sbol`, `bngl`, `sedml`, `pdb`, `genbank`, `gproms`, `phreeqc`, `fortran`, `c`, `opensim`, `dicom-rt`, `cellml`, `febio`, `nifti`, `topas`, `three-mf`, `igtl`) is defined via a single declarative `language({...})` specification (`src/dsl/language.ts`):
+Every polyglot language across all **106 engineering domains** in ModelScript is defined via a single declarative `language({...})` specification (`src/dsl/language.ts`):
 
 - **Grammar Combinators (`src/dsl/combinators.ts`, `src/dsl/grammar.ts`)**: `seq`, `choice`, `repeat`, `repeat1`, `optional`, `prec`, `prec.left`, `prec.right`, `prec.dynamic`, `field`, `token`, `alias`, and external scanner hooks (`src/dsl/scanner-types.ts`).
 - **Unified Language Facets**: A `LanguageDefinition` co-locates grammar rules with scope/symbol indexing (`scopes`), Salsa semantic queries (`queries`), static lints (`lints`), graphical diagram mappings (`diagram`), DAE lowering rules (`dae`), 3D CAD bindings (`cad`), bidirectional writeback rules (`writeback`), and MCP tool declarations (`mcp`).
@@ -46,13 +46,16 @@ Every polyglot language across all **90 engineering domains** in ModelScript (`m
 | :-------------------------- | :-------------------------------------------------------------------------------------------------- |
 | `@modelscript/dsl`          | Root barrel exporting grammar combinators, codegen, bindings, unparser, and tools                   |
 | `@modelscript/dsl/dsl`      | `language`, grammar combinators (`seq`, `choice`, `repeat`, `field`, `prec`), and `CodeGraph` types |
+| `@modelscript/dsl/codegen`  | Parser, transpiler, analysis, rewriting, typesys, emitters, IDE, and shared codegen (`./codegen/*`) |
 | `@modelscript/dsl/parser`   | Native WebAssembly GLR parser compiler (`buildParser`)                                              |
 | `@modelscript/dsl/bindings` | Runtime WASM parser loader (`createWasmParser`) and linear CST accessors                            |
 | `@modelscript/dsl/tgg`      | Triple Graph Grammar compiler and bidirectional synchronization engine                              |
 | `@modelscript/dsl/cpa`      | Critical Pair Analysis (CPA) conflict detector for graph transformation rules                       |
 | `@modelscript/dsl/egraph`   | E-graph equality saturation and cost-based term extraction                                          |
 | `@modelscript/dsl/unparser` | Format-preserving CST unparser and surgical source patcher                                          |
+| `@modelscript/dsl/utils`    | CST facade and shared compiler utilities                                                            |
 | `@modelscript/dsl/tools`    | Internationalization (i18n) catalog and semantic CST diff utilities                                 |
+| `@modelscript/dsl/xml`      | Native WebAssembly XML parser (`@modelscript/dsl/xml/parser.wasm`) and CST helpers                  |
 
 ---
 
@@ -86,16 +89,21 @@ const tree = parser.parse("x = 10 + 20;");
 ## Scripts
 
 ```bash
-# Bundle templates, compile TypeScript, and build browser bundle
-npm run build --workspace=@modelscript/dsl
+# Bundle templates, compile TypeScript, copy assets, and build browser bundle
+pnpm --filter @modelscript/dsl run build
+
+# Build templates or browser bundle individually
+pnpm --filter @modelscript/dsl run build:templates
+pnpm --filter @modelscript/dsl run build:browser
 
 # Verify generated AssemblyScript kernels
-npm run check:as --workspace=@modelscript/dsl
+pnpm --filter @modelscript/dsl run check:as
 
 # Run unit tests (GLR parser, TGG, CPA, E-graph, unparser)
-npm run test --workspace=@modelscript/dsl
+pnpm --filter @modelscript/dsl run test
 
-# Typecheck and lint
-npm run typecheck --workspace=@modelscript/dsl
-npm run lint --workspace=@modelscript/dsl
+# Typecheck, lint, and clean
+pnpm --filter @modelscript/dsl run typecheck
+pnpm --filter @modelscript/dsl run lint
+pnpm --filter @modelscript/dsl run clean
 ```

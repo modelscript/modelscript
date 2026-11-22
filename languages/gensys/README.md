@@ -3,7 +3,9 @@
 
 # @modelscript/gensys
 
-GENSYS-compatible railway vehicle dynamics, wheel-rail contact mechanics, track geometry, and European homologation engineering package (`.calc`, `.run`, `.sub`, `.geom`, `.trax`, `.wheel`) for ModelScript. Features GENSYS deck and track geometry parsers (`parseGensysDeck`, `parseGensysTrack`), multi-file workspace indexing (`GensysWorkspaceIndex`), an AssemblyScript WebAssembly wheel-rail contact kernel (`assembly/contact.ts` → `dist/contact.wasm`) implementing Kalker FASTSIM and Polach creep force theories, EN 14363 / UIC 518 / EN 12299 / EN 14067-6 homologation verification (`evaluateEn14363`, `createHomologationReport`), direct linear-memory `DAEBuilder` lowering (`lowerGensysToDae`), 6 pre-flight railway lint rules (`G1001`–`G1006`), kinematic SVG diagram generation, and Modelica projections (`gensysToModelica`).
+**Maturity:** Beta · **Extensions:** `.calc`, `.run`, `.sub`, `.geom`, `.trax`, `.wheel` · **Docs:** [modelscript.org/languages/gensys](https://modelscript.org/languages/gensys)
+
+GENSYS-compatible railway vehicle dynamics, wheel-rail contact mechanics, track geometry, and European homologation engineering package (`.calc`, `.run`, `.sub`, `.geom`, `.trax`, `.wheel`) for ModelScript. Features GENSYS deck and track geometry parsers (`parseGensysDeck`, `parseGensysTrack`), multi-file workspace indexing, an AssemblyScript WebAssembly wheel-rail contact kernel (`assembly/contact.ts` → `dist/contact.wasm`) implementing Kalker FASTSIM and Polach creep force theories, EN 14363 / UIC 518 / EN 12299 / EN 14067-6 homologation verification (`evaluateEn14363`, `createHomologationReport`), direct linear-memory `DAEBuilder` lowering (`lowerGensysToDae`), 6 pre-flight railway lint rules (`G1001`–`G1006`), kinematic SVG diagram generation, and Modelica projections (`gensysToModelica`).
 
 ---
 
@@ -52,7 +54,6 @@ GENSYS-compatible railway vehicle dynamics, wheel-rail contact mechanics, track 
 | `src/diagram/gensys-diagram.ts`           | `gensysToKinematicDiagram` and `renderGensysSvg` schematic diagram generator                                     |
 | `src/projections/gensys-to-modelica.ts`   | `gensysToModelica` translator to Modelica 3.x multi-body railway vehicle models                                  |
 | `src/lints/index.ts`                      | `lintGensysModel` pre-flight railway vehicle diagnostic engine                                                   |
-| `src/workspace-index.ts`                  | `GensysWorkspaceIndex` implementing `IWorkspaceIndex` across `.calc`, `.sub`, and `.run` files                   |
 | `src/lsp.ts`                              | LSP hover, completion, definition, and symbol providers                                                          |
 
 ---
@@ -76,20 +77,20 @@ GENSYS-compatible railway vehicle dynamics, wheel-rail contact mechanics, track 
 
 ```bash
 # Run pre-flight railway vehicle topology and inertia checks (G1001-G1006)
-npx msx gensys lint ManchesterBench.calc
+msx gensys lint ManchesterBench.calc
 
 # Verify EN 14363 Nadal derailment quotient (Y/Q) and Prud'homme track shift limits
-npx msx gensys verify --y-force 25.0 --q-force 80.0 --axle-load 160.0
+msx gensys verify --y-force 25.0 --q-force 80.0 --axle-load 160.0
 
 # Simulate GENSYS vehicle dynamics in the linear-memory DAE arena and export CSV trajectory
-npx msx gensys simulate ManchesterBench.calc --stop-time 5.0 --step 0.005 --out trajectory.csv
+msx gensys simulate ManchesterBench.calc --stop-time 5.0 --step 0.005 --out trajectory.csv
 
 # Generate an EN 14363 / EN 12299 / EN 14067-6 homologation report (html | sarif | junit | ctrf)
-npx msx gensys report ManchesterBench.calc --format html --out homologation.html
+msx gensys report ManchesterBench.calc --format html --out homologation.html
 
 # Export GENSYS vehicle model to Modelica 3.x or FMI 2.0 Co-Simulation FMU
-npx msx gensys to-modelica ManchesterBench.calc --out ManchesterVehicle.mo
-npx msx gensys to-fmu ManchesterBench.calc --out ManchesterVehicle.fmu
+msx gensys to-modelica ManchesterBench.calc --out ManchesterVehicle.mo
+msx gensys to-fmu ManchesterBench.calc --out ManchesterVehicle.fmu
 ```
 
 ### Programmatic Usage

@@ -59,28 +59,31 @@ function msxLintLanguages(): Set<string> {
   return ids;
 }
 
-function commandsWithLint(): Set<string> {
+function commandCliMap(): Map<string, string> {
   const data = JSON.parse(fs.readFileSync(cliJson, "utf8")) as {
     name: string;
     positionals: { name: string; choices?: string[] }[];
     subcommands: { name: string }[];
   }[];
-  const out = new Set<string>();
+  const out = new Map<string, string>();
   for (const c of data) {
     const actions = c.positionals.find((p) => p.name === "action")?.choices ?? c.subcommands.map((s) => s.name);
-    if (actions.includes("lint")) out.add(c.name);
+    if (actions.includes("lint")) out.set(c.name, `msx ${c.name} lint`);
+    else if (actions.includes("check")) out.set(c.name, `msx ${c.name} check`);
+    else if (actions.includes("validate")) out.set(c.name, `msx ${c.name} validate`);
+    else out.set(c.name, `msx ${c.name}`);
   }
   return out;
 }
 
 function build(languages: LanguageRules[]): GeneratedLanguage[] {
   const viaLint = msxLintLanguages();
-  const viaCommand = commandsWithLint();
+  const viaCommand = commandCliMap();
   const order = new Map(LANGUAGES.map((l, i) => [l.slug, i]));
   return languages
     .map((l) => {
       const info = LANGUAGES.find((x) => x.slug === l.dir);
-      const cli = viaLint.has(l.dir) ? "msx lint" : viaCommand.has(l.dir) ? `msx ${l.dir} lint` : null;
+      const cli = viaLint.has(l.dir) ? "msx lint" : (viaCommand.get(l.dir) ?? null);
       return {
         slug: l.dir,
         name: info?.name ?? l.dir,

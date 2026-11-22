@@ -3,7 +3,9 @@
 
 # @modelscript/epanet
 
-US EPA EPANET 2.2 municipal water distribution network and pressurized pipe hydraulic simulation package (`.inp`) for ModelScript. Features an EPANET `.inp` section parser (`parseInp`), multi-file workspace indexing (`EpanetWorkspaceIndex`), a Todini & Pilati (1988) Global Gradient Method (`solveHydraulics`) hydraulic solver with optional native WebAssembly Cholesky acceleration, direct linear-memory `DAEBuilder` lowering (`lowerEpanetToDae`), 8 pre-flight hydraulic network lint rules (`M8101`–`M8108`), `Modelica.Fluid` projections (`epanetToModelica`), and Language Server Protocol (LSP) services.
+**Maturity:** Beta · **Extensions:** `.epanet`, `.epanet.inp`, `.inp`, `.net` · **Docs:** [modelscript.org/languages/epanet](https://modelscript.org/languages/epanet)
+
+US EPA EPANET 2.2 municipal water distribution network and pressurized pipe hydraulic simulation package (`.inp`) for ModelScript. Features an EPANET `.inp` section parser (`parseInp`), multi-file workspace indexing, a Todini & Pilati (1988) Global Gradient Method (`solveHydraulics`) hydraulic solver with optional native WebAssembly Cholesky acceleration, direct linear-memory `DAEBuilder` lowering (`lowerEpanetToDae`), 8 pre-flight hydraulic network lint rules (`M8101`–`M8108`), `Modelica.Fluid` projections (`epanetToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -14,32 +16,31 @@ US EPA EPANET 2.2 municipal water distribution network and pressurized pipe hydr
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerEpanetToDae`)**: Compiles water distribution networks directly into ModelScript's zero-GC WebAssembly `DAEBuilder` struct-of-arrays arena—emitting cylindrical storage tank level differential equations ($A_{\text{tank}} \frac{dh}{dt} = \sum Q_{\text{in}} - \sum Q_{\text{out}}$), Hazen-Williams pipe friction equations, and nodal mass conservation equations.
 - **8 Pre-Flight Hydraulic Network Lint Rules (`M8101`–`M8108`, `lintEpanet`)**: Static topology and hydraulic verification detecting isolated junction nodes, negative-pressure cavitation risk ($z_{\text{junction}} > H_{\max,\text{source}}$), non-monotonic pump head-flow curves ($dH/dQ > 0$), non-positive pipe lengths/diameters, duplicate node/link identifiers, and dangling link endpoint references.
 - **`Modelica.Fluid` Projection, GIS Ingestion & EPA LCRR Export (`epanetToModelica`, `src/spatial/gis-ingestor.ts`, `src/exporters/lcrr-exporter.ts`)**: Translates EPANET networks into `Modelica.Fluid` models, ingests GeoJSON pipe/node GIS layers, and exports US EPA Lead and Copper Rule Revisions (LCRR) service line inventory compliance reports. Exposes 8 dedicated MCP tools (`epanet_solve_hydraulics`, `epanet_fire_flow`, `epanet_water_quality`, `epanet_water_hammer`, `epanet_pump_schedule_optimize`, `epanet_leak_localization`, `epanet_isolation_valve_criticality`, `water_audit_awwa_m36`).
-- **Multi-File Workspace Indexing & LSP (`EpanetWorkspaceIndex`, `getEpanetHover`, `getEpanetCompletions`)**: Implements `IWorkspaceIndex` for hydraulic node/link symbol lookup, hover inspection, and `.inp` section/keyword auto-completion.
+- **Multi-File Workspace Indexing & LSP (`getEpanetHover`, `getEpanetCompletions`)**: Provides workspace symbol indexing for hydraulic node/link symbol lookup, hover inspection, and `.inp` section/keyword auto-completion.
 
 ---
 
 ## Package Structure
 
-| Path                                    | Description                                                                                                        |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `src/index.ts`                          | Public package exports                                                                                             |
-| `src/language.ts`                       | `epanetLanguage` definition and LSP actions (`epanet_lint`, `epanet_solve`, `epanet_to_dae`, `epanet_to_modelica`) |
-| `src/types.ts`                          | `EpanetNetwork`, `EpanetJunction`, `EpanetReservoir`, `EpanetTank`, `EpanetPipe`, `EpanetPump`, and `EpanetValve`  |
-| `src/parser/inp-parser.ts`              | `parseInp` section parser for US EPA EPANET `.inp` files                                                           |
-| `src/parser/index.ts`                   | Parser barrel exports                                                                                              |
-| `src/lints/rules.ts`                    | `lintEpanet` and `EpanetErrorCode` (`M8101`–`M8108`) hydraulic topology and pump curve linter                      |
-| `src/lints/index.ts`                    | Linter barrel exports                                                                                              |
+| Path                                    | Description                                                                                                          |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `src/index.ts`                          | Public package exports                                                                                               |
+| `src/language.ts`                       | `epanetLanguage` definition and LSP actions (`epanet_lint`, `epanet_solve`, `epanet_to_dae`, `epanet_to_modelica`)   |
+| `src/types.ts`                          | `EpanetNetwork`, `EpanetJunction`, `EpanetReservoir`, `EpanetTank`, `EpanetPipe`, `EpanetPump`, and `EpanetValve`    |
+| `src/parser/inp-parser.ts`              | `parseInp` section parser for US EPA EPANET `.inp` files                                                             |
+| `src/parser/index.ts`                   | Parser barrel exports                                                                                                |
+| `src/lints/rules.ts`                    | `lintEpanet` and `EpanetErrorCode` (`M8101`–`M8108`) hydraulic topology and pump curve linter                        |
+| `src/lints/index.ts`                    | Linter barrel exports                                                                                                |
 | `src/solver/todini-ggm.ts`              | `solveHydraulics` Todini & Pilati (1988) Global Gradient Method, EPS, fire flow, MOC water hammer, and water quality |
-| `src/solver/index.ts`                   | Solver barrel exports                                                                                              |
-| `src/spatial/gis-ingestor.ts`           | GeoJSON spatial pipe/node ingestion and coordinate snapping                                                        |
-| `src/exporters/lcrr-exporter.ts`        | US EPA Lead and Copper Rule Revisions (LCRR) service line inventory exporter                                       |
-| `src/dae/epanet-to-dae.ts`              | `lowerEpanetToDae` direct lowering of tanks, pipes, and junctions into `DAEBuilder` linear memory                  |
-| `src/dae/index.ts`                      | DAE lowering barrel exports                                                                                        |
-| `src/projections/epanet-to-modelica.ts` | `epanetToModelica` translator to `Modelica.Fluid` hydraulic network models                                         |
-| `src/projections/index.ts`              | Projections barrel exports                                                                                         |
-| `src/workspace-index.ts`                | `EpanetWorkspaceIndex` implementing `IWorkspaceIndex` across `.inp` files                                          |
-| `src/lsp.ts`                            | LSP hover, completion, and diagnostic providers                                                                    |
-| `tests/epanet-benchmark-runner.ts`      | EPANET Net1 / Net2 / Net3 hydraulic and water quality benchmark runner                                             |
+| `src/solver/index.ts`                   | Solver barrel exports                                                                                                |
+| `src/spatial/gis-network-builder.ts`    | GeoJSON spatial pipe/node ingestion and coordinate snapping                                                          |
+| `src/exporters/lcri-exporter.ts`        | US EPA Lead and Copper Rule Revisions (LCRR) service line inventory exporter                                         |
+| `src/dae/epanet-to-dae.ts`              | `lowerEpanetToDae` direct lowering of tanks, pipes, and junctions into `DAEBuilder` linear memory                    |
+| `src/dae/index.ts`                      | DAE lowering barrel exports                                                                                          |
+| `src/projections/epanet-to-modelica.ts` | `epanetToModelica` translator to `Modelica.Fluid` hydraulic network models                                           |
+| `src/projections/index.ts`              | Projections barrel exports                                                                                           |
+| `src/lsp.ts`                            | LSP hover, completion, and diagnostic providers                                                                      |
+| `tests/epanet-benchmark-runner.ts`      | EPANET Net1 / Net2 / Net3 hydraulic and water quality benchmark runner                                               |
 
 ---
 
@@ -64,19 +65,19 @@ US EPA EPANET 2.2 municipal water distribution network and pressurized pipe hydr
 
 ```bash
 # Inspect junctions, reservoirs, tanks, pipes, pumps, and valves in an EPANET .inp file
-npx msx epanet inspect Net1.inp
+msx epanet inspect Net1.inp
 
 # Run pre-flight hydraulic topology and pump curve checks (M8101-M8108)
-npx msx epanet lint Net1.inp
+msx epanet lint Net1.inp
 
 # Solve steady-state network hydraulics via the Todini Global Gradient Method
-npx msx epanet solve Net1.inp --max-iter 40 --tolerance 0.0001
+msx epanet solve Net1.inp --max-iter 40 --tolerance 0.0001
 
 # Lower hydraulic network equations to the linear-memory DAE arena
-npx msx epanet to-dae Net1.inp
+msx epanet to-dae Net1.inp
 
 # Export EPANET water network to a Modelica.Fluid model
-npx msx epanet to-modelica Net1.inp --out WaterNetwork.mo
+msx epanet to-modelica Net1.inp --out WaterNetwork.mo
 ```
 
 ### Programmatic Usage

@@ -70,6 +70,51 @@ Located at [`packages/examples/pscad-microgrid/`](./pscad-microgrid/), this work
 
 ---
 
+### 4. `alm-gitops/` — ALM GitOps Requirements Synchronization
+
+Located at [`packages/examples/alm-gitops/`](./alm-gitops/), this workspace demonstrates declarative GitOps synchronization between external Application Lifecycle Management (ALM) tools (DOORS Next, Jama, Codebeamer, Polarion, Jira) and a ModelScript workspace.
+
+- [`modelscript.yaml`](./alm-gitops/modelscript.yaml): Declares remote ALM endpoints, requirement bindings, and traceability policies (`ALM001`–`ALM004`).
+- [`alm-sync-pr.yml`](./alm-gitops/alm-sync-pr.yml): GitHub Actions workflow automating `msx pull`, requirement drift linting, and pull-request traceability checks.
+
+---
+
+### 5. `asme-bpvc-viii-1/` — ASME BPVC Section VIII Division 1 Pressure Vessel Compliance
+
+Located at [`packages/examples/asme-bpvc-viii-1/`](./asme-bpvc-viii-1/), this workspace pairs a Modelica separator vessel model with an ASME BPVC Section VIII Div. 1 SysML v2 verification pack and allowable-stress material tables.
+
+- [`src/VesselSeparator.mo`](./asme-bpvc-viii-1/src/VesselSeparator.mo): Modelica pressure vessel separator model with shell/head wall thickness and MAWP equations.
+- [`pack/src/asme_viii_1.sysml`](./asme-bpvc-viii-1/pack/src/asme_viii_1.sysml) & [`pack/tables/sa516-gr70-allowable-stress.json`](./asme-bpvc-viii-1/pack/tables/sa516-gr70-allowable-stress.json): SysML v2 compliance requirements and SA-516 Gr. 70 temperature-dependent allowable stress table verified by `PressureVesselOracle`.
+
+---
+
+### 6. `emt-screening-pack/` — Automated ISO Interconnection & EMT Screening Pack
+
+Located at [`packages/examples/emt-screening-pack/`](./emt-screening-pack/), this workspace combines PSS/E steady-state/dynamic cases, PSCAD EMT models, SFRA curves, and SysML v2 interconnection requirements for multi-stage ISO grid-code screening.
+
+- [`data/poi_case.raw`](./emt-screening-pack/data/poi_case.raw), [`data/poi_case.dyr`](./emt-screening-pack/data/poi_case.dyr), & [`data/ibr_interconnection.pscx`](./emt-screening-pack/data/ibr_interconnection.pscx): Point-of-interconnection power flow, dynamic deck, and PSCAD EMT plant model.
+- [`src/system.sysml`](./emt-screening-pack/src/system.sysml), [`src/emt-checks.ts`](./emt-screening-pack/src/emt-checks.ts), & [`src/pipeline-stages.ts`](./emt-screening-pack/src/pipeline-stages.ts): SysML v2 screening criteria and automated TypeScript verification pipeline stages.
+
+---
+
+### 7. `sysml-wasm-pack/` — User-Defined AssemblyScript & TypeScript Verification Kernels
+
+Located at [`packages/examples/sysml-wasm-pack/`](./sysml-wasm-pack/), this workspace demonstrates authoring custom `@modelscript/sdk` capability kernels in AssemblyScript (compiled to WebAssembly) and TypeScript, bound to SysML v2 definitions and a Modelica plant.
+
+- [`src/system.sysml`](./sysml-wasm-pack/src/system.sysml) & [`src/plant.mo`](./sysml-wasm-pack/src/plant.mo): SysML v2 capability bindings and Modelica plant model.
+- [`assembly/analyzer.ts`](./sysml-wasm-pack/assembly/analyzer.ts) & [`src/ts-analyzer.ts`](./sysml-wasm-pack/src/ts-analyzer.ts): Portable AssemblyScript WASM and TypeScript verification kernels executed via `msx sysml-run`.
+
+---
+
+### 8. `telecom-co-microgrid/` — Telecom Central Office Microgrid & CTRF Verification
+
+Located at [`packages/examples/telecom-co-microgrid/`](./telecom-co-microgrid/), this workspace models a resilient Telecom Central Office DC/AC backup microgrid with automated unit verification and Common Test Report Format (CTRF) reporting.
+
+- [`Telecom_Microgrid.mo`](./telecom-co-microgrid/Telecom_Microgrid.mo): Modelica electrical & battery backup dynamics for a telecom central office.
+- [`simulate_microgrid.ts`](./telecom-co-microgrid/simulate_microgrid.ts), [`tests/microgrid.test.ts`](./telecom-co-microgrid/tests/microgrid.test.ts), & [`ctrf/ctrf-report.json`](./telecom-co-microgrid/ctrf/ctrf-report.json): Automated simulation harness, verification test suite, and CTRF audit output.
+
+---
+
 ## Running the Examples with `msx`
 
 From the repository root, use the `msx` (`@modelscript/cli`) binary to verify, simulate, and inspect the polyglot digital thread:
@@ -102,4 +147,7 @@ npx msx pscad verify-ieee2800 packages/examples/pscad-microgrid/Microgrid_IBR.ps
 npx msx pscad diagram packages/examples/pscad-microgrid/Microgrid_IBR.pscx --out=Microgrid_IBR.svg
 npx msx pscad export-modelica packages/examples/pscad-microgrid/Microgrid_IBR.pscx --out=Microgrid_IBR.mo
 npx msx pscad export-ssp packages/examples/pscad-microgrid/Microgrid_IBR.pscx --out=SystemStructure.ssd
+
+# 7. Run SysML v2 + WASM capability verification on sysml-wasm-pack
+npx msx sysml-run packages/examples/sysml-wasm-pack/src/system.sysml
 ```

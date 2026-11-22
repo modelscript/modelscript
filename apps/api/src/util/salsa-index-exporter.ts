@@ -11,73 +11,100 @@ import path from "node:path";
  */
 export async function exportSalsaIndex(engine: QueryEngine, dbPath: string, libraryPath?: string): Promise<void> {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-  const db = new Database(dbPath);
-  db.pragma("journal_mode = WAL");
+  const tmpPath = `${dbPath}.${process.pid}.${Date.now()}.tmp`;
+  if (fs.existsSync(tmpPath)) {
+    fs.unlinkSync(tmpPath);
+  }
 
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS symbols (
-      id TEXT PRIMARY KEY,
-      data TEXT NOT NULL
-    );
+  const db = new Database(tmpPath);
+  try {
+    db.pragma("page_size = 4096");
+    db.pragma("journal_mode = DELETE");
 
-    CREATE TABLE IF NOT EXISTS memos (
-      key TEXT PRIMARY KEY,
-      data TEXT NOT NULL
-    );
+    db.exec(`
+      CREATE TABLE symbols (
+        id INTEGER PRIMARY KEY,
+        data TEXT NOT NULL
+      );
 
-    CREATE TABLE IF NOT EXISTS meta (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    );
-  `);
+      CREATE TABLE memos (
+        key TEXT PRIMARY KEY,
+        data TEXT NOT NULL
+      );
 
-  const insertSymbol = db.prepare(`INSERT OR REPLACE INTO symbols (id, data) VALUES (?, ?)`);
-  const insertMemo = db.prepare(`INSERT OR REPLACE INTO memos (key, data) VALUES (?, ?)`);
-  const insertMeta = db.prepare(`INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)`);
-  const normLibPath = libraryPath ? libraryPath.replace(/\\/g, "/").replace(/\/?$/, "/") : null;
+      CREATE TABLE meta (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+    `);
 
-  const transaction = db.transaction(() => {
-    // Schema version for forward compatibility
-    insertMeta.run("schema_version", "1");
-    insertMeta.run("created_at", new Date().toISOString());
+    const insertSymbol = db.prepare(`INSERT OR REPLACE INTO symbols (id, data) VALUES (?, ?)`);
+    const insertMemo = db.prepare(`INSERT OR REPLACE INTO memos (key, data) VALUES (?, ?)`);
+    const insertMeta = db.prepare(`INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)`);
+    const normLibPath = libraryPath ? libraryPath.replace(/\\/g, "/").replace(/\/?$/, "/") : null;
 
-    // Dump symbols (excluding hydrated cross-library dependency symbols)
-    for (const [id, entry] of engine.index.symbols.entries()) {
-      const resId = entry.resourceId || "";
-      if (resId.startsWith("dep-bundle:/")) continue;
-      if (path.basename(resId).startsWith("modelscript-") && resId.endsWith(".mo")) continue;
-      if (normLibPath && resId) {
-        const cleanPath = resId.replace(/\\/g, "/").replace(/^[a-z0-9+-]+:\/\//i, "");
-        if (cleanPath.startsWith("/") && !cleanPath.startsWith(normLibPath)) {
-          continue;
+    const transaction = db.transaction(() => {
+      // Schema version for forward compatibility
+      insertMeta.run("schema_version", "1");
+      insertMeta.run("created_at", new Date().toISOString());
+
+      // Dump symbols (excluding hydrated cross-library dependency symbols)
+      for (const [id, entry] of engine.index.symbols.entries()) {
+        const resId = entry.resourceId || "";
+        if (resId.startsWith("dep-bundle:/")) continue;
+        if (path.basename(resId).startsWith("modelscript-") && resId.endsWith(".mo")) continue;
+        let normalizedResId = entry.resourceId;
+        if (normLibPath && resId) {
+          const cleanPath = resId.replace(/\\/g, "/").replace(/^[a-z0-9+-]+:\/\//i, "");
+          if (cleanPath.startsWith(normLibPath)) {
+            normalizedResId = cleanPath.substring(normLibPath.length);
+          } else if (cleanPath.startsWith("/") || /^[a-zA-Z]:\//.test(cleanPath)) {
+            continue;
+          }
+        }
+        const toStore = normalizedResId !== entry.resourceId ? { ...entry, resourceId: normalizedResId } : entry;
+        insertSymbol.run(id, JSON.stringify(toStore));
+      }
+
+      // Dump memos — only those whose values survive JSON serialization.
+      // Many queries produce live object instances (ModelicaClassInstance, etc.)
+      // that contain circular references and closures.
+      let exported = 0;
+      let skipped = 0;
+      for (const [key, memo] of engine.dumpMemos().entries()) {
+        try {
+          const stableKey =
+            memo.queryName !== undefined && memo.symbolId !== undefined
+              ? stableMemoCacheKey(memo.queryName, memo.symbolId, memo.argsHash)
+              : key;
+          const serialized = JSON.stringify(serializeMemo(memo));
+          insertMemo.run(String(stableKey), serialized);
+          exported++;
+        } catch {
+          skipped++;
         }
       }
-      insertSymbol.run(id, JSON.stringify(entry));
-    }
-
-    // Dump memos — only those whose values survive JSON serialization.
-    // Many queries produce live object instances (ModelicaClassInstance, etc.)
-    // that contain circular references and closures.
-    let exported = 0;
-    let skipped = 0;
-    for (const [key, memo] of engine.dumpMemos().entries()) {
-      try {
-        const stableKey =
-          memo.queryName !== undefined && memo.symbolId !== undefined
-            ? stableMemoCacheKey(memo.queryName, memo.symbolId, memo.argsHash)
-            : key;
-        const serialized = JSON.stringify(serializeMemo(memo));
-        insertMemo.run(stableKey, serialized);
-        exported++;
-      } catch {
-        skipped++;
+      if (skipped > 0) {
+        console.log(`[salsa-export] Exported ${exported} memos, skipped ${skipped} non-serializable`);
       }
-    }
-    if (skipped > 0) {
-      console.log(`[salsa-export] Exported ${exported} memos, skipped ${skipped} non-serializable`);
-    }
-  });
+    });
 
-  transaction();
+    transaction();
+    db.exec("VACUUM");
+  } catch (err) {
+    try {
+      db.close();
+    } catch {
+      // ignore close error on failure path
+    }
+    try {
+      if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+    } catch {
+      // ignore cleanup error
+    }
+    throw err;
+  }
+
   db.close();
+  fs.renameSync(tmpPath, dbPath);
 }

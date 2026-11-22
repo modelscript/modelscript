@@ -82,10 +82,14 @@
   },
   "peerDependencies": {
     "@modelscript/design-tokens": "workspace:*",
+    "@modelscript/diagram": "workspace:*",
     "react": "^18.0.0 || ^19.0.0"
   },
   "peerDependenciesMeta": {
     "@modelscript/design-tokens": {
+      "optional": true
+    },
+    "@modelscript/diagram": {
       "optional": true
     },
     "react": {

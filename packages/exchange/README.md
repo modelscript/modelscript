@@ -46,9 +46,9 @@ ModelScript Standards & Interoperability Engine — Functional Mock-up Interface
 - **Industry 4.0 IDTA Asset Administration Shell v3.0 (`@modelscript/exchange/aasx`, `src/aasx/opc-packager.ts`)**: Generates Open Packaging Conventions (`.aasx`) archives containing standardized AAS v3.0 XML/JSON environments (`Nameplate`, `TechnicalData`, `HandoverDocumentation`, and `SimulationModels` submodels).
 - **DIN SPEC 3105 Open Know-How Lens Engine (`@modelscript/exchange/lens`, `src/lens/lens-engine.ts`)**: Projects unified workspace graphs into **DIN SPEC 3105-1 (OKH v1.0)** open hardware manifests (`okh.json` / `okh.toml`), extracting bills of materials (BOM), STEP/STL geometry links, PCB Gerber manufacturing files, and SPDX license metadata.
 
-### 5. Real-Time HIL Firmware, CIGRE B4.82 DLLs & Benchmark Catalog (`src/firmware/`, `src/catalog/`)
+### 5. Real-Time HIL Firmware, CIGRE TB 881 / B4.82 DLLs & Benchmark Catalog (`src/firmware/`, `src/catalog/`)
 
-- **IEEE / CIGRE B4.82 DLL & HIL Target Firmware Generator (`src/firmware/cigre-dll-wrapper.ts`, `src/firmware/hil-target-generator.ts`)**: Generates zero-malloc MISRA-C / ANSI C99 real-time controller firmware and standardized IEEE/CIGRE B4.82 (`Model_Initialize`, `Model_Outputs`, `Model_Terminate`) dynamic link library wrappers (`generateCigreDllSource`, `generateHilTargetWrapper`) for dSPACE, OPAL-RT, RTDS, Speedgoat, PSCAD, and PSS®E real-time targets.
+- **IEEE / CIGRE TB 881 DLL & WASM Firmware Runtime (`src/firmware/cigre-tb881-abi.ts`, `src/firmware/shim-dll-generator.ts`, `src/firmware/wasm-firmware-runner.ts`)**: Implements the IEEE/CIGRE TB 881 (`Model_Initialize`, `Model_Outputs`, `Model_Terminate`) ABI, generates zero-malloc MISRA-C / ANSI C99 shim DLL wrappers for dSPACE, OPAL-RT, RTDS, Speedgoat, PSCAD, and PSS®E real-time targets, and executes compiled WebAssembly controller firmware in-process.
 - **Standard Library & Verification Benchmark Catalogs (`src/catalog/stdlibs.catalog.json`, `src/catalog/benchmarks.catalog.json`)**: Curated multi-domain standard library and reference benchmark registry (`loadBenchmarkCatalog`, `BenchmarkCatalogEntry`) with SHA-256 integrity pins.
 
 ### 6. Binary Telemetry Readers (`src/telemetry/`)
@@ -61,16 +61,20 @@ ModelScript Standards & Interoperability Engine — Functional Mock-up Interface
 
 ## Subpath Exports
 
-| Subpath                          | Description                                                                                                             |
-| :------------------------------- | :---------------------------------------------------------------------------------------------------------------------- |
-| `@modelscript/exchange`          | Root barrel re-exporting `fmu`, `ssp`, `cosim`, `ddp`, `aasx`, `lens`, `telemetry`, `variants`, `compliance`, and `hpc` |
-| `@modelscript/exchange/fmu`      | FMI 2.0/3.0 FMU codegen (C99/WASM/JS), `fmi-ls-bus.xml`, `terminalsAndIcons.xml`, and `.fmu` archiver                   |
-| `@modelscript/exchange/ssp`      | SSP 1.0 `.ssp`, `.ssd`, `.ssv`, and `.ssm` parser, importer, and exporter                                               |
-| `@modelscript/exchange/cosim`    | `CoSimMaster` orchestrator, MQTT/WebSocket bus, HIL hardware participants, and historian                                |
-| `@modelscript/exchange/aasx`     | Industry 4.0 IDTA AAS v3.0 `.aasx` Open Packaging Conventions packager                                                  |
-| `@modelscript/exchange/lens`     | Multi-standard projection lens engine (DIN SPEC 3105 `okh`, AAS, OSLC)                                                  |
-| `@modelscript/exchange/variants` | Variant management and parameter override resolution                                                                    |
-| `@modelscript/exchange/hpc`      | Cloud HPC batch job manifest and distributed trajectory bundler                                                         |
+| Subpath                           | Description                                                                                                             |
+| :-------------------------------- | :---------------------------------------------------------------------------------------------------------------------- |
+| `@modelscript/exchange`           | Root barrel re-exporting `fmu`, `ssp`, `cosim`, `ddp`, `aasx`, `lens`, `telemetry`, `variants`, `compliance`, and `hpc` |
+| `@modelscript/exchange/fmu`       | FMI 2.0/3.0 FMU codegen (C99/WASM/JS), `fmi-ls-bus.xml`, `terminalsAndIcons.xml`, and `.fmu` archiver                   |
+| `@modelscript/exchange/fmi`       | FMI standard schema, binary/WASM runtime, and validation helpers                                                        |
+| `@modelscript/exchange/ssp`       | SSP 1.0 `.ssp`, `.ssd`, `.ssv`, and `.ssm` parser, importer, and exporter                                               |
+| `@modelscript/exchange/p3743`     | IEEE P3743 power-system model interchange and validation helpers                                                        |
+| `@modelscript/exchange/cosim`     | `CoSimMaster` orchestrator, MQTT/WebSocket bus, HIL hardware participants, and historian                                |
+| `@modelscript/exchange/aasx`      | Industry 4.0 IDTA AAS v3.0 `.aasx` Open Packaging Conventions packager                                                  |
+| `@modelscript/exchange/lens`      | Multi-standard projection lens engine (DIN SPEC 3105 `okh`, AAS, OSLC)                                                  |
+| `@modelscript/exchange/catalog`   | Curated standard library and verification benchmark catalog loaders                                                     |
+| `@modelscript/exchange/telemetry` | ASAM MDF4 (`.mf4`), ROS 2 MCAP (`.mcap`), and live telemetry streaming readers                                          |
+| `@modelscript/exchange/variants`  | Variant management and parameter override resolution                                                                    |
+| `@modelscript/exchange/hpc`       | Cloud HPC batch job manifest and distributed trajectory bundler                                                         |
 
 ---
 
@@ -105,17 +109,20 @@ graph.addLink({
 ## Scripts
 
 ```bash
-# Build TypeScript package
-npm run build --workspace=@modelscript/exchange
+# Build TypeScript package & copy WASM assets
+pnpm --filter @modelscript/exchange run build
 
 # Run unit and standards validation tests (FMI, SSP, CoSim, Lens, AASX, MDF4/MCAP)
-npm run test --workspace=@modelscript/exchange
+pnpm --filter @modelscript/exchange run test
 
-# Verify exported FMUs against official fmusim / OpenModelica
-npm run test:fmusim --workspace=@modelscript/exchange
-npm run test:omc --workspace=@modelscript/exchange
+# Fetch fmusim and verify exported FMUs against official fmusim / OpenModelica
+pnpm --filter @modelscript/exchange run fetch:fmusim
+pnpm --filter @modelscript/exchange run validate
+pnpm --filter @modelscript/exchange run test:fmusim
+pnpm --filter @modelscript/exchange run test:omc
 
-# Typecheck and lint
-npm run typecheck --workspace=@modelscript/exchange
-npm run lint --workspace=@modelscript/exchange
+# Typecheck, lint, and clean
+pnpm --filter @modelscript/exchange run typecheck
+pnpm --filter @modelscript/exchange run lint
+pnpm --filter @modelscript/exchange run clean
 ```

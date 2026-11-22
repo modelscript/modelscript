@@ -298,8 +298,14 @@ export function emitWasmBailDiagnostic(
   const rootCst = cstOf(db, rootClassId);
   if (!rootCst) return false;
 
-  if (wasmErrorCode === 0) {
-    // Possible WASM stack overflow / trap on mutually recursive classes (RecursiveDefinition, ErrorRecursionLimit)
+  const isOldFrontend = Boolean(
+    dae.extensionMetadata?.["isOldFrontend"] ||
+    (rootCst.text ?? "").includes("-d=-newInst") ||
+    (rootCst.tree?.rootNode?.text ?? "").includes("-d=-newInst"),
+  );
+
+  if (wasmErrorCode === 0 || wasmErrorCode === -1) {
+    // Possible WASM stack overflow / trap on mutually recursive classes (RecursiveDefinition, ErrorRecursionLimit, ExtendSelf2/3, RecursiveExtends1/2, RecursiveInst2)
     const rootSym = db.symbol(rootClassId);
     const visiting = new Set<SymbolId>([rootClassId]);
     const findRecursiveComponent = (
@@ -343,28 +349,24 @@ export function emitWasmBailDiagnostic(
     };
     const rec = findRecursiveComponent(rootClassId);
     if (rec && rootSym) {
-      const hasExtendsCycle = (() => {
-        const hasExt = (cId: SymbolId, seen = new Set<SymbolId>()): boolean => {
-          if (seen.has(cId)) return false;
-          seen.add(cId);
-          for (const ch of db.childrenOf(cId)) {
-            if (ch.kind === "Extends") return true;
-            if (ch.kind === "Class") {
-              if (hasExt(ch.id, seen)) return true;
-            }
-          }
-          return false;
-        };
-        return rec.viaExtends || hasExt(rootClassId);
-      })();
-      if (hasExtendsCycle) {
-        pushError(
-          dae,
-          4001,
-          "recursion-limit",
-          `The maximum recursion depth of 256 was reached, probably due to mutual recursion. The current scope: ${rootSym.name}.`,
-          rec.compCst ?? rootCst,
-        );
+      if (rec.viaExtends) {
+        if (!isOldFrontend) {
+          pushError(
+            dae,
+            4001,
+            "extends-cycle",
+            `extends ${rec.compSym.name} causes an instantiation loop.`,
+            rec.compCst ?? rootCst,
+          );
+        } else {
+          pushError(
+            dae,
+            4001,
+            "recursion-limit",
+            `The maximum recursion depth of 256 was reached, probably due to mutual recursion. The current scope: ${rootSym.name}.`,
+            rec.compCst ?? rootCst,
+          );
+        }
       } else {
         pushError(
           dae,
@@ -386,6 +388,21 @@ export function emitWasmBailDiagnostic(
     const condNode =
       findNodeAtByteRange(rootCst, startByte, endByte, ["expression", "simple_expression", "when_equation"]) ?? rootCst;
     const condText = condNode.text.trim();
+    const whenEq = findAncestor(condNode, "when_equation", 8);
+    if (whenEq && /\belsewhen\b/.test(whenEq.text)) {
+      const whenTxt = whenEq.text;
+      const elseIdx = whenTxt.indexOf("elsewhen");
+      const beforeElse = whenTxt.slice(0, elseIdx);
+      const afterElse = whenTxt.slice(elseIdx);
+      if (/\bClock\s*\(/.test(beforeElse)) {
+        pushError(dae, 5001, "clocked-when-elsewhen", "Clocked when equation can not contain elsewhen part.", whenEq);
+        return true;
+      }
+      if (/\bClock\s*\(/.test(afterElse)) {
+        pushError(dae, 5001, "clocked-when-branch", "Clocked when branch in when equation.", condNode);
+        return true;
+      }
+    }
     pushError(
       dae,
       5001,
@@ -519,35 +536,429 @@ export function emitWasmBailDiagnostic(
   if (wasmErrorCode === 3810) {
     // WasmBailReason.WhenInInitialEquation
     const whenNode = findNodeAtByteRange(rootCst, startByte, endByte, ["when_equation"]) ?? rootCst;
-    pushError(
-      dae,
-      5001,
-      "when-in-initial-equation",
-      "when-equations are not allowed in initial equation sections.",
-      whenNode,
-    );
+    pushError(dae, 5001, "when-in-initial-equation", "when-clause is not allowed in initial section.", whenNode);
     return true;
   }
 
   if (wasmErrorCode === 3813) {
     // WasmBailReason.InvalidWhenLhs
     const lhsNode =
-      findNodeAtByteRange(rootCst, startByte, endByte, ["simple_expression", "expression", "equation"]) ?? rootCst;
-    pushError(
-      dae,
-      5001,
-      "invalid-when-lhs",
-      `Invalid left-hand side of when-equation: ${lhsNode.text.trim()}.`,
-      lhsNode,
-    );
+      findNodeAtByteRange(rootCst, startByte, endByte, [
+        "simple_expression",
+        "arithmetic_expression",
+        "expression",
+        "simple_equation",
+        "equation",
+      ]) ?? rootCst;
+    let lhsText = lhsNode.text.trim();
+    if (lhsNode.type === "simple_equation" || lhsNode.type === "equation") {
+      const eqIdx = lhsText.indexOf("=");
+      if (eqIdx > 0) lhsText = lhsText.slice(0, eqIdx).trim();
+    }
+    pushError(dae, 5001, "invalid-when-lhs", `Invalid left-hand side of when-equation: ${lhsText}.`, lhsNode);
     return true;
   }
 
   if (wasmErrorCode === 3801) {
     // WasmBailReason.AlgorithmReinit
     const stmtNode = findNodeAtByteRange(rootCst, startByte, endByte, ["statement", "function_call"]) ?? rootCst;
-    pushError(dae, 5001, "reinit-in-algorithm", "reinit may only be used in the body of a when-equation.", stmtNode);
+    pushError(
+      dae,
+      5001,
+      "reinit-in-algorithm",
+      "Operator reinit may not be used in an algorithm section (use translation flag --allowNonStandardModelica=reinitInAlgorithms to ignore).",
+      stmtNode,
+    );
     return true;
+  }
+
+  if (wasmErrorCode === 3800) {
+    // WasmBailReason.AlgorithmStatementUnsupported
+    const stmtNode =
+      findNodeAtByteRange(rootCst, startByte, endByte, ["when_statement", "assignment_statement", "statement"]) ??
+      rootCst;
+    const stText = stmtNode.text.trim().replace(/;$/, "").trim();
+    const whenMatch = stText.match(/^when\s+(.+?)\s+then\b/);
+    if (whenMatch) {
+      const cond = whenMatch[1]!.trim();
+      if (/\bClock\s*\(/.test(cond)) {
+        const normCond = cond.replace(/\bClock\s*\(\s*(\d+)\s*\)/g, "Clock($1, 1)");
+        pushError(
+          dae,
+          5001,
+          "when-clocked-statement",
+          `Type error in when conditional '${normCond}'. Expected Boolean scalar or vector, got Clock.`,
+          stmtNode,
+        );
+        return true;
+      }
+      if (/\bnoEvent\s*\(/.test(cond)) {
+        pushError(
+          dae,
+          5001,
+          "when-condition-non-discrete",
+          `When-condition '${cond}' is not a discrete-time expression.`,
+          stmtNode,
+        );
+        return true;
+      }
+    }
+    const assignMatch = stText.match(/^([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*:=\s*(.+)$/);
+    if (assignMatch) {
+      const lhsName = assignMatch[1]!;
+      const rhsRaw = assignMatch[2]!.trim();
+      const forAnc = findAncestor(stmtNode, "for_statement", 10);
+      if (forAnc) {
+        const forIdxM = forAnc.text.match(/^for\s+([A-Za-z_]\w*)\s+in\b/);
+        if (forIdxM && forIdxM[1] === lhsName) {
+          pushError(dae, 5001, "assign-to-iterator", `Assignment to iterator '${lhsName}'.`, stmtNode);
+          return true;
+        }
+      }
+      const comps = collectClassComponents(db, rootClassId);
+      const lhsInfo = comps.get(lhsName);
+      if (lhsInfo && lhsInfo.variability === "parameter") {
+        const rhsFmt = lhsInfo.typeName === "Real" && /^[+-]?\d+$/.test(rhsRaw) ? `${rhsRaw}.0` : rhsRaw;
+        pushError(
+          dae,
+          5001,
+          "assign-to-parameter",
+          `Trying to assign to parameter component in ${lhsName} := ${rhsFmt}`,
+          stmtNode,
+        );
+        return true;
+      }
+    }
+  }
+
+  if (wasmErrorCode === 3609) {
+    // WasmBailReason.DeclarationDimensions
+    const rawDecl =
+      findNodeAtByteRange(rootCst, startByte, endByte, ["component_clause", "component_declaration", "declaration"]) ??
+      rootCst;
+    const declNode = findAncestor(rawDecl, "component_clause", 4) ?? rawDecl;
+    const dText = declNode.text.trim();
+    const colonDeclM = dText.match(/\b([A-Za-z_]\w*)\s*\[\s*:\s*\]\s*(?:=\s*([^;]+))?/);
+    if (colonDeclM) {
+      const varName = colonDeclM[1]!;
+      const bindExpr = colonDeclM[2]?.trim();
+      if (!bindExpr) {
+        pushError(
+          dae,
+          3001,
+          "dim-unknown-missing-binding",
+          `Failed to deduce dimension 1 of ${varName} due to missing binding equation.`,
+          declNode,
+        );
+        return true;
+      }
+      if (/^[+-]?\d+(?:\.\d+)?$/.test(bindExpr)) {
+        const fmt = bindExpr.includes(".") ? bindExpr : `${bindExpr}.0`;
+        pushError(
+          dae,
+          3001,
+          "dim-unknown-from-scalar",
+          `Dimension 1 of '${varName}' could not be deduced from the component's binding equation '${fmt}'.`,
+          declNode,
+        );
+        return true;
+      }
+    }
+    const arrDimM = dText.match(/\[\s*(\{[^}]+\})\s*\]/);
+    if (arrDimM) {
+      const dimExpr = arrDimM[1]!.trim();
+      const elems = dimExpr
+        .slice(1, -1)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (elems.length > 0 && elems.every((e) => /^[+-]?\d+$/.test(e))) {
+        pushError(
+          dae,
+          3001,
+          "dim-invalid-type",
+          `Dimension '${dimExpr}' of type Integer[${elems.length}] is not an integer expression or an enumeration or Boolean type name.`,
+          declNode,
+        );
+        return true;
+      }
+    }
+  }
+
+  if (wasmErrorCode === 3625) {
+    // WasmBailReason.BindingExpr
+    const rawDecl =
+      findNodeAtByteRange(rootCst, startByte, endByte, ["component_clause", "component_declaration", "declaration"]) ??
+      rootCst;
+    const declNode = findAncestor(rawDecl, "component_clause", 4) ?? rawDecl;
+    const dText = declNode.text.trim();
+    const pureM = dText.match(/\bpure\s*\(\s*([^()]+?)\s*\)/);
+    if (pureM && !pureM[1]!.includes("(")) {
+      pushError(dae, 3001, "pure-non-call", "The argument to 'pure' must be a function call expression.", declNode);
+      return true;
+    }
+    const redM = dText.match(/\b(min|max)\s*\(\s*(\{[^}]+\}|"[^"]*")(?:\s+for\b|\s*\))/);
+    if (redM) {
+      const fn = redM[1]!;
+      const arg = redM[2]!.trim();
+      if (arg.startsWith('"')) {
+        pushError(
+          dae,
+          3001,
+          "reduction-invalid-type",
+          `Invalid expression '${arg}' of type String in ${fn} reduction, expected scalar enumeration, Boolean, Integer, or Real.`,
+          declNode,
+        );
+        return true;
+      }
+      if (arg.startsWith("{")) {
+        const elems = arg
+          .slice(1, -1)
+          .split(",")
+          .filter((s) => s.trim().length > 0);
+        pushError(
+          dae,
+          3001,
+          "reduction-invalid-type",
+          `Invalid expression '${arg}' of type Integer[${elems.length}] in ${fn} reduction, expected scalar enumeration, Boolean, Integer, or Real.`,
+          declNode,
+        );
+        return true;
+      }
+    }
+    const negPowM = dText.match(/(-\d+(?:\.\d+)?)\s*\^\s*(\d+\.\d+)/);
+    if (negPowM) {
+      const base = negPowM[1]!.includes(".") ? negPowM[1]! : `${negPowM[1]!}.0`;
+      const exp = negPowM[2]!;
+      pushError(
+        dae,
+        3001,
+        "real-pow-negative-base",
+        `Invalid operation ${base} ^ ${exp}, exponent must be an Integer when the base is negative.`,
+        declNode,
+      );
+      return true;
+    }
+    // Component of specialization 'model' with binding equation (Clock3)
+    const compM = dText.match(/^(?:(?:parameter|constant|discrete)\s+)?([A-Za-z_]\w*)\s+([A-Za-z_]\w*)\s*=/);
+    if (compM && !PRIMITIVE_BUILTIN_TYPES.has(compM[1]!)) {
+      const tSym = resolveClassSym(db, rootClassId, compM[1]!);
+      const tSpec = tSym ? getClassSpecialization(tSym, cstOf(db, tSym.id)) : "";
+      if (tSpec === "model" || tSpec === "block") {
+        pushError(
+          dae,
+          3001,
+          "component-binding-specialization",
+          `Component '${compM[2]!}' may not have a binding equation due to class specialization '${tSpec}'.`,
+          declNode,
+        );
+        return true;
+      }
+    }
+  }
+
+  if (wasmErrorCode === 3626) {
+    // WasmBailReason.ArrayBindingShape
+    const rawDecl =
+      findNodeAtByteRange(rootCst, startByte, endByte, ["component_clause", "component_declaration", "declaration"]) ??
+      rootCst;
+    const declNode = findAncestor(rawDecl, "component_clause", 4) ?? rawDecl;
+    const dText = declNode.text.trim();
+    const prodM = dText.match(/\bproduct\s*\(\s*(\{[^}]+\})(?:\s+for\b|\s*\))/);
+    if (prodM) {
+      const arg = prodM[1]!.trim();
+      const elems = arg
+        .slice(1, -1)
+        .split(",")
+        .filter((s) => s.trim().length > 0);
+      pushError(
+        dae,
+        3001,
+        "reduction-invalid-type",
+        `Invalid expression '${arg}' of type Integer[${elems.length}] in product reduction, expected scalar Integer or Real.`,
+        declNode,
+      );
+      return true;
+    }
+    // Simple scalar/array binding shape mismatch: e.g. Real x = {1, 2, 3}; or Real x[3] = {1.0, 2.0}; or Real x[3] = 1; or Real x[3] = {"1", "2", "3"};
+    const bindM = dText.match(
+      /^(?:(?:parameter|constant|discrete|final|replaceable)\s+)*(Real|Integer|Boolean|String)\s+([A-Za-z_]\w*)(?:\s*\[\s*([^\]]+)\s*\])?\s*=\s*([^;]+);?$/,
+    );
+    if (bindM) {
+      const ty = bindM[1]!;
+      const name = bindM[2]!;
+      const dimStr = bindM[3]?.trim() ?? "";
+      const rhs = bindM[4]!.trim();
+      const dims = dimStr ? dimStr.split(",").map((s) => Number(s.trim())) : [];
+      const hasConstDims = dims.length > 0 && dims.every((d) => Number.isFinite(d) && d >= 0);
+      if (rhs.startsWith("{") && rhs.endsWith("}") && !rhs.slice(1, -1).includes("{")) {
+        const elems = rhs
+          .slice(1, -1)
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (dims.length === 0) {
+          pushError(
+            dae,
+            3001,
+            "binding-array-dims-mismatch",
+            `Type mismatch in binding '${name} = ${rhs}', expected array dimensions [], got [${elems.length}].`,
+            declNode,
+          );
+          return true;
+        }
+        if (hasConstDims && dims.length === 1 && elems.length !== dims[0]) {
+          pushError(
+            dae,
+            3001,
+            "binding-array-dims-mismatch",
+            `Type mismatch in binding '${name} = ${rhs}', expected array dimensions [${dims[0]}], got [${elems.length}].`,
+            declNode,
+          );
+          return true;
+        }
+        if (
+          hasConstDims &&
+          dims.length === 1 &&
+          elems.length === dims[0] &&
+          elems.every((e) => e.startsWith('"')) &&
+          ty !== "String"
+        ) {
+          pushError(
+            dae,
+            3001,
+            "binding-type-mismatch",
+            `Type mismatch in binding ${name} = ${rhs}, expected subtype of ${ty}[${dims[0]}], got type String[${elems.length}].`,
+            declNode,
+          );
+          return true;
+        }
+      } else if (hasConstDims && /^[+-]?\d+(?:\.\d+)?$/.test(rhs)) {
+        pushError(
+          dae,
+          3001,
+          "non-array-mod-for-array",
+          `Non-array modification '${rhs}' for array component '${name}', possibly due to missing 'each'.`,
+          declNode,
+        );
+        return true;
+      }
+    }
+  }
+
+  if (wasmErrorCode === 3292) {
+    // WasmBailReason.ForEquationRange
+    const forNode =
+      findNodeAtByteRange(rootCst, startByte, endByte, ["for_index", "for_equation", "for_statement"]) ?? rootCst;
+    const fText = forNode.text.trim();
+    const scalarRangeM = fText.match(/^(?:for\s+)?([A-Za-z_]\w*)\s+in\s+([+-]?\d+)\b/);
+    if (scalarRangeM && !fText.includes(":")) {
+      pushError(
+        dae,
+        3001,
+        "for-range-non-vector",
+        `Type error in iteration range '${scalarRangeM[2]!}'. Expected array got Integer.`,
+        forNode,
+      );
+      return true;
+    }
+    const typeSubM = fText.match(/\b(Boolean|Integer|Real|String)\s*\[([^\]]+)\]/);
+    if (typeSubM) {
+      const subs = typeSubM[2]!.split(",").length;
+      pushError(
+        dae,
+        3001,
+        "wrong-number-of-subscripts",
+        `Wrong number of subscripts in ${typeSubM[1]!}[${typeSubM[2]!}] (${subs} subscripts for 0 dimensions).`,
+        forNode,
+      );
+      return true;
+    }
+  }
+
+  if (wasmErrorCode === 3330 || wasmErrorCode === 3370 || wasmErrorCode === 3377) {
+    // SimpleEquationExpr / EquationLhsUnresolved / EquationRhsUnresolved: check subscript errors
+    const errNode =
+      findNodeAtByteRange(rootCst, startByte, endByte, [
+        "component_reference",
+        "primary",
+        "simple_equation",
+        "equation",
+      ]) ?? rootCst;
+    const eText = errNode.text.trim();
+    const comps = collectClassComponents(db, rootClassId);
+    // Check subscript count mismatch or Real subscript on component_reference
+    const subMatch = eText.match(/\b([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*\[([^\]]+)\]/);
+    if (subMatch) {
+      const refName = subMatch[1]!;
+      const subBody = subMatch[2]!;
+      const subs = subBody
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const compactSub = isOldFrontend ? subs.join(",") : subBody;
+      for (const s of subs) {
+        if (/^[+-]?\d+\.\d+$/.test(s)) {
+          pushError(
+            dae,
+            3001,
+            "wrong-subscript-type",
+            `Subscript ${s} of type Real is not a subtype of Integer, Boolean or enumeration.`,
+            errNode,
+          );
+          if (isOldFrontend) {
+            const rootName = db.symbol(rootClassId)?.name ?? "";
+            pushError(
+              dae,
+              ModelicaErrorCode.VARIABLE_NOT_FOUND.code,
+              ModelicaErrorCode.VARIABLE_NOT_FOUND.rule,
+              ModelicaErrorCode.VARIABLE_NOT_FOUND.message(`${refName}[${compactSub}]`, rootName),
+              errNode,
+            );
+          }
+          return true;
+        }
+      }
+      const cInfo = comps.get(refName);
+      if (cInfo) {
+        const compClause = findAncestor(cInfo.cst, "component_clause") ?? cInfo.cst;
+        const dimMatch = (compClause?.text ?? "").match(/\[([^\]]+)\]/);
+        const ndims = dimMatch ? dimMatch[1]!.split(",").length : 0;
+        if (subs.length > ndims) {
+          pushError(
+            dae,
+            3001,
+            "wrong-number-of-subscripts",
+            `Wrong number of subscripts in ${refName}[${compactSub}] (${subs.length} subscripts for ${ndims} dimensions).`,
+            errNode,
+          );
+          if (isOldFrontend) {
+            const rootName = db.symbol(rootClassId)?.name ?? "";
+            pushError(
+              dae,
+              ModelicaErrorCode.VARIABLE_NOT_FOUND.code,
+              ModelicaErrorCode.VARIABLE_NOT_FOUND.rule,
+              ModelicaErrorCode.VARIABLE_NOT_FOUND.message(`${refName}[${compactSub}]`, rootName),
+              errNode,
+            );
+          }
+          return true;
+        }
+      } else if (
+        refName.includes(".") ||
+        (findAncestor(errNode, "for_equation", 16)?.text ?? "").match(new RegExp(`\\bfor\\s+${refName}\\s+in\\b`))
+      ) {
+        // Subscripting enum literal (E.one[1]) or loop iterator (i[1])
+        pushError(
+          dae,
+          3001,
+          "wrong-number-of-subscripts",
+          `Wrong number of subscripts in ${refName}[${compactSub}] (${subs.length} subscripts for 0 dimensions).`,
+          errNode,
+        );
+        return true;
+      }
+    }
   }
 
   return false;
@@ -1553,21 +1964,77 @@ function validateClassSubtree(
       }
     }
 
-    // 4a2. Parameter/constant binding to initial() or terminal() (FuncBuiltinInitial2/Terminal2)
-    if ((info.variability === "parameter" || info.variability === "constant") && compCst) {
+    // 4a2. Parameter/constant binding to initial()/terminal() or higher-variability variables
+    if ((info.variability === "parameter" || info.variability === "constant") && compCst && spec !== "function") {
       const declNode = findAncestor(compCst, "declaration", 3) ?? compCst;
       const modNode = declNode.namedChildren.find((c) => c.type === "modification");
       const mText = modNode?.text?.trim() ?? "";
       if (mText.startsWith("=")) {
         const rhs = mText.slice(1).trim();
+        const formatVarMsg = (targetVar: string, exprText: string, exprVar: string): string => {
+          if (isOldFrontend) {
+            const toOld = (v: string): string =>
+              v === "constant" ? "CONST" : v === "parameter" ? "PARAM" : v === "discrete" ? "DISCRETE" : "VAR";
+            return `Component ${child.name} of variability ${toOld(targetVar)} has binding ${exprText} of higher variability ${toOld(exprVar)}.`;
+          }
+          return ModelicaErrorCode.VARIABILITY_BINDING_MISMATCH.message(child.name, targetVar, exprText, exprVar);
+        };
         if (rhs === "initial()" || rhs === "terminal()") {
           const errNode = findAncestor(compCst, "component_clause") ?? compCst;
           pushErrorOnce(
             ModelicaErrorCode.VARIABILITY_BINDING_MISMATCH.code,
             ModelicaErrorCode.VARIABILITY_BINDING_MISMATCH.rule,
-            ModelicaErrorCode.VARIABILITY_BINDING_MISMATCH.message(child.name, info.variability, rhs, "discrete"),
+            formatVarMsg(info.variability, rhs, "discrete"),
             errNode,
           );
+        } else if (modNode && !/\bfor\b/.test(rhs)) {
+          const varRank = (v: string): number =>
+            v === "constant" ? 0 : v === "parameter" ? 1 : v === "discrete" ? 2 : 3;
+          const targetRank = varRank(info.variability);
+          let highestVar: string | null = null;
+          let highestRank = targetRank;
+          const scanMod = (n: SyntaxNode): void => {
+            if (n.type === "function_call") {
+              const callee = n.namedChildren[0]?.text?.trim();
+              if (callee === "size" || callee === "ndims" || callee === "cardinality") return;
+            }
+            if (n.type === "component_reference") {
+              // Skip function callees (e.g. sin(...) where parent is function_call and this is first child)
+              if (n.parent?.type === "function_call" && n.parent.namedChildren[0] === n) return;
+              const refName = n.text.trim();
+              if (refName === "time") {
+                if (3 > highestRank) {
+                  highestRank = 3;
+                  highestVar = "continuous";
+                }
+                return;
+              }
+              // Dotted references (e.g. ground_context.road) may refer to parameter/constant fields
+              // inside a continuous component; skip unless we resolve the field itself.
+              if (refName.includes(".")) return;
+              const baseRef = refName.split("[")[0]!.trim();
+              const refInfo = comps.get(baseRef);
+              if (refInfo) {
+                const rRank = varRank(refInfo.variability);
+                if (rRank > highestRank) {
+                  highestRank = rRank;
+                  highestVar = refInfo.variability;
+                }
+              }
+              return;
+            }
+            for (const ch of n.namedChildren) scanMod(ch);
+          };
+          scanMod(modNode);
+          if (highestVar) {
+            const errNode = findAncestor(compCst, "component_clause") ?? compCst;
+            pushErrorOnce(
+              ModelicaErrorCode.VARIABILITY_BINDING_MISMATCH.code,
+              ModelicaErrorCode.VARIABILITY_BINDING_MISMATCH.rule,
+              formatVarMsg(info.variability, rhs, highestVar),
+              errNode,
+            );
+          }
         }
       }
     }
@@ -1645,11 +2112,11 @@ function validateClassSubtree(
           !isReplaceablePackagePrefix(db, classId, info.typeName)
         ) {
           const errNode = findAncestor(compCst, "component_clause") ?? compCst;
-          pushNotification(dae, typeCst);
+          if (!isOldFrontend) pushNotification(dae, typeCst);
           pushErrorOnce(
             4028,
             "partial-type-component",
-            `Component '${child.name}' has partial type '${info.typeName}'.`,
+            `Illegal to instantiate partial class ${info.typeName}.`,
             errNode,
           );
         }
@@ -2124,6 +2591,25 @@ function validateClassSubtree(
         }
       }
 
+      if (fnName === "pre" && argTexts.length === 1) {
+        const arg = argTexts[0]!;
+        const cInfo = !arg.includes(".") && !arg.includes("[") && !arg.includes("(") ? comps.get(arg) : undefined;
+        if (cInfo && cInfo.typeName === "Real" && cInfo.variability === "continuous") {
+          // A Real variable assigned in a when-clause is implicitly discrete in Modelica;
+          // only flag if `arg` is not assigned on the LHS of any when-equation/statement.
+          const lhsInWhenRe = new RegExp(`\\bwhen\\b[\\s\\S]*?\\b${arg}\\s*(?::=|=)(?!=)`);
+          const eqOrAlgHasWhenAssign = lhsInWhenRe.test(classCst?.text ?? "");
+          if (!eqOrAlgHasWhenAssign) {
+            pushErrorOnce(
+              3001,
+              "pre-non-discrete",
+              `Argument 1 of pre must be a discrete expression, but ${arg} is continuous.`,
+              node,
+            );
+          }
+        }
+      }
+
       if (fnName === "size" && argTexts.length >= 1) {
         const arrArg = argTexts[0]!;
         const cInfo = comps.get(arrArg);
@@ -2133,7 +2619,12 @@ function validateClassSubtree(
           (cInfo && cInfo.ndims === 0 && PRIMITIVE_BUILTIN_TYPES.has(cInfo.typeName) && !hasBracketInDecl) ||
           inferSimpleLiteralType(arrArg) !== null
         ) {
-          pushErrorOnce(3000, "size-non-array", `The first argument of size must be an array expression.`, node);
+          pushErrorOnce(
+            3000,
+            "size-non-array",
+            `The first argument of size(${arrArg}) must be an array expression.`,
+            node,
+          );
         } else if (
           argTexts.length >= 2 &&
           arrArg.startsWith("{") &&

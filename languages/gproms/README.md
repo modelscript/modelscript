@@ -3,7 +3,9 @@
 
 # @modelscript/gproms
 
-gPROMS-compatible Process Modeling Language (`.gproms`, `.pml`) equation-oriented chemical process engineering, dynamic CSTR, and spatially distributed tubular reactor PDE-DAE modeling package for ModelScript. Features a zero-regex character-by-character `.gproms` / `.pml` lexer and parser (`parseGproms`), roundtrip serializer (`serializeGproms`), multi-file workspace indexing (`GpromsWorkspaceIndex`), a deterministic RK4 Method-of-Lines (MOL) PDE-DAE process solver (`solveGpromsProcess`), direct linear-memory `DAEBuilder` finite-difference lowering (`lowerGpromsToDae`), 10 pre-flight structural and mathematical lint rules (`M9451`–`M9460`), Modelica 3.x projections (`gpromsToModelica`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.gproms`, `.pml` · **Docs:** [modelscript.org/languages/gproms](https://modelscript.org/languages/gproms)
+
+gPROMS-compatible Process Modeling Language (`.gproms`, `.pml`) equation-oriented chemical process engineering, dynamic CSTR, and spatially distributed tubular reactor PDE-DAE modeling package for ModelScript. Features a zero-regex character-by-character `.gproms` / `.pml` lexer and parser (`parseGproms`), roundtrip serializer (`serializeGproms`), multi-file workspace indexing, a deterministic RK4 Method-of-Lines (MOL) PDE-DAE process solver (`solveGpromsProcess`), direct linear-memory `DAEBuilder` finite-difference lowering (`lowerGpromsToDae`), 10 pre-flight structural and mathematical lint rules (`M9451`–`M9460`), Modelica 3.x projections (`gpromsToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -17,7 +19,7 @@ gPROMS-compatible Process Modeling Language (`.gproms`, `.pml`) equation-oriente
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerGpromsToDae`)**: Discretizes `PARTIAL` spatial derivatives via finite differences and lowers parameters, lumped states, distributed grid states, and `ASSIGN`ed inputs directly into a structurally square ModelScript WebAssembly `DAEBuilder` arena.
 - **10 Pre-Flight Process Modeling Lint Rules (`M9451`–`M9460`, `lintGproms`)**: Static verification of `DECLARE TYPE` references, variable bounds, spatial distribution domain bounds and grid points, undeclared equation identifiers, structural degrees-of-freedom (DOF) balance, uninitialized differential states (`$x`), `PARTIAL` on non-distributed variables, overassigned parameters/variables, empty models, and duplicate entity declarations.
 - **Modelica 3.x Process Projection (`gpromsToModelica`)**: Translates lumped and Method-of-Lines discretized gPROMS models into standalone Modelica 3.x code.
-- **Multi-File Workspace Indexing & LSP (`GpromsWorkspaceIndex`, `validateGproms`, `getGpromsHover`, `provideGpromsCompletions`)**: Implements `IWorkspaceIndex` across `.gproms` and `.pml` files with symbol navigation, hover cards, completions, and AST writeback.
+- **Multi-File Workspace Indexing & LSP (`validateGproms`, `getGpromsHover`, `provideGpromsCompletions`)**: Provides workspace symbol indexing across `.gproms` and `.pml` files with symbol navigation, hover cards, completions, and AST writeback.
 
 ---
 
@@ -39,7 +41,6 @@ gPROMS-compatible Process Modeling Language (`.gproms`, `.pml`) equation-oriente
 | `src/dae/index.ts`                      | DAE lowering barrel exports                                                                                           |
 | `src/projections/gproms-to-modelica.ts` | `gpromsToModelica` translator to Modelica 3.x lumped and discretized PDE models                                       |
 | `src/projections/index.ts`              | Projections barrel exports                                                                                            |
-| `src/workspace-index.ts`                | `GpromsWorkspaceIndex` implementing `IWorkspaceIndex` across `.gproms` and `.pml` files                               |
 | `src/lsp.ts`                            | LSP validation, hover, completion, and document symbol providers                                                      |
 
 ---

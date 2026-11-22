@@ -34,7 +34,7 @@ For automated GitOps / Helm / Ansible / Docker Compose deployments, setting `ADM
 
 Access to the Platform Administration Console (`/admin`) and `/api/v1/admin/*` endpoints is enforced via JWT authentication and tiered staff RBAC (`requireStaffRole`):
 
-- **`admin`**: Full platform superuser privileges across all 9 Admin Console tabs (Moderation, Users & Credits, Analytics, Federation, DMCA & Quarantine, Audit Logs, Database & Backups, Feature Flags, Instance Settings & Invites, and System & License Posture).
+- **`admin`**: Full platform superuser privileges across all 10 Admin Console tabs (Moderation, Users & Credits, Analytics, Federation, DMCA & Quarantine, Audit Logs, Database & Backups, Feature Flags, Instance Settings & Invites, and System & License Posture).
 - **`moderator`**: Trust & Safety access to the **Moderation Queue** (`/api/v1/admin/moderation/*`) and **Users & Governance** (`/api/v1/admin/users`, including User Forensic Dossiers). Cannot promote accounts to `admin`/`auditor` or mutate database/system settings.
 - **`auditor`**: Read-only compliance inspector access to **Security & Audit Logs** (`/api/v1/admin/audit-logs`, hash-chain verification), **Analytics & Traffic** (`/api/v1/admin/analytics`), **System Health** (`/api/v1/admin/system`), and **Enterprise Compliance Posture** (`/api/v1/admin/ee/posture`).
 - **`user` / Organization Roles (`owner`, `admin`, `member`, `billing`, `viewer`)**: Scoped access within `/api/v1/organizations/:org` namespaces.
@@ -130,7 +130,7 @@ git clone https://hub.example.com/git/aerospace/flight-control.git
 Every package published via `msx publish` is stored in a SHA-256 Content-Addressable Storage (CAS) blob store and signed with the publisher's **Ed25519** private key:
 
 - **Integrity & Provenance**: `msx install --verify-signatures` validates both the SHA-256 tarball digest against `modelscript.lock` and the Ed25519 signature against the registry's public keyring.
-- **Multi-Lens Manifest Projection (`GET /api/v1/packages/:name/:version?lens=<lens>`)**: The registry dynamically projects any `modelscript.json` package manifest into three industry interoperability schemas on the fly:
+- **Multi-Lens Manifest Projection (`GET /api/v1/packages/:name/:version?lens=<lens>`)**: The registry dynamically projects any `modelscript.yaml` package manifest into three industry interoperability schemas on the fly:
   - `?lens=npm`: Standard Node/NPM-compatible package metadata for JavaScript/TypeScript tooling.
   - `?lens=aas`: **IDTA Asset Administration Shell (AAS v3.0)** JSON submodel descriptor containing `TechnicalData` and `SimulationModels` (FMU) references.
   - `?lens=okh`: **DIN SPEC 3105 / OSHWA Open Know-How (OKH v1.0)** hardware manifest exposing CAD/ECAD bill-of-materials, manufacturing files, and SPDX license metadata.
@@ -207,7 +207,7 @@ msx dhf audit release_v1.dhf.md
 Enterprise teams can connect cloud AI agents and internal copilot orchestrators directly to the Hub's **Hosted Model Context Protocol (MCP) Gateway**:
 
 - **`GET /api/v1/mcp/sse`**: Authenticates via Bearer token (`JWT` or `ms_bot_*`) and opens a server-sent events transport session.
-- **`POST /api/v1/mcp/messages`**: Dispatches any of the [60 MCP engineering tools](../reference/mcp-and-ide.md) inside sandboxed worker isolates with automatic compute credit metering and full audit-ledger logging of every AI tool invocation.
+- **`POST /api/v1/mcp/messages`**: Dispatches any of the [121 static MCP engineering tools](../reference/mcp-and-ide.md) inside sandboxed worker isolates with automatic compute credit metering and full audit-ledger logging of every AI tool invocation.
 
 ---
 
@@ -231,7 +231,7 @@ ModelScript publishes distinct **Community Edition (`-ce`)** and **Enterprise Ed
 For individual engineers, universities, and open-source teams running under **GNU AGPLv3** without a commercial license key:
 
 - Uses `ghcr.io/modelscript/api-ce:latest` (which physically excludes `/app/ee`) or sets `MSX_EDITION=ce`.
-- Includes the full 68-language compiler, DAE simulation engine, local package registry, public repositories, GraphQL/RDF queries, Studio workbench, and the core **Instance Admin Console** (`/admin` and `/api/v1/admin/*` for content moderation, federation domain governance, DMCA takedowns, audit logs, and online SQLite backups).
+- Includes the full 105-format polyglot compiler, DAE simulation engine, local package registry, public repositories, GraphQL/RDF queries, Studio workbench, and the core **Instance Admin Console** (`/admin` and `/api/v1/admin/*` for content moderation, federation domain governance, DMCA takedowns, audit logs, and online SQLite backups).
 - Enterprise-only endpoints (`/api/v1/ee/*`, `/api/v1/admin/stats`, `/api/v1/admin/ee/*`, `/api/v1/organizations`, `/api/v1/cae`, `/api/v1/cloud`, `/api/v1/twins`, `/api/v1/cosim`, `/api/v1/threads`, `/api/v1/sysml2`, `/api/v1/mcp`, `/api/v1/webhooks`, etc.) return `501 Not Implemented`.
 
 ```bash
@@ -403,7 +403,7 @@ npm run ee:verify-license -- msx_lic_<PAYLOAD>.<SIGNATURE>
 
 ---
 
-### 9.7 Upgrading & Rollback Runbook
+### Upgrading & Rollback Runbook
 
 Follow this standard operating procedure whenever upgrading a self-hosted Ansatz hub or Enterprise appliance:
 

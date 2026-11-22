@@ -3,7 +3,9 @@
 
 # @modelscript/gtsuite
 
-GT-SUITE / GT-POWER-compatible 1D powertrain, internal combustion engine, turbocharging, and thermo-fluid dynamic simulation package (`.gtm`, `.gtd`, `.gtx`, `.gt`, `.dat`, `.gdx`) for ModelScript. Features XML and ASCII engine deck parsing, crank-angle resolved 0D/1D cylinder combustion & Woschni heat-transfer simulation, Mean-Value Engine Model (MVEM) lowering to `DAEBuilder`, 15 pre-flight powertrain lint rules (`M9001`–`M9015`), GT-POST `.gdx` trajectory verification gates, and SysML v2 / Modelica / SSP projections.
+**Maturity:** Alpha · **Extensions:** `.gtm`, `.gtd`, `.gtx`, `.gt` · **Docs:** [modelscript.org/languages/gtsuite](https://modelscript.org/languages/gtsuite)
+
+GT-SUITE / GT-POWER-compatible 1D powertrain, internal combustion engine, turbocharging, and thermo-fluid dynamic simulation package (`.gtm`, `.gtd`, `.gtx`, `.gt`) for ModelScript. Features XML and ASCII engine deck parsing, crank-angle resolved 0D/1D cylinder combustion & Woschni heat-transfer simulation, Mean-Value Engine Model (MVEM) lowering to `DAEBuilder`, 15 pre-flight powertrain lint rules (`M9001`–`M9015`), GT-POST `.gdx` trajectory verification gates, and SysML v2 / Modelica / SSP projections.
 
 ---
 
@@ -53,7 +55,6 @@ GT-SUITE / GT-POWER-compatible 1D powertrain, internal combustion engine, turboc
 | `src/engine/gtsuite-orchestrator.ts`     | `runGtSuiteSimulation` and `isGtSuiteEngineAvailable` native/WASM orchestrator            |
 | `src/engine/engine-gate.ts`              | `verifyEngineGates` formal BSFC, peak pressure, knock, and $\text{NO}_x$ gate verifier    |
 | `src/engine/index.ts`                    | Engine orchestration module re-exports                                                    |
-| `src/workspace-index.ts`                 | `GtSuiteWorkspaceIndex` multi-file workspace indexer                                      |
 | `src/lsp.ts`                             | LSP validation, document symbols, hover, and action handlers                              |
 
 ---
@@ -86,15 +87,15 @@ GT-SUITE / GT-POWER-compatible 1D powertrain, internal combustion engine, turboc
 
 ```bash
 # Lint a GT-SUITE engine model (M9001–M9015)
-npx msx gtsuite lint turbo_gdi.gtm
+msx gtsuite lint turbo_gdi.gtm
 
 # Run 0D/1D crank-angle resolved transient simulation
-npx msx gtsuite simulate turbo_gdi.gtm
+msx gtsuite simulate turbo_gdi.gtm
 
 # Project GT-SUITE model to SysML v2, Modelica 3.x, or FMI SSP
-npx msx gtsuite to-sysml turbo_gdi.gtm
-npx msx gtsuite to-modelica turbo_gdi.gtm
-npx msx gtsuite to-ssp turbo_gdi.gtm
+msx gtsuite to-sysml turbo_gdi.gtm
+msx gtsuite to-modelica turbo_gdi.gtm
+msx gtsuite to-ssp turbo_gdi.gtm
 ```
 
 ### Programmatic API

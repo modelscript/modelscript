@@ -3,8 +3,14 @@
 import { computed, ref } from "vue";
 import type { IconName } from "../data/icons";
 import { LANGUAGE_COUNT } from "../data/languages";
+import lintRulesData from "../data/lint-rules.generated.json";
 import mcpData from "../data/mcp-tools.generated.json";
 import MsIcon from "./MsIcon.vue";
+
+const totalLintRules = (lintRulesData as { rules?: unknown[] }[]).reduce(
+  (sum, entry) => sum + (entry.rules?.length ?? 0),
+  0,
+);
 
 interface Feature {
   icon: IconName;
@@ -20,7 +26,7 @@ const features: Feature[] = [
   },
   {
     icon: "shield",
-    title: "1,000+ Compiler Lint Rules",
+    title: `${totalLintRules.toLocaleString()}+ Compiler Lint Rules`,
     description: "Pre-flight checks for unit consistency, typing, causality, acausal balancing, and syntax errors as you type.",
   },
   {

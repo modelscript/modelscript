@@ -1,6 +1,6 @@
 ---
 title: Nelson-Oppen Theory Combination & SMT Solvers
-description: Academic foundations and ModelScript modifications for Nelson-Oppen DPLL(T) theory combination across 13 engineering domains, CDCL SAT, Craig interpolation, HC4 contractors, STL robustness, and constrained zonotopes.
+description: Academic foundations and ModelScript modifications for Nelson-Oppen DPLL(T) theory combination across 19 engineering and SMT oracles, CDCL SAT, Craig interpolation, HC4 contractors, STL robustness, and constrained zonotopes.
 ---
 
 # Nelson-Oppen Theory Combination & SMT Solvers
@@ -22,25 +22,31 @@ description: Academic foundations and ModelScript modifications for Nelson-Oppen
 
 ### ModelScript Rationale & Modifications
 
-Proves cross-domain assertions spanning discrete architectural modes, differential equations, interval constraints, 3D CAD collisions, and clinical radiology/surgical safety envelopes.
+Proves cross-domain assertions spanning discrete architectural modes, differential equations, interval constraints, 3D CAD collisions, classical SMT theories (arrays, bit-vectors, strings), and industrial safety envelopes.
 
-- **Modifications**: Extended beyond traditional software theories (uninterpreted functions, bit-vectors) to **13 engineering domains** (matching [Multi-Domain Theory Coordinator](../architecture/theory-coordinator.md)) including OWL2 Description Logic, CAD B-Rep spatial physics, DAE continuous trajectories, and `RadiologyCasTheoryOracle` for radiation oncology and computer-assisted surgery; combines learned conflict clause propagation with Salsa query invalidation:
+- **Modifications**: Combines classical SMT theories with specialized engineering domains across **19 domain theory oracles** (matching [Multi-Domain Theory Coordinator](../architecture/theory-coordinator.md)) over the canonical `TheoryDomain` union (`"ontology" | "constraint" | "abstract_domain" | "continuous_safety" | "dynamic_simulation" | "spatial_physics" | "algebraic" | "custom"`); integrates learned conflict clause propagation with Salsa query invalidation:
 
-| #   | Theory Oracle                           | Domain (`TheoryDomain`)   | Primary Decision / Propagation Procedure                                                                                                                                                         |
-| :-- | :-------------------------------------- | :------------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | `OntologyTheoryOracle`                  | `ontology`                | $\mathcal{SROIQ}(\mathcal{D})$ Tableau reasoning over OWL 2 axioms, class disjointness, and property domains                                                                                     |
-| 2   | `ConstraintTheoryOracle`                | `constraints`             | HC4 interval arithmetic and relational constraint propagation over SysML v2 requirements                                                                                                         |
-| 3   | `AbstractDomainOracle`                  | `abstract_interpretation` | Floyd-Warshall Difference Bound Matrix (DBM) closure over Zone ($x_i - x_j \le c$) and Octagon ($\pm x_i \pm x_j \le c$) domains                                                                 |
-| 4   | `ContinuousSafetyOracle`                | `continuous_safety`       | Control Barrier Function (CBF) Lie-derivative positivity and Taylor-model flowpipe reachability                                                                                                  |
-| 5   | `DynamicSimulationOracle`               | `simulation`              | Sensitivity-guided DAE trajectory integration (CVODE/IDA) with exact zero-crossing root finding                                                                                                  |
-| 6   | `SpatialPhysicsOracle`                  | `spatial`                 | 3D CAD B-Rep minimum clearance distance, mass budget, and BVH interference checks                                                                                                                |
-| 7   | `CaeContractOracle`                     | `cae`                     | FEA structural safety factor ($\sigma_{\text{vM}} \le \sigma_{\text{yield}} / \text{SF}$) and CFD aerodynamic/thermal envelope bounds                                                            |
-| 8   | `CausalizationOracle`                   | `causalization`           | Hopcroft-Karp maximum bipartite matching ($O(E\sqrt{V})$), Tarjan BLT decomposition, and Pantelides index reduction                                                                              |
-| 9   | `DimensionalOracle`                     | `dimensional`             | Gaussian elimination over the 7-base SI unit exponent matrix $[\text{m}, \text{kg}, \text{s}, \text{A}, \text{K}, \text{mol}, \text{cd}]$                                                        |
-| 10  | `EntailmentOracle`                      | `entailment`              | Assume-Guarantee contract compatibility ($\bigwedge A_i \neq \bot$) and compositional refinement ($A_P \Rightarrow A_C \land G_C \Rightarrow G_P$)                                               |
-| 11  | `FlowAlgebraOracle`                     | `flow_algebra`            | Acausal connection graph conservation ($\sum i_k = 0$ for flow variables, $v_1 = \dots = v_n$ for potential variables)                                                                           |
-| 12  | `ToleranceStackOracle`                  | `tolerance`               | STEP AP242 / ISO 23952 QIF GD&T 1D/3D tolerance chain stack-up via Worst-Case and Root-Sum-Square (RSS)                                                                                          |
-| 13  | `UqOracle` / `RadiologyCasTheoryOracle` | `uq` / `radiology_cas`    | Latin Hypercube / PCE Sobol & conformal UQ, plus QUANTEC OAR DVH/BED/EQD2 dose limits, Bethe-Bloch Bragg peak range, Hill muscle dynamics, and $SE(3)$ surgical navigation TRE (`M9101`–`M9810`) |
+| #   | Theory Oracle               | `TheoryDomain`       | Primary Decision / Propagation Procedure                                                                                                           |
+| :-- | :-------------------------- | :------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `OntologyTheoryOracle`      | `ontology`           | $\mathcal{SROIQ}(\mathcal{D})$ Tableau reasoning over OWL 2 axioms, class disjointness, and property domains                                       |
+| 2   | `ConstraintTheoryOracle`    | `constraint`         | HC4 interval arithmetic and relational constraint propagation over SysML v2 requirements                                                           |
+| 3   | `AbstractDomainOracle`      | `abstract_domain`    | Floyd-Warshall Difference Bound Matrix (DBM) closure over Zone ($x_i - x_j \le c$) and Octagon ($\pm x_i \pm x_j \le c$) domains                   |
+| 4   | `SafetyTheoryOracle`        | `continuous_safety`  | Control Barrier Function (CBF) Lie-derivative positivity and Taylor-model flowpipe reachability                                                    |
+| 5   | `SpatialPhysicsOracle`      | `spatial_physics`    | 3D CAD B-Rep minimum clearance distance, mass budget, and BVH interference checks                                                                  |
+| 6   | `CaeContractOracle`         | `spatial_physics`    | FEA structural safety factor ($\sigma_{\text{vM}} \le \sigma_{\text{yield}} / \text{SF}$) and CFD aerodynamic/thermal envelope bounds              |
+| 7   | `CausalizationTheoryOracle` | `constraint`         | Hopcroft-Karp maximum bipartite matching ($O(E\sqrt{V})$), Tarjan BLT decomposition, and Pantelides index reduction                                |
+| 8   | `DimensionalTheoryOracle`   | `constraint`         | Gaussian elimination over the 7-base SI unit exponent matrix $[\text{m}, \text{kg}, \text{s}, \text{A}, \text{K}, \text{mol}, \text{cd}]$          |
+| 9   | `EntailmentTheoryOracle`    | `constraint`         | Assume-Guarantee contract compatibility ($\bigwedge A_i \neq \bot$) and compositional refinement ($A_P \Rightarrow A_C \land G_C \Rightarrow G_P$) |
+| 10  | `FlowAlgebraOracle`         | `constraint`         | Acausal connection graph conservation ($\sum i_k = 0$ for flow variables, $v_1 = \dots = v_n$ for potential variables)                             |
+| 11  | `ToleranceStackOracle`      | `spatial_physics`    | STEP AP242 / ISO 23952 QIF GD&T 1D/3D tolerance chain stack-up via Worst-Case and Root-Sum-Square (RSS)                                            |
+| 12  | `UqTheoryOracle`            | `dynamic_simulation` | Latin Hypercube Sampling (LHS), Polynomial Chaos Expansion (PCE) Sobol indices, and distribution-free conformal prediction bounds                  |
+| 13  | `ArrayTheoryOracle`         | `custom`             | McCarthy extensional theory of arrays ($T_A$) with read-over-write (`ROW1`/`ROW2`), congruence closure, and UndoTrail backtracking                 |
+| 14  | `BitVectorTheoryOracle`     | `custom`             | Arbitrary-width fixed-width bit-vector theory ($T_{BV}$) with exact `BigInt` intervals, known-bit masks, modular arithmetic, and bitwise ops       |
+| 15  | `StringTheoryOracle`        | `custom`             | Theory of strings and word equations ($T_S$) with concatenation propagation, prefix/suffix/contains predicates, and length-interval coupling       |
+| 16  | `PowerGridTheoryOracle`     | `constraint`         | AC power-flow bus voltage bounds, generator reactive limits, branch MVA loading, and IEEE 2800 / NERC PRC-029 LVRT/HVRT ride-through contracts     |
+| 17  | `MarineMooringTheoryOracle` | `spatial_physics`    | DNV-OS-E301 and DNV-ST-0119 intact/damaged mooring line safety factors, tension limits, and drag-embedment anchor uplift criteria                  |
+| 18  | `PressureVesselOracle`      | `spatial_physics`    | ASME BPVC Section VIII Div 1 cylindrical shell (UG-27), formed head (UG-32), and hydrostatic test (UG-99) mechanical integrity compliance          |
+| 19  | `TelecomTheoryOracle`       | `constraint`         | Optical WDM GSNR, chromatic dispersion, Kerr non-linear launch power limits, and ITU-T G.8275.1 / 3GPP 5G TDD PTP/SyncE timing budgets             |
 
 ---
 

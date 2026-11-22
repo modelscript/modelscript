@@ -3,7 +3,9 @@
 
 # @modelscript/aspen
 
-Aspen-compatible chemical process flowsheet simulation and vapor-liquid equilibrium (VLE) engineering package (`.in`, `.inp`, `.bkp`) for ModelScript. Features a zero-regex character scanner and deck parser (`parseAspen`), multi-file workspace indexing (`AspenWorkspaceIndex`), Rachford-Rice isothermal/isobaric VLE flash solver (`solveFlashRachfordRice`), direct linear-memory `DAEBuilder` lowering (`lowerAspenToDae`), 15 pre-flight chemical process and thermodynamic lint rules (`M8101`–`M8115`), Modelica 3.x fluid process projections (`aspenToModelica`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.in`, `.inp`, `.bkp`, `.aspen.inp` · **Docs:** [modelscript.org/languages/aspen](https://modelscript.org/languages/aspen)
+
+Aspen-compatible chemical process flowsheet simulation and vapor-liquid equilibrium (VLE) engineering package (`.in`, `.inp`, `.bkp`) for ModelScript. Features a zero-regex character scanner and deck parser (`parseAspen`), multi-file workspace indexing, Rachford-Rice isothermal/isobaric VLE flash solver (`solveFlashRachfordRice`), direct linear-memory `DAEBuilder` lowering (`lowerAspenToDae`), 15 pre-flight chemical process and thermodynamic lint rules (`M8101`–`M8115`), Modelica 3.x fluid process projections (`aspenToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -14,7 +16,7 @@ Aspen-compatible chemical process flowsheet simulation and vapor-liquid equilibr
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerAspenToDae`)**: Compiles chemical process flowsheets directly into ModelScript's zero-GC WebAssembly `DAEBuilder` struct-of-arrays arena without intermediate AST wrappers—emitting stream molar flow ($F$), temperature ($T$), pressure ($P$), component species molar balance equations ($F_{s,c} = F_s \cdot z_c$), flash VLE splits, column stage balances, and pump/compressor pressure-head equations.
 - **15 Pre-Flight Chemical Process Lint Rules (`M8101`–`M8115`, `lintAspen`)**: Static topological and thermodynamic verification detecting unconnected inlet streams, unconverged recycle tear-stream loops (Tarjan/DFS cycle detection), missing EOS critical properties, negative or unnormalized mole fractions, distillation stage out-of-bounds errors, and non-physical stream states.
 - **Modelica 3.x Fluid Process Projection (`aspenToModelica`)**: Synthesizes standardized Modelica fluid and mass-balance process models from parsed `AspenDeck` hierarchies for polyglot multi-domain co-simulation.
-- **Multi-File Workspace Indexing & LSP (`AspenWorkspaceIndex`, `provideAspenHover`, `provideAspenCompletion`)**: Implements `IWorkspaceIndex` for cross-file symbol resolution of components, streams, and unit operation blocks, alongside rich hover cards, keyword/component auto-completion, and bidirectional AST writeback.
+- **Multi-File Workspace Indexing & LSP (`provideAspenHover`, `provideAspenCompletion`)**: Provides workspace symbol indexing for cross-file symbol resolution of components, streams, and unit operation blocks, alongside rich hover cards, keyword/component auto-completion, and bidirectional AST writeback.
 
 ---
 
@@ -32,7 +34,6 @@ Aspen-compatible chemical process flowsheet simulation and vapor-liquid equilibr
 | `src/solvers/flash-solver.ts`          | `solveFlashRachfordRice` isothermal/isobaric VLE solver and `KNOWN_COMPONENTS` physical constants                             |
 | `src/dae/aspen-to-dae.ts`              | `lowerAspenToDae` direct lowering of streams and unit operations into `DAEBuilder` linear memory                              |
 | `src/projections/aspen-to-modelica.ts` | `aspenToModelica` translator to Modelica 3.x fluid process models                                                             |
-| `src/workspace-index.ts`               | `AspenWorkspaceIndex` implementing `IWorkspaceIndex` across multi-file flowsheets                                             |
 | `src/lsp.ts`                           | LSP hover, completion, document symbols, and diagnostic providers                                                             |
 
 ---
@@ -65,19 +66,19 @@ Aspen-compatible chemical process flowsheet simulation and vapor-liquid equilibr
 
 ```bash
 # Inspect components, streams, and unit operations in an Aspen Plus deck
-npx msx aspen inspect plant.inp
+msx aspen inspect plant.inp
 
 # Run pre-flight chemical process and thermodynamic lint rules (M8101-M8115)
-npx msx aspen lint plant.inp
+msx aspen lint plant.inp
 
 # Solve Rachford-Rice VLE flash equilibrium for a specific feed stream
-npx msx aspen solve-flash plant.inp --stream FEED
+msx aspen solve-flash plant.inp --stream FEED
 
 # Lower chemical process flowsheet to the linear-memory DAE arena
-npx msx aspen to-dae plant.inp
+msx aspen to-dae plant.inp
 
 # Project Aspen flowsheet to a Modelica 3.x process model
-npx msx aspen to-modelica plant.inp -o PlantProcess.mo
+msx aspen to-modelica plant.inp -o PlantProcess.mo
 ```
 
 ### Programmatic Usage

@@ -11,7 +11,12 @@ import {
 } from "./browser-file-system.js";
 
 import { loadPrebakedMslIcons } from "@modelscript/modelica/diagram";
-import { globalLibraryRegistry, type ModelscriptLibraryManifest } from "@modelscript/runtime";
+import {
+  globalLibraryRegistry,
+  mountPackageIndex,
+  MSIDX_COMPILER_ABI_VERSION,
+  type ModelscriptLibraryManifest,
+} from "@modelscript/runtime";
 import type { FederatedQueryCacheStore } from "@modelscript/runtime/wasm_cache_store.js";
 import { strFromU8, unzipSync } from "fflate";
 import { iconCache } from "../handlers/treeHandler.js";
@@ -234,8 +239,7 @@ async function registerRuntimeAssetsFromPackage(
 
   let tables: Record<string, unknown> | undefined = opts.tables ? { ...opts.tables } : undefined;
   const runtimeRaw = manifestMeta["runtime"] as
-    | { wasm?: string | undefined; tables?: Record<string, string> | undefined }
-    | undefined;
+    { wasm?: string | undefined; tables?: Record<string, string> | undefined } | undefined;
   if (runtimeRaw?.tables && typeof runtimeRaw.tables === "object") {
     tables ??= {};
     for (const [k, rel] of Object.entries(runtimeRaw.tables)) {
@@ -401,41 +405,91 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
     }
 
     if (ctx.cacheStore) {
-      const cacheKey = `${pkg.name}@${pkg.version}`;
-      let dbBuffer: ArrayBuffer | undefined;
+      const activeQueryEngine = ctx.sharedContext?.queryEngine ?? (globalThis as any).globalModelicaQueryEngine;
+      const msidxCacheKey = `msidx:abi${MSIDX_COMPILER_ABI_VERSION}:${pkg.name}@${pkg.version}`;
+      const legacyCacheKey = `${pkg.name}@${pkg.version}`;
+      let hydratedFromMsidx = false;
 
+      // 1. Try ABI-versioned relocatable binary index (.msidx) from IndexedDB or registry
+      let msidxBuffer: ArrayBuffer | undefined;
       try {
-        dbBuffer = await getSalsaIndexCache(cacheKey);
+        msidxBuffer = await getSalsaIndexCache(msidxCacheKey);
       } catch (err) {
-        ctx.logger.warn(`[registry] IndexedDB read failed for salsa-index of ${label}: ${err}`);
+        ctx.logger.warn(`[registry] IndexedDB read failed for index.msidx of ${label}: ${err}`);
       }
 
-      const activeQueryEngine = ctx.sharedContext?.queryEngine ?? (globalThis as any).globalModelicaQueryEngine;
-      if (dbBuffer) {
-        ctx.logger.log(`[registry] Cache hit — loading salsa-index for ${label} from IndexedDB`);
-        const { memos } = await ingestSalsaIndex(dbBuffer, ctx.cacheStore, activeQueryEngine);
-        ctx.logger.log(`[registry] Hydrated ${memos} memos from cached index for ${label}`);
-      } else if (baseUrl) {
-        const indexUrl = `${baseUrl}/api/v1/libraries/${encodeURIComponent(pkg.name)}/${encodeURIComponent(pkg.version)}/salsa-index.db`;
+      if (msidxBuffer && activeQueryEngine?.index) {
         try {
-          const resp = await fetch(indexUrl);
+          const mounted = mountPackageIndex(new Uint8Array(msidxBuffer), {
+            targetIndex: activeQueryEngine.index,
+            resolveResourceUri: (rel) => `file://${basePath}/${rel}`,
+          });
+          ctx.logger.log(`[registry] Cache hit — mounted ${mounted.symbolCount} symbols from index.msidx for ${label}`);
+          hydratedFromMsidx = true;
+        } catch (err) {
+          ctx.logger.warn(`[registry] Cached index.msidx invalid for ${label}, refetching: ${err}`);
+        }
+      }
+
+      if (!hydratedFromMsidx && baseUrl && activeQueryEngine?.index) {
+        const msidxUrl = `${baseUrl}/api/v1/libraries/${encodeURIComponent(pkg.name)}/${encodeURIComponent(pkg.version)}/index.msidx`;
+        try {
+          const resp = await fetch(msidxUrl);
           if (resp.ok) {
             const buffer = await resp.arrayBuffer();
-            const { memos } = await ingestSalsaIndex(buffer, ctx.cacheStore, activeQueryEngine);
-            ctx.logger.log(`[registry] Loaded pre-computed index for ${label} (hydrated ${memos} memos)`);
-
-            // Cache for subsequent loads
+            const mounted = mountPackageIndex(new Uint8Array(buffer), {
+              targetIndex: activeQueryEngine.index,
+              resolveResourceUri: (rel) => `file://${basePath}/${rel}`,
+            });
+            ctx.logger.log(
+              `[registry] Loaded binary index.msidx for ${label} (mounted ${mounted.symbolCount} symbols)`,
+            );
+            hydratedFromMsidx = true;
             try {
-              await putSalsaIndexCache(cacheKey, buffer);
-              ctx.logger.log(`[registry] Cached salsa-index for ${label} in IndexedDB`);
+              await putSalsaIndexCache(msidxCacheKey, buffer);
             } catch (cacheErr) {
-              ctx.logger.warn(`[registry] IndexedDB write failed for salsa-index of ${label}: ${cacheErr}`);
+              ctx.logger.warn(`[registry] IndexedDB write failed for index.msidx of ${label}: ${cacheErr}`);
             }
-          } else {
-            ctx.logger.warn(`[registry] Pre-computed index not available for ${label} (HTTP ${resp.status})`);
           }
         } catch (err) {
-          ctx.logger.warn(`[registry] Failed to fetch pre-computed index for ${label}: ${err}`);
+          ctx.logger.warn(`[registry] Failed to fetch index.msidx for ${label}: ${err}`);
+        }
+      }
+
+      // 2. Legacy fallback: salsa-index.db
+      if (!hydratedFromMsidx) {
+        let dbBuffer: ArrayBuffer | undefined;
+        try {
+          dbBuffer = await getSalsaIndexCache(legacyCacheKey);
+        } catch (err) {
+          ctx.logger.warn(`[registry] IndexedDB read failed for salsa-index of ${label}: ${err}`);
+        }
+
+        if (dbBuffer) {
+          ctx.logger.log(`[registry] Cache hit — loading salsa-index for ${label} from IndexedDB`);
+          const { memos } = await ingestSalsaIndex(dbBuffer, ctx.cacheStore, activeQueryEngine);
+          ctx.logger.log(`[registry] Hydrated ${memos} memos from cached index for ${label}`);
+        } else if (baseUrl) {
+          const indexUrl = `${baseUrl}/api/v1/libraries/${encodeURIComponent(pkg.name)}/${encodeURIComponent(pkg.version)}/salsa-index.db`;
+          try {
+            const resp = await fetch(indexUrl);
+            if (resp.ok) {
+              const buffer = await resp.arrayBuffer();
+              const { memos } = await ingestSalsaIndex(buffer, ctx.cacheStore, activeQueryEngine);
+              ctx.logger.log(`[registry] Loaded pre-computed index for ${label} (hydrated ${memos} memos)`);
+
+              try {
+                await putSalsaIndexCache(legacyCacheKey, buffer);
+                ctx.logger.log(`[registry] Cached salsa-index for ${label} in IndexedDB`);
+              } catch (cacheErr) {
+                ctx.logger.warn(`[registry] IndexedDB write failed for salsa-index of ${label}: ${cacheErr}`);
+              }
+            } else {
+              ctx.logger.warn(`[registry] Pre-computed index not available for ${label} (HTTP ${resp.status})`);
+            }
+          } catch (err) {
+            ctx.logger.warn(`[registry] Failed to fetch pre-computed index for ${label}: ${err}`);
+          }
         }
       }
     }
@@ -727,13 +781,16 @@ export async function loadDependencyFromRegistry(
         const zipped = unzipSync(new Uint8Array(buffer));
 
         let indexJson: Record<string, unknown> | null = null;
+        let indexMsidxBase64: string | null = null;
         let iconsJson: Record<string, string> | null = null;
         const files: Record<string, string> = {};
         const binaryFilesBase64: Record<string, string> = {};
 
         for (const [relativePath, data] of Object.entries(zipped)) {
           if (data.length === 0) continue; // directory
-          if (relativePath === "index.json") {
+          if (relativePath === "index.msidx") {
+            indexMsidxBase64 = encodeBytesBase64(data);
+          } else if (relativePath === "index.json") {
             indexJson = JSON.parse(strFromU8(data));
           } else if (relativePath === "icons.json") {
             iconsJson = JSON.parse(strFromU8(data));
@@ -751,7 +808,7 @@ export async function loadDependencyFromRegistry(
           }
         }
 
-        cached = { indexJson, iconsJson, files, binaryFilesBase64 };
+        cached = { indexJson, indexMsidxBase64, iconsJson, files, binaryFilesBase64 };
         await idbPut(db, cacheKey, cached);
       }
     } finally {
@@ -827,24 +884,44 @@ export async function loadDependencyFromRegistry(
       }
     }
 
-    // Populate documentTrees (and lazy-index SysML files if bundle lacked an indexJson)
-    mountSysmlEntriesInContext(sysmlEntries, ctx, !cached.indexJson);
+    // Populate documentTrees (and lazy-index SysML files if bundle lacked an index)
+    mountSysmlEntriesInContext(sysmlEntries, ctx, !cached.indexMsidxBase64 && !cached.indexJson);
 
-    // 3. Hydrate WorkspaceIndex
-    if (cached.indexJson) {
-      const uri = `library-bundle:/${dep.name}@${dep.version}`;
-      const symbolCount = hydrateMultiLanguageBundle(
-        uri,
-        cached.indexJson,
-        (origPath: string) => {
-          if (origPath.startsWith("sources/")) {
-            return "file://" + ctx.sharedFs.join(basePath, origPath.substring("sources/".length));
-          }
-          return "file://" + ctx.sharedFs.join(basePath, origPath);
-        },
-        ctx,
-      );
+    // 3. Hydrate WorkspaceIndex (prefer binary index.msidx, fall back to legacy index.json)
+    const uri = `library-bundle:/${dep.name}@${dep.version}`;
+    const mapResourceId = (origPath: string) => {
+      if (origPath.startsWith("sources/")) {
+        return "file://" + ctx.sharedFs.join(basePath, origPath.substring("sources/".length));
+      }
+      return "file://" + ctx.sharedFs.join(basePath, origPath);
+    };
 
+    let hydratedFromMsidx = false;
+    if (cached.indexMsidxBase64) {
+      try {
+        const msidxBytes = decodeBase64Bytes(cached.indexMsidxBase64 as string);
+        const mounted = mountPackageIndex(msidxBytes, { resolveResourceUri: mapResourceId });
+        const symbolCount = hydrateMultiLanguageBundle(
+          uri,
+          {
+            symbols: Array.from(mounted.index.symbols.entries()),
+            byName: Array.from(mounted.index.byName.entries()),
+            childrenOf: Array.from(mounted.index.childrenOf.entries()),
+          },
+          (p) => p,
+          ctx,
+        );
+        ctx.logger.log(
+          `[registry] Hydrated ${label} via binary index.msidx: ${fileCount} files, ${symbolCount} symbols.`,
+        );
+        hydratedFromMsidx = true;
+      } catch (msidxErr) {
+        ctx.logger.warn(`[registry] index.msidx mount failed for ${label}, falling back to index.json: ${msidxErr}`);
+      }
+    }
+
+    if (!hydratedFromMsidx && cached.indexJson) {
+      const symbolCount = hydrateMultiLanguageBundle(uri, cached.indexJson, mapResourceId, ctx);
       ctx.logger.log(`[registry] Hydrated ${label}: ${fileCount} files, index hydrated with ${symbolCount} symbols.`);
     }
 
@@ -1929,8 +2006,7 @@ export async function importLibraryZip(
 
   let tables: Record<string, unknown> | undefined;
   const runtimeRaw = parsedModelscript?.runtime as
-    | { wasm?: string | undefined; tables?: Record<string, string> | undefined }
-    | undefined;
+    { wasm?: string | undefined; tables?: Record<string, string> | undefined } | undefined;
   if (runtimeRaw?.tables && typeof runtimeRaw.tables === "object") {
     tables = {};
     for (const [key, rel] of Object.entries(runtimeRaw.tables)) {

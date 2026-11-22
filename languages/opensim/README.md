@@ -3,7 +3,9 @@
 
 # @modelscript/opensim
 
-OpenSim (`.osim`) Musculoskeletal Biomechanics, Hill-Type Muscle-Tendon Dynamics (`Millard2012EquilibriumMuscle`, `Thelen2003Muscle`), and Orthopaedic Surgical Planning language package for ModelScript. Features an OpenSim 3.x / 4.x XML parser (`parseOpenSim`), multi-file workspace indexing (`OpenSimWorkspaceIndex`), a Hill-type muscle-tendon activation & contraction ODE simulator (`simulateMuscleDynamics`, `computeActivationDerivative`), direct linear-memory `DAEBuilder` lowering (`lowerOpenSimToDae`), 10 biomechanical & anatomical lint rules (`M9101`–`M9110`, `lintOpenSimDocument`, `OpenSimErrorCode`), Modelica 3.x and ROS 2 URDF projections (`openSimToModelica`, `openSimToUrdf`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.osim` · **Docs:** [modelscript.org/languages/opensim](https://modelscript.org/languages/opensim)
+
+OpenSim (`.osim`) Musculoskeletal Biomechanics, Hill-Type Muscle-Tendon Dynamics (`Millard2012EquilibriumMuscle`, `Thelen2003Muscle`), and Orthopaedic Surgical Planning language package for ModelScript. Features an OpenSim 3.x / 4.x XML parser (`parseOpenSim`), multi-file workspace indexing, a Hill-type muscle-tendon activation & contraction ODE simulator (`simulateMuscleDynamics`, `computeActivationDerivative`), direct linear-memory `DAEBuilder` lowering (`lowerOpenSimToDae`), 10 biomechanical & anatomical lint rules (`M9101`–`M9110`, `lintOpenSimDocument`, `OpenSimErrorCode`), Modelica 3.x and ROS 2 URDF projections (`openSimToModelica`, `openSimToUrdf`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -30,7 +32,6 @@ OpenSim (`.osim`) Musculoskeletal Biomechanics, Hill-Type Muscle-Tendon Dynamics
 | `src/solvers/index.ts`     | `simulateMuscleDynamics` and `computeActivationDerivative` Hill-type muscle-tendon ODE solver            |
 | `src/dae/index.ts`         | `lowerOpenSimToDae` direct lowering of coordinates and Hill-type muscles into `DAEBuilder` linear memory |
 | `src/projections/index.ts` | `openSimToModelica` and `openSimToUrdf` cross-language translators                                       |
-| `src/workspace-index.ts`   | `OpenSimWorkspaceIndex` implementing `IWorkspaceIndex` across `.osim` files                              |
 | `src/lsp.ts`               | LSP validation, document symbols, hover, completion, and definition providers                            |
 
 ---
@@ -58,15 +59,15 @@ OpenSim (`.osim`) Musculoskeletal Biomechanics, Hill-Type Muscle-Tendon Dynamics
 
 ```bash
 # Lint an OpenSim musculoskeletal model (M9101-M9110)
-npx msx opensim lint arm26.osim
+msx opensim lint arm26.osim
 
 # Simulate Hill-type muscle-tendon contraction and joint kinematics
-npx msx opensim simulate arm26.osim --duration 1.0 --dt 0.005
+msx opensim simulate arm26.osim --duration 1.0 --dt 0.005
 
 # Lower to DAE or project to Modelica 3.x (.mo) and ROS 2 URDF (.urdf)
-npx msx opensim to-dae arm26.osim
-npx msx opensim to-modelica arm26.osim
-npx msx opensim to-urdf arm26.osim
+msx opensim to-dae arm26.osim
+msx opensim to-modelica arm26.osim
+msx opensim to-urdf arm26.osim
 ```
 
 ### Programmatic API

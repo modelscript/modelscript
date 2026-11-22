@@ -3,6 +3,7 @@
 import { cellsToDiagramData, renderPolyglotDiagramToSvg } from "@modelscript/diagram/svg";
 import { DiagramApplyEditsParams, DiagramMethods } from "../diagramProtocol.js";
 import { LspContext } from "../lsp-context.js";
+import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { getCompositeName } from "../utils/hierarchy-utils.js";
 import {
   compileStepFromSources,
@@ -78,11 +79,25 @@ function makeResponsiveScopedSvg(rawSvg: string, scopePrefix: string): string {
   return svg;
 }
 
+function resolvePreviewExtension(languageId?: string): string {
+  if (!languageId) return "mo";
+  const normalized = languageId.toLowerCase();
+  if (LANGUAGE_PREVIEW_EXT[normalized]) {
+    return LANGUAGE_PREVIEW_EXT[normalized]!;
+  }
+  const plugin = globalLanguageRegistry.getPluginById(normalized);
+  const firstExt = plugin?.extensions?.[0];
+  if (typeof firstExt === "string" && firstExt.length > 0) {
+    return firstExt.startsWith(".") ? firstExt.slice(1) : firstExt;
+  }
+  return "mo";
+}
+
 function resolvePreviewUriForItem(context: LspContext, item: DiagramPreviewItemRequest): string {
   if (item.uri && item.uri.trim().length > 0 && item.uri !== "file:///") {
     return item.uri.trim();
   }
-  const ext = (item.languageId && LANGUAGE_PREVIEW_EXT[item.languageId.toLowerCase()]) || "mo";
+  const ext = resolvePreviewExtension(item.languageId);
   if (item.documentText !== undefined) {
     const safeId = item.id.replace(/[^A-Za-z0-9_.-]/g, "_") || "preview";
     return `file:///__open_model_preview_${safeId}__.${ext}`;
@@ -234,12 +249,14 @@ export function registerDiagramHandlers(context: LspContext) {
           }
 
           const edgeCount = Array.isArray(normalizedData?.edges) ? normalizedData.edges.length : 0;
+          const scopePrefix = `${simpleHash(cacheKey)}`;
           const rawSvg = renderPolyglotDiagramToSvg(normalizedData, {
             theme: isDark ? "dark" : "light",
             padding: 26,
             background: bg,
+            idPrefix: scopePrefix,
           });
-          const svg = makeResponsiveScopedSvg(rawSvg, `${simpleHash(cacheKey)}`);
+          const svg = makeResponsiveScopedSvg(rawSvg, scopePrefix);
           const result: DiagramPreviewItemResult = {
             svg,
             nodeCount: realNodes.length,

@@ -3,23 +3,23 @@
 
 # @modelscript/lsp
 
-ModelScript Multi-Language Server Protocol (`@modelscript/lsp`) engine — unified polyglot language intelligence across **all 90 ModelScript languages and simulation formats**, incremental Salsa `WorkspaceIndex`, background WebWorker / Worker Thread pool, full standard LSP 3.18 providers, and custom `modelica/*` & `modelscript/*` JSON-RPC endpoints for flattening, simulation, diagram synthesis, 3D CAD/FEA/CFD evaluation, and Triple Graph Grammar (TGG) writeback.
+ModelScript Multi-Language Server Protocol (`@modelscript/lsp`) engine — unified polyglot language intelligence across **all 106 ModelScript languages and simulation formats**, incremental Salsa `WorkspaceIndex`, background WebWorker / Worker Thread pool, full standard LSP 3.18 providers, and custom `modelica/*` & `modelscript/*` JSON-RPC endpoints for flattening, simulation, diagram synthesis, 3D CAD/FEA/CFD evaluation, and Triple Graph Grammar (TGG) writeback.
 
 ---
 
 ## Architecture & Capabilities
 
-### 1. Unified Polyglot Language Support (All 90 Languages)
+### 1. Unified Polyglot Language Support (All 106 Languages)
 
-A single `@modelscript/lsp` server instance indexes and cross-references symbols across all **90 ModelScript engineering languages and formats** in a shared workspace:
+A single `@modelscript/lsp` server instance indexes and cross-references symbols across all **106 ModelScript engineering languages and formats** in a shared workspace:
 
-- **Native & Core Systems Engineering (9)**: ModelScript (`.msx`), Modelica 3.x (`.mo`), AMPL (`.mod`, `.dat`, `.nl`), SysML v2 & KerML (`.sysml`, `.kerml`), SSP 1.0 (`.ssp`, `.ssd`, `.ssv`, `.ssm`), ReqIF 1.2 (`.reqif`, `.reqifz`), NIST OSCAL (`.oscal`, `.oscal.json`, `.oscal.xml`), OWL 2 Ontologies (`.owl`, `.ofn`), CSV Telemetry (`.csv`).
-- **Electrical Power Grids, RF, Telecommunications & Electronics (15)**: PSCAD EMT (`.pscx`, `.pslx`, `.pswx`, `.psout`), Siemens PTI PSS/E (`.raw`, `.dyr`), ENTSO-E CIM / CGMES (`.cgmes`, `.cim`, `.xml`), EPRI OpenDSS (`.dss`), DIgSILENT PowerFactory (`.dz`, `.pfd`, `.dsl`), GE PSLF (`.epc`, `.dyd`), OCPP (`.ocpp`, `.cpo`), OpenADR (`.oadr`), SPICE (`.cir`, `.sp`, `.spice`), Verilog-A (`.va`, `.vams`), IBIS (`.ibs`), Touchstone (`.s1p`–`.s32p`, `.ts2`), Optical Transport (`.sor`), RAN & Microwave (`.adf`, `.pat`, `.msi`), Fiber Outside Plant (`.geojson`, `.kml`).
-- **Fluid, Process, Subsurface, Civil Water & Nuclear (12)**: OLGA (`.opi`, `.olga`, `.key`), PipelineStudio (`.lps`, `.tgx`, `.tlx`), Aspen Plus-compatible (`.in`, `.inp`, `.bkp`), ECLIPSE 100/300-compatible (`.data`, `.inc`), EPANET (`.inp`), SWMM 5 (`.inp`), RELAP5-3D-compatible (`.i`, `.r5`), EnergyPlus (`.idf`, `.epjson`), USACE HEC-RAS (`.g01`, `.u01`, `.f01`, `.prj`), LBNL TOUGH (`.tough`, `.dat`), USGS MODFLOW 6 (`.dis`, `.npf`, `.wel`, `.nam`), US EPA LandGEM (`.landgem`, `.lfg`).
+- **Native & Core Systems Engineering (11)**: ModelScript (`.msx`), Modelica 3.x (`.mo`), AMPL (`.mod`, `.dat`, `.nl`), SysML v2 & KerML (`.sysml`, `.kerml`), SSP 1.0 (`.ssp`, `.ssd`, `.ssv`, `.ssm`), ReqIF 1.2 (`.reqif`, `.reqifz`), MagicDraw / Cameo (`.mdzip`, `.mdxml`, `.xmi`), NIST OSCAL (`.oscal`, `.oscal.json`, `.oscal.xml`), OWL 2 Ontologies (`.owl`, `.ofn`), SPARQL 1.1 (`.rq`, `.sparql`), CSV Telemetry (`.csv`).
+- **Electrical Power Grids, RF, Telecommunications & Electronics (32)**: PSCAD EMT (`.pscx`, `.pslx`, `.pswx`, `.psout`), ATP-EMTP (`.atp`, `.dat`), RTDS RSCAD (`.dft`, `.rtds`), Siemens PTI PSS/E (`.raw`, `.dyr`), ENTSO-E CIM / CGMES (`.cgmes`, `.cim`, `.xml`), EPRI OpenDSS (`.dss`), GridLAB-D (`.glm`), CYME (`.sxst`, `.cyme`), DIgSILENT PowerFactory (`.dz`, `.pfd`, `.dsl`), GE PSLF (`.epc`, `.dyd`), PowerWorld (`.aux`), PLS-CADD (`.pol`, `.loa`), MATPOWER (`.m`), PyPSA (`.pypsa`), ASPEN OneLiner (`.olx`, `.dxt`), SEL Relay Settings (`.rcf`, `.rdb`), COMTRADE (`.cfg`, `.dat`, `.cff`), IEC 61850 SCL (`.scd`, `.cid`, `.icd`, `.ssd`), DNP3 (`.dnp3`), IEC 60870-5-104 (`.iec104`), IEEE C37.118 (`.c37118`), OCPP (`.ocpp`, `.cpo`), OpenADR (`.oadr`), SPICE (`.cir`, `.sp`, `.spice`), KiCad (`.kicad_pcb`, `.kicad_sch`, `.kicad_sym`, `.kicad_mod`), atopile (`.ato`), Verilog-A (`.va`, `.vams`), IBIS (`.ibs`), Touchstone (`.s1p`–`.s32p`, `.ts2`), Optical Transport (`.sor`), RAN & Microwave (`.adf`, `.pat`, `.msi`), Fiber Outside Plant (`.geojson`, `.kml`).
+- **Fluid, Process, Subsurface, Civil Water & Nuclear (16)**: OLGA (`.opi`, `.olga`, `.key`), PipelineStudio (`.lps`, `.tgx`, `.tlx`), Aspen Plus-compatible (`.in`, `.inp`, `.bkp`), IWA ASM (`.asm`, `.bsm`, `.wrrf`), OGC WaterML (`.waterml`, `.wml2`), ECLIPSE 100/300-compatible (`.data`, `.inc`), EPANET (`.inp`), SWMM 5 (`.inp`), RELAP5-3D-compatible (`.i`, `.r5`), EnergyPlus (`.idf`, `.epjson`), USACE HEC-HMS (`.basin`, `.hms`), USACE HEC-RAS (`.g01`, `.u01`, `.f01`, `.prj`), LBNL TOUGH (`.tough`, `.dat`), USGS MODFLOW 6 (`.dis`, `.npf`, `.wel`, `.nam`), US EPA LandGEM (`.landgem`, `.lfg`), CWLS LAS (`.las`).
 - **Multibody, Automotive, Robotics, Marine & Rail (10)**: MSC Adams-compatible (`.adm`, `.cmd`, `.acf`), SIMPACK-compatible (`.spck`, `.sim`, `.fbi`), GENSYS (`.calc`, `.run`, `.trax`), GT-SUITE-compatible (`.gtm`, `.gtx`), SIMA (`.sima`, `.sys`), URDF/SDF (`.urdf`, `.sdf`), ASAM OpenDRIVE (`.xodr`), ASAM OpenSCENARIO (`.xosc`, `.osc`), AUTOSAR (`.arxml`), GTFS Transit (`.gtfs`, `.gtfs-rt`).
 - **Aerospace, Flight Dynamics, Astrodynamics & Controls (7)**: Simulink-compatible (`.slx`, `.mdl`), Boeing/MSC EASY5-compatible (`.ez5`, `.ezm`), JSBSim (`.xml`), NASA ROCETS (`.roc`), CCSDS / XTCE (`.oem`, `.opm`, `.omm`, `.xtce`), PLCopen IEC 61131-3 (`.st`, `.iec`, `.plcxml`), IEC 62714 AutomationML (`.aml`, `.caex`).
 - **3D CAD, Digital Metrology & Continuum Physics (6)**: ISO 10303-21 STEP (`.step`, `.stp`), ISO 23952 QIF (`.qif`), OpenSCAD CSG (`.scad`), OpenUSD Physics (`.usda`, `.usd`, `.usdz`), CalculiX/NASTRAN-compatible FEA (`.fea`, `.inp`, `.bdf`), SU2/OpenFOAM-compatible CFD (`.cfd`, `.cfg`, `.su2`, `.foam`).
-- **Chemistry, Systems/Synthetic Biology & Scientific Code (14)**: SBML (`.sbml`, `.xml`), Antimony (`.ant`), Cantera (`.cti`, `.yaml`), SMILES/SMIRKS (`.smi`, `.smiles`), NONMEM NM-TRAN (`.ctl`, `.mod`), SBOL 3 (`.sbol`), BioNetGen BNGL (`.bngl`), SED-ML (`.sedml`), RCSB PDB/mmCIF (`.pdb`, `.cif`), GenBank (`.gb`, `.gbk`), gPROMS (`.gproms`, `.pml`), USGS PHREEQC (`.pqi`, `.dat`), Fortran 77/90/95 (`.f`, `.for`, `.f90`), ISO C99 (`.c`, `.h`).
+- **Chemistry, Systems/Synthetic Biology & Scientific Code (16)**: SBML (`.sbml`, `.xml`), Antimony (`.ant`), Cantera (`.cti`, `.yaml`), SMILES/SMIRKS (`.smi`, `.smiles`), MLXTRAN (`.mlxtran`), NMODL (`.mod`), NONMEM NM-TRAN (`.ctl`, `.mod`), SBOL 3 (`.sbol`), BioNetGen BNGL (`.bngl`), SED-ML (`.sedml`), RCSB PDB/mmCIF (`.pdb`, `.cif`), GenBank (`.gb`, `.gbk`), gPROMS (`.gproms`, `.pml`), USGS PHREEQC (`.pqi`, `.dat`), Fortran 77/90/95 (`.f`, `.for`, `.f90`), ISO C99 (`.c`, `.h`).
 - **Radiology, Radiation Oncology & Computer-Assisted Surgery (8)**: OpenSim Biomechanics (`.osim`), DICOM-RT (`.dcm`, `.rtplan`, `.rtstruct`, `.rtdose`), CellML (`.cellml`), FEBio (`.feb`), NIfTI-1/2 & BIDS (`.nii`, `.nii.gz`), TOPAS / Geant4 Monte Carlo (`.topas`, `.txt`), 3MF Medical (`.3mf`), OpenIGTLink / PLUS (`.igtl`, `.mha`).
 
 Supports both Node.js IPC/stdio (`src/nodeServerMain.ts`, `@modelscript/lsp/node`) and browser WebWorker (`src/browserServerMain.ts`, `@modelscript/lsp/server`) transports.
@@ -63,9 +63,12 @@ Supports both Node.js IPC/stdio (`src/nodeServerMain.ts`, `@modelscript/lsp/node
 | `@modelscript/lsp/node`     | Node.js language server entry point (`startNodeServer`)                                           |
 | `@modelscript/lsp/server`   | Browser WebWorker language server entry point (`browserServerMain`)                               |
 | `@modelscript/lsp/context`  | Multi-language `LspContext` and Salsa workspace coordinator                                       |
-| `@modelscript/lsp/services` | Core language service implementations                                                             |
-| `@modelscript/lsp/handlers` | Custom JSON-RPC request handlers (`simulation`, `analysis`, `diagram`, `polyglot`, `rtm`, `owl2`) |
+| `@modelscript/lsp/core`     | Core LSP routing, document management, and shared primitives                                      |
+| `@modelscript/lsp/services` | Core language service implementations (`./services/*`)                                            |
+| `@modelscript/lsp/handlers` | Custom JSON-RPC request handlers (`./handlers/*`)                                                 |
 | `@modelscript/lsp/bridge`   | In-memory client/server bridge for headless testing and webviews                                  |
+
+Subdirectory wildcard exports are also exposed for `./providers/*`, `./utils/*`, `./vfs/*`, and `./workers/*`.
 
 ---
 
@@ -91,14 +94,15 @@ startNodeServer();
 
 ```bash
 # Compile TypeScript and bundle browser worker (dist/browserServerMain.js)
-npm run build --workspace=@modelscript/lsp
+pnpm --filter @modelscript/lsp run build
 
 # Run LSP unit and integration tests
-npm run test --workspace=@modelscript/lsp
+pnpm --filter @modelscript/lsp run test
 
-# Typecheck and lint
-npm run typecheck --workspace=@modelscript/lsp
-npm run lint --workspace=@modelscript/lsp
+# Typecheck, lint, and clean
+pnpm --filter @modelscript/lsp run typecheck
+pnpm --filter @modelscript/lsp run lint
+pnpm --filter @modelscript/lsp run clean
 ```
 
 ---

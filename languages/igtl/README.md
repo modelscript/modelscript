@@ -3,14 +3,16 @@
 
 # @modelscript/igtl
 
-OpenIGTLink / PLUS Toolkit (`.igtl`, `.plus.xml`) Surgical Navigation, Optical / EM Tracking (`NDI Polaris`, `NDI Aurora`), $\mathrm{SE}(3)$ Coordinate Frame Transform Chains, and Pivot / Fiducial Registration language package for ModelScript. Features a unified PLUS Toolkit `<PlusConfiguration>` XML and OpenIGTLink message stream parser (`parseIgtl`), multi-file workspace indexing (`IgtlWorkspaceIndex`), a BFS $\mathrm{SE}(3)$ homogeneous transform chain & least-squares stylus pivot solver (`solveTransformChainAndPivot`, `computeOrthogonalityError`, `computeRotationDeterminant`), direct linear-memory `DAEBuilder` lowering (`lowerIgtlToDae`), 10 $\mathrm{SO}(3)$ orthogonality & clinical registration lint rules (`M9801`–`M9810`, `lintIgtlDocument`, `IgtlErrorCode`), ROS 2 URDF and Modelica 3.x projections (`igtlToUrdf`, `igtlToModelica`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.igtl.json`, `.igtl`, `.plus.xml` · **Docs:** [modelscript.org/languages/igtl](https://modelscript.org/languages/igtl)
+
+OpenIGTLink / PLUS Toolkit (`.igtl`, `.plus.xml`) Surgical Navigation, Optical / EM Tracking (`NDI Polaris`, `NDI Aurora`), $\mathrm{SE}(3)$ Coordinate Frame Transform Chains, and Pivot / Fiducial Registration language package for ModelScript. Features a unified PLUS Toolkit `<PlusConfiguration>` XML and OpenIGTLink message stream parser (`parseIgtl`), multi-file workspace indexing, a BFS $\mathrm{SE}(3)$ homogeneous transform chain & least-squares stylus pivot solver (`solveTransformChainAndPivot`, `computeOrthogonalityError`, `computeRotationDeterminant`), direct linear-memory `DAEBuilder` lowering (`lowerIgtlToDae`), 10 $\mathrm{SO}(3)$ orthogonality & clinical registration lint rules (`M9801`–`M9810`, `lintIgtlDocument`, `IgtlErrorCode`), ROS 2 URDF and Modelica 3.x projections (`igtlToUrdf`, `igtlToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
 ## Core Capabilities
 
 - **PLUS Toolkit `<PlusConfiguration>` XML & OpenIGTLink Parser (`parseIgtl`)**: Parses `<DataCollection>` hardware devices (`PolarisTracker`, `AuroraTracker`, `OpticalMarkerTracker`, `UltrasoundSonixVideo`, `VirtualMixer`), `<CoordinateDefinitions>` $4 \times 4$ homogeneous `<Transform>` matrices (`From`, `To`, `Matrix`, `Error`), `<PivotCalibration>` stylus samples, `<FiducialRegistration>` homologous landmarks, `<PlusOpenIGTLinkServer>` endpoints, and `IGTL_TRANSFORM` / `IGTL_TRACKING_DATA` messages.
-- **$\mathrm{SE}(3)$ Transform Chain & Stylus Pivot Calibration Solver (`solveTransformChainAndPivot`, `computeOrthogonalityError`, `computeRotationDeterminant`)**: Searches the coordinate frame graph via Breadth-First Search (BFS), composes and inverts $\mathrm{SE}(3)$ matrices $\mathbf{T}_{A \leftarrow B}^{-1} = \begin{bmatrix} \mathbf{R}^\top & -\mathbf{R}^\top \mathbf{t} \\ \mathbf{0}^\top & 1 \end{bmatrix}$ along any path (e.g., $\text{StylusTip} \to \text{Stylus} \to \text{Tracker} \to \text{Reference} \to \text{Image}$), and solves the overdetermined least-squares pivot system $\mathbf{R}_i \mathbf{p}_{\text{tip}} - \mathbf{p}_{\text{pivot}} = -\mathbf{t}_i$ to compute tip offset and RMS pivot error ($\text{mm}$).
+- **$\mathrm{SE}(3)$ Transform Chain & Stylus Pivot Calibration Solver (`solveTransformChainAndPivot`, `computeOrthogonalityError`, `computeRotationDeterminant`)**: Searches the coordinate frame graph via Breadth-First Search (BFS), composes and inverts $\mathrm{SE}(3)$ matrices $\mathbf{T}_{A \leftarrow B}^{-1} = \begin{bmatrix} \mathbf{R}^\top & -\mathbf{R}^\top \mathbf{t} \\ \mathbf{0}^\top & 1 \end{bmatrix}$ along any path (e.g., $\text{StylusTip} \to \text{Stylus} \to \text{Tracker} \to \text{Reference} \to \text{Image}$), and solves the overdetermined least-squares pivot system $\mathbf{R}*i \mathbf{p}*{\text{tip}} - \mathbf{p}_{\text{pivot}} = -\mathbf{t}_i$ to compute tip offset and RMS pivot error ($\text{mm}$).
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerIgtlToDae`)**: Lowers surgical tool 6-DOF Kalman tracking filters and robotic needle-insertion visual-servoing control loops directly into ModelScript's WebAssembly `DAEBuilder` arena.
 - **10 $\mathrm{SO}(3)$ Orthogonality & Clinical Registration Lint Rules (`M9801`–`M9810`, `lintIgtlDocument`)**: Static verification of $\mathrm{SO}(3)$ rotation matrix orthogonality ($\lVert \mathbf{R}^\top \mathbf{R} - \mathbf{I} \rVert_F \le 10^{-3}$, $\det(\mathbf{R}) \approx +1$), homogeneous bottom row $[0, 0, 0, 1]$, connected coordinate frame graphs, acyclic transform chains, clinical registration/pivot RMS error thresholds ($\le 2.0\text{ mm}$), positive device `AcquisitionRate`, valid device/channel bindings, identity self-transforms, TCP server ports ($[1024, 65535]$), and duplicate transform edges.
 - **ROS 2 URDF & Modelica 3.x Projections (`igtlToUrdf`, `igtlToModelica`)**: Translates PLUS/OpenIGTLink surgical coordinate trees into ROS 2 URDF (`@modelscript/urdf`) `<link>` / `<joint>` kinematic trees (with Roll-Pitch-Yaw extraction) and Modelica 3.x visual-servoing models.
@@ -27,10 +29,8 @@ OpenIGTLink / PLUS Toolkit (`.igtl`, `.plus.xml`) Surgical Navigation, Optical /
 | `src/parser/index.ts`      | `parseIgtl` PLUS Toolkit `<PlusConfiguration>` XML and OpenIGTLink message parser                                |
 | `src/lints/rules.ts`       | `IgtlErrorCode`, `lintIgtlDocument` (`M9801`–`M9810`), `computeOrthogonalityError`, `computeRotationDeterminant` |
 | `src/lints/index.ts`       | Linter barrel exports                                                                                            |
-| `src/solvers/index.ts`     | `solveTransformChainAndPivot` $\mathrm{SE}(3)$ BFS chain composer and least-squares pivot solver                 |
-| `src/dae/index.ts`         | `lowerIgtlToDae` surgical tracker filter and visual-servoing ODE lowering into `DAEBuilder`                      |
+| `src/kinematics/index.ts`  | `solveTransformChainAndPivot` $\mathrm{SE}(3)$ BFS chain composer and least-squares pivot solver                 |
 | `src/projections/index.ts` | `igtlToUrdf` and `igtlToModelica` translators to ROS 2 URDF and Modelica 3.x                                     |
-| `src/workspace-index.ts`   | `IgtlWorkspaceIndex` implementing `IWorkspaceIndex` across `.igtl` and `.plus.xml` files                         |
 | `src/lsp.ts`               | LSP validation, document symbols, $\mathrm{SE}(3)$ matrix hover cards, completion, and definitions               |
 
 ---
@@ -58,15 +58,15 @@ OpenIGTLink / PLUS Toolkit (`.igtl`, `.plus.xml`) Surgical Navigation, Optical /
 
 ```bash
 # Lint a PLUS Toolkit / OpenIGTLink surgical navigation config (M9801-M9810)
-npx msx igtl lint cranial_navigation.plus.xml
+msx igtl lint cranial_navigation.plus.xml
 
 # Solve SE(3) coordinate frame chain (StylusTip -> Image) and stylus pivot calibration
-npx msx igtl solve-kinematics cranial_navigation.plus.xml --from StylusTip --to Image
+msx igtl solve-kinematics cranial_navigation.plus.xml --from StylusTip --to Image
 
 # Lower tracker/servoing ODEs to DAE or project to ROS 2 URDF (.urdf) and Modelica (.mo)
-npx msx igtl to-dae cranial_navigation.plus.xml
-npx msx igtl to-urdf cranial_navigation.plus.xml
-npx msx igtl to-modelica cranial_navigation.plus.xml
+msx igtl to-dae cranial_navigation.plus.xml
+msx igtl to-urdf cranial_navigation.plus.xml
+msx igtl to-modelica cranial_navigation.plus.xml
 ```
 
 ### Programmatic API

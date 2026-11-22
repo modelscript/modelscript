@@ -497,6 +497,7 @@ export default defineConfig({
           items: [
             { text: "CLI Overview", link: "/cli/overview" },
             { text: "CLI Command Reference", link: "/cli/commands" },
+            { text: "Optimal Power Flow CLI (OPF)", link: "/cli/opf" },
             { text: "Polyglot Languages Matrix", link: "/languages/overview" },
             { text: "Cleanroom Standard Libraries", link: "/guide/cleanroom-standard-libraries" },
             { text: "Compiler Linter Rules", link: "/reference/linter-rules" },

@@ -392,7 +392,7 @@ export class ArenaDAEPrinter {
             if (uop !== UnaryOp.Negate) return true; // other unary ops need parens
             // Negate needs parens on Add, on RHS of Sub or relational ops, and inside high-prec ops (except LHS of Mul/Div in newInst)
             if (op === BinOp.Add) return true;
-            if (isRhs && isRelOp) return true;
+            if (isRhs && isRelOp) return this.isOldFrontend || !this.isNegatedLiteral(childId);
             if (
               op === BinOp.Sub &&
               (isRhs ||
@@ -407,7 +407,7 @@ export class ArenaDAEPrinter {
           // Dedicated Negate node: same logic
           if (ck === ExprKind.Negate) {
             if (op === BinOp.Add) return true;
-            if (isRhs && isRelOp) return true;
+            if (isRhs && isRelOp) return this.isOldFrontend || !this.isNegatedLiteral(childId);
             if (
               op === BinOp.Sub &&
               (isRhs ||
@@ -419,7 +419,14 @@ export class ArenaDAEPrinter {
             if (isHigh) return isRhs || op === BinOp.Pow || op === BinOp.ElemPow || this.isOldFrontend;
             return false;
           }
-          if (!this.isOldFrontend && isRhs && isRelOp && startsWithMinus(childId)) {
+          if (
+            !this.isOldFrontend &&
+            isRhs &&
+            isRelOp &&
+            startsWithMinus(childId) &&
+            ck !== ExprKind.RealLiteral &&
+            ck !== ExprKind.IntLiteral
+          ) {
             return true;
           }
           if (

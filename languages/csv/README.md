@@ -3,6 +3,8 @@
 
 # @modelscript/csv
 
+**Maturity:** Beta · **Extensions:** `.csv` · **Docs:** [modelscript.org/languages/csv](https://modelscript.org/languages/csv)
+
 RFC 4180 Comma-Separated Values (`.csv`) WebAssembly GLR parser, semantic table validator, delimiter auto-detector, Modelica parameter package & `CombiTimeTable` generator, and polyglot virtual component indexer for ModelScript.
 
 ---
@@ -25,7 +27,6 @@ RFC 4180 Comma-Separated Values (`.csv`) WebAssembly GLR parser, semantic table 
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `language.ts`       | `csvLanguage` grammar definition, `CSVVirtualComponent` Salsa query hooks, cell writeback handler, LSP actions, and TGG rules   |
 | `src/csv-parser.ts` | `parseCsvMeasurements`, delimiter auto-detection, `parseCsvToModelica` generator, and `lintCsv` semantic linter (`CSV_*` rules) |
-| `build.js`          | Compiles `language.ts` into the native WebAssembly GLR parser (`dist/parser.wasm`) and generated TypeScript bindings            |
 | `src-gen/`          | Auto-generated WASM parser bindings (`createWasmParser`)                                                                        |
 
 ---

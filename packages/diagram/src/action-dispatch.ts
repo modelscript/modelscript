@@ -150,6 +150,8 @@ export function coalesceDiagramActions<T extends DiagramActionLike>(actions: Rea
 export interface DiagramActionQueueOptions<T extends DiagramActionLike = DiagramActionLike> {
   /** Batch debounce window in milliseconds for spatial edits (default: 10). */
   spatialDelayMs?: number | undefined;
+  /** Maximum time in milliseconds a continuous stream of spatial edits can defer flushing (default: 120). */
+  maxWaitMs?: number | undefined;
   /** Batch debounce window in milliseconds for structural edits (default: 0). */
   structuralDelayMs?: number | undefined;
   /** Whether to coalesce adjacent redundant actions when flushing (default: true). */
@@ -169,7 +171,9 @@ export interface DiagramActionQueueOptions<T extends DiagramActionLike = Diagram
 export class DiagramActionQueue<T extends DiagramActionLike = DiagramActionLike> {
   private pending: T[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private firstPendingAt: number | null = null;
   private readonly spatialDelayMs: number;
+  private readonly maxWaitMs: number;
   private readonly structuralDelayMs: number;
   private readonly coalesce: boolean;
   private readonly immediateTypes: Set<string>;
@@ -178,6 +182,7 @@ export class DiagramActionQueue<T extends DiagramActionLike = DiagramActionLike>
 
   constructor(options: DiagramActionQueueOptions<T>) {
     this.spatialDelayMs = options.spatialDelayMs ?? 10;
+    this.maxWaitMs = options.maxWaitMs ?? 120;
     this.structuralDelayMs = options.structuralDelayMs ?? 0;
     this.coalesce = options.coalesce ?? true;
     this.onFlush = options.onFlush;
@@ -193,7 +198,17 @@ export class DiagramActionQueue<T extends DiagramActionLike = DiagramActionLike>
       return;
     }
 
+    const now = Date.now();
+    if (this.firstPendingAt === null) {
+      this.firstPendingAt = now;
+    }
     this.pending.push(action);
+
+    if (this.maxWaitMs > 0 && now - this.firstPendingAt >= this.maxWaitMs) {
+      this.flush();
+      return;
+    }
+
     if (this.timer !== null) {
       clearTimeout(this.timer);
       this.timer = null;
@@ -210,6 +225,7 @@ export class DiagramActionQueue<T extends DiagramActionLike = DiagramActionLike>
       clearTimeout(this.timer);
       this.timer = null;
     }
+    this.firstPendingAt = null;
     if (this.pending.length === 0) return [];
 
     const raw = this.pending;
@@ -226,6 +242,7 @@ export class DiagramActionQueue<T extends DiagramActionLike = DiagramActionLike>
       clearTimeout(this.timer);
       this.timer = null;
     }
+    this.firstPendingAt = null;
     this.pending = [];
   }
 
@@ -259,12 +276,20 @@ export class SerializedDiagramEditRunner {
       const seq = this.nextSeq();
       return task(seq);
     });
-    this.queue = run.then(
-      () => undefined,
+    const handled = run.then(
+      (res) => res,
       (err) => {
-        onError?.(err);
+        if (onError) {
+          onError(err);
+          return undefined;
+        }
+        throw err;
       },
     );
-    return run;
+    this.queue = handled.then(
+      () => undefined,
+      () => undefined,
+    );
+    return handled;
   }
 }

@@ -3,7 +3,9 @@
 
 # @modelscript/qif
 
-ISO 23952 / ANSI QIF 3.0 (Quality Information Framework) Digital Metrology, ASME Y14.5 / ISO 1101 GD&T, CMM Inspection Planning, and Statistical Process Control (SPC) language package (`.qif`) for ModelScript. Features an ISO 23952 QIF XML & JSON parser (`parseQif`), multi-file workspace indexing (`QifWorkspaceIndex`), ASME Y14.5 MMC/LMC bonus tolerance & SPC capability engine (`evaluateActualCompliance`, `evaluateQifSpc`), STEP AP242 B-Rep PMI reconciliation (`extractStepEntities`, `reconcileStepWithQif`), direct linear-memory `DAEBuilder` lowering (`lowerQifToDae`), 9 metrological lint rules (`M8101`–`M8109`, `lintQifDocument`, `QifErrorCode`), SysML v2 and Modelica 3.x projections (`qifToSysML2`, `qifToModelica`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.qif`, `.qif.xml` · **Docs:** [modelscript.org/languages/qif](https://modelscript.org/languages/qif)
+
+ISO 23952 / ANSI QIF 3.0 (Quality Information Framework) Digital Metrology, ASME Y14.5 / ISO 1101 GD&T, CMM Inspection Planning, and Statistical Process Control (SPC) language package (`.qif`) for ModelScript. Features an ISO 23952 QIF XML & JSON parser (`parseQif`), multi-file workspace indexing, ASME Y14.5 MMC/LMC bonus tolerance & SPC capability engine (`evaluateActualCompliance`, `evaluateQifSpc`), STEP AP242 B-Rep PMI reconciliation (`extractStepEntities`, `reconcileStepWithQif`), direct linear-memory `DAEBuilder` lowering (`lowerQifToDae`), 9 metrological lint rules (`M8101`–`M8109`, `lintQifDocument`, `QifErrorCode`), SysML v2 and Modelica 3.x projections (`qifToSysML2`, `qifToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -30,9 +32,7 @@ ISO 23952 / ANSI QIF 3.0 (Quality Information Framework) Digital Metrology, ASME
 | `src/lints/index.ts`       | Linter barrel exports                                                                              |
 | `src/spc/index.ts`         | `evaluateQifSpc` statistical process control ($C_p$, $C_{pk}$, $\text{TUR}$, MMC/LMC bonus) engine |
 | `src/step-bridge/index.ts` | `extractStepEntities` and `reconcileStepWithQif` STEP AP242 B-Rep PMI reconciliation               |
-| `src/dae/index.ts`         | `lowerQifToDae` direct lowering of tolerance stackup equations into `DAEBuilder` linear memory     |
 | `src/projections/index.ts` | `qifToSysML2` and `qifToModelica` cross-language translators                                       |
-| `src/workspace-index.ts`   | `QifWorkspaceIndex` implementing `IWorkspaceIndex` across `.qif` files                             |
 | `src/lsp.ts`               | LSP validation, document symbols, hover, completion, and definition providers                      |
 
 ---
@@ -59,18 +59,18 @@ ISO 23952 / ANSI QIF 3.0 (Quality Information Framework) Digital Metrology, ASME
 
 ```bash
 # Lint an ISO 23952 QIF 3.0 document (M8101-M8109)
-npx msx qif lint turbine_blade.qif
+msx qif lint turbine_blade.qif
 
 # Evaluate GD&T MMC/LMC bonus tolerances and SPC capability (Cp, Cpk, TUR)
-npx msx qif spc turbine_blade.qif
+msx qif spc turbine_blade.qif
 
 # Reconcile QIF features against a STEP AP242 CAD file
-npx msx qif reconcile-step turbine_blade.qif --step turbine_blade.step
+msx qif reconcile-step turbine_blade.qif --step turbine_blade.step
 
 # Lower to DAE or project to SysML v2 (.sysml) and Modelica (.mo)
-npx msx qif to-dae turbine_blade.qif
-npx msx qif to-sysml2 turbine_blade.qif
-npx msx qif to-modelica turbine_blade.qif
+msx qif to-dae turbine_blade.qif
+msx qif to-sysml2 turbine_blade.qif
+msx qif to-modelica turbine_blade.qif
 ```
 
 ### Programmatic API

@@ -1,5 +1,5 @@
 {
-  "toolCount": 107,
+  "toolCount": 121,
   "tools": [
     {
       "name": "modelica_load",
@@ -129,22 +129,22 @@
     {
       "name": "pscad_lint",
       "description": "Lint a PSCAD project (.pscx, .pslx) or workspace (.pswx) file. Performs pre-flight electrical topology, parameter bounds, floating terminal, and weak grid (SCR) checks.",
-      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS)"
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS / Protection)"
     },
     {
       "name": "pscad_simulate",
       "description": "Simulate a PSCAD electromagnetic transient (EMT) circuit using the WebAssembly Dommel companion-circuit solver. Supports Bergeron lines, CDA switch damping, and OEM Inverter-Based Resource (IBR) FMUs.",
-      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS)"
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS / Protection)"
     },
     {
       "name": "pscad_verify_ieee2800",
       "description": "Automate IEEE 2800-2022 grid code compliance testing for Inverter-Based Resources (IBRs). Assesses momentary cessation, fast reactive current injection (T_90 <= 50 ms), and overvoltage ceiling (<= 1.20 pu).",
-      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS)"
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS / Protection)"
     },
     {
       "name": "pscad_export",
       "description": "Export a PSCAD project (.pscx, .pslx) to Modelica (OpenIPSL) or FMI/SSP (SystemStructure.ssd) for cross-domain digital thread interoperability.",
-      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS)"
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS / Protection)"
     },
     {
       "name": "modelica_linearize",
@@ -239,42 +239,42 @@
     {
       "name": "cad_fea_closed_loop_size",
       "description": "Run closed-loop 3D CAD/OpenSCAD/STEP parametric sizing coupled with tetrahedral FEA von Mises stress analysis and BVH collision clearance verification.",
-      "category": "Cross-Domain Certification & Digital Twin"
+      "category": "Cross-Domain Certification, UQ & Digital Twin"
     },
     {
       "name": "polyglot_migrate_and_verify_b2b",
       "description": "Migrate legacy Simulink (.slx), SPICE (.cir), or MSC Adams (.adm) models to Modelica & SysML v2 and certify ISO 26262 Back-to-Back (B2B) trajectory & C99 equivalence.",
-      "category": "Cross-Domain Certification & Digital Twin"
+      "category": "Cross-Domain Certification, UQ & Digital Twin"
     },
     {
       "name": "ssp_diagnose_cosim_stability",
       "description": "Analyze an FMI 2.0/3.0 & SSP multi-FMU co-simulation topology for algebraic feedthrough loops, ZOH spectral radius instability, and synthesize stabilizing coupling schedules.",
-      "category": "Cross-Domain Certification & Digital Twin"
+      "category": "Cross-Domain Certification, UQ & Digital Twin"
     },
     {
       "name": "formal_verify_safety_and_mcdc",
       "description": "Prove unbounded safety invariants via IC3/PDR and Sum-of-Squares (SOS) barrier certificates, and generate DO-178C / ISO 26262 MC/DC independence-pair test vectors.",
-      "category": "Cross-Domain Certification & Digital Twin"
+      "category": "Cross-Domain Certification, UQ & Digital Twin"
     },
     {
       "name": "twin_discover_sindy_and_rom",
       "description": "Discover sparse nonlinear governing differential equations (SINDy) from hardware telemetry residuals and calibrate a Reduced-Order Model (ROM) digital twin.",
-      "category": "Cross-Domain Certification & Digital Twin"
+      "category": "Cross-Domain Certification, UQ & Digital Twin"
     },
     {
       "name": "qif_inspect_and_spc",
       "description": "Evaluates an ISO 23952 Quality Information Framework (QIF) document, runs NIST QIF & ASME Y14.5 GD&T lint checks, computes SPC capability (Cp/Cpk, TUR, MMC/LMC bonus tolerances), and optionally reconciles STEP AP242 entities.",
-      "category": "Cross-Domain Certification & Digital Twin"
+      "category": "Cross-Domain Certification, UQ & Digital Twin"
     },
     {
       "name": "oscal_audit_cps_compliance",
       "description": "Audits a NIST OSCAL document (Catalog, Profile, Component Definition, SSP, SAR, or POA&M) against NIST SP 800-53 Rev 5 and SP 800-82 Rev 3 OT/ICS overlays, resolves profile baselines, and verifies cyber-physical architectural component coverage.",
-      "category": "SysML v2, AutomationML & Compliance (OSCAL)"
+      "category": "SysML v2, MagicDraw, AutomationML & Compliance (OSCAL)"
     },
     {
       "name": "aml_run_virtual_commissioning",
       "description": "Parses an IEC 62714 AutomationML / CAEX workcell topology, runs semantic port & PPR role verification, and executes closed-loop virtual commissioning coupling VirtualPlc logic and mechatronic plant dynamics.",
-      "category": "SysML v2, AutomationML & Compliance (OSCAL)"
+      "category": "SysML v2, MagicDraw, AutomationML & Compliance (OSCAL)"
     },
     {
       "name": "opensim_analyze",
@@ -304,112 +304,112 @@
     {
       "name": "opendss_solve_powerflow",
       "description": "Solves multi-phase unbalanced distribution AC power flow using sparse Ybus nodal admittance matrix with RegControl tap changers and CapControl capacitor banks.",
-      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS)"
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS / Protection)"
     },
     {
       "name": "opendss_solve_faults",
       "description": "Computes short-circuit fault currents (3-phase symmetrical, single line-to-ground SLG, line-to-line LL) and Thevenin equivalent impedances.",
-      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS)"
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS / Protection)"
     },
     {
       "name": "opendss_evaluate_harmonics",
       "description": "Computes frequency-dependent harmonic voltage propagation and total harmonic distortion (THD%) across user-specified harmonic spectrum.",
-      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS)"
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS / Protection)"
     },
     {
       "name": "opendss_analyze_reliability",
       "description": "Evaluates predictive distribution feeder reliability indices (IEEE 1366: SAIFI, SAIDI, CAIDI, ASAI, EEN) and identifies critical risk branches.",
-      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS)"
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS / Protection)"
     },
     {
       "name": "opendss_solve_gic",
       "description": "Analyzes geomagnetically induced currents (GIC) from space weather events across power grid substation earth grounds and identifies transformer half-cycle saturation risks.",
-      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS)"
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS / Protection)"
     },
     {
       "name": "opendss_hosting_capacity",
       "description": "Calculates distribution feeder maximum Distributed Energy Resource (DER) hosting capacity limited by ANSI C84.1 voltage rise and line thermal capacity, with optional IEEE 1547 smart inverter Volt-VAR mitigation.",
-      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS)"
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS / Protection)"
     },
     {
       "name": "opendss_simulate_flisr",
       "description": "Simulates automated Fault Location, Isolation, and Service Restoration (FLISR) distribution grid self-healing, calculating customer interruption hours saved.",
-      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS)"
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS / Protection)"
     },
     {
       "name": "epanet_solve_hydraulics",
       "description": "Solves steady-state or extended period hydraulics for a US EPA EPANET water distribution network (.inp).",
-      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+      "category": "Municipal Water, Stormwater, Hydrology & Wastewater"
     },
     {
       "name": "epanet_fire_flow_analysis",
       "description": "Performs fire flow capacity analysis at a municipal hydrant node, evaluating available GPM at 20 psi residual pressure.",
-      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+      "category": "Municipal Water, Stormwater, Hydrology & Wastewater"
     },
     {
       "name": "epanet_outage_contingency",
       "description": "Simulates N-1 pipe break isolation and unsupplied customer demand under Pressure-Dependent Demand (PDD).",
-      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+      "category": "Municipal Water, Stormwater, Hydrology & Wastewater"
     },
     {
       "name": "epanet_screen_contingencies_webgpu",
       "description": "Parallelizes thousands of N-1 pipe break isolations and hydrant fire flow capacity tests simultaneously using WebGPU compute shaders with CPU SIMD fallback.",
-      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+      "category": "Municipal Water, Stormwater, Hydrology & Wastewater"
     },
     {
       "name": "epanet_water_hammer_surge",
       "description": "Simulates acoustic pressure wave propagation, Joukowsky surge spikes, column separation (DVCM), and 4-quadrant pump trip dynamics via the Method of Characteristics (MOC).",
-      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+      "category": "Municipal Water, Stormwater, Hydrology & Wastewater"
     },
     {
       "name": "water_audit_awwa_m36",
       "description": "Performs standard AWWA M36 Water Audit calculating CARL, UARL, Infrastructure Leakage Index (ILI), and non-revenue water financial losses.",
-      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+      "category": "Municipal Water, Stormwater, Hydrology & Wastewater"
     },
     {
       "name": "epanet_optimize_cip",
       "description": "Optimizes multi-year Capital Improvement Planning (CIP) pipe replacement and upsizing to maximize hydraulic performance under strict budget constraints.",
-      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+      "category": "Municipal Water, Stormwater, Hydrology & Wastewater"
     },
     {
       "name": "epanet_calibrate_scada",
       "description": "Calibrates EPANET pipe Hazen-Williams roughness C-factors against real-world SCADA telemetry pressure observations.",
-      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+      "category": "Municipal Water, Stormwater, Hydrology & Wastewater"
     },
     {
       "name": "epanet_gis_to_model",
       "description": "Ingests municipal GIS pipe centerlines, junction assets, and digital elevation models (DEM) from GeoJSON / ASCII grids into a complete, ready-to-solve EPANET network (.inp).",
-      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+      "category": "Municipal Water, Stormwater, Hydrology & Wastewater"
     },
     {
       "name": "swmm_flood_routing",
       "description": "Simulates 1D Saint-Venant dynamic wave routing in an urban stormwater or combined sewer network (.inp), reporting peak flows and flooding.",
-      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+      "category": "Municipal Water, Stormwater, Hydrology & Wastewater"
     },
     {
       "name": "swmm_simulate_rtc",
       "description": "Simulates Real-Time Control (RTC) gate/weir/pump modulation for urban Combined Sewer Overflow (CSO) mitigation.",
-      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+      "category": "Municipal Water, Stormwater, Hydrology & Wastewater"
     },
     {
       "name": "swmm_gis_to_model",
       "description": "Ingests municipal GIS stormwater/wastewater conduits, manholes, catchment polygon boundaries, and DEM rasters from GeoJSON / ASCII grids into a complete SWMM network (.inp).",
-      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+      "category": "Municipal Water, Stormwater, Hydrology & Wastewater"
     },
     {
       "name": "epanet_convert_watergems",
       "description": "Extracts water distribution and surge models directly from Bentley WaterGEMS / HAMMER (.wtg.sqlite) or InfoWater databases into native EPANET AST and .inp deck.",
-      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+      "category": "Municipal Water, Stormwater, Hydrology & Wastewater"
     },
     {
       "name": "swmm_convert_infoworks",
       "description": "Extracts collection system models directly from Autodesk / Innovyze InfoWorks ICM database tables into a native SWMM network AST and .inp deck.",
-      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+      "category": "Municipal Water, Stormwater, Hydrology & Wastewater"
     },
     {
       "name": "swmm_inundation_2d",
       "description": "Simulates 2D shallow water surface inundation and street overland flooding coupled dynamically to 1D SWMM surcharged manholes (InfoWorks ICM Parity).",
-      "category": "Municipal Water, Stormwater & Leak Localization (EPANET / SWMM)"
+      "category": "Municipal Water, Stormwater, Hydrology & Wastewater"
     },
     {
       "name": "ecad_dfm_audit",
@@ -484,57 +484,127 @@
     {
       "name": "comtrade_extract_phasor",
       "description": "Extract dynamic discrete Fourier transform (DFT) RMS phasors from IEEE C37.111 COMTRADE records.",
-      "category": "OWL2 Ontology & Fault Diagnostics"
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS / Protection)"
     },
     {
       "name": "scl_validate_goose",
       "description": "Validate IEC 61850 GOOSE and Sampled Values publisher/subscriber communication stream latency and dataflow.",
-      "category": "OWL2 Ontology & Fault Diagnostics"
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS / Protection)"
     },
     {
       "name": "waterml_fit_rating_curve",
       "description": "Fit a non-linear stage-discharge power-law rating curve Q = a * (h - h0)^b from hydrologic stage/discharge pairs.",
-      "category": "OWL2 Ontology & Fault Diagnostics"
+      "category": "Municipal Water, Stormwater, Hydrology & Wastewater"
     },
     {
       "name": "atp_simulate_transient",
       "description": "Simulate electromagnetic transient companion-matrix trapezoidal response from an ATP-EMTP card deck.",
-      "category": "OWL2 Ontology & Fault Diagnostics"
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS / Protection)"
     },
     {
       "name": "dnp3_process_telemetry",
       "description": "Filter telemetry analog stream using IEEE 1815 / DNP3 deadband thresholding and evaluate signal reconstruction.",
-      "category": "OWL2 Ontology & Fault Diagnostics"
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS / Protection)"
     },
     {
       "name": "oneliner_calculate_fault",
       "description": "Calculate symmetrical components 3-phase and SLG short-circuit fault currents from ASPEN OneLiner (.olx/.dxt) cases.",
-      "category": "OWL2 Ontology & Fault Diagnostics"
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS / Protection)"
     },
     {
       "name": "sel_evaluate_protection",
       "description": "Evaluate Schweitzer Engineering Laboratories (SEL) relay trip logic, 50P instantaneous, and 51P TOC curves.",
-      "category": "OWL2 Ontology & Fault Diagnostics"
+      "category": "Power Systems, EMT & Distribution (PSCAD / OpenDSS / Protection)"
     },
     {
       "name": "hec_hms_simulate_runoff",
       "description": "Simulate SCS Runoff Curve Number (CN) excess precipitation and unit hydrograph outflow from HEC-HMS basin models.",
-      "category": "OWL2 Ontology & Fault Diagnostics"
+      "category": "Municipal Water, Stormwater, Hydrology & Wastewater"
     },
     {
       "name": "asm_evaluate_biokinetics",
       "description": "Evaluate IWA Activated Sludge Model (ASM1) biological process rates and net substrate/biomass conversion rates.",
-      "category": "OWL2 Ontology & Fault Diagnostics"
+      "category": "Municipal Water, Stormwater, Hydrology & Wastewater"
     },
     {
       "name": "workspace_lint",
       "description": "Run multi-file / workspace-graph linting across companion files for cross-file engineering languages (CGMES, PSS/E, PSLF, PSCAD, OpenDSS, SCL, SPICE, ATP, Verilog-A, SSP, OSCAL, AUTOSAR, AutomationML, PLCopen, Simulink, USD, URDF, OpenSCAD, C, Fortran, AMPL, MODFLOW, HEC-RAS, ECLIPSE, EnergyPlus, TOPAS, CellML, Antimony, SED-ML, SBOL).",
-      "category": "OWL2 Ontology & Fault Diagnostics"
+      "category": "Closed-Loop Synthesis & Workspace"
     },
     {
       "name": "sysml2_verify_formal",
       "description": "Run deep formal verification (S7001–S7006: IC3/PDR state reachability, ISO 26262 MOCUS/ASIL fault trees, analytical UQ chance constraints, mechanical GD&T tolerance stacks, 2-safety non-interference/Lipschitz, continuous DAE Taylor-model flowpipes & SOS barriers) and optional standard lints (S1xxx–S6xxx) on a SysML v2 / KerML model.",
-      "category": "SysML v2, AutomationML & Compliance (OSCAL)"
+      "category": "SysML v2, MagicDraw, AutomationML & Compliance (OSCAL)"
+    },
+    {
+      "name": "ecad_kicad_analyze",
+      "description": "Analyze a KiCad .kicad_pcb or .kicad_sch file: run ECAD/ERC lints, extract netlist & RLGC/Z0/IPC-2221 parasitics, optionally check schematic-to-PCB consistency, or export IPC-2581C XML.",
+      "category": "ECAD, PCB Signal Integrity & Supply-Chain BOM"
+    },
+    {
+      "name": "ecad_atopile_analyze",
+      "description": "Analyze an atopile (.ato) code-first hardware design: run static & worst-case tolerance assert lints, elaborate NetlistGraph + BOM, and report linear-memory MNA DAE balance.",
+      "category": "ECAD, PCB Signal Integrity & Supply-Chain BOM"
+    },
+    {
+      "name": "ecad_ipc2581_convert",
+      "description": "Import an IPC-2581B/C XML board (Altium, Cadence, Siemens, KiCad) and convert to KiCad 8 (.kicad_pcb) or Specctra autorouter (.dsn) format.",
+      "category": "ECAD, PCB Signal Integrity & Supply-Chain BOM"
+    },
+    {
+      "name": "alm_list_requirements",
+      "description": "List locally synced ALM requirements and change requests from modelscript.yaml remotes (offline, zero credentials).",
+      "category": "ALM / PLM Federation & Traceability"
+    },
+    {
+      "name": "alm_trace_coverage",
+      "description": "Run offline ALM workspace linting (ALM001–ALM004) against synced requirements and modelscript.yaml baseline policies.",
+      "category": "ALM / PLM Federation & Traceability"
+    },
+    {
+      "name": "alm_blast_radius",
+      "description": "Find locally synced ALM requirements and Jira issues impacted by a symbol, parameter, or keyword.",
+      "category": "ALM / PLM Federation & Traceability"
+    },
+    {
+      "name": "alm_list_protocols",
+      "description": "List all built-in ALM, PLM, MBSE, CAD, ECAD, DevOps, Test, SQL/Excel, and RESTful connector protocols registered in ModelScript.",
+      "category": "ALM / PLM Federation & Traceability"
+    },
+    {
+      "name": "alm_discover_remote",
+      "description": "Probe a remote ALM/PLM/CAD repository URI (e.g. 'windchill+https://...', 'azdo+https://...') and return its server capabilities.",
+      "category": "ALM / PLM Federation & Traceability"
+    },
+    {
+      "name": "magicdraw_inspect",
+      "description": "Inspect a MagicDraw / Cameo (.mdzip, .mdxml, .xmi) model: packages, blocks, requirements, diagrams, and semantic lints.",
+      "category": "SysML v2, MagicDraw, AutomationML & Compliance (OSCAL)"
+    },
+    {
+      "name": "magicdraw_diagram",
+      "description": "Render a specific MagicDraw / Cameo diagram (by diagramId or diagramKind) to SVG or structured JSON.",
+      "category": "SysML v2, MagicDraw, AutomationML & Compliance (OSCAL)"
+    },
+    {
+      "name": "magicdraw_diff",
+      "description": "Semantically diff two MagicDraw / Cameo (.mdzip, .mdxml, .xmi) models by stable xmi:id.",
+      "category": "SysML v2, MagicDraw, AutomationML & Compliance (OSCAL)"
+    },
+    {
+      "name": "magicdraw_migrate_sysml2",
+      "description": "Migrate a MagicDraw / Cameo SysML 1.x model into a multi-file OMG SysML v2 workspace with a migration report.",
+      "category": "SysML v2, MagicDraw, AutomationML & Compliance (OSCAL)"
+    },
+    {
+      "name": "run_uq",
+      "description": "Run analytical, spectral, reliability, or rigorous P-box Uncertainty Quantification (fosm, unscented, sobol, pce, form, sorm, subset, pbox) on a Modelica model.",
+      "category": "Cross-Domain Certification, UQ & Digital Twin"
+    },
+    {
+      "name": "verify_stochastic_barrier",
+      "description": "Certify finite-horizon probabilistic safety P(sup_{0<=t<=T} ||x(t)|| >= unsafeRadius) <= riskTolerance for a linear or bounded-remainder Itô diffusion using rigorous Kushner supermartingale bounds.",
+      "category": "Cross-Domain Certification, UQ & Digital Twin"
     }
   ]
 }

@@ -83,6 +83,7 @@ const surfaces = computed<Surface[]>(() => [
     body: "Native desktop builds for offline and air-gapped engineering environments.",
     cta: "Download",
     link: "https://github.com/modelscript/modelscript/releases",
+    target: "_blank",
   },
 ]);
 </script>
@@ -104,6 +105,7 @@ const surfaces = computed<Surface[]>(() => [
           :key="s.title"
           :href="s.link"
           :target="s.target"
+          :rel="s.target === '_blank' ? 'noopener noreferrer' : undefined"
           class="surf-card"
           :style="toneStyle(s.tone)"
         >
@@ -198,7 +200,7 @@ const surfaces = computed<Surface[]>(() => [
                 <text class="sx-label" x="54" y="60" text-anchor="middle" style="font-size: 8px">any MCP client</text>
                 <rect class="sx-af sx-glow" x="190" y="25" width="72" height="50" rx="8" />
                 <text class="sx-label sx-ta" x="226" y="47" text-anchor="middle">ModelScript</text>
-                <text class="sx-label" x="226" y="60" text-anchor="middle" style="font-size: 8px">31 tools</text>
+                <text class="sx-label" x="226" y="60" text-anchor="middle" style="font-size: 8px">{{ mcpData.toolCount }} tools</text>
               </template>
 
               <!-- 6. Native desktop: CAD view, local compute, offline -->

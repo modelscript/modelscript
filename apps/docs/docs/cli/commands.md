@@ -1,11 +1,11 @@
 ---
 title: CLI Commands Reference
-description: Complete command, subcommand, and flag reference for the modelscript (msx) CLI across compilation, simulation, verification, digital thread, and 93 engineering domain formats.
+description: Complete command, subcommand, and flag reference for the modelscript (msx) CLI across compilation, simulation, verification, digital thread, and 105 documented engineering formats.
 ---
 
 # CLI Commands Reference
 
-This reference documents the core and domain-specific commands, subcommands, and flags registered in `@modelscript/cli` (`apps/cli/src/main.ts` and `apps/cli/src/commands/`). All **169 commands** (138 primary commands + 31 aliases) across **93 supported languages** can be invoked via `modelscript` or its shorthand alias `msx`, and any command can be accelerated with the global `--daemon` flag.
+This reference documents the core and domain-specific commands, subcommands, and flags registered in `@modelscript/cli` (`apps/cli/src/main.ts` and `apps/cli/src/commands/`). All **146 registered commands** across **105 documented engineering formats** (106 total monorepo packages) can be invoked via `modelscript` or its shorthand alias `msx`, and any command can be accelerated with the global `--daemon` flag.
 
 ---
 
@@ -363,7 +363,7 @@ msx pscad verify-ieee2800 SolarPlant_250MW.pscx --tstop 3.0 --step 20us -o ieee2
 
 ### `polyglot`
 
-Queries the unified multi-language `WorkspaceIndex`, verifies cross-domain traceability links (`@satisfies`, `@verifies`, `@allocates`), inspects digital threads, and monitors operational digital twin drift across all 93 supported languages.
+Queries the unified multi-language `WorkspaceIndex`, verifies cross-domain traceability links (`@satisfies`, `@verifies`, `@allocates`), inspects digital threads, and monitors operational digital twin drift across all 105 documented engineering formats.
 
 <CliCommand name="polyglot" :show-actions="false" />
 
@@ -1216,7 +1216,7 @@ Executes untrusted `.msx` scripts or `.mo` simulations inside a memory-capped, c
 
 ### `init`
 
-Initializes a new `modelscript.json` package manifest in the current directory.
+Initializes a new `modelscript.yaml` package manifest in the current directory.
 
 <CliCommand name="init" />
 
@@ -1236,7 +1236,7 @@ Manages authentication sessions against the Ansatz Package Registry or self-host
 
 ### `install`
 
-Resolves semantic version constraints, verifies SHA-256 content-addressable digests and Ed25519 publisher signatures, and installs Modelica/SysML/ModelScript packages into `modelica_modules/` while updating `msx.lock`.
+Resolves semantic version constraints, verifies SHA-256 content-addressable digests and Ed25519 publisher signatures, and installs Modelica/SysML/ModelScript packages into `.modelscript/packages/` while updating `modelscript.lock`.
 
 <CliCommand name="install" />
 
@@ -1244,7 +1244,7 @@ Resolves semantic version constraints, verifies SHA-256 content-addressable dige
 
 ### `stdlib`
 
-Browses, searches, and bootstraps official standard libraries across all 93 engineering languages.
+Browses, searches, and bootstraps official standard libraries across all 105 documented engineering formats.
 
 <CliCommand name="stdlib" />
 
@@ -1592,3 +1592,112 @@ Inspect, lint, and bridge C99/ANSI C files and headers (`.c`, `.h`).
 Inspect, lint, simulate biochemical networks, and lower SBML models (`.sbml`, `.xml`).
 
 <CliCommand name="sbml" />
+
+---
+
+### `uq`
+
+Run analytical, spectral, or reliability Uncertainty Quantification (`fosm`, `unscented`, `sobol`, `pce`, `form`, `sorm`, `subset`, `pbox`) over a Modelica or DAE model.
+
+<CliCommand name="uq" />
+
+```bash
+# Run Polynomial Chaos Expansion (gPCE) uncertainty quantification
+msx uq RLCDamper circuit.mo --method pce --degree 3 --params "R:normal:10:0.5,C:uniform:0.0009:0.0011"
+```
+
+---
+
+### `sysml-run`
+
+Compile AssemblyScript or TypeScript capability kernels and verify SysML v2 definitions headlessly, emitting structured JSON or signed proof bundles.
+
+<CliCommand name="sysml-run" />
+
+```bash
+# Run headless SysML v2 verification with a 10s per-kernel watchdog timeout
+msx sysml-run system.sysml --def ThermalVerification --timeout 10000 --json
+```
+
+---
+
+### `magicdraw`
+
+Inspect, lint, semantically diff (by stable `xmi:id`), render diagrams, and migrate Dassault MagicDraw / Cameo (`.mdzip`, `.mdxml`, `.xmi`) SysML 1.x models into multi-file OMG SysML v2, ReqIF, or Modelica workspaces.
+
+<CliCommand name="magicdraw" />
+
+```bash
+# Inspect a Cameo .mdzip archive and migrate it to SysML v2
+msx magicdraw inspect spacecraft.mdzip
+msx magicdraw migrate spacecraft.mdzip --out ./sysml2-workspace
+```
+
+---
+
+### `kicad`
+
+Lint KiCad `.kicad_pcb` and `.kicad_sch` designs, run ERC/DRC checks, extract trace RLGC/$Z_0$/IPC-2221 parasitics, verify schematic-to-PCB consistency, and translate to/from IPC-2581C, IDX, Specctra, and SPICE.
+
+<CliCommand name="kicad" />
+
+```bash
+# Run KiCad DRC/ERC lints and extract trace RLGC parasitics
+msx kicad lint controller.kicad_pcb
+msx kicad parasitics controller.kicad_pcb --temp-rise 10 --format json
+```
+
+---
+
+### `atopile`
+
+Lint Atopile (`.ato`) code-first hardware designs, verify worst-case tolerance `assert` bounds, run Monte Carlo tolerance UQ, elaborate canonical `NetlistGraph` + BOM JSON, and export IPC-2581C XML.
+
+<CliCommand name="atopile" />
+
+```bash
+# Lint an atopile hardware design and run tolerance UQ
+msx atopile lint power_stage.ato
+msx atopile uq power_stage.ato --samples 2000 --seed 42
+```
+
+---
+
+### `init-kernel`
+
+Scaffold a new SysML v2 + AssemblyScript (`as`) or TypeScript (`ts`) executable capability kernel package with a starter `modelscript.yaml` manifest and test harness.
+
+<CliCommand name="init-kernel" />
+
+```bash
+# Scaffold an AssemblyScript WASM capability kernel
+msx init-kernel step-auditor --lang as
+```
+
+---
+
+### `remote`
+
+Manage protocol and API-based ALM remote dependencies (IBM DOORS Next, Jama Connect, Codebeamer, Siemens Polarion, Jira, Azure DevOps, Windchill) in `modelscript.yaml` (`add`, `list`, `remove`).
+
+<CliCommand name="remote" />
+
+```bash
+# Register a remote Polarion or Jira requirement source in modelscript.yaml
+msx remote add @reqs/battery-safety "polarion+https://alm.example.com/polarion/BatteryPack" --baseline R2.4
+msx remote list
+```
+
+---
+
+### `sync`
+
+Synchronize declared ALM remote dependencies (`pull`, `status`, `push`), materializing local requirement projections and pinning remote revisions in `modelscript.lock`.
+
+<CliCommand name="sync" />
+
+```bash
+# Pull latest ALM requirements into local projections and check drift
+msx sync pull
+msx sync status --json
+```

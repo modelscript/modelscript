@@ -3,6 +3,8 @@
 
 # @modelscript/sel
 
+**Maturity:** Alpha · **Extensions:** `.rcf`, `.rdb`, `.sel`, `.txt` · **Docs:** [modelscript.org/languages/sel](https://modelscript.org/languages/sel)
+
 ModelScript package providing first-class support for **Schweitzer Engineering Laboratories (SEL) Relay Settings & SELogic Control Equations** (`.rdb`, `.rcf`, `.sel`, `.txt`).
 
 ## Overview

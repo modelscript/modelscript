@@ -132,6 +132,8 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
   const isBlueprint = options.theme === "blueprint";
   const isDark = options.theme !== "light" && !isBlueprint;
   const padding = options.padding ?? 40;
+  const rawIdPrefix = options.idPrefix ? options.idPrefix.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 32) : "";
+  const scopedId = (base: string) => (rawIdPrefix ? `${base}-${rawIdPrefix}` : base);
   const bgColor = options.background ?? (isBlueprint ? "#1e3a8a" : isDark ? "#0f172a" : "#ffffff");
   const textColor = isBlueprint ? "#ffffff" : isDark ? "#f8fafc" : "#0f172a";
   const mutedTextColor = isBlueprint ? "#bfdbfe" : isDark ? "#94a3b8" : "#64748b";
@@ -209,41 +211,41 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       .compartment-row { font-size: 11px; }
       .edge-label { font-size: 11px; font-weight: 500; }
     </style>
-    <filter id="shadow" x="-5%" y="-5%" width="115%" height="115%">
+    <filter id="${scopedId("shadow")}" x="-5%" y="-5%" width="115%" height="115%">
       <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="${isDark ? "0.4" : "0.1"}"/>
     </filter>
     <!-- Procedural 3D Shaders (Modelica / Physical parities) -->
-    <linearGradient id="grad-cylinder-horizontal" x1="0%" y1="0%" x2="0%" y2="100%">
+    <linearGradient id="${scopedId("grad-cylinder-horizontal")}" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" stop-color="#0f172a" stop-opacity="0.8"/>
       <stop offset="25%" stop-color="#ffffff" stop-opacity="0.45"/>
       <stop offset="55%" stop-color="${defaultEdgeStroke}" stop-opacity="0.9"/>
       <stop offset="85%" stop-color="#0284c7" stop-opacity="1.0"/>
       <stop offset="100%" stop-color="#0f172a" stop-opacity="0.95"/>
     </linearGradient>
-    <linearGradient id="grad-cylinder-vertical" x1="0%" y1="0%" x2="100%" y2="0%">
+    <linearGradient id="${scopedId("grad-cylinder-vertical")}" x1="0%" y1="0%" x2="100%" y2="0%">
       <stop offset="0%" stop-color="#0f172a" stop-opacity="0.8"/>
       <stop offset="25%" stop-color="#ffffff" stop-opacity="0.45"/>
       <stop offset="55%" stop-color="${defaultEdgeStroke}" stop-opacity="0.9"/>
       <stop offset="85%" stop-color="#0284c7" stop-opacity="1.0"/>
       <stop offset="100%" stop-color="#0f172a" stop-opacity="0.95"/>
     </linearGradient>
-    <radialGradient id="grad-sphere" cx="35%" cy="35%" r="65%">
+    <radialGradient id="${scopedId("grad-sphere")}" cx="35%" cy="35%" r="65%">
       <stop offset="0%" stop-color="#ffffff" stop-opacity="0.85"/>
       <stop offset="40%" stop-color="${defaultEdgeStroke}" stop-opacity="0.9"/>
       <stop offset="80%" stop-color="#0284c7" stop-opacity="1.0"/>
       <stop offset="100%" stop-color="#0f172a" stop-opacity="0.95"/>
     </radialGradient>
     <!-- Arrowhead Markers -->
-    <marker id="marker-classic" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <marker id="${scopedId("marker-classic")}" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
       <path d="M 0 1 L 10 5 L 0 9 z" fill="${defaultEdgeStroke}"/>
     </marker>
-    <marker id="marker-hollow-triangle" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <marker id="${scopedId("marker-hollow-triangle")}" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <polygon points="1,1 11,6 1,11" fill="${isDark ? "#1e293b" : "#ffffff"}" stroke="${defaultEdgeStroke}" stroke-width="1.5"/>
     </marker>
-    <marker id="marker-diamond" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <marker id="${scopedId("marker-diamond")}" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <polygon points="1,6 6,1 11,6 6,11" fill="${defaultEdgeStroke}"/>
     </marker>
-    <marker id="marker-hollow-diamond" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+    <marker id="${scopedId("marker-hollow-diamond")}" viewBox="0 0 12 12" refX="12" refY="6" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <polygon points="1,6 6,1 11,6 6,11" fill="${isDark ? "#1e293b" : "#ffffff"}" stroke="${defaultEdgeStroke}" stroke-width="1.5"/>
     </marker>
   `);
@@ -467,16 +469,16 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
     const targetMarker = edge.attrs?.line?.targetMarker;
     if (targetMarker) {
       const name = typeof targetMarker === "string" ? targetMarker : targetMarker.name;
-      if (name === "classic" || name === "block") markerEnd = "url(#marker-classic)";
-      else if (name === "hollow-triangle") markerEnd = "url(#marker-hollow-triangle)";
-      else if (name === "diamond") markerEnd = "url(#marker-diamond)";
-      else if (name === "hollow-diamond") markerEnd = "url(#marker-hollow-diamond)";
+      if (name === "classic" || name === "block") markerEnd = `url(#${scopedId("marker-classic")})`;
+      else if (name === "hollow-triangle") markerEnd = `url(#${scopedId("marker-hollow-triangle")})`;
+      else if (name === "diamond") markerEnd = `url(#${scopedId("marker-diamond")})`;
+      else if (name === "hollow-diamond") markerEnd = `url(#${scopedId("marker-hollow-diamond")})`;
     }
     const sourceMarker = edge.attrs?.line?.sourceMarker;
     if (sourceMarker) {
       const name = typeof sourceMarker === "string" ? sourceMarker : sourceMarker.name;
-      if (name === "diamond") markerStart = "url(#marker-diamond)";
-      else if (name === "hollow-diamond") markerStart = "url(#marker-hollow-diamond)";
+      if (name === "diamond") markerStart = `url(#${scopedId("marker-diamond")})`;
+      else if (name === "hollow-diamond") markerStart = `url(#${scopedId("marker-hollow-diamond")})`;
     }
 
     edgePaths.push({ edge, points, stroke, strokeWidth, dash, markerEnd, markerStart });
@@ -590,11 +592,11 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
     }
     const fillPattern = (node.attrs?.body?.fillPattern as string) || (node.data?.fillPattern as string);
     if (fillPattern === "HorizontalCylinder") {
-      fill = "url(#grad-cylinder-horizontal)";
+      fill = `url(#${scopedId("grad-cylinder-horizontal")})`;
     } else if (fillPattern === "VerticalCylinder") {
-      fill = "url(#grad-cylinder-vertical)";
+      fill = `url(#${scopedId("grad-cylinder-vertical")})`;
     } else if (fillPattern === "Sphere") {
-      fill = "url(#grad-sphere)";
+      fill = `url(#${scopedId("grad-sphere")})`;
     }
 
     const stroke = (node.attrs?.body?.stroke as string) || (markupRect?.attrs?.["stroke"] as string) || borderColor;
@@ -620,7 +622,9 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       (node.properties?.icon as string);
     const iconUrl = typeof rawIconUrl === "string" && rawIconUrl.trim().length > 0 ? rawIconUrl.trim() : undefined;
 
-    bodyParts.push(`<g id="${escapeXml(node.id)}" transform="translate(${nx}, ${ny})" filter="url(#shadow)">`);
+    bodyParts.push(
+      `<g id="${escapeXml(node.id)}" transform="translate(${nx}, ${ny})" filter="url(#${scopedId("shadow")})">`,
+    );
 
     // 2.5D Multiplicity Cascade: Stacked background card shadows
     if (multiplicity > 1) {
@@ -939,4 +943,62 @@ export function renderCellsSvg(
 ): string {
   const diagram = cellsToDiagramData(graph);
   return renderPolyglotDiagramToSvg(diagram, options);
+}
+
+/**
+ * Serializes a live AntV X6 SVG DOM node into a clean, self-contained standalone SVG
+ * with a normalized `viewBox`, explicit `xmlns`, and optional solid background rect
+ * so exported schematics are never clipped or unstyled in external SVG viewers.
+ */
+export function serializeInteractiveGraphSvg(
+  svgEl: SVGSVGElement,
+  options: { background?: string | undefined; padding?: number | undefined } = {},
+): string {
+  const padding = options.padding ?? 24;
+  const clone = svgEl.cloneNode(true) as SVGSVGElement;
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  clone.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
+
+  // Compute tight content bounds from the live viewport group before resetting its transform on the clone
+  const liveViewport = svgEl.querySelector(".x6-graph-svg-viewport") as SVGGraphicsElement | null;
+  const cloneViewport = clone.querySelector(".x6-graph-svg-viewport") as SVGGElement | null;
+  let vbX = 0;
+  let vbY = 0;
+  let vbW = Math.max(1, svgEl.clientWidth || 800);
+  let vbH = Math.max(1, svgEl.clientHeight || 600);
+
+  if (liveViewport && typeof liveViewport.getBBox === "function") {
+    try {
+      const bbox = liveViewport.getBBox();
+      if (Number.isFinite(bbox.width) && Number.isFinite(bbox.height) && bbox.width > 0 && bbox.height > 0) {
+        vbX = Math.floor(bbox.x - padding);
+        vbY = Math.floor(bbox.y - padding);
+        vbW = Math.ceil(bbox.width + padding * 2);
+        vbH = Math.ceil(bbox.height + padding * 2);
+        if (cloneViewport) {
+          cloneViewport.removeAttribute("transform");
+        }
+      }
+    } catch {
+      // getBBox can throw if element is detached or hidden
+    }
+  }
+
+  clone.setAttribute("viewBox", `${vbX} ${vbY} ${vbW} ${vbH}`);
+  clone.setAttribute("width", String(vbW));
+  clone.setAttribute("height", String(vbH));
+  clone.removeAttribute("style");
+
+  if (options.background && typeof document !== "undefined") {
+    const bgRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    bgRect.setAttribute("x", String(vbX));
+    bgRect.setAttribute("y", String(vbY));
+    bgRect.setAttribute("width", String(vbW));
+    bgRect.setAttribute("height", String(vbH));
+    bgRect.setAttribute("fill", options.background);
+    clone.insertBefore(bgRect, clone.firstChild);
+  }
+
+  const serializer = new XMLSerializer();
+  return serializer.serializeToString(clone);
 }

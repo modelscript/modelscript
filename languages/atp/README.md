@@ -1,7 +1,9 @@
 <div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
 <div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-# `@modelscript/atp`
+# @modelscript/atp
+
+**Maturity:** Alpha · **Extensions:** `.atp`, `.dat` · **Docs:** [modelscript.org/languages/atp](https://modelscript.org/languages/atp)
 
 Alternative Transients Program (ATP-EMTP) card-deck compiler, Dommel companion-matrix trapezoidal transient integration solver, switch timing verification, and zero-GC linear-memory `DAEBuilder` arena lowering for ModelScript.
 

@@ -7,6 +7,7 @@ import {
   applyOptimisticPropertyAction,
   buildPropertyContextValues,
   ConflictManager,
+  createBulkPropertyEditActions,
   DiagramActionQueue,
   dropComponentGhost,
   getGraph,
@@ -14,13 +15,19 @@ import {
   getVisiblePropertyTabs,
   hydrateDiagramWasm,
   initGraph,
+  mergeMultiSelectPropertyData,
+  MIXED_PROPERTY_VALUE,
   reconcilePropertiesDOM,
   rerouteEdgeOrthogonal,
   resolveActivePropertyTabId,
+  setDiagramGrid,
   setDiagramOptions,
+  toggleMinimap,
   updateParameterText,
   type ComponentPropertyData,
+  type DiagramGridMode,
 } from "@modelscript/diagram";
+import { serializeInteractiveGraphSvg } from "@modelscript/diagram/svg";
 import DOMPurify from "dompurify";
 
 if (typeof document !== "undefined") {
@@ -186,9 +193,11 @@ function initDiagramBridge() {
 
   let ghostRafId: number | null = null;
   let lastGhostClientPos: { x: number; y: number } | null = null;
+  let lastGhostEvent: Event | undefined = undefined;
 
-  const updateGhostPosition = (clientX: number, clientY: number) => {
+  const updateGhostPosition = (clientX: number, clientY: number, sourceEvent?: Event) => {
     lastGhostClientPos = { x: clientX, y: clientY };
+    if (sourceEvent !== undefined) lastGhostEvent = sourceEvent;
     if (!ghostRafId) {
       ghostRafId = requestAnimationFrame(() => {
         ghostRafId = null;
@@ -196,7 +205,7 @@ function initDiagramBridge() {
           const g = getGraph() ?? initGraph(isDark);
           if (g) {
             const p = g.clientToLocal(lastGhostClientPos.x, lastGhostClientPos.y);
-            diagramWindow.__movePlacementGhost(snapToGrid(p.x), snapToGrid(p.y), window.event);
+            diagramWindow.__movePlacementGhost(snapToGrid(p.x), snapToGrid(p.y), lastGhostEvent);
           }
         }
       });
@@ -228,7 +237,7 @@ function initDiagramBridge() {
     isPointerOverCanvas = true;
     lastGhostClientPos = { x: e.clientX, y: e.clientY };
     if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-    updateGhostPosition(e.clientX, e.clientY);
+    updateGhostPosition(e.clientX, e.clientY, e);
     diagramWindow.__setPointerOverCanvas?.(true, { x: e.clientX, y: e.clientY });
   };
 
@@ -250,7 +259,7 @@ function initDiagramBridge() {
           handleDropOrPlace(e.clientX, e.clientY);
           return;
         }
-        updateGhostPosition(e.clientX, e.clientY);
+        updateGhostPosition(e.clientX, e.clientY, e);
       }
     },
     true,
@@ -409,6 +418,22 @@ function initDiagramBridge() {
       if (canvasHud) {
         canvasHud.style.display = isPscad ? "flex" : "none";
       }
+      lspPaletteCatalog = [];
+      vscode.postMessage({ type: "getPalette" });
+    } else if (e.data.type === "palette") {
+      const cats = Array.isArray(e.data.palette?.categories) ? e.data.palette.categories : [];
+      const flattened: { id: string; name: string; category: string }[] = [];
+      for (const cat of cats) {
+        const catName = String(cat.label || cat.name || cat.id || "Components");
+        const items = Array.isArray(cat.items) ? cat.items : [];
+        for (const item of items) {
+          const id = String(item.className || item.type || item.id || item.label || "");
+          const name = String(item.label || item.name || id);
+          if (id) flattened.push({ id, name, category: catName });
+        }
+      }
+      lspPaletteCatalog = flattened;
+      if (activeSpotlightRender) activeSpotlightRender();
     } else if (e.data.type === "workbenchDrop") {
       handleDropOrPlace(e.data.clientX, e.data.clientY, e.data);
     } else if (e.data.type === "workbenchDragOver" && typeof e.data.clientX === "number") {
@@ -541,6 +566,8 @@ const SPOTLIGHT_CATALOG = [
 ];
 
 let isWireModeActive = false;
+const GRID_MODES: DiagramGridMode[] = ["doubleMesh", "dot", "mesh", "none"];
+let currentGridModeIdx = 0;
 
 function initCanvasHud() {
   const hudSelect = document.getElementById("hud-select");
@@ -1246,13 +1273,74 @@ function initContextMenu() {
             g.zoomToFit({ padding: 30, maxScale: 1.5 });
           },
         },
+        {
+          label: "Toggle Minimap",
+          shortcut: "M",
+          action: () => {
+            toggleMinimap(document.getElementById("container"));
+          },
+        },
+        {
+          label: "Cycle Grid Style",
+          action: () => {
+            currentGridModeIdx = (currentGridModeIdx + 1) % GRID_MODES.length;
+            setDiagramGrid(GRID_MODES[currentGridModeIdx]!, g);
+          },
+        },
+        {
+          label: "Export SVG",
+          action: () => {
+            const svgEl = document.querySelector("#container .x6-graph-svg") as SVGSVGElement | null;
+            if (!svgEl) return;
+            const darkNow =
+              document.documentElement.classList.contains("vscode-dark") ||
+              document.documentElement.classList.contains("vscode-high-contrast");
+            const svgStr = serializeInteractiveGraphSvg(svgEl, {
+              background: darkNow ? "#1e1e1e" : "#ffffff",
+            });
+            const blob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `${activeLanguage || "diagram"}_schematic.svg`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+          },
+        },
       );
 
       showMenuAt(clientX, clientY, menuItems);
     });
+
+    g.on("selection:changed", () => {
+      const selectedNodes = (g.getSelectedCells() as DiagramNodeCell[]).filter((c) => c.isNode());
+      if (selectedNodes.length >= 2) {
+        showBulkProperties(selectedNodes);
+      }
+    });
   };
 
   bindGraphEvents();
+}
+
+let lspPaletteCatalog: { id: string; name: string; category: string }[] = [];
+let activeSpotlightRender: (() => void) | null = null;
+
+function getEffectiveSpotlightCatalog(): { id: string; name: string; category: string }[] {
+  if (lspPaletteCatalog.length > 0) return lspPaletteCatalog;
+  const lang = activeLanguage.toLowerCase();
+  if (isPscadLanguage(lang)) {
+    return SPOTLIGHT_CATALOG.filter((c) => c.id.startsWith("master:"));
+  }
+  if (lang === "modelica" || lang === "mo" || lang === "modelscript" || lang === "msx") {
+    return SPOTLIGHT_CATALOG.filter((c) => c.id.startsWith("Modelica."));
+  }
+  if (lang === "sysml" || lang === "sysml2") {
+    return SPOTLIGHT_CATALOG.filter((c) => c.id.startsWith("sysml:"));
+  }
+  return SPOTLIGHT_CATALOG;
 }
 
 function showSpotlight(x: number, y: number) {
@@ -1260,6 +1348,10 @@ function showSpotlight(x: number, y: number) {
   const input = document.getElementById("spotlight-input") as HTMLInputElement | null;
   const results = document.getElementById("spotlight-results");
   if (!popover || !input || !results) return;
+
+  if (lspPaletteCatalog.length === 0) {
+    vscode.postMessage({ type: "getPalette" });
+  }
 
   popover.style.left = `${Math.max(10, Math.min(x, window.innerWidth - 320))}px`;
   popover.style.top = `${Math.max(10, Math.min(y, window.innerHeight - 280))}px`;
@@ -1271,7 +1363,8 @@ function showSpotlight(x: number, y: number) {
 
   const renderResults = () => {
     const q = input.value.trim().toLowerCase();
-    const filtered = SPOTLIGHT_CATALOG.filter(
+    const catalog = getEffectiveSpotlightCatalog();
+    const filtered = catalog.filter(
       (c) => c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q) || c.category.toLowerCase().includes(q),
     );
 
@@ -1305,6 +1398,7 @@ function showSpotlight(x: number, y: number) {
     });
   };
 
+  activeSpotlightRender = renderResults;
   renderResults();
 
   input.oninput = () => {
@@ -1314,7 +1408,7 @@ function showSpotlight(x: number, y: number) {
 
   input.onkeydown = (e) => {
     const q = input.value.trim().toLowerCase();
-    const filtered = SPOTLIGHT_CATALOG.filter(
+    const filtered = getEffectiveSpotlightCatalog().filter(
       (c) => c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q) || c.category.toLowerCase().includes(q),
     );
     if (e.key === "Escape") {
@@ -1475,6 +1569,71 @@ const nodeActiveTabMap = new Map<string, string>();
 const nodeFilterTextMap = new Map<string, string>();
 const nodeConflictManagers = new Map<string, ConflictManager>();
 const propDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function showBulkProperties(selectedNodes: DiagramNodeCell[]) {
+  const panel = document.getElementById("properties-panel");
+  const content = document.getElementById("properties-content");
+  const title = document.getElementById("properties-title");
+  if (!panel || !content || !title) return;
+
+  const propItems = selectedNodes
+    .map((n) => n.getData()?.properties)
+    .filter((p): p is ComponentPropertyData => Boolean(p));
+  const summary = mergeMultiSelectPropertyData(propItems);
+
+  title.textContent = `${selectedNodes.length} COMPONENTS SELECTED`;
+  panel.classList.add("open");
+  content.innerHTML = "";
+
+  const header = document.createElement("div");
+  header.style.cssText =
+    "padding: 10px 12px; font-size: 11px; color: var(--vscode-descriptionForeground, #888); border-bottom: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.2));";
+  header.textContent =
+    summary && summary.classNames.length === 1
+      ? `Shared class: ${summary.classNames[0]}`
+      : `${selectedNodes.length} components selected`;
+  content.appendChild(header);
+
+  if (!summary || summary.sharedParameters.length === 0) {
+    const empty = document.createElement("div");
+    empty.style.cssText = "padding: 16px 12px; font-size: 12px; color: var(--vscode-descriptionForeground, #888);";
+    empty.textContent = "No shared parameters across selected components.";
+    content.appendChild(empty);
+    return;
+  }
+
+  for (const param of summary.sharedParameters) {
+    const row = document.createElement("div");
+    row.style.cssText =
+      "display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.12));";
+
+    const label = document.createElement("label");
+    label.style.cssText =
+      "font-size: 12px; font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;";
+    label.textContent = param.unit ? `${param.name} (${param.unit})` : param.name;
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = param.isMixed ? "" : String(param.value ?? "");
+    input.placeholder = param.isMixed ? "Mixed" : "";
+    input.style.cssText =
+      "width: 110px; padding: 3px 6px; font-size: 12px; border-radius: 4px; border: 1px solid var(--vscode-input-border, rgba(128,128,128,0.35)); background: var(--vscode-input-background, transparent); color: var(--vscode-input-foreground, inherit);";
+
+    input.addEventListener("change", () => {
+      const nextVal = input.value.trim();
+      if (!nextVal || nextVal === MIXED_PROPERTY_VALUE) return;
+      const actions = createBulkPropertyEditActions(summary.componentNames, param.name, nextVal, "parameter");
+      for (const act of actions) {
+        enqueueDiagramAction(act as WebviewDiagramAction);
+      }
+      input.placeholder = "";
+    });
+
+    row.appendChild(label);
+    row.appendChild(input);
+    content.appendChild(row);
+  }
+}
 
 function showProperties(nodeData: DiagramShowPropertiesInput) {
   const panel = document.getElementById("properties-panel");

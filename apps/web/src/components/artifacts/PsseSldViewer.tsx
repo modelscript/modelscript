@@ -13,7 +13,15 @@ import {
   renderPsseSldSvg,
 } from "@modelscript/diagram";
 import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
-import { type PowerFlowResult, type PsseCase, parseRaw, solvePowerFlow, solvePowerFlowAsync } from "@modelscript/psse";
+import {
+  type PowerFlowResult,
+  type PsseCase,
+  ensurePsseWasmParser,
+  isPsseWasmParserReady,
+  parseRaw,
+  solvePowerFlow,
+  solvePowerFlowAsync,
+} from "@modelscript/psse";
 import { CheckIcon, CodeIcon, CopyIcon, DownloadIcon, ZapIcon } from "@primer/octicons-react";
 import { Button } from "@primer/react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -545,13 +553,29 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
   }, [loading, rawText]);
 
   const [asyncPowerflow, setAsyncPowerflow] = useState<PowerFlowResult | null>(null);
+  const [psseParserReady, setPsseParserReady] = useState<boolean>(() => isPsseWasmParserReady());
+
+  useEffect(() => {
+    if (psseParserReady) return;
+    let cancelled = false;
+    void ensurePsseWasmParser()
+      .then(() => {
+        if (!cancelled) setPsseParserReady(true);
+      })
+      .catch(() => {
+        // Fallback client parser remains active if WASM binary cannot be fetched
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [psseParserReady]);
 
   const parsedData = useMemo(() => {
     let parsedCase: PsseCase | null = null;
     let syncPowerflow: PowerFlowResult | null = null;
     const parsedClient = rawText ? parsePsseRawClient(rawText) : undefined;
 
-    if (rawText.trim()) {
+    if (rawText.trim() && psseParserReady) {
       try {
         const candidate = parseRaw(rawText);
         if (candidate.buses.size > 0) {
@@ -565,7 +589,7 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
       }
     }
     return { parsedCase, syncPowerflow, parsedClient };
-  }, [rawText]);
+  }, [rawText, psseParserReady]);
 
   useEffect(() => {
     let cancelled = false;

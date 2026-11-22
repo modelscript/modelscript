@@ -10,7 +10,7 @@ description: "Implementation:"
 - Spacer CHC & IC3/PDR: [`packages/runtime/src/formal/chc/`](https://github.com/modelscript/modelscript/tree/main/packages/runtime/src/formal/chc/) and [`packages/runtime/src/formal/ic3_engine.ts`](https://github.com/modelscript/modelscript/tree/main/packages/runtime/src/formal/ic3_engine.ts)
 - Stochastic Martingale Barrier Certificates: `StochasticBarrierSynthesizer` in [`packages/runtime/src/analysis/wasm_stochastic_barrier.ts`](https://github.com/modelscript/modelscript/tree/main/packages/runtime/src/analysis/wasm_stochastic_barrier.ts)
 - WebGPU Datalog / OWL 2 RL Saturation Reasoner: `WebGPUOntologyReasoner` & `BitsetGraph` in [`packages/runtime/src/gpu/webgpu_reasoner.ts`](https://github.com/modelscript/modelscript/tree/main/packages/runtime/src/gpu/webgpu_reasoner.ts)
-- ISO 26262 / DO-178C Back-to-Back Equivalence Verification: `B2BEquivalenceVerifier` in [`packages/runtime/src/simulation/b2b_verifier.ts`](https://github.com/modelscript/modelscript/tree/main/packages/runtime/src/simulation/b2b_verifier.ts) and `UnifiedVerifier` in [`packages/runtime/src/simulation/unified_verifier.ts`](https://github.com/modelscript/modelscript/tree/main/packages/runtime/src/simulation/unified_verifier.ts)
+- ISO 26262 / DO-178C Back-to-Back Equivalence Verification: `B2BEquivalenceVerifier` in [`packages/simulate/src/verification/b2b-verifier.ts`](https://github.com/modelscript/modelscript/tree/main/packages/simulate/src/verification/b2b-verifier.ts), `UnifiedVerifier` in [`packages/simulate/src/verification/unified-verifier.ts`](https://github.com/modelscript/modelscript/tree/main/packages/simulate/src/verification/unified-verifier.ts), and V-cycle traceability in [`packages/runtime/src/interop/vcycle_verifier.ts`](https://github.com/modelscript/modelscript/tree/main/packages/runtime/src/interop/vcycle_verifier.ts)
 
 ---
 
@@ -123,7 +123,7 @@ Large-scale systems engineering ontologies (`languages/owl2/` and SysML v2 KerML
 
 ---
 
-## 5. ISO 26262 / DO-178C Back-to-Back Equivalence Verification (`b2b_verifier.ts`, `v_cycle_verifier.ts`)
+## 5. ISO 26262 / DO-178C Back-to-Back Equivalence Verification (`b2b-verifier.ts`, `vcycle_verifier.ts`)
 
 ### Academic Citations
 
@@ -134,7 +134,7 @@ Large-scale systems engineering ontologies (`languages/owl2/` and SysML v2 KerML
 
 Safety-critical automotive (ISO 26262 ASIL-D) and avionics (DO-178C DAL-A) standards require proving that generated embedded production code (zero-allocation C99 or standalone WASM FMU artifacts) is numerically and behaviorally equivalent to the high-level specification model (SysML v2 / Modelica).
 
-`B2BEquivalenceVerifier` (`packages/runtime/src/simulation/b2b_verifier.ts`, orchestrated by `UnifiedVerifier` in `packages/runtime/src/simulation/unified_verifier.ts`) automates end-to-end **Model-in-the-Loop (MiL) vs. Software-in-the-Loop (SiL)** back-to-back verification:
+`B2BEquivalenceVerifier` (`packages/simulate/src/verification/b2b-verifier.ts`, orchestrated by `UnifiedVerifier` in `packages/simulate/src/verification/unified-verifier.ts` with V-cycle traceability in `packages/runtime/src/interop/vcycle_verifier.ts`) automates end-to-end **Model-in-the-Loop (MiL) vs. Software-in-the-Loop (SiL)** back-to-back verification:
 
 1. **MiL Reference Trajectory Execution**: Simulates the high-level DAE arena (`simulateArenaAsync`) over $[t_{\text{start}}, t_{\text{stop}}]$ to obtain reference trajectories $y^{\text{MiL}}_j(t)$.
 2. **Standalone C99 Code Generation & Cryptographic Hashing**: Invokes `generateStandaloneCSources` (`@modelscript/exchange/fmu`) to emit self-contained, zero-allocation C99 sources (`<Model>_standalone.h`, `<Model>_standalone.c`), computing a SHA-256 artifact digest (`cSourceHash`) for V-cycle traceability.

@@ -78,18 +78,25 @@ Operates directly on `@modelscript/runtime` linear-memory `DAEBuilder` arenas (`
 
 ## Subpath Exports
 
-| Subpath                           | Description                                                                                                       |
-| :-------------------------------- | :---------------------------------------------------------------------------------------------------------------- |
-| `@modelscript/simulate`           | Root barrel exporting all solvers, core runners, FEA, CFD, meshing, surrogates, UQ, calibration, and twin modules |
-| `@modelscript/simulate/core`      | `simulateArena`, `WasmSimulationRunner`, hybrid adjoints, STL monitors, and FSI couplers                          |
-| `@modelscript/simulate/solvers`   | `tsit5`, `trbdf2`, `rodas4p`, SUNDIALS `cvode`/`ida`, DDE, SDE, BVP, and EMT solvers                              |
-| `@modelscript/simulate/webgpu`    | `WebGPUSimulationRunner` and batched WGSL compute shaders                                                         |
-| `@modelscript/simulate/meshing`   | STEP B-Rep mesher, prism boundary layer extruder, and mesh quality analyzer                                       |
-| `@modelscript/simulate/optimizer` | L-BFGS-B, Nelder-Mead, CMA-ES, NSGA-II multi-objective optimizer, and parameter sweepers                          |
-| `@modelscript/simulate/opf`       | AC/DC Optimal Power Flow (OPF) and security-constrained dispatch solver                                           |
-| `@modelscript/simulate/uq`        | Monte Carlo runner, Sobol indices, and Design of Experiments (DoE)                                                |
-| `@modelscript/simulate/twin`      | `ArenaMHE`, drift detector, RUL prognostics, and streaming telemetry ring buffers                                 |
-| `@modelscript/simulate/jit`       | WebAssembly and JS JIT equation evaluator compilers                                                               |
+| Subpath                              | Description                                                                                                       |
+| :----------------------------------- | :---------------------------------------------------------------------------------------------------------------- |
+| `@modelscript/simulate`              | Root barrel exporting all solvers, core runners, FEA, CFD, meshing, surrogates, UQ, calibration, and twin modules |
+| `@modelscript/simulate/core`         | `simulateArena`, `WasmSimulationRunner`, hybrid adjoints, STL monitors, and FSI couplers                          |
+| `@modelscript/simulate/solvers`      | `tsit5`, `trbdf2`, `rodas4p`, SUNDIALS `cvode`/`ida`, DDE, SDE, BVP, and EMT solvers                              |
+| `@modelscript/simulate/surrogates`   | MLP, PCE, RBF, POD, and Buckingham $\Pi$ surrogate ROM trainers, ONNX import/export, and OOD guardrails           |
+| `@modelscript/simulate/wam`          | WebAssembly execution / worker arena runtime helpers                                                              |
+| `@modelscript/simulate/opf`          | AC/DC Optimal Power Flow (OPF) and security-constrained dispatch solver                                           |
+| `@modelscript/simulate/powerflow`    | Newton-Raphson AC power flow, IEEE 519 harmonics, Quasi-Dynamic Simulation (QDS), and IEEE 738 DLR                |
+| `@modelscript/simulate/water`        | Water distribution & stormwater hydraulic simulation utilities                                                    |
+| `@modelscript/simulate/meshing`      | STEP B-Rep mesher, prism boundary layer extruder, and mesh quality analyzer                                       |
+| `@modelscript/simulate/optimizer`    | L-BFGS-B, Nelder-Mead, CMA-ES, NSGA-II multi-objective optimizer, and parameter sweepers                          |
+| `@modelscript/simulate/webgpu`       | `WebGPUSimulationRunner` and batched WGSL compute shaders                                                         |
+| `@modelscript/simulate/uq`           | Monte Carlo runner, Sobol indices, and Design of Experiments (DoE)                                                |
+| `@modelscript/simulate/twin`         | `ArenaMHE`, drift detector, RUL prognostics, and streaming telemetry ring buffers                                 |
+| `@modelscript/simulate/verification` | Simulation-backed requirement verification and trajectory assertion harnesses                                     |
+| `@modelscript/simulate/jit`          | WebAssembly and JS JIT equation evaluator compilers                                                               |
+| `@modelscript/simulate/charts`       | Indexed trajectory datasets (`IndexedDataset`) and chart-ready series utilities                                   |
+| `@modelscript/simulate/utils`        | Shared numerical, interpolation, and trajectory formatting utilities                                              |
 
 ---
 
@@ -122,13 +129,18 @@ console.log("Final state x(5):", result.series.x?.at(-1));
 ## Scripts
 
 ```bash
-# Build TypeScript package
-npm run build --workspace=@modelscript/simulate
+# Build AssemblyScript kernels, TypeScript, and copy WASM assets
+pnpm --filter @modelscript/simulate run build
+
+# Build or force-rebuild AssemblyScript solver kernels only
+pnpm --filter @modelscript/simulate run asbuild
+pnpm --filter @modelscript/simulate run asbuild:force
 
 # Run numerical solver, adjoint, FEA/CFD, surrogate, UQ, and digital twin tests
-npm run test --workspace=@modelscript/simulate
+pnpm --filter @modelscript/simulate run test
 
-# Typecheck and lint
-npm run typecheck --workspace=@modelscript/simulate
-npm run lint --workspace=@modelscript/simulate
+# Typecheck, lint, and clean
+pnpm --filter @modelscript/simulate run typecheck
+pnpm --filter @modelscript/simulate run lint
+pnpm --filter @modelscript/simulate run clean
 ```

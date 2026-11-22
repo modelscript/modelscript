@@ -3,7 +3,9 @@
 
 # @modelscript/nmtran
 
-NMTRAN / NONMEM-compatible pharmacometrics and clinical pharmacokinetic/pharmacodynamic (PK/PD) control stream modeling package (`.ctl`, `.mod`) for ModelScript. Features a zero-regex character-by-character NMTRAN control stream parser and serializer (`parseNmtran`, `serializeNmtran`), multi-file workspace indexing (`NmtranWorkspaceIndex`), a deterministic 1-, 2-, and 3-compartment analytical & custom `$DES` ODE solver supporting bolus, zero-order infusion, and multi-dose (`II`/`ADDL`) superposition (`solveNmtranPkPd`), direct linear-memory `DAEBuilder` lowering (`lowerNmtranToDae`), 10 pre-flight pharmacometric lint rules (`M9401`–`M9410`), Modelica 3.x PK/PD projections (`nmtranToModelica`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.ctl`, `.mod` · **Docs:** [modelscript.org/languages/nmtran](https://modelscript.org/languages/nmtran)
+
+NMTRAN / NONMEM-compatible pharmacometrics and clinical pharmacokinetic/pharmacodynamic (PK/PD) control stream modeling package (`.ctl`, `.mod`) for ModelScript. Features a zero-regex character-by-character NMTRAN control stream parser and serializer (`parseNmtran`, `serializeNmtran`), multi-file workspace indexing, a deterministic 1-, 2-, and 3-compartment analytical & custom `$DES` ODE solver supporting bolus, zero-order infusion, and multi-dose (`II`/`ADDL`) superposition (`solveNmtranPkPd`), direct linear-memory `DAEBuilder` lowering (`lowerNmtranToDae`), 10 pre-flight pharmacometric lint rules (`M9401`–`M9410`), Modelica 3.x PK/PD projections (`nmtranToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -14,7 +16,7 @@ NMTRAN / NONMEM-compatible pharmacometrics and clinical pharmacokinetic/pharmaco
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerNmtranToDae`)**: Compiles `$THETA` parameters, `$OMEGA`/`$SIGMA` random effect placeholders, `$PK` parameter relationships, compartment amounts `A_i`, differential balance equations `der(A_i)`, and `$ERROR` predictions directly into ModelScript's zero-GC WebAssembly `DAEBuilder` struct-of-arrays arena.
 - **10 Pre-Flight Pharmacometric Lint Rules (`M9401`–`M9410`, `lintNmtran`)**: Static verification of `$PROBLEM` records, `$THETA` lower/initial/upper bound ordering, required `$DES` blocks for general ODE subroutines (`ADVAN6`/`ADVAN8`/`ADVAN9`/`ADVAN13`), out-of-bounds `THETA(n)` and `ETA(n)` references, `$OMEGA` variance positivity, compartment index bounds (`DADT(i)`/`A(i)`), `$ERROR` dependent variable `Y` assignment, required `TRANS` parameterization (`CL`, `V`, `KA`, `Q`, etc.), and non-negative dosing `AMT`/`RATE`.
 - **Modelica 3.x PK/PD Projection (`nmtranToModelica`)**: Synthesizes standalone Modelica 3.x pharmacokinetic and pharmacodynamic compartment models for whole-body PBPK and physiological co-simulation.
-- **Multi-File Workspace Indexing & LSP (`NmtranWorkspaceIndex`, `getNmtranHover`, `provideNmtranCompletions`)**: Implements `IWorkspaceIndex` across `.ctl` and `.mod` control streams with parameter/compartment hover inspection, record/subroutine completions, and AST writeback.
+- **Multi-File Workspace Indexing & LSP (`getNmtranHover`, `provideNmtranCompletions`)**: Provides workspace symbol indexing across `.ctl` and `.mod` control streams with parameter/compartment hover inspection, record/subroutine completions, and AST writeback.
 
 ---
 
@@ -36,7 +38,6 @@ NMTRAN / NONMEM-compatible pharmacometrics and clinical pharmacokinetic/pharmaco
 | `src/dae/index.ts`                      | DAE lowering barrel exports                                                                                                                    |
 | `src/projections/nmtran-to-modelica.ts` | `nmtranToModelica` translator to Modelica 3.x pharmacokinetic/pharmacodynamic models                                                           |
 | `src/projections/index.ts`              | Projections barrel exports                                                                                                                     |
-| `src/workspace-index.ts`                | `NmtranWorkspaceIndex` implementing `IWorkspaceIndex` across `.ctl` and `.mod` files                                                           |
 | `src/lsp.ts`                            | LSP validation, document symbols, hover, completion, and action providers                                                                      |
 
 ---

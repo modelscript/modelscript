@@ -13,14 +13,14 @@ ModelScript is built on a **data-oriented, WebAssembly-first compiler architectu
 
 ```mermaid
 flowchart TB
-    subgraph Languages["Polyglot Source Languages (93 Formats — 26 Beta & 67 Alpha)"]
+    subgraph Languages["Polyglot Source Languages (105 Documented Formats — 32 Beta, 72 Alpha, 1 Pre-Alpha)"]
         direction TB
         MO[".mo (Modelica 3.x) / .mod (AMPL)"]
         SYS[".sysml / .kerml / .reqif / .oscal.json"]
         STEP[".step / .usd / .qif / .scad / .3mf"]
-        OWL[".owl / .ofn / .ttl (OWL2)"]
+        OWL[".owl / .ofn / .ttl (OWL2) / .rq (SPARQL)"]
         SSP[".ssp / .ssd / .ssv (SSP 1.0/2.0)"]
-        PSCAD[".pscx / .raw / .dsl / .epc / .dss / .cir / .va"]
+        PSCAD[".pscx / .raw / .dsl / .epc / .dss / .cir / .va / .ato / .kicad_sch"]
         TELECOM[".optical / .ran / .fiber / .ocpp / .openadr"]
         CAE[".cfd / .su2 / .fea / .inp / .feb"]
         MBD[".spck / .calc / .adm / .urdf / .osim / .gtfs"]
@@ -47,12 +47,12 @@ flowchart TB
     subgraph Lowering["3. Arena DAE Lowering & Formal Verification"]
         FLAT["ModelicaFlattener (AssemblyScript WASM Kernel + TS Bridge)"]
         DAE["DAEBuilder (SoA Linear Memory: varData, exprData, eqData)"]
-        THEORY["Multi-Domain Theory Coordinator (13 Domain Oracles)"]
+        THEORY["Multi-Domain Theory Coordinator (19 Domain Oracles)"]
     end
 
-    subgraph Backend["4. Causalization, Codegen & Execution (@modelscript/simulate)"]
+    subgraph Backend["4. Causalization, Codegen & Execution (@modelscript/solve & @modelscript/simulate)"]
         BLT["Hopcroft-Karp Matching + Tarjan BLT + Pantelides Index Reduction"]
-        SOLVE["SUNDIALS IDA / CVODE / Radau IIA / Rodas4P / TR-BDF2 / Tsit5 / Dommel EMT / WebGPU"]
+        SOLVE["SUNDIALS IDA / CVODE / Radau IIA / Rodas4P & 5P / TR-BDF2 / Tsit5 / Verner / IMEX / QSS / DDE / Dommel EMT / WebGPU"]
         FMU["FMI 2.0 / 3.0 C99 & WASM FMU Exporter (@modelscript/exchange)"]
     end
 
@@ -79,29 +79,37 @@ Inspired by the Rust compiler (`rust-analyzer`), `QueryEngine` implements the **
 
 ### 3. Polyglot Synchronization via Triple Graph Grammars (TGG)
 
-Cross-language traceability is enforced algebraically via **Double-Pushout (DPO)** graph rewriting (`packages/dsl/src/tgg.ts`) with **Critical Pair Analysis (CPA)** confluence verification (`packages/dsl/src/cpa.ts`). Changes in SysML v2 requirements, Modelica parameters, STEP CAD assemblies, or ModelScript `@unmanaged` structs propagate bidirectionally without losing comments or formatting.
+Cross-language traceability is enforced algebraically via **Double-Pushout (DPO)** graph rewriting (`packages/dsl/src/dsl/tgg-types.ts` and `packages/dsl/src/codegen/compile_tgg.ts`) with **Critical Pair Analysis (CPA)** confluence verification (`packages/dsl/src/codegen/cpa.ts`). Changes in SysML v2 requirements, Modelica parameters, STEP CAD assemblies, or ModelScript `@unmanaged` structs propagate bidirectionally without losing comments or formatting.
 
 ### 4. Multi-Domain Theory Coordinator ($\text{CDCL}(\mathcal{T})$)
 
-Thirteen specialized **Domain Theory Oracles**—spanning OWL2 Description Logic (`OntologyTheoryOracle`), SysML v2 intervals (`ConstraintTheoryOracle`), Zones/Octagons (`AbstractDomainOracle`), Barrier Certificates & Taylor Flowpipes (`ContinuousSafetyOracle`), DAE trajectories (`DynamicSimulationOracle`), 3D B-Rep clearance (`SpatialPhysicsOracle`), FEA/CFD contracts (`CaeContractOracle`), DAE structural matching (`CausalizationOracle`), SI dimensional analysis (`DimensionalOracle`), Assume-Guarantee refinement (`EntailmentOracle`), Kirchhoff/stream conservation (`FlowAlgebraOracle`), AP242 GD&T stack-up (`ToleranceStackOracle`), and Conformal UQ (`UqOracle`)—exchange variable bounds and Nelson-Oppen equalities until a global fixpoint or minimal unsatisfiable core (`UnsatCore`) is reached.
+Nineteen specialized **Domain Theory Oracles**—spanning OWL2 Description Logic (`OntologyTheoryOracle`), SysML v2 intervals (`ConstraintTheoryOracle`), Zones/Octagons (`AbstractDomainOracle`), Barrier Certificates & Taylor Flowpipes (`SafetyTheoryOracle`), 3D B-Rep clearance (`SpatialPhysicsOracle`), FEA/CFD contracts (`CaeContractOracle`), DAE structural matching (`CausalizationTheoryOracle`), SI dimensional analysis (`DimensionalTheoryOracle`), Assume-Guarantee refinement (`EntailmentTheoryOracle`), Kirchhoff/stream conservation (`FlowAlgebraOracle`), AP242 GD&T stack-up (`ToleranceStackOracle`), Conformal UQ (`UqTheoryOracle`), McCarthy Arrays (`ArrayTheoryOracle`), Fixed-Width Bit-Vectors (`BitVectorTheoryOracle`), Strings & Word Equations (`StringTheoryOracle`), Power Grid & Ride-Through (`PowerGridTheoryOracle`), Marine Mooring (`MarineMooringTheoryOracle`), ASME Pressure Vessels (`PressureVesselOracle`), and Optical/RAN Telecom (`TelecomTheoryOracle`)—exchange variable bounds and Nelson-Oppen equalities until a global fixpoint or minimal unsatisfiable core (`ConflictClause`) is reached.
 
 ---
 
 ## Monorepo Package Matrix
 
-| Package                   | Path                | Primary Responsibility                                                                                                                                                         |
-| :------------------------ | :------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@modelscript/dsl`        | `packages/dsl`      | Grammar combinators, Ahead-of-Time WASM GLR parser compiler (`buildParser`), TGG/DPO engine, Critical Pair Analysis, E-graphs, CST semantic diff/merge                         |
-| `@modelscript/runtime`    | `packages/runtime`  | Linear-memory `DAEBuilder`, `ArenaDAEPrinter`, Salsa `QueryEngine`, `WorkspaceIndex`, BLT/Pantelides solver, Sparse Arnoldi eigensolver, 13 Formal Theory Oracles              |
-| `@modelscript/simulate`   | `packages/simulate` | Numerical integrators (SUNDIALS CVODE/IDA, Radau IIA, Rodas4P, TR-BDF2, Tsit5, DOPRI5, Dommel EMT), WebGPU contingency screener, PALC bifurcation, FNO surrogates              |
-| `@modelscript/cad`        | `packages/cad`      | OpenCascade (OCCT) B-Rep kernel, CSG evaluator, STEP AP214/AP242 serializer, 3D tetrahedral FEA solver, 3D formal verification overlays, Gerber ECAD parser                    |
-| `@modelscript/diagram`    | `packages/diagram`  | Polyglot schematic layout engine, orthogonal Manhattan router, TCC / R-X / P-Q / Water Diff specialized builders, SVG/Canvas renderer                                          |
-| `@modelscript/exchange`   | `packages/exchange` | FMI 2.0/3.0 FMU import/export, SSP 1.0/2.0 container toolkit, Co-Simulation Master Orchestrator, MISRA-C / Q8.24 fixed-point firmware synthesizer, WebSerial HIL               |
-| `@modelscript/lsp`        | `packages/lsp`      | Multi-language LSP server across all 93 languages, semantic tokens, hover, go-to-definition, code actions, background worker pool                                              |
-| `@modelscript/mcp`        | `packages/mcp`      | Unified Model Context Protocol server exposing 105 core and 70+ domain-specific ModelScript compilation, simulation, verification, grid/water/telecom, and KG tools            |
-| `@modelscript/ide-client` | `packages/ide`      | Reusable WebAssembly IDE client components, Monaco/CodeMirror language bindings, and dockable engineering viewports with 3D verification overlays                              |
-| `@modelscript/examples`   | `packages/examples` | Curated multi-domain reference workspaces (CubeSat, EV Battery Pack, IEEE 39-Bus Grid, Robotic Arm, Aero-Structural Wing)                                                      |
-| `modelscript` (`msx`)     | `apps/cli`          | Unified command-line interface (169 commands across `flatten`, `simulate`, `verify`, `dossier`, `gatekeeper`, `ampl`, `powerfactory`, `pslf`, `fmu`, `csg`, `surrogate`, etc.) |
-| `@modelscript/api`        | `apps/api`          | REST, GraphQL, SPARQL, Regulatory Dossier, Grid Gatekeeper, and WebSocket simulation backend server                                                                            |
-| `@modelscript/web`        | `apps/web`          | Ansatz Web application (Ansatz browser editor, Studio, Package Registry, and social modeling platform)                                                                         |
-| `@modelscript/ee`         | `ee`                | Enterprise Edition (`LicenseRef-ModelScript-Enterprise`) — Ed25519 license verification, SSO/SAML, RBAC, Slurm HPC dispatcher, Digital Twin Historian, HIL                     |
+| Package                      | Path                     | Primary Responsibility                                                                                                                                                                                  |
+| :--------------------------- | :----------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `@modelscript/dsl`           | `packages/dsl`           | Grammar combinators, Ahead-of-Time WASM GLR parser compiler (`buildParser`), TGG/DPO engine, Critical Pair Analysis, E-graphs                                                                           |
+| `@modelscript/runtime`       | `packages/runtime`       | Linear-memory `DAEBuilder`, `ArenaDAEPrinter`, Salsa `QueryEngine`, `WorkspaceIndex`, BLT/Pantelides solver, Sparse Arnoldi eigensolver, 19 Formal Theory Oracles                                       |
+| `@modelscript/solve`         | `packages/solve`         | Unified SciML-inspired solver, reachability, and formal verification foundation — outward-rounded intervals, typed problems/algorithms, verification certificates, WASM scratch pool                    |
+| `@modelscript/simulate`      | `packages/simulate`      | Numerical integrators (SUNDIALS CVODE/IDA, Radau IIA, Rodas4P/5P, TR-BDF2, Tsit5, Verner, IMEX, QSS, DDE, SDE, PDE-MoL, Dommel EMT), Tet4/Tet10 FEA, WebGPU LBM & contingency, PALC                     |
+| `@modelscript/cad`           | `packages/cad`           | OpenCascade (OCCT) B-Rep kernel, CSG evaluator, STEP AP214/AP242 serializer, swept-volume clearance, GD&T stack-up, 3D formal verification overlays, Gerber ECAD & PCB router/DRC                       |
+| `@modelscript/diagram`       | `packages/diagram`       | Polyglot schematic layout engine, orthogonal Manhattan router, TCC / R-X / P-Q / Water Diff specialized builders, SVG/Canvas renderer                                                                   |
+| `@modelscript/exchange`      | `packages/exchange`      | FMI 2.0/3.0 FMU import/export, SSP 1.0/2.0 container toolkit, Co-Simulation Master Orchestrator, MISRA-C / Q8.24 fixed-point firmware synthesizer, WebSerial HIL                                        |
+| `@modelscript/lsp`           | `packages/lsp`           | Multi-language LSP server across all 105 documented languages, semantic tokens, hover, go-to-definition, code actions, background worker pool                                                           |
+| `@modelscript/mcp`           | `packages/mcp`           | Unified Model Context Protocol server exposing 105 core and 70+ domain-specific ModelScript compilation, simulation, verification, grid/water/telecom, and KG tools                                     |
+| `@modelscript/sdk`           | `packages/sdk`           | TypeScript and AssemblyScript SDK for authoring user-defined ModelScript capabilities, visual artifacts, and WASM kernels                                                                               |
+| `@modelscript/editor`        | `packages/editor`        | Host-agnostic visual modeling & code editor core, LSP transport abstraction, and host context adapter for web, embed, and playground environments                                                       |
+| `@modelscript/ide-client`    | `packages/ide`           | Reusable WebAssembly IDE client components, Monaco/CodeMirror language bindings, and dockable engineering viewports with 3D verification overlays                                                       |
+| `@modelscript/react`         | `packages/react`         | ModelScript & Ansatz React SDK and widgets — engineering UI primitives, WebAssembly solver hooks, and IDE bridges                                                                                       |
+| `@modelscript/embed`         | `packages/embed`         | ModelScript & Ansatz embed client SDK — iframe bridge, Web Component custom elements, and permalink codec                                                                                               |
+| `@modelscript/design-tokens` | `packages/design-tokens` | Shared CSS design tokens and primitive component styles for the documentation site, web application, and IDE webviews                                                                                   |
+| `@modelscript/examples`      | `packages/examples`      | Curated multi-domain reference workspaces (`alm-gitops`, `asme-bpvc-viii-1`, `drone-chassis`, `drone-reachability`, `emt-screening-pack`, `pscad-microgrid`, `sysml-wasm-pack`, `telecom-co-microgrid`) |
+| `modelscript` (`msx`)        | `apps/cli`               | Unified command-line interface (169 commands across `flatten`, `simulate`, `verify`, `dossier`, `gatekeeper`, `ampl`, `powerfactory`, `pslf`, `fmu`, `csg`, `surrogate`, etc.)                          |
+| `@modelscript/api`           | `apps/api`               | REST, GraphQL, SPARQL, Regulatory Dossier, Grid Gatekeeper, and WebSocket simulation backend server                                                                                                     |
+| `@modelscript/docs`          | `apps/docs`              | Unified `modelscript.org` website and VitePress documentation portal                                                                                                                                    |
+| `@modelscript/ide`           | `apps/ide`               | ModelScript VS Code Web IDE with GitHub/GitLab repository integration                                                                                                                                   |
+| `@modelscript/web`           | `apps/web`               | Ansatz Web application (Ansatz browser editor, Studio, Package Registry, and social modeling platform)                                                                                                  |
+| `@modelscript/ee`            | `ee`                     | Enterprise Edition (`LicenseRef-ModelScript-Enterprise`) — Ed25519 license verification, SSO/SAML, RBAC, Slurm HPC dispatcher, Digital Twin Historian, HIL                                              |

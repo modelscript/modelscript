@@ -3,7 +3,9 @@
 
 # @modelscript/sysml2
 
-Systems Modeling Language v2 (SysML v2) and Kernel Modeling Language (KerML) compiler (`.sysml`, `.kerml`, `.sysmlx`), AST querying, formal SMT/state-machine/activity verification, 45-rule diagnostic linter (`1001`–`5016`), and cross-domain transformation engine for ModelScript.
+**Maturity:** Beta · **Extensions:** `.sysml`, `.sysml2`, `.kerml` · **Docs:** [modelscript.org/languages/sysml2](https://modelscript.org/languages/sysml2)
+
+Systems Modeling Language v2 (SysML v2) and Kernel Modeling Language (KerML) compiler (`.sysml`, `.sysml2`, `.kerml`), AST querying, formal SMT/state-machine/activity verification, 45-rule diagnostic linter (`1001`–`5016`), and cross-domain transformation engine for ModelScript.
 
 ---
 

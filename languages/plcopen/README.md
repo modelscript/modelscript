@@ -3,6 +3,8 @@
 
 # @modelscript/plcopen
 
+**Maturity:** Alpha · **Extensions:** `.xml`, `.plcopen`, `.plcopen.xml`, `.st` · **Docs:** [modelscript.org/languages/plcopen](https://modelscript.org/languages/plcopen)
+
 IEC 61131-3 **PLCopen TC6 XML** and **Structured Text (ST)** (`.xml`, `.plcopen`, `.st`) industrial automation and digital twin language package for ModelScript. Features dual-mode XML and Structured Text parsing, 10 pre-flight IEC 61131-3 safety & control lint rules (`M7701`–`M7710`), deterministic Virtual PLC scan-cycle simulation (`VirtualPlc`), direct lowering to `DAEBuilder`, Modelica 3.x and SysML v2 projections, and multi-file workspace indexing.
 
 ---
@@ -14,7 +16,7 @@ IEC 61131-3 **PLCopen TC6 XML** and **Structured Text (ST)** (`.xml`, `.plcopen`
 - **Deterministic Virtual PLC Scan Engine (`VirtualPlc`)**: Executes discrete scan cycles with built-in IEC 61131-3 standard function blocks (`TON`, `TOF`, `TP` timers; `CTU`, `CTD`, `CTUD` counters; `R_TRIG`, `F_TRIG` edge detectors; `SR`, `RS` bistable latches; and `PID`).
 - **Direct Linear-Memory DAE Arena Lowering (`lowerPlcopenToDae`)**: Lowers discrete/continuous PLC variables and equations directly into `@modelscript/runtime`'s `DAEBuilder` struct-of-arrays arena.
 - **Polyglot Projections (`plcopenToModelica`, `plcopenToSysML`)**: Translates PLCopen POUs and state machines into Modelica 3.x blocks and SysML v2 `action def` / `state def` architectures.
-- **Multi-File Workspace Indexer & LSP (`PlcopenWorkspaceIndex`, `validatePlcopen`, `getPlcopenDocumentSymbols`, `getPlcopenHover`)**: Implements `IWorkspaceIndex` for cross-file POU resolution and IDE language services.
+- **Multi-File Workspace Indexer & LSP (`validatePlcopen`, `getPlcopenDocumentSymbols`, `getPlcopenHover`)**: Provides workspace symbol indexing for cross-file POU resolution and IDE language services.
 
 ---
 
@@ -37,7 +39,6 @@ IEC 61131-3 **PLCopen TC6 XML** and **Structured Text (ST)** (`.xml`, `.plcopen`
 | `src/projections/plcopen-to-modelica.ts` | `plcopenToModelica` translator to Modelica 3.x control blocks                                 |
 | `src/projections/plcopen-to-sysml.ts`    | `plcopenToSysML` translator to SysML v2 `action def` and `part def`                           |
 | `src/projections/index.ts`               | Projections module re-exports                                                                 |
-| `src/workspace-index.ts`                 | `PlcopenWorkspaceIndex` implementing `IWorkspaceIndex`                                        |
 | `src/lsp.ts`                             | LSP diagnostics, document symbols, and hover providers                                        |
 
 ---
@@ -65,14 +66,14 @@ IEC 61131-3 **PLCopen TC6 XML** and **Structured Text (ST)** (`.xml`, `.plcopen`
 
 ```bash
 # Lint a PLCopen XML or Structured Text (.st) project (M7701–M7710)
-npx msx plcopen lint conveyor_plc.st
+msx plcopen lint conveyor_plc.st
 
 # Run deterministic Virtual PLC scan cycles
-npx msx plcopen simulate conveyor_plc.st
+msx plcopen simulate conveyor_plc.st
 
 # Project PLCopen POUs to Modelica 3.x or SysML v2
-npx msx plcopen to-modelica conveyor_plc.st
-npx msx plcopen to-sysml conveyor_plc.st
+msx plcopen to-modelica conveyor_plc.st
+msx plcopen to-sysml conveyor_plc.st
 ```
 
 ### Programmatic API

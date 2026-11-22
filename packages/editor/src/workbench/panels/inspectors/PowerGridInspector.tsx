@@ -3,9 +3,11 @@
 import {
   calculateShortCircuit,
   compileAssemblyScriptDyrInWorker,
+  ensurePsseWasmParser,
   executeIdv,
   executePythonPsspyScript,
   formatPowerFlowReport,
+  isPsseWasmParserReady,
   linkUsrDllToDynamicInstance,
   lintPsse,
   loadFmuForPsse,
@@ -164,7 +166,7 @@ export function analyzePowerGrid(code: string, lines: string[]): PowerGridSummar
 
   let psseDiagnostics: PsseDiagnostic[] | undefined;
   const hasPsseHeaders = /BEGIN\s+BUS\s+DATA|0\s*\/.*PSS|0,\s*[\d.]+,\s*3[0-5]/i.test(code);
-  if (hasPsseHeaders) {
+  if (hasPsseHeaders && isPsseWasmParserReady()) {
     try {
       const psseCase = parseRaw(code);
       if (psseCase.buses.size > 0) {
@@ -746,9 +748,26 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
     };
   }, [effectiveDyrText, cfctSec, transientResult]);
 
+  const [psseParserReady, setPsseParserReady] = useState<boolean>(() => isPsseWasmParserReady());
+
+  useEffect(() => {
+    if (psseParserReady || isTouchstone) return;
+    let cancelled = false;
+    void ensurePsseWasmParser()
+      .then(() => {
+        if (!cancelled) setPsseParserReady(true);
+      })
+      .catch(() => {
+        // Fallback scanner remains active if WASM binary cannot be fetched
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [psseParserReady, isTouchstone]);
+
   const { buses, branches, yBusEntries, eigenmodes, diagnostics } = useMemo(
     () => analyzePowerGrid(effectiveCode, effectiveLines),
-    [effectiveCode, effectiveLines],
+    [effectiveCode, effectiveLines, psseParserReady],
   );
 
   const handleAttachFiles = async (fileList: FileList | null) => {
@@ -857,11 +876,9 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
       const mem = exports["memory"] as WebAssembly.Memory | undefined;
       const safeName = customUsrmdlName.trim().replace(/[^A-Za-z0-9_]/g, "_") || "MY_USRMDL";
       const initFn = exports[`${safeName}_init`] as
-        | ((conPtr: number, count: number, statePtr: number, ioPtr: number) => void)
-        | undefined;
+        ((conPtr: number, count: number, statePtr: number, ioPtr: number) => void) | undefined;
       const stepFn = exports[`${safeName}_step`] as
-        | ((t: number, dt: number, conPtr: number, statePtr: number, ioPtr: number) => void)
-        | undefined;
+        ((t: number, dt: number, conPtr: number, statePtr: number, ioPtr: number) => void) | undefined;
       if (!mem || typeof initFn !== "function" || typeof stepFn !== "function") {
         setStudyStatus(`USRMDL missing ${safeName}_init / ${safeName}_step exports`);
         return;
@@ -913,6 +930,7 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
   const runPowerFlowStudy = async () => {
     setRunningStudy(true);
     try {
+      await ensurePsseWasmParser();
       const parsed = parseRaw(effectiveCode);
       if (effectiveDyrText) parsed.dyr = parseDyr(effectiveDyrText);
       const res = await solvePowerFlowAsync(parsed);
@@ -931,6 +949,7 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
   const runTransientStudy = async () => {
     setRunningStudy(true);
     try {
+      await ensurePsseWasmParser();
       const parsed = parseRaw(effectiveCode);
       if (effectiveDyrText) parsed.dyr = parseDyr(effectiveDyrText);
       if (effectiveSeqText) {
@@ -977,6 +996,7 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
   const runCfctSweep = async () => {
     setRunningStudy(true);
     try {
+      await ensurePsseWasmParser();
       const parsed = parseRaw(effectiveCode);
       if (effectiveDyrText) parsed.dyr = parseDyr(effectiveDyrText);
       const fmuModels = fmuEntries.map((entry) => ({
@@ -1025,6 +1045,7 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
     if (!effectiveScript) return;
     setRunningStudy(true);
     try {
+      await ensurePsseWasmParser();
       const virtualFiles: Record<string, string> = {
         ...(projectFiles ?? {}),
         "case.raw": effectiveCode,
@@ -1585,6 +1606,9 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
             }}
           >
             {(() => {
+              if (!psseParserReady) {
+                return "Loading PSS/E WebAssembly parser…";
+              }
               try {
                 const c = parseRaw(effectiveCode);
                 if (effectiveDyrText) c.dyr = parseDyr(effectiveDyrText);

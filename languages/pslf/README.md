@@ -3,6 +3,8 @@
 
 # @modelscript/pslf
 
+**Maturity:** Alpha · **Extensions:** `.epc`, `.dyd` · **Docs:** [modelscript.org/languages/pslf](https://modelscript.org/languages/pslf)
+
 GE PSLF (Positive Sequence Load Flow) language and model exchange package for ModelScript.
 
 ## Overview

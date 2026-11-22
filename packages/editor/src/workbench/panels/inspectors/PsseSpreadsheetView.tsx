@@ -2,6 +2,8 @@
 
 import {
   applyPsseDiagramWriteback,
+  ensurePsseWasmParser,
+  isPsseWasmParserReady,
   parseDyr,
   parseRaw,
   resolveDyrModelSchema,
@@ -11,18 +13,10 @@ import {
   type PsseCase,
   type PsseDyrCase,
 } from "@modelscript/psse";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 export type SpreadsheetTab =
-  | "buses"
-  | "generators"
-  | "loads"
-  | "branches"
-  | "transformers"
-  | "shunts"
-  | "areas_dc"
-  | "dyr"
-  | "substations";
+  "buses" | "generators" | "loads" | "branches" | "transformers" | "shunts" | "areas_dc" | "dyr" | "substations";
 
 export interface PsseSpreadsheetViewProps {
   code: string;
@@ -57,23 +51,40 @@ export const PsseSpreadsheetView: React.FC<PsseSpreadsheetViewProps> = ({
   const [showPaste, setShowPaste] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [parserReady, setParserReady] = useState<boolean>(() => isPsseWasmParserReady());
+
+  useEffect(() => {
+    if (parserReady) return;
+    let cancelled = false;
+    void ensurePsseWasmParser()
+      .then(() => {
+        if (!cancelled) setParserReady(true);
+      })
+      .catch(() => {
+        // Handled by fallback message below
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [parserReady]);
 
   const psseCase = useMemo<PsseCase | null>(() => {
+    if (!parserReady) return null;
     try {
       return parseRaw(code);
     } catch {
       return null;
     }
-  }, [code]);
+  }, [code, parserReady]);
 
   const dyrCase = useMemo<PsseDyrCase | null>(() => {
-    if (!dyrText) return null;
+    if (!dyrText || !parserReady) return null;
     try {
       return parseDyr(dyrText);
     } catch {
       return null;
     }
-  }, [dyrText]);
+  }, [dyrText, parserReady]);
 
   const commitRaw = (mutator: (draft: PsseCase) => void, msg?: string) => {
     if (!psseCase || !onCodeChange) return;

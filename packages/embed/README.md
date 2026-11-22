@@ -89,9 +89,10 @@ viewer.on("SIMULATION_RESULTS", (msg) => {
 
 ## Scripts
 
-| Command             | Description                                               |
-| :------------------ | :-------------------------------------------------------- |
-| `npm run build`     | Compile TypeScript declarations and ES modules (`tsc -b`) |
-| `npm run test`      | Run codec, protocol, and embed client unit tests          |
-| `npm run typecheck` | Run TypeScript type checking (`tsc --noEmit`)             |
-| `npm run clean`     | Remove `dist/` build artifacts                            |
+| Command              | Description                                            |
+| :------------------- | :----------------------------------------------------- |
+| `pnpm run build`     | Compile TypeScript declarations and ES modules (`tsc`) |
+| `pnpm run test`      | Run codec, protocol, and embed client unit tests       |
+| `pnpm run lint`      | Run ESLint across `src/` and `tests/`                  |
+| `pnpm run typecheck` | Run TypeScript type checking (`tsc --noEmit`)          |
+| `pnpm run clean`     | Remove `dist/` and `tsconfig.tsbuildinfo`              |

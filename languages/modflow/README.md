@@ -1,7 +1,9 @@
 <div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
 <div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-# `@modelscript/modflow`
+# @modelscript/modflow
+
+**Maturity:** Alpha · **Extensions:** `.dis`, `.dis6`, `.npf`, `.npf6`, `.wel`, … (11 extensions) · **Docs:** [modelscript.org/languages/modflow](https://modelscript.org/languages/modflow)
 
 USGS MODFLOW 6 / 2005 groundwater flow, multi-layer aquifer, well abstraction, and surface-subsurface hydrologic interaction package for ModelScript.
 
@@ -15,14 +17,14 @@ USGS MODFLOW 6 / 2005 groundwater flow, multi-layer aquifer, well abstraction, a
 
 ## File Support
 
-| Extension | Description | Role |
-| :--- | :--- | :--- |
-| `.dis`, `.dis6` | Structured Grid Discretization | Spatial discretization ($N_{lay}, N_{row}, N_{col}, \Delta r, \Delta c$, top/botm) |
-| `.npf`, `.npf6` | Node Property Flow | Hydraulic conductivity ($K_h, K_v$), specific storage ($S_s, S_y$) |
-| `.wel`, `.wel6` | Well Pumping & Recharge Package | Pumping rates ($Q_w$) and extraction locations |
-| `.riv`, `.riv6` | River Package | Stage elevation, bed conductance, and bottom elevation |
-| `.chd`, `.chd6` | Constant Head Boundary Package | Fixed head boundary conditions |
-| `.nam`, `mfsim.nam` | Simulation Name File | Package manifest and component registration |
+| Extension           | Description                     | Role                                                                               |
+| :------------------ | :------------------------------ | :--------------------------------------------------------------------------------- |
+| `.dis`, `.dis6`     | Structured Grid Discretization  | Spatial discretization ($N_{lay}, N_{row}, N_{col}, \Delta r, \Delta c$, top/botm) |
+| `.npf`, `.npf6`     | Node Property Flow              | Hydraulic conductivity ($K_h, K_v$), specific storage ($S_s, S_y$)                 |
+| `.wel`, `.wel6`     | Well Pumping & Recharge Package | Pumping rates ($Q_w$) and extraction locations                                     |
+| `.riv`, `.riv6`     | River Package                   | Stage elevation, bed conductance, and bottom elevation                             |
+| `.chd`, `.chd6`     | Constant Head Boundary Package  | Fixed head boundary conditions                                                     |
+| `.nam`, `mfsim.nam` | Simulation Name File            | Package manifest and component registration                                        |
 
 ## Quick Example
 

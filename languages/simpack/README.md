@@ -3,7 +3,9 @@
 
 # @modelscript/simpack
 
-SIMPACK-compatible multibody systems (MBS), spatial 3D kinematics, Craig-Bampton flexible body dynamics, and non-linear elastomeric suspension package (`.spck`, `.sim`, `.mbs`) for ModelScript. Features `.spck` XML, `.sim` card deck, and `.fbi` Flexible Body Interface parsers (`parseSpckXml`, `parseSimDeck`, `parseFbi`), multi-file workspace indexing (`SimpackWorkspaceIndex`), an AssemblyScript WebAssembly spatial kinematics & cut-joint loop closure kernel (`assembly/kinematics.ts` → `dist/kinematics.wasm`), Grübler-Kutzbach mobility analysis (`analyzeMobility`), non-linear Berg elastomeric bushing dynamics (`evaluateBergBushing`), direct linear-memory `DAEBuilder` lowering (`lowerSimpackToDae`, `lowerFbiToDae`), 6 pre-flight kinematic lint rules (`K7001`–`K7006`), kinematic SVG diagram synthesis, and Modelica projections (`simpackToModelica`).
+**Maturity:** Alpha · **Extensions:** `.spck`, `.sim`, `.mbs` · **Docs:** [modelscript.org/languages/simpack](https://modelscript.org/languages/simpack)
+
+SIMPACK-compatible multibody systems (MBS), spatial 3D kinematics, Craig-Bampton flexible body dynamics, and non-linear elastomeric suspension package (`.spck`, `.sim`, `.mbs`) for ModelScript. Features `.spck` XML, `.sim` card deck, and `.fbi` Flexible Body Interface parsers (`parseSpckXml`, `parseSimDeck`, `parseFbi`), multi-file workspace indexing, an AssemblyScript WebAssembly spatial kinematics & cut-joint loop closure kernel (`assembly/kinematics.ts` → `dist/kinematics.wasm`), Grübler-Kutzbach mobility analysis (`analyzeMobility`), non-linear Berg elastomeric bushing dynamics (`evaluateBergBushing`), direct linear-memory `DAEBuilder` lowering (`lowerSimpackToDae`, `lowerFbiToDae`), 6 pre-flight kinematic lint rules (`K7001`–`K7006`), kinematic SVG diagram synthesis, and Modelica projections (`simpackToModelica`).
 
 ---
 
@@ -47,7 +49,6 @@ SIMPACK-compatible multibody systems (MBS), spatial 3D kinematics, Craig-Bampton
 | `src/diagram/simpack-diagram.ts`         | `simpackToKinematicDiagram` and `renderSimpackSvg` multibody schematic generator                                   |
 | `src/projections/simpack-to-modelica.ts` | `simpackToModelica` translator to `Modelica.Mechanics.MultiBody` models                                            |
 | `src/lints/index.ts`                     | `lintSimpackModel` pre-flight multibody kinematic diagnostic engine                                                |
-| `src/workspace-index.ts`                 | `SimpackWorkspaceIndex` implementing `IWorkspaceIndex` across `.spck`, `.sim`, and `.mbs` files                    |
 | `src/lsp.ts`                             | LSP hover, completion, definition, and symbol providers                                                            |
 
 ---
@@ -71,17 +72,17 @@ SIMPACK-compatible multibody systems (MBS), spatial 3D kinematics, Craig-Bampton
 
 ```bash
 # Run pre-flight multibody topology, marker, and Baumgarte stability checks (K7001-K7006)
-npx msx simpack lint bogie.spck
+msx simpack lint bogie.spck
 
 # Compute Grübler-Kutzbach spatial degrees of freedom and joint constraint counts
-npx msx simpack mobility bogie.spck
+msx simpack mobility bogie.spck
 
 # Simulate SIMPACK multibody dynamics in the linear-memory DAE arena
-npx msx simpack simulate bogie.spck --stop-time 5.0 --step 0.005 --out bogie_traj.csv
+msx simpack simulate bogie.spck --stop-time 5.0 --step 0.005 --out bogie_traj.csv
 
 # Export SIMPACK model to Modelica.Mechanics.MultiBody or FMI 2.0 Co-Simulation FMU
-npx msx simpack to-modelica bogie.spck --out BogieMultiBody.mo
-npx msx simpack to-fmu bogie.spck --out BogieMultiBody.fmu
+msx simpack to-modelica bogie.spck --out BogieMultiBody.mo
+msx simpack to-fmu bogie.spck --out BogieMultiBody.fmu
 ```
 
 ### Programmatic Usage

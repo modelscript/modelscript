@@ -55,6 +55,8 @@ function evalMathBuiltin(funcName: string, arg1: number, arg2: number): number |
       return Math.max(arg1, arg2);
     case "floor":
       return Math.floor(arg1);
+    case "integer":
+      return Math.floor(arg1);
     case "ceil":
       return Math.ceil(arg1);
     case "pow":
@@ -1872,6 +1874,28 @@ export function evaluateConstantArenaExpression(
             if (funcName === "product") return flat.reduce((a, b) => a * b, 1);
           }
         }
+        if (
+          (funcName === "realFFTsamplePoints" || funcName.endsWith(".realFFTsamplePoints")) &&
+          (callArgs.length === 2 || callArgs.length === 3) &&
+          typeof callArgs[0] === "number" &&
+          typeof callArgs[1] === "number"
+        ) {
+          const fMax = callArgs[0];
+          const fRes = callArgs[1];
+          const fFactor = callArgs.length === 3 && typeof callArgs[2] === "number" ? callArgs[2] : 5;
+          if (fRes > 0 && fMax > fRes && fFactor >= 1) {
+            let ns = 2 * Math.ceil((fMax * fFactor) / fRes);
+            if (ns % 2 !== 0) ns += 1;
+            while (ns <= 1048576) {
+              let rem = ns;
+              while (rem % 2 === 0) rem /= 2;
+              while (rem % 3 === 0) rem /= 3;
+              while (rem % 5 === 0) rem /= 5;
+              if (rem <= 1) return ns;
+              ns += 2;
+            }
+          }
+        }
         if (typeof arg1 === "number" && argCount <= 2) {
           let arg2 = 0.0;
           let bothNumeric = true;
@@ -3675,7 +3699,12 @@ export function foldArenaConstants(
                 break;
               }
             }
-            if (allKnown && hasEvalDep && arena.getExprKind(exprId) === ExprKind.Name) {
+            if (
+              allKnown &&
+              hasEvalDep &&
+              arena.getExprKind(exprId) === ExprKind.Name &&
+              (arena.getVarType(i) !== VarType.Real || arena.isVarFinal(i))
+            ) {
               if (!arena.isVarFinal(i)) arena.setVarFinal(i, true);
               forwardEvalNames.add(name);
               evaluatedParamNames.add(name);
@@ -3799,6 +3828,10 @@ export function foldArenaConstants(
     }
 
     // 2. Fold variable binding expressions
+    const loopConstPlusEvalMap =
+      !isOldFrontendFold && evaluatedParamNames.size > 0
+        ? new Map([...constMap, ...[...paramMap.entries()].filter(([k]) => evaluatedParamNames.has(k))])
+        : constMap;
     for (const i of bindingIndices) {
       if (arena.isVarRemoved(i)) continue;
       if (isPendingRecordField(arena.getVarName(i))) continue;
@@ -3818,7 +3851,7 @@ export function foldArenaConstants(
         const evalVal = evaluateConstantArenaExpression(
           arena,
           exprId,
-          isFinalParamNewInst ? finalParamOrConstMap : omcCompatibility ? constMap : paramMap,
+          isFinalParamNewInst ? finalParamOrConstMap : omcCompatibility ? loopConstPlusEvalMap : paramMap,
           nameToIdx,
           0,
           db,
@@ -6872,30 +6905,6 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
     const vRange = dae.getVarSourceRange(i);
 
     if (shape.length > 0) {
-      if (
-        !expandArrayEquations &&
-        (variability === Variability.Parameter || variability === Variability.Constant) &&
-        expr != null &&
-        expr >= 0 &&
-        dae.getExprKind(expr) === ExprKind.Call &&
-        !dae.isVarEvaluate(i)
-      ) {
-        const arrIdx = out.addVariable(name, type, variability, causality, start, flags);
-        out.setVarShape(arrIdx, shape);
-        if (desc) out.setVarDescription(arrIdx, desc);
-        if (customType) out.setVarCustomType(arrIdx, customType);
-        if (enumLits) out.setVarEnumerationLiterals(arrIdx, enumLits);
-        if (cad) out.setVarCadAnnotation(arrIdx, cad);
-        if (vRange) out.setVarSourceRange(arrIdx, vRange.startOffset, vRange.endOffset);
-        out.setVarExpression(arrIdx, cloneExpr(expr, "", null));
-        if (attrs) {
-          for (const [attrName, attrExprId] of attrs.entries()) {
-            if (attrName === "start" && attrExprId === expr) continue;
-            out.setVarAttr(arrIdx, attrName, cloneExpr(attrExprId, "", null));
-          }
-        }
-        continue;
-      }
       if (shape.some((d) => d <= 0)) {
         if (arrayShapes.has(name) && arrayShapes.get(name)!.every((d) => d > 0)) {
           shape = arrayShapes.get(name)!;
@@ -7236,6 +7245,9 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
     const containsUnsplitVectorCall = (exprId: number): boolean => {
       if (exprId < 0) return false;
       const ek = dae.getExprKind(exprId);
+      if (ek === ExprKind.Comprehension) {
+        return true;
+      }
       if (ek === ExprKind.Call) {
         const fn = dae.interner.resolve(dae.getExprData1(exprId)) || "";
         return !isScalarOrBuiltinCall(fn);
@@ -7686,6 +7698,51 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
   };
 
   // --- Step 5: Emit & Unroll Equations (`If`, `When`, `For`/`InitialFor`, and Simple/Connect) ---
+  let staticIfNameToIdx: Map<string, number> | undefined;
+  let staticIfParamMap: Map<string, any> | undefined;
+  const ensureStaticIfMaps = () => {
+    if (staticIfParamMap) return;
+    staticIfNameToIdx = new Map<string, number>();
+    staticIfParamMap = new Map<string, any>();
+    for (let v = 0; v < dae.varCount; v++) {
+      if (dae.isVarRemoved(v)) continue;
+      staticIfNameToIdx.set(dae.getVarName(v), v);
+    }
+    for (let pass = 0; pass < 4; pass++) {
+      let progress = false;
+      for (let v = 0; v < dae.varCount; v++) {
+        if (dae.isVarRemoved(v)) continue;
+        const vName = dae.getVarName(v);
+        if (staticIfParamMap.has(vName)) continue;
+        const vb = dae.getVarVariability(v);
+        if (
+          vb !== Variability.Constant &&
+          !(vb === Variability.Parameter && (dae.isVarFinal(v) || dae.isVarEvaluate(v)))
+        ) {
+          continue;
+        }
+        const explicitExprFn = (dae as { getExplicitVarExpression?: (idx: number) => number }).getExplicitVarExpression;
+        const bindExpr = explicitExprFn ? explicitExprFn.call(dae, v) : dae.getVarExpression(v);
+        if (bindExpr === undefined || bindExpr < 0) continue;
+        const val = evaluateConstantArenaExpression(
+          dae,
+          bindExpr,
+          staticIfParamMap,
+          staticIfNameToIdx,
+          0,
+          undefined,
+          undefined,
+          true,
+        );
+        if (val !== null) {
+          staticIfParamMap.set(vName, val);
+          progress = true;
+        }
+      }
+      if (!progress) break;
+    }
+  };
+
   // Emit equations
   for (let i = 0; i < dae.eqCount; i++) {
     if (dae.isEqRemoved(i)) continue;
@@ -7699,11 +7756,12 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
       if (meta) {
         const evalStaticIfCond = (condExprId: number): boolean | null => {
           if (condExprId < 0) return null;
+          ensureStaticIfMaps();
           const v = evaluateConstantArenaExpression(
             dae,
             condExprId,
-            undefined,
-            undefined,
+            staticIfParamMap,
+            staticIfNameToIdx,
             0,
             undefined,
             undefined,

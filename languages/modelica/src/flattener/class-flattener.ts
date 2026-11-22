@@ -4065,7 +4065,11 @@ export class ModelicaFlattener {
                         ) {
                           const realLitId = dae.addRealLiteral(dae.getExprData1(argExprId));
                           (dae.exports as any).flattener_setExprLeft(dae.ptr, slotId, realLitId);
-                        } else if ((formalShape?.length ?? 0) === 1 && dae.getExprKind(argExprId) === ExprKind.Name) {
+                        } else if (
+                          this.options.isOldFrontend &&
+                          (formalShape?.length ?? 0) === 1 &&
+                          dae.getExprKind(argExprId) === ExprKind.Name
+                        ) {
                           const argName = dae.interner.resolve(dae.getExprData1(argExprId));
                           if (
                             argName &&
@@ -4894,15 +4898,15 @@ export class ModelicaFlattener {
       }
     }
     const preFoldNonArrayRhs = new Set<number>();
-    if (flattenedInWasm && isOldFrontend && dae.functions.size > 0) {
+    if (flattenedInWasm && isOldFrontend) {
       for (let i = 0; i < dae.eqCount; i++) {
         const ek = dae.getEqKind(i);
-        if (ek !== EqKind.Simple && ek !== EqKind.InitialSimple) continue;
+        if (ek !== EqKind.Simple && ek !== EqKind.Array && ek !== EqKind.InitialSimple) continue;
         const l = dae.getEqLhs(i);
         const r = dae.getEqRhs(i);
-        if (dae.getExprKind(l) === ExprKind.Name && dae.getExprKind(r) === ExprKind.Call) {
-          const fnName = dae.interner.resolve(dae.getExprData1(r));
-          if (fnName && dae.functions.has(fnName)) {
+        if (l >= 0 && r >= 0 && dae.getExprKind(l) === ExprKind.Name) {
+          const rk = dae.getExprKind(r);
+          if (rk === ExprKind.Call || rk === ExprKind.Subscript) {
             preFoldNonArrayRhs.add(i);
           }
         }
@@ -5432,6 +5436,10 @@ export class ModelicaFlattener {
           k === ExprKind.EnumLiteral
         ) {
           return true;
+        }
+        if (k === ExprKind.Unary) {
+          const inner = dae.getExprLeft(eId);
+          return inner >= 0 && isLiteralExpr(inner);
         }
         if (k === ExprKind.ArrayCtor) {
           const cnt = dae.getExprData1(eId);

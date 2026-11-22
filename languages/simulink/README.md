@@ -3,6 +3,8 @@
 
 # @modelscript/simulink
 
+**Maturity:** Beta · **Extensions:** `.slx`, `.mdl` · **Docs:** [modelscript.org/languages/simulink](https://modelscript.org/languages/simulink)
+
 Native Simulink-compatible (`.slx`, `.mdl`) compiler, pre-flight control system linter (`M7201`–`M7210`), Tarjan SCC algebraic loop detector, direct linear-memory WebAssembly `DAEBuilder` lowering, and bidirectional `Modelica.Blocks` / FMI projections for ModelScript.
 
 ---
@@ -18,7 +20,7 @@ Native Simulink-compatible (`.slx`, `.mdl`) compiler, pre-flight control system 
   - Algebraic equation lowering for `Gain`, `Sum`, `Product`, `Math`, `Saturation`, `DeadZone`, `Switch`, `Mux`, `Demux`, `BusCreator`, and `BusSelector`
   - Discrete clocked equation lowering for `UnitDelay` and `ZeroOrderHold`.
 - **Polyglot Projections & Bidirectional TGG Sync (`simulinkToModelica`, `fmuToSimulink`, `synchronizeModelicaToSimulink`)**: Translates Simulink models to `Modelica.Blocks`, synthesizes Simulink S-Function wrappers from FMU descriptors, and reconciles Modelica changes back into `.mdl` via Triple Graph Grammar (TGG) rules.
-- **Schematic Diagramming & Workspace Indexing (`buildSimulinkDiagram`, `renderSimulinkSvg`, `SimulinkWorkspaceIndex`)**: AntV X6 / headless SVG block diagram rendering and multi-file `IWorkspaceIndex` support.
+- **Schematic Diagramming & Workspace Indexing (`buildSimulinkDiagram`, `renderSimulinkSvg`)**: AntV X6 / headless SVG block diagram rendering and multi-file workspace symbol indexing support.
 
 ---
 
@@ -47,7 +49,6 @@ Native Simulink-compatible (`.slx`, `.mdl`) compiler, pre-flight control system 
 | `src/tgg/index.ts`                   | TGG module re-exports                                                                           |
 | `src/diagram/simulink-diagram.ts`    | `buildSimulinkDiagram` and `renderSimulinkSvg` block diagram renderer                           |
 | `src/diagram/index.ts`               | Diagram module re-exports                                                                       |
-| `src/workspace-index.ts`             | `SimulinkWorkspaceIndex` implementing `IWorkspaceIndex`                                         |
 | `src/lsp.ts`                         | LSP diagnostics, document symbols, and hover providers                                          |
 
 ---
@@ -75,13 +76,13 @@ Native Simulink-compatible (`.slx`, `.mdl`) compiler, pre-flight control system 
 
 ```bash
 # Lint a Simulink .slx or .mdl model (M7201–M7210)
-npx msx simulink lint flight_autopilot.slx
+msx simulink lint flight_autopilot.slx
 
 # Lower Simulink block diagram to the ModelScript DAE arena
-npx msx simulink flatten flight_autopilot.mdl
+msx simulink flatten flight_autopilot.mdl
 
 # Project Simulink block diagram to Modelica.Blocks
-npx msx simulink to-modelica flight_autopilot.slx
+msx simulink to-modelica flight_autopilot.slx
 ```
 
 ### Programmatic API

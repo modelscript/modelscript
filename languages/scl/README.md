@@ -1,7 +1,9 @@
 <div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
 <div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-# `@modelscript/scl`
+# @modelscript/scl
+
+**Maturity:** Alpha · **Extensions:** `.scd`, `.cid`, `.icd`, `.ssd`, `.iid`, `.scl` · **Docs:** [modelscript.org/languages/scl](https://modelscript.org/languages/scl)
 
 IEC 61850 Substation Configuration Language (SCL) parser, GOOSE communication stream validator, Single-Line Diagram (SLD) topology projector, and zero-GC linear-memory `DAEBuilder` arena lowering engine for ModelScript.
 

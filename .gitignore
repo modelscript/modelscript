@@ -4,6 +4,7 @@ node_modules/
 # Build outputs & caches
 dist/
 build/
+!scripts/build/
 .build/
 as-gen/
 packages/dsl/src/src-gen/

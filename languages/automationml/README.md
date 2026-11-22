@@ -3,7 +3,9 @@
 
 # @modelscript/automationml
 
-IEC 62714 AutomationML (`.aml`) industrial plant engineering, CAEX 2.15 / 3.0 topology, COLLADA 6-DOF kinematics, and PLCopen Virtual Commissioning package for ModelScript. Features an AutomationML CAEX XML & JSON parser (`parseAutomationML`), multi-file workspace indexing (`AmlWorkspaceIndex`), a discrete/continuous Virtual Commissioning co-simulation engine (`runAmlVirtualCommissioning`), direct linear-memory `DAEBuilder` lowering (`lowerAutomationMLToDae`), 7 IEC 62714 semantic lint rules (`M8301`–`M8307`, `lintAutomationML`, `AmlErrorCode`), SSP 1.0 `.ssd`, SysML v2, and Modelica 3.x projections (`amlToSsp`, `amlToSysML2`, `amlToModelica`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.aml`, `.caex` · **Docs:** [modelscript.org/languages/automationml](https://modelscript.org/languages/automationml)
+
+IEC 62714 AutomationML (`.aml`) industrial plant engineering, CAEX 2.15 / 3.0 topology, COLLADA 6-DOF kinematics, and PLCopen Virtual Commissioning package for ModelScript. Features an AutomationML CAEX XML & JSON parser (`parseAutomationML`), multi-file workspace indexing, a discrete/continuous Virtual Commissioning co-simulation engine (`runAmlVirtualCommissioning`), direct linear-memory `DAEBuilder` lowering (`lowerAutomationMLToDae`), 7 IEC 62714 semantic lint rules (`M8301`–`M8307`, `lintAutomationML`, `AmlErrorCode`), SSP 1.0 `.ssd`, SysML v2, and Modelica 3.x projections (`amlToSsp`, `amlToSysML2`, `amlToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -17,7 +19,7 @@ IEC 62714 AutomationML (`.aml`) industrial plant engineering, CAEX 2.15 / 3.0 to
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerAutomationMLToDae`)**: Lowers `InternalElement` physical plant dynamics and `InternalLink` connection equations directly into ModelScript's WebAssembly `DAEBuilder` arena.
 - **7 IEC 62714 Semantic Lint Rules (`M8301`–`M8307`, `lintAutomationML`)**: Static verification of base class paths, inheritance cycles, `InternalLink` endpoint resolution, port direction/category compatibility, `RoleRequirements` conformance, external `refURI` links, and 6-DOF `Frame` bounds.
 - **SSP 1.0, SysML v2 & Modelica 3.x Projections (`amlToSsp`, `amlToSysML2`, `amlToModelica`)**: Projects AutomationML hierarchies into System Structure and Parameterization (`.ssd`) co-simulation topologies, SysML v2 `part def` architectures, and Modelica 3.x models.
-- **Multi-File Workspace Indexing & LSP (`AmlWorkspaceIndex`, `validateAutomationML`, `getAmlHover`, `getAmlCompletions`, `getAmlDefinition`)**: Full `IWorkspaceIndex` implementation across `.aml` files with hover cards, completions, and go-to-definition.
+- **Multi-File Workspace Indexing & LSP (`validateAutomationML`, `getAmlHover`, `getAmlCompletions`, `getAmlDefinition`)**: Workspace symbol indexing across `.aml` files with hover cards, completions, and go-to-definition.
 
 ---
 
@@ -31,10 +33,9 @@ IEC 62714 AutomationML (`.aml`) industrial plant engineering, CAEX 2.15 / 3.0 to
 | `src/parser/index.ts`      | `parseAutomationML` CAEX 2.15 / 3.0 XML and JSON parser                                              |
 | `src/lints/rules.ts`       | `AmlErrorCode` and `lintAutomationML` IEC 62714 diagnostic engine (`M8301`–`M8307`)                  |
 | `src/lints/index.ts`       | Linter barrel exports                                                                                |
-| `src/vc/index.ts`          | `runAmlVirtualCommissioning` closed-loop PLC + mechatronic plant virtual commissioning simulator     |
+| `src/cosim/index.ts`       | `runAmlVirtualCommissioning` closed-loop PLC + mechatronic plant virtual commissioning simulator     |
 | `src/dae/index.ts`         | `lowerAutomationMLToDae` direct lowering into `DAEBuilder` linear memory                             |
 | `src/projections/index.ts` | `amlToSsp`, `amlToSysML2`, and `amlToModelica` cross-language translators                            |
-| `src/workspace-index.ts`   | `AmlWorkspaceIndex` implementing `IWorkspaceIndex` across `.aml` files                               |
 | `src/lsp.ts`               | LSP validation, document symbols, hover, completion, and definition providers                        |
 
 ---
@@ -59,16 +60,16 @@ IEC 62714 AutomationML (`.aml`) industrial plant engineering, CAEX 2.15 / 3.0 to
 
 ```bash
 # Lint an AutomationML (.aml) plant file (M8301-M8307)
-npx msx aml lint assembly_cell.aml
+msx aml lint assembly_cell.aml
 
 # Run closed-loop Virtual Commissioning simulation
-npx msx aml vc assembly_cell.aml --duration 10 --dt 0.01
+msx aml vc assembly_cell.aml --duration 10 --dt 0.01
 
 # Lower to DAE or project to SSP 1.0 (.ssd), SysML v2 (.sysml), or Modelica (.mo)
-npx msx aml to-dae assembly_cell.aml
-npx msx aml to-ssp assembly_cell.aml
-npx msx aml to-sysml2 assembly_cell.aml
-npx msx aml to-modelica assembly_cell.aml
+msx aml to-dae assembly_cell.aml
+msx aml to-ssp assembly_cell.aml
+msx aml to-sysml2 assembly_cell.aml
+msx aml to-modelica assembly_cell.aml
 ```
 
 ### Programmatic API

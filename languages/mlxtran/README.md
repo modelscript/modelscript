@@ -3,6 +3,8 @@
 
 # @modelscript/mlxtran
 
+**Maturity:** Alpha · **Extensions:** `.mlxtran` · **Docs:** [modelscript.org/languages/mlxtran](https://modelscript.org/languages/mlxtran)
+
 Monolix MLXTRAN (`.mlxtran`) pharmacometrics and clinical non-linear mixed-effects (NLME) modeling language package for ModelScript. Features a zero-regex parser and serializer (`parseMlxtran`, `serializeMlxtran`), multi-compartment pharmacokinetic macro and differential equation lowering directly to `DAEBuilder` in linear memory (`lowerMlxtranToDae`), pre-flight diagnostic lints (`M9421`–`M9430`), deterministic PK simulation with non-compartmental metrics (`solveMlxtranPk`), Modelica 3.x projections (`mlxtranToModelica`), and Language Server Protocol (LSP) services.
 
 ---

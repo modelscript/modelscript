@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { EXTENSION_TO_LANGUAGE_ID } from "@modelscript/exchange";
-import type { QueryEngine } from "@modelscript/runtime";
+import { encodePackageIndex, extractPackageSummaries, type QueryEngine } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
 import { ZipFile } from "yazl";
@@ -105,6 +105,15 @@ export async function exportLspBundle(
       childrenOf: childrenOfArr,
     });
     zipfile.addBuffer(Buffer.from(indexJson, "utf-8"), "index.json");
+
+    // 1b. Also embed the relocatable binary columnar index (index.msidx) with lazy semantic summaries
+    try {
+      const summaries = extractPackageSummaries(index, libraryPath);
+      const msidxBytes = encodePackageIndex(index, { libraryPath, summaries });
+      zipfile.addBuffer(Buffer.from(msidxBytes.buffer, msidxBytes.byteOffset, msidxBytes.byteLength), "index.msidx");
+    } catch {
+      // Fall back to index.json only if binary encoding fails
+    }
 
     // 2. Serialize icons
     const paddedSvgs: Record<string, string> = {};

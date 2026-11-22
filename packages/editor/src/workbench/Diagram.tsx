@@ -417,7 +417,12 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    void hydrateDiagramWasm("/lsp/server/dist/release.wasm");
+    const configuredWasmUrl =
+      (typeof window !== "undefined" &&
+        ((window as unknown as { __MODELSCRIPT_WASM_URL__?: string }).__MODELSCRIPT_WASM_URL__ ||
+          container.dataset?.wasmUrl)) ||
+      "/lsp/server/dist/release.wasm";
+    void hydrateDiagramWasm(configuredWasmUrl);
 
     const target = container.parentElement ?? container;
 
@@ -475,12 +480,41 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     }
   }, [props.fitInsets?.top, props.fitInsets?.right, props.fitInsets?.bottom, props.fitInsets?.left]);
 
+  const prevThemeRef = useRef(props.theme);
+  const prevDiagramDataRef = useRef(props.diagramData);
+
   useEffect(() => {
+    const isThemeOnlyChange = prevThemeRef.current !== props.theme && prevDiagramDataRef.current === props.diagramData;
+    prevThemeRef.current = props.theme;
+    prevDiagramDataRef.current = props.diagramData;
+
     if (props.diagramData && containerRef.current) {
       try {
+        const existingGraph = getGraph(containerRef.current) as {
+          zoom?: () => number;
+          zoomTo?: (s: number) => void;
+          translate?: (tx?: number, ty?: number) => { tx: number; ty: number };
+        } | null;
+        const savedScale = isThemeOnlyChange && existingGraph?.zoom ? existingGraph.zoom() : null;
+        const savedTranslate = isThemeOnlyChange && existingGraph?.translate ? existingGraph.translate() : null;
+
         syncDiagramOptions();
         renderDiagram(props.diagramData, props.theme === "vs-dark");
         attachGraphListeners();
+
+        if (isThemeOnlyChange && savedScale !== null && savedTranslate) {
+          const nextGraph = getGraph(containerRef.current) as {
+            zoomTo?: (s: number) => void;
+            zoom?: (s: number, opts?: { absolute?: boolean }) => number;
+            translate?: (tx: number, ty: number) => void;
+          } | null;
+          if (nextGraph) {
+            if (typeof nextGraph.zoomTo === "function") nextGraph.zoomTo(savedScale);
+            else nextGraph.zoom?.(savedScale, { absolute: true });
+            nextGraph.translate?.(savedTranslate.tx, savedTranslate.ty);
+          }
+        }
+
         const rect = (containerRef.current.parentElement ?? containerRef.current).getBoundingClientRect();
         if (!props.diagramData.isLoading && rect.width > 0 && rect.height > 0) {
           hasFittedViewportRef.current = true;
@@ -583,7 +617,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
               const cx = width / 2;
               const cy = height / 2;
               const radius = Math.max(width, height) * 0.9;
-              const gradId = "modelscript-hover-radial-glow";
+              const gradId = `modelscript-hover-radial-glow-${targetName.replace(/[^A-Za-z0-9_-]/g, "_")}`;
 
               const glowGroup = document.createElementNS(svgNs, "g");
               glowGroup.setAttribute("class", "modelscript-hover-glow");

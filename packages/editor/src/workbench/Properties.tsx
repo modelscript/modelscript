@@ -6,8 +6,11 @@ import {
   ConflictManager,
   evaluatePropertyPredicate,
   getVisiblePropertyTabs,
+  mergeMultiSelectPropertyData,
+  MIXED_PROPERTY_VALUE,
   resolveActivePropertyTabId,
   validatePropertyValue,
+  type ComponentPropertyData,
   type PropertyChoice,
   type PropertyConflict,
   type PropertyFieldConfig,
@@ -66,6 +69,8 @@ function formatDescription(desc?: string) {
 
 interface PropertiesWidgetProps {
   properties: ComponentProperties | null;
+  multiSelectedProperties?: ComponentProperties[] | undefined;
+  onBulkParameterChange?: ((componentNames: string[], paramName: string, value: string) => void) | undefined;
   isLoading?: boolean | undefined;
   context?: any;
   width?: number | undefined;
@@ -1315,6 +1320,94 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
       >
         <Spinner size="medium" />
         <span style={{ marginTop: 12, fontSize: 12, fontWeight: 500 }}>Loading properties…</span>
+      </div>
+    );
+  }
+
+  if (props.multiSelectedProperties && props.multiSelectedProperties.length >= 2) {
+    const bulkSummary = mergeMultiSelectPropertyData(
+      props.multiSelectedProperties as unknown as ComponentPropertyData[],
+    );
+    return (
+      <div
+        className={`height-full ${props.floating ? "" : "border-left"} d-flex flex-column`}
+        style={{
+          width: props.width || 300,
+          backgroundColor: "var(--color-canvas-default)",
+          color: "var(--color-fg-default)",
+          ...floatingCardStyle,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className="border-bottom d-flex flex-items-center flex-justify-between"
+          style={{ padding: "10px 14px", borderColor: "var(--ms-border, var(--color-border-muted))" }}
+        >
+          <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+            {props.multiSelectedProperties.length} Components Selected
+          </span>
+          {props.onClose && (
+            <button
+              type="button"
+              onClick={props.onClose}
+              aria-label="Close bulk properties"
+              style={{ border: "none", background: "transparent", color: "inherit", cursor: "pointer", padding: 4 }}
+            >
+              <XIcon size={14} />
+            </button>
+          )}
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "8px 14px" }}>
+          {!bulkSummary || bulkSummary.sharedParameters.length === 0 ? (
+            <div style={{ fontSize: 12, color: "var(--color-fg-muted)", paddingTop: 12 }}>
+              No shared parameters across selected components.
+            </div>
+          ) : (
+            bulkSummary.sharedParameters.map((param) => (
+              <div
+                key={param.name}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  padding: "7px 0",
+                  borderBottom: "1px solid var(--ms-border, var(--color-border-muted))",
+                }}
+              >
+                <span style={{ fontSize: 12, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {param.unit ? `${param.name} (${formatUnit(param.unit)})` : param.name}
+                </span>
+                <input
+                  type="text"
+                  defaultValue={param.isMixed ? "" : String(param.value ?? "")}
+                  placeholder={param.isMixed ? "Mixed" : ""}
+                  onBlur={(e) => {
+                    const nextVal = e.currentTarget.value.trim();
+                    if (!nextVal || nextVal === MIXED_PROPERTY_VALUE) return;
+                    props.onBulkParameterChange?.(bulkSummary.componentNames, param.name, nextVal);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const nextVal = e.currentTarget.value.trim();
+                      if (!nextVal || nextVal === MIXED_PROPERTY_VALUE) return;
+                      props.onBulkParameterChange?.(bulkSummary.componentNames, param.name, nextVal);
+                    }
+                  }}
+                  style={{
+                    width: 112,
+                    padding: "4px 8px",
+                    fontSize: 12,
+                    borderRadius: 6,
+                    border: "1px solid var(--ms-border, var(--color-border-default))",
+                    background: "var(--color-canvas-subtle)",
+                    color: "var(--color-fg-default)",
+                  }}
+                />
+              </div>
+            ))
+          )}
+        </div>
       </div>
     );
   }

@@ -786,6 +786,40 @@ export class Context {
     library = new ModelicaLibrary(this, path);
     this.#libraries.push(library);
 
+    // Fast path: hydrate directly from pre-compiled .modelscript/index.msidx on disk if present & valid
+    if (stats?.isDirectory()) {
+      const msidxPath = this.#fs.join(path, ".modelscript", "index.msidx");
+      const msidxStat = this.#fs.stat(msidxPath);
+      if (msidxStat?.isFile()) {
+        try {
+          const fsAny = this.#fs as unknown as { readBytes?: (p: string) => Uint8Array };
+          let msidxBytes: Uint8Array | null = null;
+          if (typeof fsAny.readBytes === "function") {
+            msidxBytes = fsAny.readBytes(msidxPath);
+          } else if (typeof process !== "undefined" && process.versions?.node) {
+            const nodeFs = await import("node:fs");
+            msidxBytes = new Uint8Array(nodeFs.readFileSync(msidxPath));
+          }
+          if (msidxBytes && msidxBytes.byteLength >= 64) {
+            const { mountPackageIndex } = await import("@modelscript/runtime");
+            const mounted = mountPackageIndex(msidxBytes, {
+              verifyHash: true,
+              resolveResourceUri: (rel) => this.#fs.join(path, rel),
+            });
+            if (mounted.symbolCount > 0) {
+              this.#workspaceIndex.hydrate(`library-msidx:${path}`, mounted.index);
+              if (!options?.skipIndex) {
+                this.finalizeLibraries();
+              }
+              return library;
+            }
+          }
+        } catch {
+          // Corrupt or ABI-mismatched .msidx — fall back to normal source crawl
+        }
+      }
+    }
+
     // Crawl and register Modelica files
     const crawl = (dir: string, currentFQN: string) => {
       const s = this.#fs.stat(dir);
@@ -1105,20 +1139,34 @@ export class Context {
     if (classId !== undefined) {
       symbolIds = [classId];
     } else {
+      const isClassLikeSymbolId = (id: any): boolean => {
+        const entry = this.#queryEngine.index.symbols.get(id);
+        return (
+          entry !== undefined &&
+          entry.kind !== "Extends" &&
+          entry.kind !== "Import" &&
+          entry.kind !== "Component" &&
+          entry.kind !== "EnumerationLiteral"
+        );
+      };
+
       // 1. Try simple name lookup (which works if name is not fully qualified)
       const candidates = this.#queryEngine.index.byName.get(name);
       if (candidates && candidates.length > 0) {
-        if (uri) {
-          const matching = candidates.filter((id: any) => {
-            const entry = this.#queryEngine.index.symbols.get(id);
-            return entry && entry.resourceId === uri;
-          });
-          if (matching.length > 0) {
-            symbolIds = matching;
+        const classCandidates = candidates.filter(isClassLikeSymbolId);
+        if (classCandidates.length > 0) {
+          if (uri) {
+            const matching = classCandidates.filter((id: any) => {
+              const entry = this.#queryEngine.index.symbols.get(id);
+              return entry && entry.resourceId === uri;
+            });
+            if (matching.length > 0) {
+              symbolIds = matching;
+            }
           }
-        }
-        if (!symbolIds) {
-          symbolIds = candidates;
+          if (!symbolIds) {
+            symbolIds = classCandidates;
+          }
         }
       }
 
@@ -1127,6 +1175,12 @@ export class Context {
         const parts = name.split(".");
         if (parts.length > 1) {
           let currentIds = this.#queryEngine.index.byName.get(parts[0] as string);
+          if (currentIds && currentIds.length > 0) {
+            const classCurrent = currentIds.filter(isClassLikeSymbolId);
+            if (classCurrent.length > 0) {
+              currentIds = classCurrent;
+            }
+          }
           if (uri && currentIds) {
             const matching = currentIds.filter((id: any) => {
               const entry = this.#queryEngine.index.symbols.get(id);
@@ -1151,7 +1205,8 @@ export class Context {
                 }
               }
             }
-            currentIds = nextIds;
+            const classNext = nextIds.filter(isClassLikeSymbolId);
+            currentIds = classNext.length > 0 ? classNext : nextIds;
           }
           if (currentIds && currentIds.length > 0) {
             symbolIds = currentIds;
@@ -1357,8 +1412,7 @@ export class Context {
 
     const oldTree = this.#trees.get(uri);
     let editBounds:
-      | { editStart: number; editOldEnd: number; editNewEnd: number; uri?: string | undefined }
-      | undefined = undefined;
+      { editStart: number; editOldEnd: number; editNewEnd: number; uri?: string | undefined } | undefined = undefined;
     if (editRanges && editRanges.length > 0 && prevText !== undefined) {
       const editStart = editRanges[0]!.startOffset;
       const lastRange = editRanges[editRanges.length - 1]!;

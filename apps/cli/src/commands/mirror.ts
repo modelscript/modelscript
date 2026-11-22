@@ -158,6 +158,18 @@ export async function importMirrorBundle(
       }
     }
 
+    let hasMsidx = false;
+    const msidxRef = (pkgInfo as { msidx?: string | undefined }).msidx;
+    if (msidxRef) {
+      const msidxBuf = getSalsaBuffer(msidxRef);
+      if (msidxBuf && msidxBuf.length > 0) {
+        const metaDir = path.join(storeDir, ".modelscript");
+        mkdirSync(metaDir, { recursive: true });
+        writeFileSync(path.join(metaDir, "index.msidx"), msidxBuf);
+        hasMsidx = true;
+      }
+    }
+
     // Optional target registry population
     if (options?.targetRegistry) {
       const regDir = path.resolve(options.targetRegistry);
@@ -169,6 +181,10 @@ export async function importMirrorBundle(
         const salsaBuf = getSalsaBuffer(pkgInfo.salsaDb);
         if (salsaBuf) writeFileSync(path.join(regPkgDir, "salsa-index.db"), salsaBuf);
       }
+      if (hasMsidx && msidxRef) {
+        const msidxBuf = getSalsaBuffer(msidxRef);
+        if (msidxBuf) writeFileSync(path.join(regPkgDir, "index.msidx"), msidxBuf);
+      }
     }
 
     resultPackages[pkgName] = {
@@ -179,7 +195,7 @@ export async function importMirrorBundle(
 
     if (!options?.json) {
       console.log(
-        `✓ Imported ${pkgName}@${pkgInfo.version} (${computedIntegrity.slice(0, 19)}...${hasSalsa ? ", +Salsa index" : ""})`,
+        `✓ Imported ${pkgName}@${pkgInfo.version} (${computedIntegrity.slice(0, 19)}...${hasMsidx ? ", +index.msidx" : ""}${hasSalsa ? ", +Salsa index" : ""})`,
       );
     }
   }
@@ -392,7 +408,21 @@ export const Mirror: CommandModule<{}, MirrorArgs> = {
       writeFileSync(archivePath, buffer);
 
       let salsaDbRelPath: string | undefined;
+      let msidxRelPath: string | undefined;
       if (includeSalsa) {
+        try {
+          const msidxUrl = `${API_URL}/api/v1/libraries/${packagePath}/${encodeURIComponent(resolvedVersion)}/index.msidx`;
+          const msidxRes = await fetch(msidxUrl, { headers });
+          if (msidxRes.ok) {
+            const msidxBuf = Buffer.from(await msidxRes.arrayBuffer());
+            const msidxFilename = `${sanitizedName}-${resolvedVersion}.index.msidx`;
+            const msidxPath = path.join(archivesDir, msidxFilename);
+            writeFileSync(msidxPath, msidxBuf);
+            msidxRelPath = path.relative(outDir, msidxPath);
+          }
+        } catch {
+          // non-critical
+        }
         try {
           const salsaUrl = `${API_URL}/api/v1/libraries/${packagePath}/${encodeURIComponent(resolvedVersion)}/salsa-index.db`;
           const salsaRes = await fetch(salsaUrl, { headers });
@@ -413,6 +443,7 @@ export const Mirror: CommandModule<{}, MirrorArgs> = {
         integrity,
         archive: path.relative(outDir, archivePath),
         salsaDb: salsaDbRelPath,
+        ...(msidxRelPath ? { msidx: msidxRelPath } : {}),
         dependencies: solution.packages[pkgName]?.dependencies,
       };
     }

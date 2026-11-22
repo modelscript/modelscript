@@ -549,6 +549,13 @@ export class LibraryStorage {
   }
 
   /**
+   * Get the path to the pre-computed relocatable binary package index (index.msidx).
+   */
+  getBinaryIndexPath(name: string, version: string): string {
+    return path.join(this.#dataDir, this.#safe(name), this.#safe(version), "index.msidx");
+  }
+
+  /**
    * Get the path to the cached .aasx container for this library version.
    */
   getCachedAasxPath(name: string, version: string): string {

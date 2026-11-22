@@ -3,7 +3,9 @@
 
 # @modelscript/sedml
 
-Simulation Experiment Description Markup Language (SED-ML Level 1 Version 3 / Version 4, COMBINE standard) simulation protocol, algorithm parameterization, parameter sweep, and post-processing package (`.sedml`, `.xml`) for ModelScript. Features a true zero-regex character-by-character XML & Content MathML parser (`parseSedml`, `serializeSedml`), multi-file workspace indexing (`SedmlWorkspaceIndex`), a deterministic simulation experiment runner (`executeSedmlExperiment`), direct linear-memory `DAEBuilder` experiment lowering (`lowerSedmlToDae`), 10 pre-flight simulation protocol & cross-reference lint rules (`M9151`–`M9160`), Modelica 3.x simulation experiment projections (`sedmlToModelica`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.sedml`, `.xml` · **Docs:** [modelscript.org/languages/sedml](https://modelscript.org/languages/sedml)
+
+Simulation Experiment Description Markup Language (SED-ML Level 1 Version 3 / Version 4, COMBINE standard) simulation protocol, algorithm parameterization, parameter sweep, and post-processing package (`.sedml`, `.xml`) for ModelScript. Features a true zero-regex character-by-character XML & Content MathML parser (`parseSedml`, `serializeSedml`), multi-file workspace indexing, a deterministic simulation experiment runner (`executeSedmlExperiment`), direct linear-memory `DAEBuilder` experiment lowering (`lowerSedmlToDae`), 10 pre-flight simulation protocol & cross-reference lint rules (`M9151`–`M9160`), Modelica 3.x simulation experiment projections (`sedmlToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -18,7 +20,7 @@ Simulation Experiment Description Markup Language (SED-ML Level 1 Version 3 / Ve
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerSedmlToDae`)**: Compiles simulation time-course parameters, model state/parameter overrides, state ODE balances, and post-processing `<dataGenerator>` algebraic equations directly into ModelScript's zero-GC WebAssembly `DAEBuilder` arena (`N_vars == N_eqs`).
 - **10 Pre-Flight SED-ML Lint Rules (`M9151`–`M9160`, `lintSedml`)**: Static verification of time-course bounds, KiSAO ontology identifiers (`KISAO:xxxxxxx`), model/simulation/task/dataGenerator cross-references, circular model source chains, undefined `<dataGenerator>` math identifiers, empty experiments, and duplicate SId declarations.
 - **Modelica 3.x Simulation Experiment Projection (`sedmlToModelica`)**: Synthesizes standalone Modelica 3.x simulation experiment models with `annotation(experiment(StartTime=..., StopTime=..., NumberOfIntervals=...))`.
-- **Multi-File Workspace Indexing & LSP (`SedmlWorkspaceIndex`, `validateSedml`, `getSedmlDocumentSymbols`, `getSedmlHover`)**: Implements `IWorkspaceIndex` across `.sedml` and `.xml` files with document symbol hierarchy, hover cards, and AST writeback.
+- **Multi-File Workspace Indexing & LSP (`validateSedml`, `getSedmlDocumentSymbols`, `getSedmlHover`)**: Provides workspace symbol indexing across `.sedml` and `.xml` files with document symbol hierarchy, hover cards, and AST writeback.
 
 ---
 
@@ -40,7 +42,6 @@ Simulation Experiment Description Markup Language (SED-ML Level 1 Version 3 / Ve
 | `src/dae/index.ts`                     | DAE lowering barrel exports                                                                                              |
 | `src/projections/sedml-to-modelica.ts` | `sedmlToModelica` translator to Modelica 3.x simulation experiment models with `annotation(experiment(...))`             |
 | `src/projections/index.ts`             | Projections barrel exports                                                                                               |
-| `src/workspace-index.ts`               | `SedmlWorkspaceIndex` implementing `IWorkspaceIndex` across `.sedml` and `.xml` files                                    |
 | `src/lsp.ts`                           | LSP diagnostics, document symbols, hover, and action execution providers                                                 |
 
 ---

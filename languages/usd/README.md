@@ -3,7 +3,9 @@
 
 # @modelscript/usd
 
-OpenUSD (`.usda`, `.usdc`, `.usdz`) 3D scene description, `UsdPhysics` rigid-body dynamics, and spatial simulation language package for ModelScript. Features a zero-regex OpenUSD ASCII (`.usda`) parser (`parseUsd`), multi-file workspace indexing (`UsdWorkspaceIndex`), direct linear-memory `DAEBuilder` lowering (`lowerUsdToDae`), 6 `UsdPhysics` and stage integrity lint rules (`USD1002`–`USD1007`, `lintUsdStage`), CSG and multi-body assembly exporters (`compileToUsd`, `compileToUsdz`, `compileAssemblyToUsd`, `compileAssemblyToUsdz`, `createUsdzArchive`), and Language Server Protocol (LSP) services (`UsdLspService`).
+**Maturity:** Alpha · **Extensions:** `.usd`, `.usda`, `.usdc`, `.usdz` · **Docs:** [modelscript.org/languages/usd](https://modelscript.org/languages/usd)
+
+OpenUSD (`.usda`, `.usdc`, `.usdz`) 3D scene description, `UsdPhysics` rigid-body dynamics, and spatial simulation language package for ModelScript. Features a zero-regex OpenUSD ASCII (`.usda`) parser (`parseUsd`), multi-file workspace indexing, direct linear-memory `DAEBuilder` lowering (`lowerUsdToDae`), 6 `UsdPhysics` and stage integrity lint rules (`USD1002`–`USD1007`, `lintUsdStage`), CSG and multi-body assembly exporters (`compileToUsd`, `compileToUsdz`, `compileAssemblyToUsd`, `compileAssemblyToUsdz`, `createUsdzArchive`), and Language Server Protocol (LSP) services (`UsdLspService`).
 
 ---
 
@@ -13,7 +15,7 @@ OpenUSD (`.usda`, `.usdc`, `.usdz`) 3D scene description, `UsdPhysics` rigid-bod
 - **`UsdPhysics` Linear-Memory `DAEBuilder` Lowering (`lowerUsdToDae`)**: Lowers `PhysicsScene` gravitational vectors, `PhysicsRigidBodyAPI` 6-DOF translational/rotational states, `PhysicsMassAPI` mass and principal inertia tensors, and `PhysicsRevoluteJoint` / `PhysicsPrismaticJoint` constraint and `PhysicsDriveAPI` PD actuator dynamics directly into ModelScript's WebAssembly `DAEBuilder` arena.
 - **Stage & `UsdPhysics` Semantic Linter (`USD1002`–`USD1007`, `lintUsdStage`)**: Static verification of relationship target paths (`</World/...>`), stage `upAxis` compliance (`'Y'` or `'Z'`), strictly positive rigid-body mass, non-negative principal inertia components, joint limit ordering (`physics:lowerLimit <= physics:upperLimit`), and valid joint axis tokens (`'X'`, `'Y'`, `'Z'`).
 - **CSG, Mesh & `.usdz` Archive Compilation (`compileToUsd`, `compileToUsdz`, `compileAssemblyToUsd`, `compileAssemblyToUsdz`, `createUsdzArchive`)**: Compiles `@modelscript/cad` CSG solid primitives and kinematic assemblies into OpenUSD `.usda` stages and uncompressed 64-byte-aligned `.usdz` archives ready for NVIDIA Omniverse, Isaac Sim, and Apple VisionOS.
-- **Multi-File Workspace Indexing & LSP (`UsdWorkspaceIndex`, `UsdLspService`)**: Implements `IWorkspaceIndex` across `.usda`, `.usd`, and `.usdz` files with hierarchical SdfPath symbol lookup (`</World/Robot/Base>`), hover cards, completions, and go-to-definition.
+- **Multi-File Workspace Indexing & LSP (`UsdLspService`)**: Provides workspace symbol indexing across `.usda`, `.usd`, and `.usdz` files with hierarchical SdfPath symbol lookup (`</World/Robot/Base>`), hover cards, completions, and go-to-definition.
 
 ---
 
@@ -25,9 +27,8 @@ OpenUSD (`.usda`, `.usdc`, `.usdz`) 3D scene description, `UsdPhysics` rigid-bod
 | `src/language.ts`          | `usdLanguage` definition and LSP/compiler bindings                                                                |
 | `src/parser/usd-parser.ts` | `parseUsd` recursive-descent `.usda` parser for stage metadata, prim hierarchies, schemas, attributes, and `rel`s |
 | `src/lints/usd-lints.ts`   | `lintUsdStage` semantic and `UsdPhysics` diagnostic engine (`USD1002`–`USD1007`)                                  |
-| `src/dae/usd-dae.ts`       | `lowerUsdToDae` direct lowering of `UsdPhysics` rigid bodies, joints, and drives into `DAEBuilder` linear memory  |
-| `src/usd-exporter.ts`      | `compileToUsd`, `compileToUsdz`, `compileAssemblyToUsd`, `compileAssemblyToUsdz`, and `createUsdzArchive`         |
-| `src/workspace-index.ts`   | `UsdWorkspaceIndex` implementing `IWorkspaceIndex` across `.usda` and `.usd` workspace stages                     |
+| `src/dae/usd-to-dae.ts`    | `lowerUsdToDae` direct lowering of `UsdPhysics` rigid bodies, joints, and drives into `DAEBuilder` linear memory  |
+| `src/cad.ts`               | `extractUsdCadComponents` USD geometry and CAD component extraction                                               |
 | `src/lsp.ts`               | `UsdLspService` providing diagnostics, SdfPath document symbols, hover, completion, and definition providers      |
 
 ---
@@ -51,12 +52,12 @@ OpenUSD (`.usda`, `.usdc`, `.usdz`) 3D scene description, `UsdPhysics` rigid-bod
 
 ```bash
 # Lint an OpenUSD stage or inspect hierarchy
-npx msx lint robot_arm.usda
-npx msx inspect robot_arm.usda
+msx lint robot_arm.usda
+msx inspect robot_arm.usda
 
 # Lower UsdPhysics rigid-body & joint dynamics to DAE and simulate
-npx msx flatten robot_arm.usda
-npx msx simulate robot_arm.usda --stop-time 5.0
+msx flatten robot_arm.usda
+msx simulate robot_arm.usda --stop-time 5.0
 ```
 
 ### Programmatic API

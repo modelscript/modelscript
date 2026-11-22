@@ -3,8 +3,14 @@
 import { renderUniversalCodeThumbnailSvg } from "@modelscript/diagram/code-thumbnail-builder";
 import { renderDicomRtBevSvg, renderDicomRtDvhSvg } from "@modelscript/diagram/dicom-rt-diagram-builder";
 import { renderIgtlTransformTreeSvg } from "@modelscript/diagram/igtl-diagram-builder";
+import {
+  buildMolecularDiagramFromSmiles,
+  renderMolecularStructureSvg,
+} from "@modelscript/diagram/molecular-diagram-builder";
+import { buildNmodlDiagram, renderNmodlDiagramSvg } from "@modelscript/diagram/nmodl-diagram-builder";
 import { renderOpenSimTopologySvg } from "@modelscript/diagram/opensim-diagram-builder";
 import { renderOscalBoundarySvg } from "@modelscript/diagram/oscal-diagram-builder";
+import { buildPkDiagramFromGeneric, renderPkDiagramSvg } from "@modelscript/diagram/pk-diagram-builder";
 import { parsePlcopenTextToProject, renderPlcopenSvg } from "@modelscript/diagram/plcopen-diagram-builder";
 import { renderQifMbdHeatmapSvg } from "@modelscript/diagram/qif-diagram-builder";
 import { parseSimulinkTextToSystem, renderSimulinkSvg } from "@modelscript/diagram/simulink-diagram-builder";
@@ -56,6 +62,42 @@ const SANITIZE_SVG_CACHE_LIMIT = 256;
 const sanitizedBaseSvgCache = new Map<string, string>();
 const sanitizedThemedSvgCache = new Map<string, string>();
 
+/** Fast deterministic 64-bit string fingerprint (two 32-bit FNV-1a lanes + length) to avoid storing multi-MB strings as Map keys. */
+function hashCacheKey(str: string): string {
+  let h1 = 0x811c9dc5;
+  let h2 = 0x811c9dc5 ^ 0x9e3779b9;
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i);
+    h1 ^= c;
+    h1 = Math.imul(h1, 0x01000193);
+    h2 ^= (c + i) & 0xffff;
+    h2 = Math.imul(h2, 0x01000193);
+  }
+  return `${str.length}:${(h1 >>> 0).toString(36)}_${(h2 >>> 0).toString(36)}`;
+}
+
+const SHARED_SVG_DEF_IDS = [
+  "shadow",
+  "grad-cylinder-horizontal",
+  "grad-cylinder-vertical",
+  "grad-sphere",
+  "marker-classic",
+  "marker-hollow-triangle",
+  "marker-diamond",
+  "marker-hollow-diamond",
+];
+
+function scopeSvgDefIds(svg: string, scopeSuffix: string): string {
+  let out = svg;
+  for (const defId of SHARED_SVG_DEF_IDS) {
+    if (out.includes(`id="${defId}"`) || out.includes(`url(#${defId})`)) {
+      const nextId = `${defId}-${scopeSuffix}`;
+      out = out.replaceAll(`id="${defId}"`, `id="${nextId}"`).replaceAll(`url(#${defId})`, `url(#${nextId})`);
+    }
+  }
+  return out;
+}
+
 function setBoundedMap<V>(map: Map<string, V>, key: string, value: V, limit = SANITIZE_SVG_CACHE_LIMIT): void {
   if (map.size >= limit && !map.has(key)) {
     const oldestKey = map.keys().next().value;
@@ -71,11 +113,12 @@ export function sanitizeSvgMarkup(rawSvg: string, options?: SanitizeSvgOptions):
   if (!rawSvg) return "";
   const isDark = resolveCurrentThemeIsDark(options?.isDark);
   const maxH = options?.maxHeight ?? (options?.isFullScreen ? "none" : "360px");
-  const themedCacheKey = `${isDark ? "d" : "l"}|${maxH}|${rawSvg}`;
+  const svgHash = hashCacheKey(rawSvg);
+  const themedCacheKey = `${isDark ? "d" : "l"}|${maxH}|${svgHash}`;
   const cachedThemed = sanitizedThemedSvgCache.get(themedCacheKey);
   if (cachedThemed !== undefined) return cachedThemed;
 
-  const baseCacheKey = `${maxH}|${rawSvg}`;
+  const baseCacheKey = `${maxH}|${svgHash}`;
   let baseSanitized = sanitizedBaseSvgCache.get(baseCacheKey);
   if (baseSanitized === undefined) {
     // Strip any @import rules from embedded SVG styles to prevent font-swapping and CSSOM reflows
@@ -109,7 +152,8 @@ export function sanitizeSvgMarkup(rawSvg: string, options?: SanitizeSvgOptions):
         "data-magicdraw-diagram",
       ],
     });
-    baseSanitized = sanitized.replace(/<svg\b([^>]*)>/i, (_match, attrs: string) => {
+    const scopedSanitized = scopeSvgDefIds(sanitized, svgHash.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 24));
+    baseSanitized = scopedSanitized.replace(/<svg\b([^>]*)>/i, (_match, attrs: string) => {
       const existingStyle = /\sstyle=["']([^"']*)["']/i.exec(attrs)?.[1] ?? "";
       const bgMatch = /\bbackground(?:-color)?\s*:\s*([^;]+)/i.exec(existingStyle);
       const preservedBg = bgMatch ? `background-color:${bgMatch[1]!.trim()};border-radius:6px;` : "";
@@ -147,7 +191,7 @@ export function renderSourceToDiagramSvg(
     normalizedLang !== "dicom-rt" &&
     normalizedLang !== "igtl" &&
     normalizedLang !== "oscal";
-  const cacheKey = `${normalizedLang}|${_fallbackTitle}|${usesThemeInBuilder ? (isDark ? "d" : "l") : "*"}|${content}`;
+  const cacheKey = `${normalizedLang}|${_fallbackTitle}|${usesThemeInBuilder ? (isDark ? "d" : "l") : "*"}|${hashCacheKey(content)}`;
   const cachedDiagram = diagramSourceCache.get(cacheKey);
   if (cachedDiagram !== undefined) {
     return {
@@ -326,6 +370,76 @@ export function renderSourceToDiagramSvg(
       }
     } catch {
       // Fall through to generic polyglot extractor if URDF parse fails
+    }
+  }
+
+  if (normalizedLang === "smiles" || normalizedLang === "smi") {
+    try {
+      const firstLine = content
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .find((l) => l.length > 0 && !l.startsWith("#") && !l.startsWith("//"));
+      const smilesToken = firstLine?.split(/\s+/)[0] ?? "";
+      if (smilesToken) {
+        const mol = buildMolecularDiagramFromSmiles(smilesToken, { title: _fallbackTitle });
+        if (mol.atoms.length > 0) {
+          const rawSvg = renderMolecularStructureSvg(mol, { dark: isDark });
+          const nodeCount = mol.atoms.length;
+          const edgeCount = mol.bonds.length;
+          setBoundedMap(diagramSourceCache, cacheKey, { rawSvg, nodeCount, edgeCount });
+          return {
+            svg: sanitizeSvgMarkup(rawSvg, { isFullScreen, isDark }),
+            nodeCount,
+            edgeCount,
+          };
+        }
+      }
+    } catch {
+      // Fall through to generic polyglot extractor if SMILES parse fails
+    }
+  }
+
+  if (normalizedLang === "nmodl" || normalizedLang === "mod") {
+    try {
+      const mechMatch = content.match(/\b(?:SUFFIX|POINT_PROCESS)\s+([A-Za-z_][A-Za-z0-9_]*)/i);
+      const diagram = buildNmodlDiagram({
+        title: _fallbackTitle,
+        mechanismName: mechMatch?.[1] ?? _fallbackTitle,
+      });
+      const rawSvg = renderNmodlDiagramSvg(diagram, { dark: isDark });
+      const nodeCount = Math.max(1, diagram.compartments.length);
+      const edgeCount = Math.max(0, diagram.connections.length);
+      setBoundedMap(diagramSourceCache, cacheKey, { rawSvg, nodeCount, edgeCount });
+      return {
+        svg: sanitizeSvgMarkup(rawSvg, { isFullScreen, isDark }),
+        nodeCount,
+        edgeCount,
+      };
+    } catch {
+      // Fall through to generic polyglot extractor if NMODL parse fails
+    }
+  }
+
+  if (normalizedLang === "nmtran" || normalizedLang === "mlxtran") {
+    try {
+      const hasDepot = /\b(?:ka|depot|ADVAN2|ADVAN4|absorption)\b/i.test(content);
+      const hasPeripheral = /\b(?:Q|V2|K12|K21|ADVAN3|ADVAN4|peripheral)\b/i.test(content);
+      const pk = buildPkDiagramFromGeneric({
+        title: _fallbackTitle,
+        hasDepot,
+        hasPeripheral,
+      });
+      const rawSvg = renderPkDiagramSvg(pk, { dark: isDark });
+      const nodeCount = Math.max(1, pk.compartments.length);
+      const edgeCount = Math.max(0, pk.transfers.length);
+      setBoundedMap(diagramSourceCache, cacheKey, { rawSvg, nodeCount, edgeCount });
+      return {
+        svg: sanitizeSvgMarkup(rawSvg, { isFullScreen, isDark }),
+        nodeCount,
+        edgeCount,
+      };
+    } catch {
+      // Fall through to generic polyglot extractor if PK parse fails
     }
   }
 
@@ -1664,8 +1778,58 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
             <Spinner size="medium" />
             <Text style={{ fontSize: 12, color: "var(--color-fg-muted)", marginTop: 8 }}>Loading artifact…</Text>
           </DiagramPane>
+        ) : isFullScreen || interactive ? (
+          <Suspense
+            fallback={
+              <Box display="flex" alignItems="center" justifyContent="center" height="100%" gap={2}>
+                <Spinner size="small" />
+                <Text style={{ fontSize: 12, color: "var(--color-fg-muted)" }}>Loading interactive editor…</Text>
+              </Box>
+            }
+          >
+            <MorselEditorLazy
+              dataUrl={null}
+              initialCode={rawCode}
+              initialDialect={dialect as never}
+              initialView={effectiveViewMode === "code" ? "code" : "diagram"}
+              embed={true}
+              hideFloatingDock={true}
+              hideCenterFloatingToolbar={!isFullScreen}
+            />
+          </Suspense>
         ) : effectiveViewMode === "diagram" && svgMarkup ? (
-          <InteractiveSvgStage svgMarkup={svgMarkup} isFullScreen={isFullScreen} />
+          <Box
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            height="100%"
+            style={{ position: "relative", width: "100%" }}
+          >
+            <InteractiveSvgStage svgMarkup={svgMarkup} isFullScreen={isFullScreen} />
+            {rawCode && (
+              <InteractivePromptPill
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setInteractive(true);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setInteractive(true);
+                  }
+                }}
+                style={{ cursor: "pointer" }}
+              >
+                <Text
+                  style={{ fontSize: "11px", lineHeight: "16px", color: "var(--color-fg-default)", fontWeight: 600 }}
+                >
+                  ▶ Interactive Diagram
+                </Text>
+              </InteractivePromptPill>
+            )}
+          </Box>
         ) : !interactive && !isFullScreen && svgMarkup ? (
           <Box
             display="flex"
@@ -1695,25 +1859,6 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
               </Text>
             </InteractivePromptPill>
           </Box>
-        ) : isFullScreen || interactive ? (
-          <Suspense
-            fallback={
-              <Box display="flex" alignItems="center" justifyContent="center" height="100%" gap={2}>
-                <Spinner size="small" />
-                <Text style={{ fontSize: 12, color: "var(--color-fg-muted)" }}>Loading interactive editor…</Text>
-              </Box>
-            }
-          >
-            <MorselEditorLazy
-              dataUrl={null}
-              initialCode={rawCode}
-              initialDialect={dialect as never}
-              initialView={effectiveViewMode === "code" ? "code" : "diagram"}
-              embed={true}
-              hideFloatingDock={true}
-              hideCenterFloatingToolbar={!isFullScreen}
-            />
-          </Suspense>
         ) : (
           <CodePane $isFullScreen={isFullScreen}>
             {codeLines.length > 0 ? (

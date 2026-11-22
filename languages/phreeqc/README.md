@@ -3,7 +3,9 @@
 
 # @modelscript/phreeqc
 
-USGS PHREEQC Aqueous Geochemistry, Speciation & Reactive Transport modeling package (`.pqi`, `.dat`) for ModelScript. Features a zero-regex character-by-character `.pqi`/`.dat` parser and serializer (`parsePhreeqc`, `serializePhreeqc`), multi-file workspace indexing (`PhreeqcWorkspaceIndex`), an aqueous speciation, Davies / Extended Debye-Hückel activity coefficient, carbonate equilibrium, and mineral Saturation Index solver (`solvePhreeqcSpeciation`), direct linear-memory `DAEBuilder` lowering (`lowerPhreeqcToDae`), 10 pre-flight geochemical & thermodynamic lint rules (`M9551`–`M9560`, `lintPhreeqc`), Modelica 3.x aqueous chemistry projections (`phreeqcToModelica`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.pqi`, `.dat` · **Docs:** [modelscript.org/languages/phreeqc](https://modelscript.org/languages/phreeqc)
+
+USGS PHREEQC Aqueous Geochemistry, Speciation & Reactive Transport modeling package (`.pqi`, `.dat`) for ModelScript. Features a zero-regex character-by-character `.pqi`/`.dat` parser and serializer (`parsePhreeqc`, `serializePhreeqc`), multi-file workspace indexing, an aqueous speciation, Davies / Extended Debye-Hückel activity coefficient, carbonate equilibrium, and mineral Saturation Index solver (`solvePhreeqcSpeciation`), direct linear-memory `DAEBuilder` lowering (`lowerPhreeqcToDae`), 10 pre-flight geochemical & thermodynamic lint rules (`M9551`–`M9560`, `lintPhreeqc`), Modelica 3.x aqueous chemistry projections (`phreeqcToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -17,11 +19,11 @@ USGS PHREEQC Aqueous Geochemistry, Speciation & Reactive Transport modeling pack
   - **Ionic Strength & Davies / Extended Debye-Hückel Activity Coefficients**:
     $$I = \frac{1}{2} \sum_i m_i z_i^2, \qquad \log_{10}\gamma_i = -A(T) z_i^2 \left(\frac{\sqrt{I}}{1 + \sqrt{I}} - 0.3 I\right)$$
   - **Carbonate Speciation & Charge Balance**: Solves temperature-corrected Van 't Hoff equilibria for $\text{H}_2\text{CO}_3^*$, $\text{HCO}_3^-$, $\text{CO}_3^{2-}$, and $\text{H}_2\text{O} \rightleftharpoons \text{H}^+ + \text{OH}^-$, with optional bisection pH charge-balance adjustment ($\sum_i z_i m_i = 0$).
-  - **Mineral Saturation Indices ($\text{SI} = \log_{10}(\text{IAP} / K_{sp})$)**: Evaluates Ion Activity Products and temperature-dependent solubility products for `Calcite`, `Aragonite`, `Gypsum`, `Anhydrite`, `Halite`, `Dolomite`, and `Fluorite`.
+  - **Mineral Saturation Indices ($\text{SI} = \log\_{10}(\text{IAP} / K\_{sp})$)**: Evaluates Ion Activity Products and temperature-dependent solubility products for `Calcite`, `Aragonite`, `Gypsum`, `Anhydrite`, `Halite`, `Dolomite`, and `Fluorite`.
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerPhreeqcToDae`)**: Compiles aqueous species molalities, ionic strength, Davies activity coefficients ($\gamma_1, \gamma_2$), carbonate mass-action equations, mineral Saturation Indices, and kinetic mineral dissolution/precipitation ODEs ($\frac{dM_k}{dt} = -k A_{\text{surf}}(1 - \text{IAP}_k / K_{sp,k})$) into a structurally square `DAEBuilder`.
 - **10 Pre-Flight Geochemical & Thermodynamic Lint Rules (`M9551`–`M9560`, `lintPhreeqc`)**: Static verification of physical pH bounds, water redox stability (`pe`), liquid water temperature range, non-negative solute concentrations, electrical charge balance, master species names, mineral phase names, initial mineral moles, `MIX` solution references, and non-empty decks.
 - **Modelica 3.x Aqueous Chemistry Projection (`phreeqcToModelica`)**: Generates standalone Modelica 3.x aqueous geochemistry and reactive transport models.
-- **Multi-File Workspace Indexing & LSP (`PhreeqcWorkspaceIndex`, `validatePhreeqc`, `getPhreeqcHover`, `getPhreeqcDocumentSymbols`)**: Full IDE integration for `.pqi` and `.dat` files.
+- **Multi-File Workspace Indexing & LSP (`validatePhreeqc`, `getPhreeqcHover`, `getPhreeqcDocumentSymbols`)**: Full IDE integration for `.pqi` and `.dat` files.
 
 ---
 
@@ -43,7 +45,6 @@ USGS PHREEQC Aqueous Geochemistry, Speciation & Reactive Transport modeling pack
 | `src/dae/index.ts`                       | DAE lowering barrel exports                                                                                                                                        |
 | `src/projections/phreeqc-to-modelica.ts` | `phreeqcToModelica` translator to Modelica 3.x aqueous chemistry models                                                                                            |
 | `src/projections/index.ts`               | Projections barrel exports                                                                                                                                         |
-| `src/workspace-index.ts`                 | `PhreeqcWorkspaceIndex` implementing `IWorkspaceIndex` across `.pqi` and `.dat` files                                                                              |
 | `src/lsp.ts`                             | LSP diagnostics, document symbols, hover, and action execution providers                                                                                           |
 
 ---

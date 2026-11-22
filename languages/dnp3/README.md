@@ -1,7 +1,9 @@
 <div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
 <div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-# `@modelscript/dnp3`
+# @modelscript/dnp3
+
+**Maturity:** Alpha · **Extensions:** `.dnp3`, `.xml`, `.json` · **Docs:** [modelscript.org/languages/dnp3](https://modelscript.org/languages/dnp3)
 
 IEEE 1815 / DNP3 SCADA device profile compiler, deadband telemetry event filtering, engineering unit scaling, and zero-GC linear-memory `DAEBuilder` arena lowering for ModelScript.
 

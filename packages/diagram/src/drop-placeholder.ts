@@ -184,6 +184,19 @@ export function ensureDiagramStyles(): void {
       stroke: none !important;
     }
 
+    /* Zoom-driven Level-of-Detail (LOD) optimizations for large schematics */
+    [data-diagram-lod="medium"] .x6-node,
+    [data-diagram-lod="low"] .x6-node,
+    [data-diagram-lod="medium"] .x6-edge,
+    [data-diagram-lod="low"] .x6-edge {
+      filter: none !important;
+    }
+    [data-diagram-lod="low"] .x6-port-label,
+    [data-diagram-lod="low"] .x6-edge-label,
+    [data-diagram-lod="low"] .compartment-row {
+      display: none !important;
+    }
+
     .modelscript-hover-halo {
       outline: none !important;
     }

@@ -1,8 +1,8 @@
 {
   "schemaVersion": "1.0.0",
   "provenance": {
-    "gitSha": "3bbda3411",
-    "recordedAt": "2026-11-22T02:29:31.969Z",
+    "gitSha": "b5f3e0a8d",
+    "recordedAt": "2026-11-22T19:38:59.829Z",
     "os": "linux 6.12.116+deb13-amd64",
     "arch": "x64",
     "cpuModel": "Intel(R) Core(TM) Ultra 9 285H",
@@ -11,14 +11,14 @@
     "flattenerBackend": "hybrid"
   },
   "aggregate": {
-    "totalLanguages": 103,
-    "betaCount": 27,
+    "totalLanguages": 106,
+    "betaCount": 30,
     "alphaCount": 75,
     "preAlphaCount": 1,
     "languagesWithAdapters": 93,
-    "totalCases": 218,
-    "passedCases": 217,
-    "overallPassRate": 99.54
+    "totalCases": 221,
+    "passedCases": 220,
+    "overallPassRate": 99.55
   },
   "catalogById": {
     "sbml-semantic-cases": {
@@ -1579,6 +1579,119 @@
       "summary": {
         "totalCases": 3,
         "passedCases": 3,
+        "passRate": 100
+      }
+    },
+    {
+      "slug": "sparql",
+      "name": "SPARQL 1.1",
+      "pkgName": "@modelscript/sparql",
+      "tier": "beta",
+      "reproduceCommand": "npm run bench:languages -- --lang=sparql",
+      "catalogIds": [],
+      "scorecard": {
+        "domainKind": "simulation",
+        "hasParser": true,
+        "hasParserTests": true,
+        "hasLinter": true,
+        "hasLinterTests": true,
+        "testedErrorCodesCount": 5,
+        "hasBenchmark": true,
+        "hasToleranceCheck": false,
+        "hasDomainLowering": false,
+        "hasDomainLoweringTests": true,
+        "usesRuntimeArena": true,
+        "hasLsp": true,
+        "hasLspTests": false,
+        "testFileCount": 12,
+        "testCaseCount": 29,
+        "auditedTier": "pre-alpha",
+        "currentDeclaredTier": "beta",
+        "gaps": [
+          "Missing domain lowering or tests (simulation)",
+          "Missing numerical tolerance / residual / convergence assertions",
+          "Missing Language Server Protocol (LSP) or tests"
+        ]
+      },
+      "stages": {
+        "parse": {
+          "status": "supported",
+          "positiveFixtures": 1,
+          "passedFixtures": 1,
+          "errorRecoveryVerified": true,
+          "cstNodeCount": 0,
+          "parserKind": "native-ts"
+        },
+        "lint": {
+          "status": "supported",
+          "declaredRuleCount": 0,
+          "testedRuleCount": 5,
+          "negativeCasesPassed": 5,
+          "negativeCasesTotal": 5
+        },
+        "lower": {
+          "status": "n/a",
+          "targetIr": "domain-solver",
+          "zeroAllocArena": true
+        },
+        "solve": {
+          "status": "n/a",
+          "casesRun": 0,
+          "casesPassed": 0,
+          "referenceTool": "N/A",
+          "metricKind": "exact",
+          "tolerance": 0.001,
+          "measuredWorstError": null
+        },
+        "projection": {
+          "status": "n/a",
+          "targets": [],
+          "roundtripVerified": false
+        }
+      },
+      "timings": {
+        "parse": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lint": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lower": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "solve": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        }
+      },
+      "cases": [
+        {
+          "id": "sparql-parse-canonical",
+          "name": "Canonical Fixture Parse",
+          "scale": "micro",
+          "referenceTool": "ModelScript Native Parser",
+          "metricKind": "ast-pass-rate",
+          "threshold": 1,
+          "measuredError": 0,
+          "passed": true,
+          "durationMs": 0,
+          "details": "Parser verified via package unit tests"
+        }
+      ],
+      "summary": {
+        "totalCases": 1,
+        "passedCases": 1,
         "passRate": 100
       }
     },
@@ -6243,6 +6356,889 @@
       }
     },
     {
+      "slug": "c37118",
+      "name": "@modelscript/c37118",
+      "pkgName": "@modelscript/c37118",
+      "tier": "alpha",
+      "reproduceCommand": "npm run bench:languages -- --lang=c37118",
+      "catalogIds": [],
+      "scorecard": {
+        "domainKind": "simulation",
+        "hasParser": true,
+        "hasParserTests": true,
+        "hasLinter": true,
+        "hasLinterTests": true,
+        "testedErrorCodesCount": 0,
+        "hasBenchmark": false,
+        "hasToleranceCheck": false,
+        "hasDomainLowering": true,
+        "hasDomainLoweringTests": true,
+        "usesRuntimeArena": true,
+        "hasLsp": true,
+        "hasLspTests": true,
+        "testFileCount": 5,
+        "testCaseCount": 5,
+        "auditedTier": "pre-alpha",
+        "currentDeclaredTier": "alpha",
+        "gaps": [
+          "Missing reference benchmark suite",
+          "Missing numerical tolerance / residual / convergence assertions",
+          "Test file count (5) below hardened Beta threshold (>=8)"
+        ]
+      },
+      "stages": {
+        "parse": {
+          "status": "supported",
+          "positiveFixtures": 1,
+          "passedFixtures": 1,
+          "errorRecoveryVerified": true,
+          "cstNodeCount": 0,
+          "parserKind": "native-ts"
+        },
+        "lint": {
+          "status": "supported",
+          "declaredRuleCount": 0,
+          "testedRuleCount": 0,
+          "negativeCasesPassed": 1,
+          "negativeCasesTotal": 1
+        },
+        "lower": {
+          "status": "supported",
+          "targetIr": "domain-solver",
+          "zeroAllocArena": true
+        },
+        "solve": {
+          "status": "n/a",
+          "casesRun": 0,
+          "casesPassed": 0,
+          "referenceTool": "N/A",
+          "metricKind": "exact",
+          "tolerance": 0.001,
+          "measuredWorstError": null
+        },
+        "projection": {
+          "status": "n/a",
+          "targets": [],
+          "roundtripVerified": false
+        }
+      },
+      "timings": {
+        "parse": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lint": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lower": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "solve": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        }
+      },
+      "cases": [
+        {
+          "id": "c37118-parse-canonical",
+          "name": "Canonical Fixture Parse",
+          "scale": "micro",
+          "referenceTool": "ModelScript Native Parser",
+          "metricKind": "ast-pass-rate",
+          "threshold": 1,
+          "measuredError": 0,
+          "passed": true,
+          "durationMs": 0,
+          "details": "Parser verified via package unit tests"
+        }
+      ],
+      "summary": {
+        "totalCases": 1,
+        "passedCases": 1,
+        "passRate": 100
+      }
+    },
+    {
+      "slug": "cyme",
+      "name": "@modelscript/cyme",
+      "pkgName": "@modelscript/cyme",
+      "tier": "alpha",
+      "reproduceCommand": "npm run bench:languages -- --lang=cyme",
+      "catalogIds": [],
+      "scorecard": {
+        "domainKind": "simulation",
+        "hasParser": true,
+        "hasParserTests": true,
+        "hasLinter": true,
+        "hasLinterTests": true,
+        "testedErrorCodesCount": 5,
+        "hasBenchmark": true,
+        "hasToleranceCheck": true,
+        "hasDomainLowering": true,
+        "hasDomainLoweringTests": true,
+        "usesRuntimeArena": true,
+        "hasLsp": true,
+        "hasLspTests": true,
+        "testFileCount": 6,
+        "testCaseCount": 9,
+        "auditedTier": "alpha",
+        "currentDeclaredTier": "alpha",
+        "gaps": ["Test file count (6) below hardened Beta threshold (>=8)"]
+      },
+      "stages": {
+        "parse": {
+          "status": "supported",
+          "positiveFixtures": 1,
+          "passedFixtures": 1,
+          "errorRecoveryVerified": true,
+          "cstNodeCount": 0,
+          "parserKind": "native-ts"
+        },
+        "lint": {
+          "status": "supported",
+          "declaredRuleCount": 0,
+          "testedRuleCount": 5,
+          "negativeCasesPassed": 5,
+          "negativeCasesTotal": 5
+        },
+        "lower": {
+          "status": "supported",
+          "targetIr": "domain-solver",
+          "zeroAllocArena": true
+        },
+        "solve": {
+          "status": "n/a",
+          "casesRun": 0,
+          "casesPassed": 0,
+          "referenceTool": "N/A",
+          "metricKind": "exact",
+          "tolerance": 0.001,
+          "measuredWorstError": null
+        },
+        "projection": {
+          "status": "n/a",
+          "targets": [],
+          "roundtripVerified": false
+        }
+      },
+      "timings": {
+        "parse": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lint": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lower": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "solve": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        }
+      },
+      "cases": [
+        {
+          "id": "cyme-parse-canonical",
+          "name": "Canonical Fixture Parse",
+          "scale": "micro",
+          "referenceTool": "ModelScript Native Parser",
+          "metricKind": "ast-pass-rate",
+          "threshold": 1,
+          "measuredError": 0,
+          "passed": true,
+          "durationMs": 0,
+          "details": "Parser verified via package unit tests"
+        }
+      ],
+      "summary": {
+        "totalCases": 1,
+        "passedCases": 1,
+        "passRate": 100
+      }
+    },
+    {
+      "slug": "gridlabd",
+      "name": "@modelscript/gridlabd",
+      "pkgName": "@modelscript/gridlabd",
+      "tier": "alpha",
+      "reproduceCommand": "npm run bench:languages -- --lang=gridlabd",
+      "catalogIds": [],
+      "scorecard": {
+        "domainKind": "simulation",
+        "hasParser": true,
+        "hasParserTests": true,
+        "hasLinter": true,
+        "hasLinterTests": true,
+        "testedErrorCodesCount": 6,
+        "hasBenchmark": true,
+        "hasToleranceCheck": true,
+        "hasDomainLowering": true,
+        "hasDomainLoweringTests": true,
+        "usesRuntimeArena": true,
+        "hasLsp": true,
+        "hasLspTests": true,
+        "testFileCount": 6,
+        "testCaseCount": 10,
+        "auditedTier": "alpha",
+        "currentDeclaredTier": "alpha",
+        "gaps": ["Test file count (6) below hardened Beta threshold (>=8)"]
+      },
+      "stages": {
+        "parse": {
+          "status": "supported",
+          "positiveFixtures": 1,
+          "passedFixtures": 1,
+          "errorRecoveryVerified": true,
+          "cstNodeCount": 0,
+          "parserKind": "native-ts"
+        },
+        "lint": {
+          "status": "supported",
+          "declaredRuleCount": 0,
+          "testedRuleCount": 6,
+          "negativeCasesPassed": 6,
+          "negativeCasesTotal": 6
+        },
+        "lower": {
+          "status": "supported",
+          "targetIr": "domain-solver",
+          "zeroAllocArena": true
+        },
+        "solve": {
+          "status": "n/a",
+          "casesRun": 0,
+          "casesPassed": 0,
+          "referenceTool": "N/A",
+          "metricKind": "exact",
+          "tolerance": 0.001,
+          "measuredWorstError": null
+        },
+        "projection": {
+          "status": "n/a",
+          "targets": [],
+          "roundtripVerified": false
+        }
+      },
+      "timings": {
+        "parse": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lint": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lower": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "solve": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        }
+      },
+      "cases": [
+        {
+          "id": "gridlabd-parse-canonical",
+          "name": "Canonical Fixture Parse",
+          "scale": "micro",
+          "referenceTool": "ModelScript Native Parser",
+          "metricKind": "ast-pass-rate",
+          "threshold": 1,
+          "measuredError": 0,
+          "passed": true,
+          "durationMs": 0,
+          "details": "Parser verified via package unit tests"
+        }
+      ],
+      "summary": {
+        "totalCases": 1,
+        "passedCases": 1,
+        "passRate": 100
+      }
+    },
+    {
+      "slug": "iec104",
+      "name": "@modelscript/iec104",
+      "pkgName": "@modelscript/iec104",
+      "tier": "alpha",
+      "reproduceCommand": "npm run bench:languages -- --lang=iec104",
+      "catalogIds": [],
+      "scorecard": {
+        "domainKind": "simulation",
+        "hasParser": true,
+        "hasParserTests": true,
+        "hasLinter": true,
+        "hasLinterTests": true,
+        "testedErrorCodesCount": 0,
+        "hasBenchmark": false,
+        "hasToleranceCheck": false,
+        "hasDomainLowering": true,
+        "hasDomainLoweringTests": true,
+        "usesRuntimeArena": true,
+        "hasLsp": true,
+        "hasLspTests": true,
+        "testFileCount": 6,
+        "testCaseCount": 8,
+        "auditedTier": "pre-alpha",
+        "currentDeclaredTier": "alpha",
+        "gaps": [
+          "Missing reference benchmark suite",
+          "Missing numerical tolerance / residual / convergence assertions",
+          "Test file count (6) below hardened Beta threshold (>=8)"
+        ]
+      },
+      "stages": {
+        "parse": {
+          "status": "supported",
+          "positiveFixtures": 1,
+          "passedFixtures": 1,
+          "errorRecoveryVerified": true,
+          "cstNodeCount": 0,
+          "parserKind": "native-ts"
+        },
+        "lint": {
+          "status": "supported",
+          "declaredRuleCount": 0,
+          "testedRuleCount": 0,
+          "negativeCasesPassed": 1,
+          "negativeCasesTotal": 1
+        },
+        "lower": {
+          "status": "supported",
+          "targetIr": "domain-solver",
+          "zeroAllocArena": true
+        },
+        "solve": {
+          "status": "n/a",
+          "casesRun": 0,
+          "casesPassed": 0,
+          "referenceTool": "N/A",
+          "metricKind": "exact",
+          "tolerance": 0.001,
+          "measuredWorstError": null
+        },
+        "projection": {
+          "status": "n/a",
+          "targets": [],
+          "roundtripVerified": false
+        }
+      },
+      "timings": {
+        "parse": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lint": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lower": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "solve": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        }
+      },
+      "cases": [
+        {
+          "id": "iec104-parse-canonical",
+          "name": "Canonical Fixture Parse",
+          "scale": "micro",
+          "referenceTool": "ModelScript Native Parser",
+          "metricKind": "ast-pass-rate",
+          "threshold": 1,
+          "measuredError": 0,
+          "passed": true,
+          "durationMs": 0,
+          "details": "Parser verified via package unit tests"
+        }
+      ],
+      "summary": {
+        "totalCases": 1,
+        "passedCases": 1,
+        "passRate": 100
+      }
+    },
+    {
+      "slug": "plscadd",
+      "name": "@modelscript/plscadd",
+      "pkgName": "@modelscript/plscadd",
+      "tier": "alpha",
+      "reproduceCommand": "npm run bench:languages -- --lang=plscadd",
+      "catalogIds": [],
+      "scorecard": {
+        "domainKind": "simulation",
+        "hasParser": true,
+        "hasParserTests": true,
+        "hasLinter": true,
+        "hasLinterTests": true,
+        "testedErrorCodesCount": 3,
+        "hasBenchmark": true,
+        "hasToleranceCheck": true,
+        "hasDomainLowering": true,
+        "hasDomainLoweringTests": true,
+        "usesRuntimeArena": true,
+        "hasLsp": true,
+        "hasLspTests": true,
+        "testFileCount": 6,
+        "testCaseCount": 10,
+        "auditedTier": "alpha",
+        "currentDeclaredTier": "alpha",
+        "gaps": ["Test file count (6) below hardened Beta threshold (>=8)"]
+      },
+      "stages": {
+        "parse": {
+          "status": "supported",
+          "positiveFixtures": 1,
+          "passedFixtures": 1,
+          "errorRecoveryVerified": true,
+          "cstNodeCount": 0,
+          "parserKind": "native-ts"
+        },
+        "lint": {
+          "status": "supported",
+          "declaredRuleCount": 0,
+          "testedRuleCount": 3,
+          "negativeCasesPassed": 3,
+          "negativeCasesTotal": 3
+        },
+        "lower": {
+          "status": "supported",
+          "targetIr": "domain-solver",
+          "zeroAllocArena": true
+        },
+        "solve": {
+          "status": "n/a",
+          "casesRun": 0,
+          "casesPassed": 0,
+          "referenceTool": "N/A",
+          "metricKind": "exact",
+          "tolerance": 0.001,
+          "measuredWorstError": null
+        },
+        "projection": {
+          "status": "n/a",
+          "targets": [],
+          "roundtripVerified": false
+        }
+      },
+      "timings": {
+        "parse": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lint": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lower": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "solve": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        }
+      },
+      "cases": [
+        {
+          "id": "plscadd-parse-canonical",
+          "name": "Canonical Fixture Parse",
+          "scale": "micro",
+          "referenceTool": "ModelScript Native Parser",
+          "metricKind": "ast-pass-rate",
+          "threshold": 1,
+          "measuredError": 0,
+          "passed": true,
+          "durationMs": 0,
+          "details": "Parser verified via package unit tests"
+        }
+      ],
+      "summary": {
+        "totalCases": 1,
+        "passedCases": 1,
+        "passRate": 100
+      }
+    },
+    {
+      "slug": "powerworld",
+      "name": "@modelscript/powerworld",
+      "pkgName": "@modelscript/powerworld",
+      "tier": "alpha",
+      "reproduceCommand": "npm run bench:languages -- --lang=powerworld",
+      "catalogIds": [],
+      "scorecard": {
+        "domainKind": "simulation",
+        "hasParser": true,
+        "hasParserTests": true,
+        "hasLinter": true,
+        "hasLinterTests": true,
+        "testedErrorCodesCount": 6,
+        "hasBenchmark": true,
+        "hasToleranceCheck": true,
+        "hasDomainLowering": true,
+        "hasDomainLoweringTests": true,
+        "usesRuntimeArena": true,
+        "hasLsp": true,
+        "hasLspTests": true,
+        "testFileCount": 7,
+        "testCaseCount": 14,
+        "auditedTier": "alpha",
+        "currentDeclaredTier": "alpha",
+        "gaps": ["Test file count (7) below hardened Beta threshold (>=8)"]
+      },
+      "stages": {
+        "parse": {
+          "status": "supported",
+          "positiveFixtures": 1,
+          "passedFixtures": 1,
+          "errorRecoveryVerified": true,
+          "cstNodeCount": 0,
+          "parserKind": "native-ts"
+        },
+        "lint": {
+          "status": "supported",
+          "declaredRuleCount": 0,
+          "testedRuleCount": 6,
+          "negativeCasesPassed": 6,
+          "negativeCasesTotal": 6
+        },
+        "lower": {
+          "status": "supported",
+          "targetIr": "domain-solver",
+          "zeroAllocArena": true
+        },
+        "solve": {
+          "status": "n/a",
+          "casesRun": 0,
+          "casesPassed": 0,
+          "referenceTool": "N/A",
+          "metricKind": "exact",
+          "tolerance": 0.001,
+          "measuredWorstError": null
+        },
+        "projection": {
+          "status": "n/a",
+          "targets": [],
+          "roundtripVerified": false
+        }
+      },
+      "timings": {
+        "parse": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lint": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lower": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "solve": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        }
+      },
+      "cases": [
+        {
+          "id": "powerworld-parse-canonical",
+          "name": "Canonical Fixture Parse",
+          "scale": "micro",
+          "referenceTool": "ModelScript Native Parser",
+          "metricKind": "ast-pass-rate",
+          "threshold": 1,
+          "measuredError": 0,
+          "passed": true,
+          "durationMs": 0,
+          "details": "Parser verified via package unit tests"
+        }
+      ],
+      "summary": {
+        "totalCases": 1,
+        "passedCases": 1,
+        "passRate": 100
+      }
+    },
+    {
+      "slug": "pypsa",
+      "name": "@modelscript/pypsa",
+      "pkgName": "@modelscript/pypsa",
+      "tier": "alpha",
+      "reproduceCommand": "npm run bench:languages -- --lang=pypsa",
+      "catalogIds": [],
+      "scorecard": {
+        "domainKind": "simulation",
+        "hasParser": true,
+        "hasParserTests": true,
+        "hasLinter": true,
+        "hasLinterTests": true,
+        "testedErrorCodesCount": 6,
+        "hasBenchmark": true,
+        "hasToleranceCheck": false,
+        "hasDomainLowering": true,
+        "hasDomainLoweringTests": true,
+        "usesRuntimeArena": true,
+        "hasLsp": true,
+        "hasLspTests": true,
+        "testFileCount": 5,
+        "testCaseCount": 5,
+        "auditedTier": "alpha",
+        "currentDeclaredTier": "alpha",
+        "gaps": [
+          "Missing numerical tolerance / residual / convergence assertions",
+          "Test file count (5) below hardened Beta threshold (>=8)"
+        ]
+      },
+      "stages": {
+        "parse": {
+          "status": "supported",
+          "positiveFixtures": 1,
+          "passedFixtures": 1,
+          "errorRecoveryVerified": true,
+          "cstNodeCount": 0,
+          "parserKind": "native-ts"
+        },
+        "lint": {
+          "status": "supported",
+          "declaredRuleCount": 0,
+          "testedRuleCount": 6,
+          "negativeCasesPassed": 6,
+          "negativeCasesTotal": 6
+        },
+        "lower": {
+          "status": "supported",
+          "targetIr": "domain-solver",
+          "zeroAllocArena": true
+        },
+        "solve": {
+          "status": "n/a",
+          "casesRun": 0,
+          "casesPassed": 0,
+          "referenceTool": "N/A",
+          "metricKind": "exact",
+          "tolerance": 0.001,
+          "measuredWorstError": null
+        },
+        "projection": {
+          "status": "n/a",
+          "targets": [],
+          "roundtripVerified": false
+        }
+      },
+      "timings": {
+        "parse": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lint": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lower": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "solve": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        }
+      },
+      "cases": [
+        {
+          "id": "pypsa-parse-canonical",
+          "name": "Canonical Fixture Parse",
+          "scale": "micro",
+          "referenceTool": "ModelScript Native Parser",
+          "metricKind": "ast-pass-rate",
+          "threshold": 1,
+          "measuredError": 0,
+          "passed": true,
+          "durationMs": 0,
+          "details": "Parser verified via package unit tests"
+        }
+      ],
+      "summary": {
+        "totalCases": 1,
+        "passedCases": 1,
+        "passRate": 100
+      }
+    },
+    {
+      "slug": "rtds",
+      "name": "@modelscript/rtds",
+      "pkgName": "@modelscript/rtds",
+      "tier": "alpha",
+      "reproduceCommand": "npm run bench:languages -- --lang=rtds",
+      "catalogIds": [],
+      "scorecard": {
+        "domainKind": "simulation",
+        "hasParser": true,
+        "hasParserTests": true,
+        "hasLinter": true,
+        "hasLinterTests": true,
+        "testedErrorCodesCount": 5,
+        "hasBenchmark": true,
+        "hasToleranceCheck": true,
+        "hasDomainLowering": true,
+        "hasDomainLoweringTests": true,
+        "usesRuntimeArena": true,
+        "hasLsp": true,
+        "hasLspTests": true,
+        "testFileCount": 6,
+        "testCaseCount": 12,
+        "auditedTier": "alpha",
+        "currentDeclaredTier": "alpha",
+        "gaps": ["Test file count (6) below hardened Beta threshold (>=8)"]
+      },
+      "stages": {
+        "parse": {
+          "status": "supported",
+          "positiveFixtures": 1,
+          "passedFixtures": 1,
+          "errorRecoveryVerified": true,
+          "cstNodeCount": 0,
+          "parserKind": "native-ts"
+        },
+        "lint": {
+          "status": "supported",
+          "declaredRuleCount": 0,
+          "testedRuleCount": 5,
+          "negativeCasesPassed": 5,
+          "negativeCasesTotal": 5
+        },
+        "lower": {
+          "status": "supported",
+          "targetIr": "domain-solver",
+          "zeroAllocArena": true
+        },
+        "solve": {
+          "status": "n/a",
+          "casesRun": 0,
+          "casesPassed": 0,
+          "referenceTool": "N/A",
+          "metricKind": "exact",
+          "tolerance": 0.001,
+          "measuredWorstError": null
+        },
+        "projection": {
+          "status": "n/a",
+          "targets": [],
+          "roundtripVerified": false
+        }
+      },
+      "timings": {
+        "parse": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lint": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lower": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "solve": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        }
+      },
+      "cases": [
+        {
+          "id": "rtds-parse-canonical",
+          "name": "Canonical Fixture Parse",
+          "scale": "micro",
+          "referenceTool": "ModelScript Native Parser",
+          "metricKind": "ast-pass-rate",
+          "threshold": 1,
+          "measuredError": 0,
+          "passed": true,
+          "durationMs": 0,
+          "details": "Parser verified via package unit tests"
+        }
+      ],
+      "summary": {
+        "totalCases": 1,
+        "passedCases": 1,
+        "passRate": 100
+      }
+    },
+    {
       "slug": "olga",
       "name": "OLGA",
       "pkgName": "@modelscript/olga",
@@ -6639,6 +7635,121 @@
       }
     },
     {
+      "slug": "las",
+      "name": "@modelscript/las",
+      "pkgName": "@modelscript/las",
+      "tier": "pre-alpha",
+      "reproduceCommand": "npm run bench:languages -- --lang=las",
+      "catalogIds": [],
+      "scorecard": {
+        "domainKind": "simulation",
+        "hasParser": true,
+        "hasParserTests": true,
+        "hasLinter": false,
+        "hasLinterTests": true,
+        "testedErrorCodesCount": 5,
+        "hasBenchmark": true,
+        "hasToleranceCheck": true,
+        "hasDomainLowering": false,
+        "hasDomainLoweringTests": true,
+        "usesRuntimeArena": true,
+        "hasLsp": true,
+        "hasLspTests": false,
+        "testFileCount": 1,
+        "testCaseCount": 5,
+        "auditedTier": "pre-alpha",
+        "currentDeclaredTier": "pre-alpha",
+        "gaps": [
+          "Missing domain lowering or tests (simulation)",
+          "Missing negative linter / diagnostic tests",
+          "Missing Language Server Protocol (LSP) or tests",
+          "Test file count (1) below Alpha threshold (min 5 required)",
+          "Test file count (1) below hardened Beta threshold (>=8)"
+        ]
+      },
+      "stages": {
+        "parse": {
+          "status": "supported",
+          "positiveFixtures": 1,
+          "passedFixtures": 1,
+          "errorRecoveryVerified": true,
+          "cstNodeCount": 0,
+          "parserKind": "native-ts"
+        },
+        "lint": {
+          "status": "n/a",
+          "declaredRuleCount": 7,
+          "testedRuleCount": 5,
+          "negativeCasesPassed": 5,
+          "negativeCasesTotal": 5
+        },
+        "lower": {
+          "status": "n/a",
+          "targetIr": "domain-solver",
+          "zeroAllocArena": true
+        },
+        "solve": {
+          "status": "n/a",
+          "casesRun": 0,
+          "casesPassed": 0,
+          "referenceTool": "N/A",
+          "metricKind": "exact",
+          "tolerance": 0.001,
+          "measuredWorstError": null
+        },
+        "projection": {
+          "status": "n/a",
+          "targets": [],
+          "roundtripVerified": false
+        }
+      },
+      "timings": {
+        "parse": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lint": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lower": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "solve": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        }
+      },
+      "cases": [
+        {
+          "id": "las-parse-canonical",
+          "name": "Canonical Fixture Parse",
+          "scale": "micro",
+          "referenceTool": "ModelScript Native Parser",
+          "metricKind": "ast-pass-rate",
+          "threshold": 1,
+          "measuredError": 0,
+          "passed": true,
+          "durationMs": 0,
+          "details": "Parser verified via package unit tests"
+        }
+      ],
+      "summary": {
+        "totalCases": 1,
+        "passedCases": 1,
+        "passRate": 100
+      }
+    },
+    {
       "slug": "relap5",
       "name": "RELAP5-3D",
       "pkgName": "@modelscript/relap5",
@@ -7019,6 +8130,224 @@
       "summary": {
         "totalCases": 3,
         "passedCases": 3,
+        "passRate": 100
+      }
+    },
+    {
+      "slug": "atopile",
+      "name": "atopile",
+      "pkgName": "@modelscript/atopile",
+      "tier": "beta",
+      "reproduceCommand": "npm run bench:languages -- --lang=atopile",
+      "catalogIds": [],
+      "scorecard": {
+        "domainKind": "simulation",
+        "hasParser": true,
+        "hasParserTests": true,
+        "hasLinter": true,
+        "hasLinterTests": true,
+        "testedErrorCodesCount": 3,
+        "hasBenchmark": true,
+        "hasToleranceCheck": true,
+        "hasDomainLowering": true,
+        "hasDomainLoweringTests": true,
+        "usesRuntimeArena": true,
+        "hasLsp": true,
+        "hasLspTests": true,
+        "testFileCount": 8,
+        "testCaseCount": 11,
+        "auditedTier": "beta",
+        "currentDeclaredTier": "beta",
+        "gaps": []
+      },
+      "stages": {
+        "parse": {
+          "status": "supported",
+          "positiveFixtures": 1,
+          "passedFixtures": 1,
+          "errorRecoveryVerified": true,
+          "cstNodeCount": 0,
+          "parserKind": "native-ts"
+        },
+        "lint": {
+          "status": "supported",
+          "declaredRuleCount": 0,
+          "testedRuleCount": 3,
+          "negativeCasesPassed": 3,
+          "negativeCasesTotal": 3
+        },
+        "lower": {
+          "status": "supported",
+          "targetIr": "dae-arena",
+          "zeroAllocArena": true
+        },
+        "solve": {
+          "status": "n/a",
+          "casesRun": 0,
+          "casesPassed": 0,
+          "referenceTool": "N/A",
+          "metricKind": "exact",
+          "tolerance": 0.001,
+          "measuredWorstError": null
+        },
+        "projection": {
+          "status": "n/a",
+          "targets": [],
+          "roundtripVerified": false
+        }
+      },
+      "timings": {
+        "parse": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lint": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lower": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "solve": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        }
+      },
+      "cases": [
+        {
+          "id": "atopile-parse-canonical",
+          "name": "Canonical Fixture Parse",
+          "scale": "micro",
+          "referenceTool": "ModelScript Native Parser",
+          "metricKind": "ast-pass-rate",
+          "threshold": 1,
+          "measuredError": 0,
+          "passed": true,
+          "durationMs": 0,
+          "details": "Parser verified via package unit tests"
+        }
+      ],
+      "summary": {
+        "totalCases": 1,
+        "passedCases": 1,
+        "passRate": 100
+      }
+    },
+    {
+      "slug": "kicad",
+      "name": "KiCad ECAD",
+      "pkgName": "@modelscript/kicad",
+      "tier": "beta",
+      "reproduceCommand": "npm run bench:languages -- --lang=kicad",
+      "catalogIds": [],
+      "scorecard": {
+        "domainKind": "simulation",
+        "hasParser": true,
+        "hasParserTests": true,
+        "hasLinter": true,
+        "hasLinterTests": true,
+        "testedErrorCodesCount": 14,
+        "hasBenchmark": true,
+        "hasToleranceCheck": true,
+        "hasDomainLowering": true,
+        "hasDomainLoweringTests": true,
+        "usesRuntimeArena": true,
+        "hasLsp": true,
+        "hasLspTests": true,
+        "testFileCount": 8,
+        "testCaseCount": 18,
+        "auditedTier": "beta",
+        "currentDeclaredTier": "beta",
+        "gaps": []
+      },
+      "stages": {
+        "parse": {
+          "status": "supported",
+          "positiveFixtures": 1,
+          "passedFixtures": 1,
+          "errorRecoveryVerified": true,
+          "cstNodeCount": 0,
+          "parserKind": "native-ts"
+        },
+        "lint": {
+          "status": "supported",
+          "declaredRuleCount": 0,
+          "testedRuleCount": 14,
+          "negativeCasesPassed": 14,
+          "negativeCasesTotal": 14
+        },
+        "lower": {
+          "status": "supported",
+          "targetIr": "dae-arena",
+          "zeroAllocArena": true
+        },
+        "solve": {
+          "status": "n/a",
+          "casesRun": 0,
+          "casesPassed": 0,
+          "referenceTool": "N/A",
+          "metricKind": "exact",
+          "tolerance": 0.001,
+          "measuredWorstError": null
+        },
+        "projection": {
+          "status": "supported",
+          "targets": ["SPICE"],
+          "roundtripVerified": true
+        }
+      },
+      "timings": {
+        "parse": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lint": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "lower": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        },
+        "solve": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        }
+      },
+      "cases": [
+        {
+          "id": "kicad-parse-canonical",
+          "name": "Canonical Fixture Parse",
+          "scale": "micro",
+          "referenceTool": "ModelScript Native Parser",
+          "metricKind": "ast-pass-rate",
+          "threshold": 1,
+          "measuredError": 0,
+          "passed": true,
+          "durationMs": 0,
+          "details": "Parser verified via package unit tests"
+        }
+      ],
+      "summary": {
+        "totalCases": 1,
+        "passedCases": 1,
         "passRate": 100
       }
     },

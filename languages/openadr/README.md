@@ -1,7 +1,9 @@
 <div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
 <div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-# `@modelscript/openadr`
+# @modelscript/openadr
+
+**Maturity:** Alpha · **Extensions:** `.oadr`, `.oadr.xml`, `.oadr.json`, `.xml`, `.json` · **Docs:** [modelscript.org/languages/openadr](https://modelscript.org/languages/openadr)
 
 Open Automated Demand Response (OpenADR 2.0b / 3.0) grid flexibility, dynamic pricing, and curtailment dispatch package for ModelScript.
 
@@ -15,11 +17,11 @@ Open Automated Demand Response (OpenADR 2.0b / 3.0) grid flexibility, dynamic pr
 
 ## File Support
 
-| Extension | Description | Role |
-| :--- | :--- | :--- |
-| `.oadr` | Declarative OpenADR Demand Response Program | Program rules & scheduled event intervals |
-| `.oadr.xml` | Standard OpenADR 2.0b XML Payload | `oadrDistributeEvent` message structure |
-| `.oadr.json` | OpenADR 3.0 REST API JSON Event Deck | Modern JSON-based event and price signals |
+| Extension    | Description                                 | Role                                      |
+| :----------- | :------------------------------------------ | :---------------------------------------- |
+| `.oadr`      | Declarative OpenADR Demand Response Program | Program rules & scheduled event intervals |
+| `.oadr.xml`  | Standard OpenADR 2.0b XML Payload           | `oadrDistributeEvent` message structure   |
+| `.oadr.json` | OpenADR 3.0 REST API JSON Event Deck        | Modern JSON-based event and price signals |
 
 ## Quick Example
 

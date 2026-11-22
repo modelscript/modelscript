@@ -453,7 +453,7 @@ export const MAX_CHILD_NODES: i32 = 100000;
 /** Minimum iteration cap for parser/recovery worklist loops. */
 export const MIN_LOOP_LIMIT: u32 = 10000;
 /** Default capacity (in elements) of GSS head and scratch buffers. */
-export const ARENA_BUFFER_SIZE: i32 = 16384;
+export const ARENA_BUFFER_SIZE: i32 = 4096;
 /** Maximum lookahead token window inspected during GLR error recovery. */
 export const MAX_LOOKAHEAD_DEPTH: i32 = 6;
 /** Maximum recursion/stack depth for AST structural helper walks. */

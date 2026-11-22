@@ -1,7 +1,9 @@
 <div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
 <div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-# `@modelscript/oneliner`
+# @modelscript/oneliner
+
+**Maturity:** Alpha · **Extensions:** `.olx`, `.dxt` · **Docs:** [modelscript.org/languages/oneliner](https://modelscript.org/languages/oneliner)
 
 ASPEN OneLiner / CAPE transmission short-circuit analysis, symmetrical component sequence network assembly ($Z_1, Z_0, Z_{0m}$ mutuals), IEEE C37.112 Time-Overcurrent (TOC) protection coordination, and zero-GC linear-memory `DAEBuilder` arena lowering for ModelScript.
 

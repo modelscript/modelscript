@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getPreloadedWasmParser, registerPreloadedWasmParser } from "@modelscript/dsl/bindings";
 import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -11,10 +12,13 @@ import {
   applyPsseDiagramWriteback,
   calculateShortCircuit,
   createPsseWasmParser,
+  ensurePsseWasmParser,
   executePyodidePsspyAsync,
   extractPowerFlowNetlist,
   formatPowerFlowReport,
   generatePyodidePsspyBridgeCode,
+  getPsseWasmParser,
+  isPsseWasmParserReady,
   lintPsse,
   lowerPsseToDae,
   parseDyr,
@@ -23,6 +27,7 @@ import {
   psseToEmtNetlist,
   psseToModelica,
   reduceNetworkEquivalent,
+  setPsseWasmParser,
   simulatePsseTransient,
   solvePowerFlow,
   writeDyr,
@@ -767,4 +772,23 @@ psspy.fnsl()
   assert.ok(session.lastPowerFlow?.converged, "Expected converged psspy session from Python script");
   const bridge = generatePyodidePsspyBridgeCode();
   assert.ok(bridge.includes('sys.modules["psspy"] = _psspy'), "Expected Pyodide psspy bridge module");
+});
+
+test("PSS/E WASM Loader: ensurePsseWasmParser integrates with global preloaded parser registry", async () => {
+  setPsseWasmParser(null);
+  assert.equal(getPreloadedWasmParser("psse"), undefined);
+
+  const loaded = await ensurePsseWasmParser();
+  assert.ok(loaded, "Expected ensurePsseWasmParser() to resolve a parser instance");
+  assert.equal(isPsseWasmParserReady(), true);
+  assert.equal(getPreloadedWasmParser("psse"), loaded as unknown);
+  assert.equal(getPsseWasmParser(), loaded);
+
+  // Verify pre-registered parsers from ParserService (globalThis.__msWasmParsers) are picked up without sync loading
+  setPsseWasmParser(null);
+  registerPreloadedWasmParser("psse", loaded as never);
+  assert.equal(getPsseWasmParser(), loaded);
+
+  const parsed = parseRaw(IEEE_14_RAW);
+  assert.equal(parsed.buses.size, 5);
 });

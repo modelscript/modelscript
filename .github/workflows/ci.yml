@@ -101,7 +101,11 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ctrf-${{ matrix.shard }}
-          path: "**/ctrf/*.json"
+          path: |
+            packages/*/ctrf/*.json
+            languages/*/ctrf/*.json
+            apps/*/ctrf/*.json
+            ee/ctrf/*.json
           if-no-files-found: ignore
           retention-days: 7
         if: always()
@@ -109,7 +113,11 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage-${{ matrix.shard }}
-          path: "**/coverage/*lcov*.info"
+          path: |
+            packages/*/coverage/*lcov*.info
+            languages/*/coverage/*lcov*.info
+            apps/*/coverage/*lcov*.info
+            ee/coverage/*lcov*.info
           if-no-files-found: ignore
           retention-days: 7
         if: always()

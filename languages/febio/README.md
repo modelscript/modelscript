@@ -3,7 +3,9 @@
 
 # @modelscript/febio
 
-FEBio (`.feb` v2.5 / v3.0 / v4.0) & SOFA Framework (`.scn`) Nonlinear Soft-Tissue Biomechanics, Hyperelasticity (`Neo-Hookean`, `Mooney-Rivlin`, `Ogden`, `Holzapfel-Gasser-Ogden`), Biphasic Poroelasticity, and Real-Time Surgical Deformable Physics language package for ModelScript. Features a unified FEBio `.feb` & SOFA `.scn` XML parser (`parseFebio`), multi-file workspace indexing (`FebioWorkspaceIndex`), 3D tetrahedral/hexahedral Jacobian and hyperelastic Cauchy stress solver (`computeElementJacobianDeterminant`, `solveHyperelasticMechanics`), direct linear-memory `DAEBuilder` lowering (`lowerFebioToDae`), 10 continuum biomechanics lint rules (`M9401`–`M9410`, `lintFebioDocument`, `FebioErrorCode`), CalculiX/Abaqus `.inp` and Modelica 3.x projections (`febioToCalculixInp`, `febioToModelica`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.feb`, `.scn` · **Docs:** [modelscript.org/languages/febio](https://modelscript.org/languages/febio)
+
+FEBio (`.feb` v2.5 / v3.0 / v4.0) & SOFA Framework (`.scn`) Nonlinear Soft-Tissue Biomechanics, Hyperelasticity (`Neo-Hookean`, `Mooney-Rivlin`, `Ogden`, `Holzapfel-Gasser-Ogden`), Biphasic Poroelasticity, and Real-Time Surgical Deformable Physics language package for ModelScript. Features a unified FEBio `.feb` & SOFA `.scn` XML parser (`parseFebio`), multi-file workspace indexing, 3D tetrahedral/hexahedral Jacobian and hyperelastic Cauchy stress solver (`computeElementJacobianDeterminant`, `solveHyperelasticMechanics`), direct linear-memory `DAEBuilder` lowering (`lowerFebioToDae`), 10 continuum biomechanics lint rules (`M9401`–`M9410`, `lintFebioDocument`, `FebioErrorCode`), CalculiX/Abaqus `.inp` and Modelica 3.x projections (`febioToCalculixInp`, `febioToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -19,19 +21,17 @@ FEBio (`.feb` v2.5 / v3.0 / v4.0) & SOFA Framework (`.scn`) Nonlinear Soft-Tissu
 
 ## Package Structure
 
-| Path                       | Description                                                                                           |
-| -------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `src/index.ts`             | Public package exports                                                                                |
-| `src/language.ts`          | `febioLanguage` definition and compiler actions                                                       |
-| `src/types.ts`             | `FebioDocument`, `FebioMaterial`, `FebioNode`, `FebioElement`, `FebioBoundaryCondition`, `SofaNode`   |
-| `src/parser/index.ts`      | `parseFebio` unified FEBio `.feb` (v2.5–v4.0) and SOFA `.scn` XML parser                              |
-| `src/lints/rules.ts`       | `FebioErrorCode`, `lintFebioDocument` (`M9401`–`M9410`), and `computeElementJacobianDeterminant`      |
-| `src/lints/index.ts`       | Linter barrel exports                                                                                 |
-| `src/solvers/index.ts`     | `solveHyperelasticMechanics` hyperelastic Cauchy/von Mises stress and biphasic consolidation solver   |
-| `src/dae/index.ts`         | `lowerFebioToDae` direct lowering of viscoelastic and biphasic states into `DAEBuilder` linear memory |
-| `src/projections/index.ts` | `febioToCalculixInp` and `febioToModelica` cross-language translators                                 |
-| `src/workspace-index.ts`   | `FebioWorkspaceIndex` implementing `IWorkspaceIndex` across `.feb` and `.scn` files                   |
-| `src/lsp.ts`               | LSP validation, document symbols, hover, completion, and definition providers                         |
+| Path                       | Description                                                                                         |
+| -------------------------- | --------------------------------------------------------------------------------------------------- |
+| `src/index.ts`             | Public package exports                                                                              |
+| `src/language.ts`          | `febioLanguage` definition and compiler actions                                                     |
+| `src/types.ts`             | `FebioDocument`, `FebioMaterial`, `FebioNode`, `FebioElement`, `FebioBoundaryCondition`, `SofaNode` |
+| `src/parser/index.ts`      | `parseFebio` unified FEBio `.feb` (v2.5–v4.0) and SOFA `.scn` XML parser                            |
+| `src/lints/rules.ts`       | `FebioErrorCode`, `lintFebioDocument` (`M9401`–`M9410`), and `computeElementJacobianDeterminant`    |
+| `src/lints/index.ts`       | Linter barrel exports                                                                               |
+| `src/solver/index.ts`      | `solveHyperelasticMechanics` hyperelastic Cauchy/von Mises stress and biphasic consolidation solver |
+| `src/projections/index.ts` | `febioToCalculixInp` and `febioToModelica` cross-language translators                               |
+| `src/lsp.ts`               | LSP validation, document symbols, hover, completion, and definition providers                       |
 
 ---
 
@@ -58,15 +58,15 @@ FEBio (`.feb` v2.5 / v3.0 / v4.0) & SOFA Framework (`.scn`) Nonlinear Soft-Tissu
 
 ```bash
 # Lint an FEBio (.feb) or SOFA (.scn) biomechanics model (M9401-M9410)
-npx msx febio lint arterial_wall.feb
+msx febio lint arterial_wall.feb
 
 # Solve hyperelastic Cauchy/von Mises stress and biphasic pore pressure
-npx msx febio solve arterial_wall.feb --stretch 1.25
+msx febio solve arterial_wall.feb --stretch 1.25
 
 # Lower to DAE or project to CalculiX/Abaqus (.inp) and Modelica (.mo)
-npx msx febio to-dae arterial_wall.feb
-npx msx febio to-calculix arterial_wall.feb
-npx msx febio to-modelica arterial_wall.feb
+msx febio to-dae arterial_wall.feb
+msx febio to-calculix arterial_wall.feb
+msx febio to-modelica arterial_wall.feb
 ```
 
 ### Programmatic API

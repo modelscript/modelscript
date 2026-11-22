@@ -3,6 +3,8 @@
 
 # @modelscript/lps
 
+**Maturity:** Beta · **Extensions:** `.lps`, `.tgx`, `.tlx`, `.tgn`, `.tln`, … (7 extensions) · **Docs:** [modelscript.org/languages/lps](https://modelscript.org/languages/lps)
+
 High-Performance Continental Gas & Liquid Pipeline Network Simulation Package (`.lps`, `.tgx`, `.tlx`, `.tgn`, `.tln`, `.psg`, `.psl`) for ModelScript. Features zero-GC in-WASM 1D transient gas Euler dynamics lowered to `DAEBuilder`, high-accuracy AGA-8 (ISO 20765-1), GERG-2008, and Peng-Robinson equations of state, line pack storage analytics, multi-product liquid batch tracking, water hammer surge evaluation, formal SysML v2 & Modelica projections, and 12 pre-flight safety lint rules (`M8001`–`M8012`).
 
 ---
@@ -70,7 +72,6 @@ High-Performance Continental Gas & Liquid Pipeline Network Simulation Package (`
 | `src/projections/lps-to-modelica.ts`         | `lpsToModelica` Modelica fluid pipeline projection                                              |
 | `src/dae/index.ts`                           | `lowerLpsToDae` DAE arena lowering                                                              |
 | `src/verification/pipeline-verifier.ts`      | `PipelineVerifier` ASME B31.8 / B31.4 and API RP 14E formal safety verifier                     |
-| `src/workspace-index.ts`                     | Multi-file workspace symbol indexer                                                             |
 | `src/lsp.ts`                                 | LSP diagnostics, hover tooltips, and document symbols                                           |
 
 ---

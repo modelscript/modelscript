@@ -3,6 +3,8 @@
 
 # @modelscript/scad
 
+**Maturity:** Beta · **Extensions:** `.scad` · **Docs:** [modelscript.org/languages/scad](https://modelscript.org/languages/scad)
+
 OpenSCAD parametric 3D Constructive Solid Geometry (`.scad`) compiler, WebAssembly GLR parser, fluent method-chaining evaluator, `tag_port()` boundary port tagger, 9-rule semantic linter (`SCAD_*`), OpenCascade B-Rep & ISO 10303-21 STEP exporter (`compileScadToStep`), and `ScadPatcher` 3D gizmo AST writeback engine for ModelScript.
 
 ---
@@ -31,7 +33,6 @@ OpenSCAD parametric 3D Constructive Solid Geometry (`.scad`) compiler, WebAssemb
 | `src/linter.ts`    | `lintScadCst` semantic linter implementing all 9 `SCAD_*` diagnostic rules with constant folding                                        |
 | `src/patcher.ts`   | `ScadPatcher` surgical CST byte-slice mutator (`patchNode`, `patchVariable`, `patchTransformArgument`, `patchVectorComponent`)          |
 | `src/writeback.ts` | `scadWriteback` integration hook for LSP & 3D CAD viewport synchronization                                                              |
-| `build.js`         | Compiles `src/language.ts` into `dist/parser.wasm` and `src-gen/bindings.js`                                                            |
 
 ---
 

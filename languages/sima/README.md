@@ -3,7 +3,9 @@
 
 # @modelscript/sima
 
-SIMO / RIFLEX-compatible marine operations and slender marine structure dynamics package (`.inp`, `.sima`, `.sys`, `.hyd`) for ModelScript. Features multi-file workspace indexing (`SimaWorkspaceIndex`), card-deck and modern `.sima` XML parsers, hydrodynamic RAO table ingestion (`.hyd` format), DNV-OS-E301 & DNV-ST-0119 mooring line tension safety factor verification, fast in-WASM catenary shooting solver (`solveCatenary`), 15 pre-flight static marine linter rules (`M7001`–`M7015`), and turnkey Modelica/SSP co-simulation projections.
+**Maturity:** Alpha · **Extensions:** `.inp`, `.sima`, `.sys`, `.hyd` · **Docs:** [modelscript.org/languages/sima](https://modelscript.org/languages/sima)
+
+SIMO / RIFLEX-compatible marine operations and slender marine structure dynamics package (`.inp`, `.sima`, `.sys`, `.hyd`) for ModelScript. Features multi-file workspace indexing, card-deck and modern `.sima` XML parsers, hydrodynamic RAO table ingestion (`.hyd` format), DNV-OS-E301 & DNV-ST-0119 mooring line tension safety factor verification, fast in-WASM catenary shooting solver (`solveCatenary`), 15 pre-flight static marine linter rules (`M7001`–`M7015`), and turnkey Modelica/SSP co-simulation projections.
 
 ---
 
@@ -55,7 +57,6 @@ SIMO / RIFLEX-compatible marine operations and slender marine structure dynamics
 | `src/lints/index.ts`        | `lintSimaProject` and `SimaErrorCode` (`M7001`–`M7015`) pre-flight marine diagnostic engine                                     |
 | `src/projections/index.ts`  | `simaToModelica`, `simaToSsp`, and `simaToSysml2` cross-domain projectors                                                       |
 | `src/dae/index.ts`          | `simaToDae` linear-memory `DAEBuilder` lowering                                                                                 |
-| `src/workspace-index.ts`    | `SimaWorkspaceIndex` multi-file symbol indexer                                                                                  |
 | `src/lsp.ts`                | LSP diagnostics (`validateSima`), hover cards (`getSimaHover`), and document symbols (`getSimaDocumentSymbols`)                 |
 
 ---

@@ -1,7 +1,9 @@
 <div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
 <div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-# `@modelscript/ocpp`
+# @modelscript/ocpp
+
+**Maturity:** Alpha · **Extensions:** `.ocpp`, `.ocpp.json`, `.cpo`, `.json` · **Docs:** [modelscript.org/languages/ocpp](https://modelscript.org/languages/ocpp)
 
 Open Charge Point Protocol (OCPP 2.0.1 / 1.6J) EV public charging, charge point management, dynamic load balancing, and smart grid demand response package for ModelScript.
 
@@ -15,11 +17,11 @@ Open Charge Point Protocol (OCPP 2.0.1 / 1.6J) EV public charging, charge point 
 
 ## File Support
 
-| Extension | Description | Role |
-| :--- | :--- | :--- |
-| `.ocpp` | Declarative EVSE & Smart Charging Schedule | Multi-station charging profile definitions |
-| `.ocpp.json` | Standard OCPP JSON-RPC Payload | `SetChargingProfile` & transaction events |
-| `.cpo` | Charge Point Operator Station Configuration | Hardware ratings, EVSE limits & grid constraints |
+| Extension    | Description                                 | Role                                             |
+| :----------- | :------------------------------------------ | :----------------------------------------------- |
+| `.ocpp`      | Declarative EVSE & Smart Charging Schedule  | Multi-station charging profile definitions       |
+| `.ocpp.json` | Standard OCPP JSON-RPC Payload              | `SetChargingProfile` & transaction events        |
+| `.cpo`       | Charge Point Operator Station Configuration | Hardware ratings, EVSE limits & grid constraints |
 
 ## Quick Example
 

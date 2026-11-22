@@ -470,6 +470,24 @@ export type DiagramEditAction =
       y: number;
       name?: string | undefined;
       section?: string | undefined;
+      rotation?: number | undefined;
+      parameters?: Record<string, unknown> | undefined;
+    }
+  | {
+      type: "pasteSubgraph";
+      nodes: {
+        className: string;
+        x: number;
+        y: number;
+        rotation?: number | undefined;
+        parameters?: Record<string, unknown> | undefined;
+      }[];
+      edges: {
+        sourceIdx: number;
+        sourcePort?: string | undefined;
+        targetIdx: number;
+        targetPort?: string | undefined;
+      }[];
     }
   | { type: "deleteComponents"; names: string[] }
   | {
@@ -505,6 +523,8 @@ export interface SvgExportOptions {
   scale?: number | undefined;
   embedFonts?: boolean | undefined;
   background?: string | undefined;
+  /** Optional prefix/suffix scope for SVG `<defs>` IDs to prevent collisions when multiple SVGs share a DOM document. */
+  idPrefix?: string | undefined;
 }
 
 // ── Stencil / Palette ──

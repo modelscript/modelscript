@@ -159,7 +159,7 @@ export function sparqlRouter(database: LibraryDatabase): Router {
           }
 
           const serialized = await new Promise<string>((resolve, reject) => {
-            writer.end((err, out) => (err ? reject(err) : resolve(out)));
+            writer.end((err, out) => (err ? reject(err) : resolve(out ?? "")));
           });
 
           res.setHeader("Content-Type", contentType);

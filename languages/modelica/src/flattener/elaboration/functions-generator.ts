@@ -886,6 +886,48 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
         ) {
           candidates.push(compTarget);
         }
+      } else if (compTarget && !isRecordSym(compTarget) && dae.classKind !== "function") {
+        // Recursively collect nested record-typed components (e.g. flow R r inside connector C)
+        // which TS component instantiation tracks via usedRecordSymIds, but WASM mode skips.
+        const visitedNested = new Set<SymbolId>([rootClassId]);
+        const walkNested = (clsId: SymbolId, depth: number): void => {
+          if (depth > 8 || visitedNested.has(clsId)) return;
+          visitedNested.add(clsId);
+          const elems = db.query<SymbolId[]>("instantiate", clsId) ?? [];
+          const subComps =
+            elems.length > 0
+              ? elems.map((id) => db.symbol(id)).filter((s): s is SymbolEntry => Boolean(s && s.kind === "Component"))
+              : (db.childrenOf(clsId) || []).filter((s) => s && s.kind === "Component");
+          for (const sc of subComps) {
+            const scInst = db.query<ComponentInstanceData>("componentInstance", sc.id);
+            const scMeta = (sc.metadata as any) || {};
+            const scType = scInst?.typeSpecifier ?? scMeta.typeSpecifier;
+            if (!scType) continue;
+            const scClean = scType.includes(".") ? scType.split(".").pop()! : scType;
+            const rawSub = db.query<any>("classInstance", sc.id);
+            let subTarget: SymbolEntry | null =
+              typeof rawSub === "number" ? (db.symbol(rawSub) ?? null) : (rawSub ?? null);
+            if (!subTarget) {
+              const res =
+                (sc.parentId ? db.query<any>("resolveName", sc.parentId) : null) ?? db.query<any>("resolveName", clsId);
+              subTarget = res?.(scType) ?? res?.(scClean) ?? null;
+            }
+            if (!subTarget) continue;
+            if (isRecordSym(subTarget)) {
+              usedRecordNames.add(scClean);
+              usedRecordNames.add(scType);
+              if (subTarget.name) usedRecordNames.add(subTarget.name);
+              const qSub = getSymbolQualifiedName(db, subTarget.id);
+              if (qSub) usedRecordNames.add(qSub);
+              directCompRecordIds.add(subTarget.id);
+              if (subTarget.resourceId === rootSym?.resourceId && !candidates.some((c) => c.id === subTarget!.id)) {
+                candidates.push(subTarget);
+              }
+            }
+            walkNested(subTarget.id, depth + 1);
+          }
+        };
+        walkNested(compTarget.id, 0);
       }
       if (
         compTarget &&

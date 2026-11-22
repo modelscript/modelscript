@@ -3,7 +3,9 @@
 
 # @modelscript/nifti
 
-NIfTI-1 / NIfTI-2 (`.nii`, `.nii.gz`) & NRRD (`.nrrd`, `.nhdr`) Volumetric Medical Imaging, RAS+ `qform`/`sform` Spatial Coordinate Registration, Radiomics, and Iso-Surface Mesh Reconstruction language package for ModelScript. Features a unified NIfTI-1 348-byte binary, NRRD ASCII/raw header, and volumetric descriptor parser (`parseNifti`), multi-file workspace indexing (`NiftiWorkspaceIndex`), a marching-tetrahedra / voxel iso-surface mesh & radiomics extractor (`extractIsoSurfaceMesh`, `computeSformAffineDeterminant`), direct linear-memory `DAEBuilder` lowering (`lowerNiftiToDae`), 10 neuroimaging & radiological header lint rules (`M9501`–`M9510`, `lintNiftiDocument`, `NiftiErrorCode`), OpenSCAD 3D CSG and ISO 10303-21 STEP AP242 projections (`niftiToScad`, `niftiToStep`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.nii.json`, `.nii.gz`, `.nii`, `.nrrd`, `.nhdr` · **Docs:** [modelscript.org/languages/nifti](https://modelscript.org/languages/nifti)
+
+NIfTI-1 / NIfTI-2 (`.nii`, `.nii.gz`) & NRRD (`.nrrd`, `.nhdr`) Volumetric Medical Imaging, RAS+ `qform`/`sform` Spatial Coordinate Registration, Radiomics, and Iso-Surface Mesh Reconstruction language package for ModelScript. Features a unified NIfTI-1 348-byte binary, NRRD ASCII/raw header, and volumetric descriptor parser (`parseNifti`), multi-file workspace indexing, a marching-tetrahedra / voxel iso-surface mesh & radiomics extractor (`extractIsoSurfaceMesh`, `computeSformAffineDeterminant`), direct linear-memory `DAEBuilder` lowering (`lowerNiftiToDae`), 10 neuroimaging & radiological header lint rules (`M9501`–`M9510`, `lintNiftiDocument`, `NiftiErrorCode`), OpenSCAD 3D CSG and ISO 10303-21 STEP AP242 projections (`niftiToScad`, `niftiToStep`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -19,19 +21,17 @@ NIfTI-1 / NIfTI-2 (`.nii`, `.nii.gz`) & NRRD (`.nrrd`, `.nhdr`) Volumetric Medic
 
 ## Package Structure
 
-| Path                       | Description                                                                                            |
-| -------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `src/index.ts`             | Public package exports                                                                                 |
-| `src/language.ts`          | `niftiLanguage` definition and compiler actions                                                        |
-| `src/types.ts`             | `NiftiDocument`, `NiftiHeader`, `NiftiQuaternion`, `NiftiSegmentLabel`, `ExtractedIsoSurfaceMesh`      |
-| `src/parser/index.ts`      | `parseNifti` NIfTI-1 binary, NRRD header, and JSON/DSL volumetric parser                               |
-| `src/lints/rules.ts`       | `NiftiErrorCode`, `lintNiftiDocument` (`M9501`–`M9510`), and `computeSformAffineDeterminant`           |
-| `src/lints/index.ts`       | Linter barrel exports                                                                                  |
-| `src/solvers/index.ts`     | `extractIsoSurfaceMesh` 3D iso-surface mesh reconstructor and volumetric radiomics analyzer            |
-| `src/dae/index.ts`         | `lowerNiftiToDae` Pennes bioheat and contrast-agent perfusion lowering into `DAEBuilder` linear memory |
-| `src/projections/index.ts` | `niftiToScad` and `niftiToStep` translators to OpenSCAD 3D CSG and STEP AP242 CAD                      |
-| `src/workspace-index.ts`   | `NiftiWorkspaceIndex` implementing `IWorkspaceIndex` across `.nii`, `.nrrd`, and `.nhdr` files         |
-| `src/lsp.ts`               | LSP validation, document symbols, RAS+ affine hover cards, completion, and definition providers        |
+| Path                       | Description                                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------------------- |
+| `src/index.ts`             | Public package exports                                                                            |
+| `src/language.ts`          | `niftiLanguage` definition and compiler actions                                                   |
+| `src/types.ts`             | `NiftiDocument`, `NiftiHeader`, `NiftiQuaternion`, `NiftiSegmentLabel`, `ExtractedIsoSurfaceMesh` |
+| `src/parser/index.ts`      | `parseNifti` NIfTI-1 binary, NRRD header, and JSON/DSL volumetric parser                          |
+| `src/lints/rules.ts`       | `NiftiErrorCode`, `lintNiftiDocument` (`M9501`–`M9510`), and `computeSformAffineDeterminant`      |
+| `src/lints/index.ts`       | Linter barrel exports                                                                             |
+| `src/mesh/index.ts`        | `extractIsoSurfaceMesh` 3D iso-surface mesh reconstructor and volumetric radiomics analyzer       |
+| `src/projections/index.ts` | `niftiToScad` and `niftiToStep` translators to OpenSCAD 3D CSG and STEP AP242 CAD                 |
+| `src/lsp.ts`               | LSP validation, document symbols, RAS+ affine hover cards, completion, and definition providers   |
 
 ---
 
@@ -58,15 +58,15 @@ NIfTI-1 / NIfTI-2 (`.nii`, `.nii.gz`) & NRRD (`.nrrd`, `.nhdr`) Volumetric Medic
 
 ```bash
 # Lint a NIfTI (.nii) or NRRD (.nrrd) medical volume header (M9501-M9510)
-npx msx nifti lint brain_mri.nrrd
+msx nifti lint brain_mri.nrrd
 
 # Extract 3D iso-surface mesh and volumetric radiomics at threshold
-npx msx nifti extract-mesh brain_mri.nrrd --threshold 100
+msx nifti extract-mesh brain_mri.nrrd --threshold 100
 
 # Lower Pennes bioheat / perfusion ODEs to DAE or project to OpenSCAD (.scad) / STEP (.step)
-npx msx nifti to-dae brain_mri.nrrd
-npx msx nifti to-scad brain_mri.nrrd
-npx msx nifti to-step brain_mri.nrrd
+msx nifti to-dae brain_mri.nrrd
+msx nifti to-scad brain_mri.nrrd
+msx nifti to-step brain_mri.nrrd
 ```
 
 ### Programmatic API

@@ -284,29 +284,40 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   const setShowAnalysisView = controlledSetShowAnalysisView ?? setInternalShowAnalysisView;
   const [showPalette, setShowPalette] = useState(false);
   const [showComponentWizard, setShowComponentWizard] = useState(false);
-  const [pscadPaletteCategories, setPscadPaletteCategories] = useState<
+  const [lspPaletteCategories, setLspPaletteCategories] = useState<
     { id: string; label: string; items: { type?: string; label: string; snippet?: string; className?: string }[] }[]
   >([]);
   const [activePaletteCategory, setActivePaletteCategory] = useState<string>("");
+  const lastPaletteKeyRef = useRef<string>("");
   useEffect(() => {
-    if (!showPalette || dialect !== "pscad" || pscadPaletteCategories.length > 0) return;
+    if (!showPalette) return;
+    const paletteUri = documentUri || `inmemory://model.${dialect === "pscad" ? "pscx" : dialect}`;
+    const paletteKey = `${dialect}|${paletteUri}`;
+    if (lastPaletteKeyRef.current === paletteKey && lspPaletteCategories.length > 0) return;
     let cancelled = false;
-    getDiagramPalette(documentUri || "inmemory://model.pscx")
+    getDiagramPalette(paletteUri)
       .then((res) => {
-        if (cancelled || !res?.categories?.length) return;
+        if (cancelled) return;
+        lastPaletteKeyRef.current = paletteKey;
+        if (!res?.categories?.length) {
+          setLspPaletteCategories([]);
+          return;
+        }
         const cats = res.categories.map((c) => ({
           id: String(c.id || c.name || c.label || "General"),
           label: String(c.label || c.name || c.id || "General"),
           items: Array.isArray(c.items) ? c.items : [],
         }));
-        setPscadPaletteCategories(cats);
+        setLspPaletteCategories(cats);
         if (cats[0]) setActivePaletteCategory(cats[0].id);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setLspPaletteCategories([]);
+      });
     return () => {
       cancelled = true;
     };
-  }, [showPalette, dialect, documentUri, pscadPaletteCategories.length]);
+  }, [showPalette, dialect, documentUri, lspPaletteCategories.length]);
   const internalDiagramRef = useRef<DiagramEditorHandle>(null);
   const effectiveDiagramRef = diagramEditorRef ?? internalDiagramRef;
   const [currentZoom, setCurrentZoom] = useState(1);
@@ -1035,27 +1046,29 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 >
                   {activeLangInfo.label} Palette:
                 </span>
-                {dialect === "pscad" && pscadPaletteCategories.length > 0 ? (
+                {lspPaletteCategories.length > 0 ? (
                   <>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginRight: 6 }}>
-                      <button
-                        type="button"
-                        onClick={() => setShowComponentWizard(true)}
-                        style={{
-                          border: "1px solid var(--ms-brand, #0891b2)",
-                          borderRadius: 999,
-                          padding: "2px 8px",
-                          fontSize: 10,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          backgroundColor: "var(--ms-brand-soft, rgba(8, 145, 178, 0.14))",
-                          color: "var(--ms-brand, #0891b2)",
-                        }}
-                        title="Open visual <Graphics>/<form> Component Definition Wizard"
-                      >
-                        + New Defn
-                      </button>
-                      {pscadPaletteCategories.map((cat) => (
+                      {dialect === "pscad" && (
+                        <button
+                          type="button"
+                          onClick={() => setShowComponentWizard(true)}
+                          style={{
+                            border: "1px solid var(--ms-brand, #0891b2)",
+                            borderRadius: 999,
+                            padding: "2px 8px",
+                            fontSize: 10,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            backgroundColor: "var(--ms-brand-soft, rgba(8, 145, 178, 0.14))",
+                            color: "var(--ms-brand, #0891b2)",
+                          }}
+                          title="Open visual <Graphics>/<form> Component Definition Wizard"
+                        >
+                          + New Defn
+                        </button>
+                      )}
+                      {lspPaletteCategories.map((cat) => (
                         <button
                           key={cat.id}
                           type="button"
@@ -1082,18 +1095,20 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                       ))}
                     </div>
                     {(
-                      pscadPaletteCategories.find((c) => c.id === activePaletteCategory)?.items ??
-                      pscadPaletteCategories[0]?.items ??
+                      lspPaletteCategories.find((c) => c.id === activePaletteCategory)?.items ??
+                      lspPaletteCategories[0]?.items ??
                       []
                     ).map((item) => (
                       <button
-                        key={item.type || item.label}
+                        key={item.type || item.className || item.label}
                         type="button"
                         onClick={() => {
                           const defName = item.type || item.className || item.label;
                           const snippet =
                             item.snippet ||
-                            `    <User cmp="${defName}" name="${item.label}" id="${Date.now()}" x="200" y="200" />\n`;
+                            (dialect === "pscad"
+                              ? `    <User cmp="${defName}" name="${item.label}" id="${Date.now()}" x="200" y="200" />\n`
+                              : "");
                           onInsertStencilSnippet?.(snippet, defName);
                         }}
                         style={{
@@ -1274,27 +1289,29 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 >
                   {activeLangInfo.label || activeLangInfo.name} Palette:
                 </span>
-                {dialect === "pscad" && pscadPaletteCategories.length > 0 ? (
+                {lspPaletteCategories.length > 0 ? (
                   <>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginRight: 6 }}>
-                      <button
-                        type="button"
-                        onClick={() => setShowComponentWizard(true)}
-                        style={{
-                          border: "1px solid var(--ms-brand, #0891b2)",
-                          borderRadius: 999,
-                          padding: "2px 8px",
-                          fontSize: 10,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          backgroundColor: "var(--ms-brand-soft, rgba(8, 145, 178, 0.14))",
-                          color: "var(--ms-brand, #0891b2)",
-                        }}
-                        title="Open visual <Graphics>/<form> Component Definition Wizard"
-                      >
-                        + New Defn
-                      </button>
-                      {pscadPaletteCategories.map((cat) => (
+                      {dialect === "pscad" && (
+                        <button
+                          type="button"
+                          onClick={() => setShowComponentWizard(true)}
+                          style={{
+                            border: "1px solid var(--ms-brand, #0891b2)",
+                            borderRadius: 999,
+                            padding: "2px 8px",
+                            fontSize: 10,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            backgroundColor: "var(--ms-brand-soft, rgba(8, 145, 178, 0.14))",
+                            color: "var(--ms-brand, #0891b2)",
+                          }}
+                          title="Open visual <Graphics>/<form> Component Definition Wizard"
+                        >
+                          + New Defn
+                        </button>
+                      )}
+                      {lspPaletteCategories.map((cat) => (
                         <button
                           key={cat.id}
                           type="button"
@@ -1321,18 +1338,20 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                       ))}
                     </div>
                     {(
-                      pscadPaletteCategories.find((c) => c.id === activePaletteCategory)?.items ??
-                      pscadPaletteCategories[0]?.items ??
+                      lspPaletteCategories.find((c) => c.id === activePaletteCategory)?.items ??
+                      lspPaletteCategories[0]?.items ??
                       []
                     ).map((item) => (
                       <button
-                        key={item.type || item.label}
+                        key={item.type || item.className || item.label}
                         type="button"
                         onClick={() => {
                           const defName = item.type || item.className || item.label;
                           const snippet =
                             item.snippet ||
-                            `    <User classid="UserCmp" defn="${defName}" name="${item.label}" id="${Date.now()}" x="200" y="200" />\n`;
+                            (dialect === "pscad"
+                              ? `    <User classid="UserCmp" defn="${defName}" name="${item.label}" id="${Date.now()}" x="200" y="200" />\n`
+                              : "");
                           onInsertStencilSnippet?.(snippet, defName);
                         }}
                         style={{

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { serializeInteractiveGraphSvg } from "@modelscript/diagram/svg";
 import {
   CheckIcon,
   CodeIcon,
@@ -472,8 +473,9 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
       containerRef.current?.querySelector("svg.morsel-diagram-svg") ||
       Array.from(containerRef.current?.querySelectorAll("svg") || []).find((el) => (el.clientWidth || 0) > 48);
     if (svgEl) {
-      const serializer = new XMLSerializer();
-      const svgStr = serializer.serializeToString(svgEl);
+      const svgStr = serializeInteractiveGraphSvg(svgEl as SVGSVGElement, {
+        background: isDark ? "#0d1117" : "#ffffff",
+      });
       const blob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");

@@ -101,10 +101,14 @@ if (isMqttEnabled && mqttUrl) {
 let recorder: HistorianRecorder | null = null;
 
 if (mqttClient && dbPool) {
-  recorder = new HistorianRecorder(dbPool, mqttClient, {
-    batchSize: 500,
-    flushIntervalMs: 200,
-  });
+  recorder = new HistorianRecorder(
+    dbPool as unknown as ConstructorParameters<typeof HistorianRecorder>[0],
+    mqttClient,
+    {
+      batchSize: 500,
+      flushIntervalMs: 200,
+    },
+  );
   console.log("Historian recorder ready (starts per-session).");
 }
 

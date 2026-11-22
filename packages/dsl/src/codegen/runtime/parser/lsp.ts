@@ -868,11 +868,23 @@ function lsp_extractDiagnosticsForRootImpl(astRoot: u32, fileId: u32 = 0, rangeS
           lsp_allocDiagnostic(dStart, dEnd, 0, 1, (type & 0x7fff) as u32);
           allocatedDiag = true;
         } else {
+          let diagKind: u32 = 2;
           let exp1: u32 = 0;
           let exp2: u32 = 0;
           if (astRoot == lastParsedAstRoot) {
             for (let ei = 0; ei < errorCount; ei++) {
               if (t_errorStarts[ei] <= dEnd && t_errorEnds[ei] >= dStart) {
+                let a0 = changetype<u32>(t_errorArg0) != 0 ? t_errorArg0[ei] : 0;
+                if (a0 >= 3 && a0 <= 6) {
+                  diagKind = a0;
+                  let a1Sym = changetype<u32>(t_errorArg1) != 0 ? t_errorArg1[ei] : 0;
+                  if (a1Sym > 0) {
+                    packedTokInfo = (a1Sym & 0x7fff) | ((firstTokLen & 0xffff) << 16);
+                  }
+                  if (changetype<u32>(t_errorArg2) != 0) exp1 = t_errorArg2[ei];
+                  if (changetype<u32>(t_errorArg3) != 0) exp2 = t_errorArg3[ei];
+                  break;
+                }
                 if ((changetype<u32>(t_errorArg2) != 0 && t_errorArg2[ei] > 0) || (changetype<u32>(t_errorArg3) != 0 && t_errorArg3[ei] > 0)) {
                   exp1 = t_errorArg2[ei];
                   exp2 = t_errorArg3[ei];
@@ -881,7 +893,7 @@ function lsp_extractDiagnosticsForRootImpl(astRoot: u32, fileId: u32 = 0, rangeS
               }
             }
           }
-          lsp_allocDiagnostic(dStart, dEnd, 0, 2, packedTokInfo, exp1, exp2);
+          lsp_allocDiagnostic(dStart, dEnd, 0, diagKind, packedTokInfo, exp1, exp2);
           allocatedDiag = true;
         }
       } else if (isLeaf && (type == 0 || ((flags & FLAG_HAS_ERROR) != 0))) {

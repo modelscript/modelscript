@@ -2,6 +2,7 @@
 
 export interface DiagramGraphState {
   readOnly: boolean;
+  layoutEditable: boolean;
   defaultConnector?: unknown;
   metadata?: Record<string, unknown> | undefined;
   selectedNodeId: string | null;
@@ -21,6 +22,7 @@ export function getGraphState<G extends object>(g?: G | null): DiagramGraphState
   if (!state) {
     state = {
       readOnly: false,
+      layoutEditable: false,
       selectedNodeId: null,
       propertyCache: new Map<string, unknown>(),
       lastRenderedModule: null,
@@ -74,4 +76,9 @@ export function beginGraphRenderState<G extends object>(
 export function isGraphReadOnly(g: object | null | undefined, fallbackReadOnly: boolean): boolean {
   const state = peekGraphState(g ?? null);
   return state ? state.readOnly : fallbackReadOnly;
+}
+
+export function isGraphLayoutEditable(g: object | null | undefined, fallbackLayoutEditable = false): boolean {
+  const state = peekGraphState(g ?? null);
+  return state ? state.layoutEditable : fallbackLayoutEditable;
 }

@@ -51,11 +51,11 @@ The official extension turns VS Code or Cursor into a complete multi-domain mode
 1. Open VS Code and open the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X`).
 2. Search for **`ModelScript`** (`modelscript.modelscript`) and click **Install**.
 
-The extension bundles the native WebAssembly Language Server (`@modelscript/lsp`), real-time diagnostics across all 93 supported formats, interactive schematic and Bode plot panels, the 3D WebGL CAD viewer with formal verification overlays, and the DAP time-travel simulation debugger.
+The extension bundles the native WebAssembly Language Server (`@modelscript/lsp`), real-time diagnostics across all 105 documented engineering formats (106 total monorepo packages), interactive schematic and Bode plot panels, the 3D WebGL CAD viewer with formal verification overlays, and the DAP time-travel simulation debugger.
 
 ### 4. AI Coding Assistants & MCP Server (`@modelscript/mcp`)
 
-Connect AI agents (Claude Code, Claude Desktop, Cursor, Windsurf, or custom orchestrators) to ModelScript's **105 deterministic engineering tools** over the Model Context Protocol:
+Connect AI agents (Claude Code, Claude Desktop, Cursor, Windsurf, or custom orchestrators) to ModelScript's **121 static deterministic engineering tools** over the Model Context Protocol:
 
 ```bash
 # Register @modelscript/mcp in Claude Code with a single command
@@ -110,29 +110,30 @@ See the [Platform Administration Guide](./administration.md) for Kubernetes Helm
 
 ## For Contributors & Compiler Developers
 
-To build and hack on the ModelScript monorepo locally, install **Node.js ≥ 24** (matching `.nvmrc`) and `npm`.
+To build and hack on the ModelScript monorepo locally, install **Node.js ≥ 24** (matching `.nvmrc`) and **pnpm** (via `corepack enable`).
 
 ### 1. Clone & Install
 
 ```bash
 git clone https://github.com/modelscript/modelscript.git
 cd modelscript
-npm install
+pnpm install
 ```
 
 ### 2. Build Core Compiler & Language Runtimes
 
-ModelScript compiles its native WebAssembly GLR parsers (`parser.wasm`), AssemblyScript flattening kernels, and TypeScript packages via Nx:
+ModelScript compiles its native WebAssembly GLR parsers (`parser.wasm`), AssemblyScript flattening kernels, and TypeScript packages via pnpm workspaces and Nx:
 
 ```bash
-npm run build:libs    # Build core compiler packages and language runtimes
-npm run build         # Build all monorepo packages and applications
+pnpm run build:libs                 # Build core compiler packages and language runtimes
+pnpm run build                      # Build all monorepo packages and applications
+pnpm --filter @modelscript/modelica test:unit  # Run tests for a single package
 ```
 
 ### 3. Launch Local Development Servers
 
 ```bash
-npm run dev           # Start API backend, LSP workers, and Studio
+pnpm run dev           # Start API backend, LSP workers, and Studio
 ```
 
 ---
@@ -140,4 +141,4 @@ npm run dev           # Start API backend, LSP workers, and Studio
 ## Next Steps
 
 - Follow the **[Getting Started Tutorial](./getting-started.md)** to build, verify, simulate, and export your first connected multi-domain model.
-- Explore **[CLI Overview](../cli/overview.md)** for global flags, environment variables, and all 169 `msx` commands (138 primary commands + 31 aliases).
+- Explore **[CLI Overview](../cli/overview.md)** for global flags, environment variables, and all 146 registered `msx` commands.

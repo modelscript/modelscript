@@ -3,7 +3,9 @@
 
 # @modelscript/cantera
 
-Gas-phase chemical kinetics, combustion, catalysis, and NASA-7 polynomial thermochemistry modeling package (`.yaml`, `.cti`) for ModelScript. Features a zero-regex Cantera YAML and legacy CTI mechanism parser (`parseCantera`), multi-file workspace indexing (`CanteraWorkspaceIndex`), NASA-7 thermodynamic property evaluation (`evaluateNasa7Thermo`), modified Arrhenius & Lindemann/Troe falloff rate evaluation (`evaluateArrheniusRate`), an isothermal/adiabatic batch reactor solver with thermodynamic equilibrium reverse rates (`solveCanteraReactor`), direct linear-memory `DAEBuilder` chemical kinetics lowering (`lowerCanteraToDae`), 10 pre-flight thermochemical & stoichiometric lint rules (`M9201`–`M9210`), Modelica 3.x chemical kinetics projections (`canteraToModelica`), and Language Server Protocol (LSP) services.
+**Maturity:** Beta · **Extensions:** `.yaml`, `.yml`, `.cti` · **Docs:** [modelscript.org/languages/cantera](https://modelscript.org/languages/cantera)
+
+Gas-phase chemical kinetics, combustion, catalysis, and NASA-7 polynomial thermochemistry modeling package (`.yaml`, `.cti`) for ModelScript. Features a zero-regex Cantera YAML and legacy CTI mechanism parser (`parseCantera`), multi-file workspace indexing, NASA-7 thermodynamic property evaluation (`evaluateNasa7Thermo`), modified Arrhenius & Lindemann/Troe falloff rate evaluation (`evaluateArrheniusRate`), an isothermal/adiabatic batch reactor solver with thermodynamic equilibrium reverse rates (`solveCanteraReactor`), direct linear-memory `DAEBuilder` chemical kinetics lowering (`lowerCanteraToDae`), 10 pre-flight thermochemical & stoichiometric lint rules (`M9201`–`M9210`), Modelica 3.x chemical kinetics projections (`canteraToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -20,7 +22,7 @@ Gas-phase chemical kinetics, combustion, catalysis, and NASA-7 polynomial thermo
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerCanteraToDae`)**: Compiles species molar concentrations, temperature $T$, pressure $P$, modified Arrhenius forward rate expressions $k_f(T) = A T^b \exp(-E_a / RT)$, reaction rates of progress, and molar production rate ODEs ($\frac{d[X_k]}{dt} = \dot{\omega}_k$) directly into ModelScript's zero-GC WebAssembly `DAEBuilder` struct-of-arrays arena.
 - **10 Pre-Flight Thermochemical & Stoichiometric Lint Rules (`M9201`–`M9210`, `lintCantera`)**: Static verification of atomic element balance across reactions, electrical charge conservation, undeclared phase/reaction species, NASA-7 $C_p^\circ/R$, $H^\circ/RT$, and $S^\circ/R$ midpoint continuity at $T_{\text{mid}}$, NASA-7 temperature bound ordering ($T_{\text{min}} < T_{\text{mid}} < T_{\text{max}}$), positive pre-exponential factors ($A > 0$), falloff `low-P-rate-constant` presence, unflagged duplicate reactions, non-negative third-body efficiencies, and species thermo completeness.
 - **Modelica 3.x Chemical Kinetics Projection (`canteraToModelica`)**: Synthesizes standalone Modelica 3.x gas-phase chemical kinetics and combustion reactor models.
-- **Multi-File Workspace Indexing & LSP (`CanteraWorkspaceIndex`, `getCanteraHover`, `provideCanteraCompletions`)**: Implements `IWorkspaceIndex` across `.yaml` and `.cti` mechanism files with NASA-7 thermodynamic hover cards, completions, and AST writeback.
+- **Multi-File Workspace Indexing & LSP (`getCanteraHover`, `provideCanteraCompletions`)**: Provides workspace symbol indexing across `.yaml` and `.cti` mechanism files with NASA-7 thermodynamic hover cards, completions, and AST writeback.
 
 ---
 
@@ -42,7 +44,6 @@ Gas-phase chemical kinetics, combustion, catalysis, and NASA-7 polynomial thermo
 | `src/dae/index.ts`                       | DAE lowering barrel exports                                                                                                |
 | `src/projections/cantera-to-modelica.ts` | `canteraToModelica` translator to Modelica 3.x gas-phase chemical kinetics models                                          |
 | `src/projections/index.ts`               | Projections barrel exports                                                                                                 |
-| `src/workspace-index.ts`                 | `CanteraWorkspaceIndex` implementing `IWorkspaceIndex` across `.yaml` and `.cti` mechanism files                           |
 | `src/lsp.ts`                             | LSP validation, document symbols, hover, completion, and action providers                                                  |
 
 ---

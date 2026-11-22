@@ -587,6 +587,49 @@ for (const ind of INDUSTRIES) {
   }
 }
 
+// ── Workspace languages/* parity check ─────────────────────────────────
+const langsDir = path.join(repoRoot, "languages");
+if (fs.existsSync(langsDir)) {
+  for (const entry of fs.readdirSync(langsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const slug = entry.name;
+    const pkgPath = path.join(langsDir, slug, "package.json");
+    if (!fs.existsSync(pkgPath)) continue;
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as {
+      modelscript?: { tier?: string };
+    };
+    const pkgTier = pkg.modelscript?.tier;
+    if (slug === "modelscript" && !LANGUAGE_BY_SLUG[slug]) {
+      // Intentionally hidden unless SHOW_MODELSCRIPT_LANG is enabled
+      continue;
+    }
+    const docEntry = LANGUAGE_BY_SLUG[slug];
+    if (!docEntry) {
+      problems.push({
+        file: ".vitepress/theme/data/languages.ts",
+        line: 1,
+        message: `workspace language 'languages/${slug}' is missing from languages.ts`,
+      });
+      continue;
+    }
+    if (pkgTier && docEntry.tier !== pkgTier) {
+      problems.push({
+        file: ".vitepress/theme/data/languages.ts",
+        line: 1,
+        message: `'${slug}' tier in languages.ts ('${docEntry.tier}') does not match languages/${slug}/package.json ('${pkgTier}')`,
+      });
+    }
+    const langDocPath = path.join(docsRoot, "languages", `${slug}.md`);
+    if (!fs.existsSync(langDocPath)) {
+      problems.push({
+        file: `languages/${slug}.md`,
+        line: 1,
+        message: `missing documentation page for workspace language '${slug}'`,
+      });
+    }
+  }
+}
+
 if (problems.length) {
   for (const p of problems) console.error(`${p.file}:${p.line}  ${p.message}`);
   console.error(`\n✖ ${problems.length} docs problem(s) found.`);

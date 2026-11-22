@@ -2,6 +2,7 @@
 
 import * as antvLayout from "@antv/layout";
 import { isEphemeralDiagramNode } from "./drop-placeholder.js";
+import { runLayeredLayoutInWorker } from "./layout-worker.js";
 import {
   solvePortPlacements,
   type SolverEdge,
@@ -51,6 +52,7 @@ export interface AutoLayoutNodeLike {
   getPosition: () => { x: number; y: number };
   getSize: () => { width: number; height: number };
   getAngle?: () => number;
+  getData?: () => Record<string, unknown> | undefined;
   setPosition: (x: number, y: number, options?: { silent?: boolean | undefined }) => void;
   getPorts?: () => AutoLayoutNodePort[];
   portProp?: (portId: string, path: string, val?: unknown) => unknown;
@@ -97,6 +99,11 @@ export interface AutoLayoutOptions {
   showProgress?: boolean | undefined;
   onAction?: (action: { type: "move"; items: PlacementItem[] }) => void;
   updateSolderDots?: (graph: AutoLayoutGraphLike) => void;
+}
+
+function isNodePinned(node: AutoLayoutNodeLike): boolean {
+  const data = typeof node.getData === "function" ? node.getData() : undefined;
+  return Boolean(data?.["pinned"] || data?.["locked"]);
 }
 
 /**
@@ -514,6 +521,11 @@ export function autoLayoutDiagram(g?: AutoLayoutGraphLike | null, options?: Auto
     newModel.nodes?.forEach((n) => {
       const node = g.getCellById(n.id);
       if (node && (!node.isNode || node.isNode()) && !isEphemeralDiagramNode(node.id)) {
+        if (isNodePinned(node)) {
+          const cur = node.getPosition();
+          nodePositions.set(node.id, { x: cur.x, y: cur.y });
+          return;
+        }
         const size = node.getSize();
         const w = size.width || 80;
         const h = size.height || 60;
@@ -637,6 +649,67 @@ export async function autoLayoutDiagramAsync(
   }
 
   try {
+    // Offload large layered/ELK layouts (>= 60 nodes) to a background Web Worker when available
+    const useLayered = options?.algorithm === "layered" || options?.algorithm === "elk";
+    if (useLayered && layoutableNodes.length >= 60) {
+      const edges = g.getEdges();
+      const layoutableIdSet = new Set(layoutableNodes.map((n) => n.id));
+      const workerModel = {
+        nodes: layoutableNodes.map((n) => {
+          const size = n.getSize();
+          return { id: n.id, width: size.width || 80, height: size.height || 60 };
+        }),
+        edges: edges
+          .map((e) => ({ source: e.getSourceCellId() ?? "", target: e.getTargetCellId() ?? "" }))
+          .filter((e) => e.source && e.target && layoutableIdSet.has(e.source) && layoutableIdSet.has(e.target)),
+      };
+      const workerRes = await runLayeredLayoutInWorker(
+        workerModel,
+        { rankdir: options?.rankdir, ranksep: options?.ranksep, nodesep: options?.nodesep },
+        () => computeLayeredLayout(workerModel, options),
+      );
+      if (workerRes.nodes.length > 0 && !g.disposed) {
+        const moveItems: PlacementItem[] = [];
+        const nodePositions = new Map<string, { x: number; y: number }>();
+        g.batchUpdate("autoLayoutWorker", () => {
+          for (const placed of workerRes.nodes) {
+            const node = g.getCellById(placed.id);
+            if (!node) continue;
+            if (isNodePinned(node)) {
+              const cur = node.getPosition();
+              nodePositions.set(node.id, { x: cur.x, y: cur.y });
+              continue;
+            }
+            const size = node.getSize();
+            const w = size.width || 80;
+            const h = size.height || 60;
+            const newX = Math.round(placed.x - w / 2);
+            const newY = Math.round(placed.y - h / 2);
+            node.setPosition(newX, newY);
+            nodePositions.set(node.id, { x: newX, y: newY });
+            moveItems.push({
+              name: node.id,
+              x: newX,
+              y: newY,
+              width: Math.round(w),
+              height: Math.round(h),
+              rotation: Math.round(node.getAngle?.() ?? 0),
+            });
+          }
+          if (options?.optimizePorts !== false) {
+            applyPortOptimization(layoutableNodes, edges, g, nodePositions);
+          }
+          edges.forEach((e) => e.setVertices?.([]));
+          options?.updateSolderDots?.(g);
+        });
+        if (moveItems.length > 0) {
+          (options?.onAction ?? g.options?.onAction)?.({ type: "move", items: moveItems });
+        }
+        g.zoomToFit?.({ padding: 20, maxScale: 1 });
+        g.centerContent?.();
+        return true;
+      }
+    }
     return autoLayoutDiagram(g, options);
   } finally {
     if (showProgress) {

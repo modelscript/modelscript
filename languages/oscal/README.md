@@ -3,7 +3,9 @@
 
 # @modelscript/oscal
 
-NIST OSCAL 1.1.2 (Open Security Controls Assessment Language) Cybersecurity, NIST SP 800-53 Rev 5 / SP 800-82 OT/ICS Compliance, and Cyber-Physical Systems (CPS) Architecture Auditing package (`.oscal`, `.oscal.json`, `.oscal.xml`) for ModelScript. Features a unified OSCAL JSON & XML parser and serializer (`parseOscal`, `serializeOscal`), multi-file workspace indexing (`OscalWorkspaceIndex`), profile resolution & tailoring engine (`resolveOscalProfile`), CPS architecture compliance auditor (`auditCpsArchitectureCompliance`), 8 cybersecurity & OT/ICS lint rules (`M8201`–`M8208`, `lintOscalDocument`, `OscalErrorCode`), SysML v2 and OMG ReqIF 1.2 projections (`oscalToSysML2`, `oscalToReqif`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.oscal`, `.oscal.json`, `.oscal.yaml`, `.oscal.yml`, `.oscal.xml`, … (9 extensions) · **Docs:** [modelscript.org/languages/oscal](https://modelscript.org/languages/oscal)
+
+NIST OSCAL 1.1.2 (Open Security Controls Assessment Language) Cybersecurity, NIST SP 800-53 Rev 5 / SP 800-82 OT/ICS Compliance, and Cyber-Physical Systems (CPS) Architecture Auditing package (`.oscal`, `.oscal.json`, `.oscal.xml`) for ModelScript. Features a unified OSCAL JSON & XML parser and serializer (`parseOscal`, `serializeOscal`), multi-file workspace indexing, profile resolution & tailoring engine (`resolveOscalProfile`), CPS architecture compliance auditor (`auditCpsArchitectureCompliance`), 8 cybersecurity & OT/ICS lint rules (`M8201`–`M8208`, `lintOscalDocument`, `OscalErrorCode`), SysML v2 and OMG ReqIF 1.2 projections (`oscalToSysML2`, `oscalToReqif`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -27,12 +29,11 @@ NIST OSCAL 1.1.2 (Open Security Controls Assessment Language) Cybersecurity, NIS
 | `src/index.ts`             | Public package exports                                                                                |
 | `src/language.ts`          | `oscalLanguage` definition, compiler actions, and MCP tool (`oscal_audit_cps_compliance`)             |
 | `src/types.ts`             | `OscalDocument`, `OscalCatalog`, `OscalProfile`, `OscalSsp`, `OscalAssessmentResults`, `OscalPoam`    |
-| `src/catalog/index.ts`     | Built-in `NIST_800_53_REV5_CATALOG` and `MANDATORY_OT_ICS_CONTROLS` (NIST SP 800-82 Rev 3 OT overlay) |
+| `src/catalogs/index.ts`    | Built-in `NIST_800_53_REV5_CATALOG` and `MANDATORY_OT_ICS_CONTROLS` (NIST SP 800-82 Rev 3 OT overlay) |
 | `src/parser/index.ts`      | `parseOscal` and `serializeOscal` lossless JSON/XML parser and format converter                       |
 | `src/lints/rules.ts`       | `OscalErrorCode` and `lintOscalDocument` cybersecurity & OT/ICS linter (`M8201`–`M8208`)              |
 | `src/resolver/index.ts`    | `resolveOscalProfile` and `auditCpsArchitectureCompliance` profile tailoring and CPS auditing engine  |
 | `src/projections/index.ts` | `oscalToSysML2` and `oscalToReqif` cross-language translators                                         |
-| `src/workspace-index.ts`   | `OscalWorkspaceIndex` implementing `IWorkspaceIndex` across `.oscal`, `.json`, and `.xml` files       |
 | `src/lsp.ts`               | LSP validation, document symbols, control hover cards, completion, and definition providers           |
 
 ---
@@ -58,18 +59,18 @@ NIST OSCAL 1.1.2 (Open Security Controls Assessment Language) Cybersecurity, NIS
 
 ```bash
 # Lint an OSCAL Catalog, Profile, SSP, AR, or POA&M document (M8201-M8208)
-npx msx oscal lint substation_ssp.oscal.json
+msx oscal lint substation_ssp.oscal.json
 
 # Audit an OSCAL SSP against a SysML v2 / AutomationML CPS architecture
-npx msx oscal audit-cps substation_ssp.oscal.json --archblocks PLC_Main,IED_Breaker1,SCADA_Gateway
+msx oscal audit-cps substation_ssp.oscal.json --archblocks PLC_Main,IED_Breaker1,SCADA_Gateway
 
 # Resolve an OSCAL Profile or convert between JSON and XML
-npx msx oscal resolve-profile ics_baseline_profile.oscal.json
-npx msx oscal convert substation_ssp.oscal.json --format xml
+msx oscal resolve-profile ics_baseline_profile.oscal.json
+msx oscal convert substation_ssp.oscal.json --format xml
 
 # Project OSCAL controls to SysML v2 (.sysml) or OMG ReqIF 1.2 (.reqif)
-npx msx oscal to-sysml2 substation_ssp.oscal.json
-npx msx oscal to-reqif substation_ssp.oscal.json
+msx oscal to-sysml2 substation_ssp.oscal.json
+msx oscal to-reqif substation_ssp.oscal.json
 ```
 
 ### Programmatic API

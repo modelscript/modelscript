@@ -1518,9 +1518,9 @@ interface IndexArgs {
   json: boolean;
 }
 
-const IndexCommand: CommandModule<{}, IndexArgs> = {
+const IndexCommand: CommandModule<{}, IndexArgs & { format?: string }> = {
   command: ["index [paths..]", "build-index [paths..]", "export-index [paths..]"],
-  describe: "Build collision-free polyglot Salsa symbol index and export to SQLite salsa-index.db",
+  describe: "Build collision-free polyglot package index (.msidx binary or relational SQLite)",
   builder: (yargs) => {
     return yargs
       .positional("paths", {
@@ -1533,50 +1533,123 @@ const IndexCommand: CommandModule<{}, IndexArgs> = {
         type: "string",
       })
       .option("out", {
-        description: "Output path for the generated salsa-index.db",
+        description: "Output path for the generated index (.msidx or .db)",
         type: "string",
         default: "salsa-index.db",
+      })
+      .option("format", {
+        description: "Output format: 'msidx' (relocatable binary) or 'sqlite' (relational SQLite projection)",
+        choices: ["msidx", "sqlite"] as const,
+        type: "string",
       })
       .option("json", {
         description: "Output summary in JSON format",
         type: "boolean",
         default: false,
-      }) as unknown as Argv<IndexArgs>;
+      }) as unknown as Argv<IndexArgs & { format?: string }>;
   },
   handler: async (args) => {
     const ws = buildPolyglotIndex(args.paths || [], args.workspace || process.cwd());
     const resolvedOut = path.resolve(process.cwd(), args.out);
     fs.mkdirSync(path.dirname(resolvedOut), { recursive: true });
-    if (fs.existsSync(resolvedOut)) fs.unlinkSync(resolvedOut);
+    const format = args.format ?? (resolvedOut.endsWith(".msidx") ? "msidx" : "sqlite");
+    const tmpOut = `${resolvedOut}.${process.pid}.${Date.now()}.tmp`;
+    if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
 
-    const db = new DatabaseSync(resolvedOut);
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS symbols (
-        id TEXT PRIMARY KEY,
-        data TEXT NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS memos (
-        key TEXT PRIMARY KEY,
-        data TEXT NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS meta (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      );
-    `);
+    if (format === "msidx") {
+      const { encodePackageIndex } = await import("@modelscript/runtime");
+      const bytes = encodePackageIndex(ws.symbolIndex, { libraryPath: args.workspace || process.cwd() });
+      fs.writeFileSync(tmpOut, bytes);
+      fs.renameSync(tmpOut, resolvedOut);
+    } else {
+      const db = new DatabaseSync(tmpOut);
+      try {
+        db.exec(`
+          PRAGMA page_size = 4096;
+          PRAGMA journal_mode = DELETE;
+          CREATE TABLE symbols (
+            id INTEGER PRIMARY KEY,
+            data TEXT NOT NULL
+          );
+          CREATE TABLE symbols_rel (
+            id INTEGER PRIMARY KEY,
+            parent_id INTEGER,
+            fqn TEXT NOT NULL,
+            name TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            language TEXT,
+            rel_path TEXT,
+            start_offset INTEGER NOT NULL,
+            end_offset INTEGER NOT NULL
+          );
+          CREATE INDEX idx_symbols_rel_name ON symbols_rel(name);
+          CREATE INDEX idx_symbols_rel_fqn ON symbols_rel(fqn);
+          CREATE INDEX idx_symbols_rel_parent ON symbols_rel(parent_id);
+          CREATE TABLE memos (
+            key TEXT PRIMARY KEY,
+            data TEXT NOT NULL
+          );
+          CREATE TABLE meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+          );
+        `);
 
-    const insertSymbol = db.prepare(`INSERT OR REPLACE INTO symbols (id, data) VALUES (?, ?)`);
-    const insertMeta = db.prepare(`INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)`);
+        const insertSymbol = db.prepare(`INSERT OR REPLACE INTO symbols (id, data) VALUES (?, ?)`);
+        const insertRel = db.prepare(
+          `INSERT OR REPLACE INTO symbols_rel (id, parent_id, fqn, name, kind, language, rel_path, start_offset, end_offset) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        );
+        const insertMeta = db.prepare(`INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)`);
 
-    insertMeta.run("schema_version", "1");
-    insertMeta.run("created_at", new Date().toISOString());
-    insertMeta.run("generator", "modelscript-cli/milestone-4");
+        const computeFqn = (symId: number): string => {
+          const parts: string[] = [];
+          let cur: number | null | undefined = symId;
+          const seen = new Set<number>();
+          while (cur !== null && cur !== undefined && !seen.has(cur)) {
+            seen.add(cur);
+            const e = ws.symbolIndex.symbols.get(cur);
+            if (!e) break;
+            if (e.name) parts.push(e.name);
+            cur = e.parentId;
+          }
+          return parts.reverse().join(".");
+        };
 
-    for (const [id, entry] of ws.symbolIndex.symbols.entries()) {
-      insertSymbol.run(String(id), JSON.stringify(entry));
+        db.exec("BEGIN TRANSACTION");
+        insertMeta.run("schema_version", "1");
+        insertMeta.run("created_at", new Date().toISOString());
+        insertMeta.run("generator", "modelscript-cli/msidx-v1");
+
+        for (const [id, entry] of ws.symbolIndex.symbols.entries()) {
+          insertSymbol.run(id, JSON.stringify(entry));
+          insertRel.run(
+            id,
+            entry.parentId ?? null,
+            computeFqn(id),
+            entry.name || "",
+            entry.kind || "",
+            entry.language ?? null,
+            entry.resourceId ?? null,
+            entry.startOffset ?? 0,
+            entry.endOffset ?? 0,
+          );
+        }
+        db.exec("COMMIT");
+        db.exec("VACUUM");
+      } catch (err) {
+        try {
+          db.exec("ROLLBACK");
+        } catch {
+          // ignore rollback error
+        }
+        db.close();
+        if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
+        throw err;
+      }
+
+      db.close();
+      fs.renameSync(tmpOut, resolvedOut);
     }
-
-    db.close();
 
     const fileSize = fs.statSync(resolvedOut).size;
 
@@ -1585,6 +1658,7 @@ const IndexCommand: CommandModule<{}, IndexArgs> = {
         JSON.stringify(
           {
             output: resolvedOut,
+            format,
             sizeBytes: fileSize,
             totalSymbols: ws.symbolIndex.symbols.size,
             domains: Array.from(ws.symbolsByDomain.entries()).map(([d, list]) => ({
@@ -1597,14 +1671,60 @@ const IndexCommand: CommandModule<{}, IndexArgs> = {
         ),
       );
     } else {
-      console.log(`\n=== 📦 Polyglot Salsa Index Generation ===`);
+      console.log(`\n=== 📦 Polyglot Package Index Generation (${format}) ===`);
       console.log(`Discovered ${ws.files.length} files across ${ws.symbolsByDomain.size} engineering domains.`);
       for (const [d, list] of ws.symbolsByDomain.entries()) {
         console.log(`  • ${domainName(d).padEnd(12)}: ${list.length} symbols`);
       }
       console.log(`Total Symbols:   ${ws.symbolIndex.symbols.size}`);
-      console.log(`\n✔ Exported SQLite database to '${args.out}' (${fileSize} bytes)\n`);
+      console.log(`\n✔ Exported ${format} index to '${args.out}' (${fileSize} bytes)\n`);
     }
+  },
+};
+
+const InspectCommand: CommandModule<{}, { file: string; json: boolean }> = {
+  command: ["inspect <file>"],
+  describe: "Inspect a relocatable binary package index (.msidx) header, domains, and summary chunks",
+  builder: (yargs) => {
+    return yargs
+      .positional("file", {
+        description: "Path to the .msidx file",
+        type: "string",
+        demandOption: true,
+      })
+      .option("json", {
+        description: "Output inspection summary in JSON format",
+        type: "boolean",
+        default: false,
+      }) as unknown as Argv<{ file: string; json: boolean }>;
+  },
+  handler: async (args) => {
+    const resolved = path.resolve(process.cwd(), args.file);
+    const bytes = new Uint8Array(fs.readFileSync(resolved));
+    const { inspectPackageIndex } = await import("@modelscript/runtime");
+    const info = inspectPackageIndex(bytes);
+
+    if (args.json) {
+      console.log(JSON.stringify(info, null, 2));
+      return;
+    }
+
+    console.log(`\n=== 🔍 Binary Package Index Inspection (.msidx) ===`);
+    console.log(`File:          ${resolved} (${info.byteLength} bytes)`);
+    console.log(`Format / ABI:  v${info.header.formatVersion} / ABI v${info.header.compilerAbiVersion}`);
+    console.log(`Content Hash:  ${info.header.contentHashHex}`);
+    console.log(`Symbols:       ${info.header.symbolCount} (${info.stringCount} unique strings)`);
+    console.log(`Domains:`);
+    for (const [dom, count] of Object.entries(info.domainCounts)) {
+      console.log(`  • ${domainName(Number(dom)).padEnd(12)}: ${count} symbols`);
+    }
+    if (info.summaryChunks.length > 0) {
+      console.log(`Summary Chunks (${info.summaryChunks.length}):`);
+      for (const c of info.summaryChunks) {
+        console.log(`  • ${c.prefix}: ${c.symbolCount} summaries (${c.byteLength} bytes @ offset ${c.byteOffset})`);
+      }
+    }
+    console.log("");
   },
 };
 
@@ -1621,7 +1741,11 @@ export const Polyglot: CommandModule<{}, {}> = {
       .command(QueryCommand)
       .command(CheckTwinsCommand)
       .command(IndexCommand)
-      .demandCommand(1, "Please specify a polyglot subcommand: project, verify, thread, query, check-twins, or index");
+      .command(InspectCommand)
+      .demandCommand(
+        1,
+        "Please specify a polyglot subcommand: project, verify, thread, query, check-twins, index, or inspect",
+      );
   },
   handler: () => {
     // Parent dispatcher

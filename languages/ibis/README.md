@@ -3,7 +3,9 @@
 
 # @modelscript/ibis
 
-ANSI/EIA-656-B IBIS (I/O Buffer Information Specification) high-speed digital signal integrity and IC package parasitic modeling package (`.ibs`) for ModelScript. Features an IBIS v3.2–v7.x parser (`parseIbis`), multi-file workspace indexing (`IbisWorkspaceIndex`), piecewise-linear I/V curve and dynamic output impedance solvers (`evaluateBufferCurrent`, `calculateOutputResistance`, `interpolateIvTable`), direct linear-memory `DAEBuilder` RLC package & behavioral driver lowering (`lowerIbisToDae`), 9 pre-flight signal-integrity lint rules (`M8303`–`M8322`), Modelica 3.x analog buffer projections (`ibisToModelica`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.ibs` · **Docs:** [modelscript.org/languages/ibis](https://modelscript.org/languages/ibis)
+
+ANSI/EIA-656-B IBIS (I/O Buffer Information Specification) high-speed digital signal integrity and IC package parasitic modeling package (`.ibs`) for ModelScript. Features an IBIS v3.2–v7.x parser (`parseIbis`), multi-file workspace indexing, piecewise-linear I/V curve and dynamic output impedance solvers (`evaluateBufferCurrent`, `calculateOutputResistance`, `interpolateIvTable`), direct linear-memory `DAEBuilder` RLC package & behavioral driver lowering (`lowerIbisToDae`), 9 pre-flight signal-integrity lint rules (`M8303`–`M8322`), Modelica 3.x analog buffer projections (`ibisToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -16,7 +18,7 @@ ANSI/EIA-656-B IBIS (I/O Buffer Information Specification) high-speed digital si
 - **Direct Linear-Memory `DAEBuilder` Lowering (`lowerIbisToDae`)**: Lowers die pad capacitance ($C_{\text{comp}} \frac{dV_{\text{die}}}{dt}$), bond-wire/lead package inductance ($L_{\text{pkg}} \frac{dI_{\text{pkg}}}{dt}$), series package resistance ($R_{\text{pkg}}$), pin capacitance ($C_{\text{pkg}}$), and driver output conductance directly into ModelScript's zero-GC WebAssembly `DAEBuilder` struct-of-arrays arena.
 - **9 Pre-Flight Signal-Integrity Lint Rules (`M8303`–`M8322`, `lintIbis`)**: Static verification of I/V table monotonicity (`[Pulldown]`, `[Pullup]`, `[GND Clamp]`, `[POWER Clamp]`), dangling `[Pin]` model bindings, empty `[Pin]` tables, inverted `[Voltage Range]` corners, ESD clamping diode current divergence, missing `[Ramp]` / I/V driver definitions, and non-positive $C_{\text{comp}}$ or package RLC parasitics.
 - **Modelica 3.x Analog Buffer Projection (`ibisToModelica`)**: Synthesizes standardized Modelica 3.x equivalent RLC package and behavioral driver models for mixed-signal board-level signal integrity co-simulation.
-- **Multi-File Workspace Indexing & LSP (`IbisWorkspaceIndex`, `provideIbisHover`, `provideIbisCompletions`)**: Implements `IWorkspaceIndex` for cross-file component, pin, and buffer model navigation with hover cards, keyword completion, and AST writeback.
+- **Multi-File Workspace Indexing & LSP (`provideIbisHover`, `provideIbisCompletions`)**: Provides workspace symbol indexing for cross-file component, pin, and buffer model navigation with hover cards, keyword completion, and AST writeback.
 
 ---
 
@@ -34,7 +36,6 @@ ANSI/EIA-656-B IBIS (I/O Buffer Information Specification) high-speed digital si
 | `src/solvers/buffer-solver.ts`        | `interpolateIvTable`, `evaluateBufferCurrent`, and `calculateOutputResistance` behavioral buffer solvers        |
 | `src/dae/ibis-to-dae.ts`              | `lowerIbisToDae` direct lowering of buffer drivers and RLC package networks into `DAEBuilder` linear memory     |
 | `src/projections/ibis-to-modelica.ts` | `ibisToModelica` translator to Modelica 3.x analog I/O buffer models                                            |
-| `src/workspace-index.ts`              | `IbisWorkspaceIndex` implementing `IWorkspaceIndex` across `.ibs` files                                         |
 | `src/lsp.ts`                          | LSP hover, completion, and symbol providers                                                                     |
 
 ---
@@ -61,19 +62,19 @@ ANSI/EIA-656-B IBIS (I/O Buffer Information Specification) high-speed digital si
 
 ```bash
 # Inspect components, pin mappings, and [Model] definitions in an IBIS file
-npx msx ibis inspect ddr5_dq.ibs
+msx ibis inspect ddr5_dq.ibs
 
 # Run pre-flight I/V monotonicity, pin binding, and parasitic checks (M8303-M8322)
-npx msx ibis lint ddr5_dq.ibs
+msx ibis lint ddr5_dq.ibs
 
 # Evaluate driver on-resistance (R_on) and output pad current characteristics
-npx msx ibis eval ddr5_dq.ibs
+msx ibis eval ddr5_dq.ibs
 
 # Lower IBIS buffer & RLC package parasitics to the linear-memory DAE arena
-npx msx ibis to-dae ddr5_dq.ibs
+msx ibis to-dae ddr5_dq.ibs
 
 # Export IBIS buffer model to a Modelica 3.x analog model
-npx msx ibis to-modelica ddr5_dq.ibs -o Ddr5Buffer.mo
+msx ibis to-modelica ddr5_dq.ibs -o Ddr5Buffer.mo
 ```
 
 ### Programmatic Usage

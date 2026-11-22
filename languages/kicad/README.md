@@ -1,7 +1,9 @@
 <div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
 <div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-# `@modelscript/kicad`
+# @modelscript/kicad
+
+**Maturity:** Beta · **Extensions:** `.kicad_pcb`, `.kicad_sch`, `.kicad_sym`, `.kicad_mod` · **Docs:** [modelscript.org/languages/kicad](https://modelscript.org/languages/kicad)
 
 KiCad 6/7/8/9 ECAD language package (`.kicad_pcb`, `.kicad_sch`, `.kicad_sym`, `.kicad_mod`) for ModelScript.
 
@@ -16,10 +18,30 @@ KiCad 6/7/8/9 ECAD language package (`.kicad_pcb`, `.kicad_sch`, `.kicad_sym`, `
 - **Layout-Aware RLGC & Impedance (`extractBoardParasitics`):** Computes DC resistance, Hammerstad-Jensen microstrip/stripline $Z_0$, lumped $L/C$, propagation delay, and IPC-2221 ampacity from board stackup and trace geometry.
 - **Schematic ↔ PCB Consistency & Cross-File LSP (`verifySchematicPcbConsistency`, `resolveKiCadHover`, `findCrossFileDefinition`):** Detects missing/orphan components, value/footprint drift, and pin-net mismatches (`K2010`–`K2014`), plus cross-file navigation and parasitic-enriched hover.
 
-## Commands
+## Package Structure
+
+| File                           | Responsibility                                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `src/language.ts`              | `@modelscript/dsl` language registration (`.kicad_pcb`, `.kicad_sch`, `.kicad_sym`, `.kicad_mod`) |
+| `src/grammar/kicad-grammar.ts` | Unified KiCad S-expression grammar for WASM GLR parser generation                                 |
+| `src/parser/kicad-parser.ts`   | KiCad board, schematic, symbol, and footprint S-expression parser                                 |
+| `src/cad-bridge.ts`            | `kicadBoardToPcbLayout` lowering into `@modelscript/cad` `PCBLayout`                              |
+| `src/export.ts`                | `exportToKiCadPcb` round-trip KiCad 8 `.kicad_pcb` exporter                                       |
+| `src/schematic-netlist.ts`     | `extractSchematicNetlist` geometric wire/junction/label netlist extractor                         |
+| `src/hierarchy.ts`             | Hierarchical multi-sheet schematic resolver                                                       |
+| `src/parasitics.ts`            | `extractBoardParasitics` RLGC, microstrip/stripline $Z_0$, and IPC-2221 ampacity engine           |
+| `src/consistency.ts`           | `verifySchematicPcbConsistency` schematic-to-PCB drift & pin-net checker                          |
+| `src/dae/dae-lower.ts`         | `lowerKiCadSchematicToDAE` direct MNA lowering into `DAEBuilder`                                  |
+| `src/lints/index.ts`           | `lintKiCadSchematic` ERC and consistency lint rules (`K2002`–`K4003`)                             |
+| `src/lsp.ts`                   | Cross-file LSP hover, go-to-definition, and diagnostics                                           |
+| `src/indexing.ts`              | Workspace symbol indexing across KiCad schematics and boards                                      |
+| `src/index.ts`                 | Public package entry point and barrel exports                                                     |
+
+## Scripts
 
 ```bash
-npm run build --workspace=@modelscript/kicad
-npm run test --workspace=@modelscript/kicad
-npm run lint --workspace=@modelscript/kicad
+pnpm --filter @modelscript/kicad build
+pnpm --filter @modelscript/kicad test
+pnpm --filter @modelscript/kicad lint
+pnpm --filter @modelscript/kicad typecheck
 ```

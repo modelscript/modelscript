@@ -3,7 +3,9 @@
 
 # @modelscript/dicom-rt
 
-DICOM-RT (`RTPLAN`, `RTSTRUCT`, `RTDOSE`) radiation oncology treatment planning, clinical dosimetry (`DVH`, `BED`, `EQD2`, Conformity Index, Homogeneity Index), linear accelerator MLC/gantry kinematics, and cross-language projections (`@modelscript/scad` & `@modelscript/sysml2`) for ModelScript. Features a unified DICOM-RT XML, PS3.18 JSON, and declarative DSL parser (`parseDicomRt`), multi-file workspace indexing (`DicomRtWorkspaceIndex`), an ICRU 83 & Linear-Quadratic radiobiological dosimetry evaluator (`evaluateDicomRtDosimetry`, `computeBiologicallyEffectiveDose`, `computeEqd2`), direct linear-memory `DAEBuilder` lowering (`lowerDicomRtToDae`), 10 AAPM TG-142 / QUANTEC clinical safety lint rules (`M9201`–`M9210`, `lintDicomRtDocument`, `DicomRtErrorCode`), OpenSCAD 3D CSG and SysML v2 projections (`dicomRtToScad`, `dicomRtToSysML2`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.dcm.json`, `.dcm.xml`, `.rtplan`, `.rtstruct`, `.rtdose`, `.dicom-rt` · **Docs:** [modelscript.org/languages/dicom-rt](https://modelscript.org/languages/dicom-rt)
+
+DICOM-RT (`RTPLAN`, `RTSTRUCT`, `RTDOSE`) radiation oncology treatment planning, clinical dosimetry (`DVH`, `BED`, `EQD2`, Conformity Index, Homogeneity Index), linear accelerator MLC/gantry kinematics, and cross-language projections (`@modelscript/scad` & `@modelscript/sysml2`) for ModelScript. Features a unified DICOM-RT XML, PS3.18 JSON, and declarative DSL parser (`parseDicomRt`), multi-file workspace indexing, an ICRU 83 & Linear-Quadratic radiobiological dosimetry evaluator (`evaluateDicomRtDosimetry`, `computeBiologicallyEffectiveDose`, `computeEqd2`), direct linear-memory `DAEBuilder` lowering (`lowerDicomRtToDae`), 10 AAPM TG-142 / QUANTEC clinical safety lint rules (`M9201`–`M9210`, `lintDicomRtDocument`, `DicomRtErrorCode`), OpenSCAD 3D CSG and SysML v2 projections (`dicomRtToScad`, `dicomRtToSysML2`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -19,18 +21,17 @@ DICOM-RT (`RTPLAN`, `RTSTRUCT`, `RTDOSE`) radiation oncology treatment planning,
 
 ## Package Structure
 
-| Path                     | Description                                                                                            |
-| ------------------------ | ------------------------------------------------------------------------------------------------------ |
-| `src/index.ts`           | Primary package entry point and public API re-exports                                                  |
-| `src/language.ts`        | `dicomRtLanguage` definition, compiler actions, and MCP tool (`dicom_rt_verify_dvh`)                   |
-| `src/types.ts`           | Core data structures for `RTSTRUCT`, `RTPLAN`, `RTDOSE`, DVH curves, and diagnostics                   |
-| `src/parser/`            | `parseDicomRt` unified DICOM-RT XML, DICOM PS3.18 JSON, and declarative DSL parser                     |
-| `src/lints/`             | `DicomRtErrorCode` and `lintDicomRtDocument` AAPM/QUANTEC radiotherapy safety linter (`M9201`–`M9210`) |
-| `src/dosimetry/`         | `evaluateDicomRtDosimetry`, `computeBiologicallyEffectiveDose`, and `computeEqd2`                      |
-| `src/dae/`               | `lowerDicomRtToDae` linear-memory `DAEBuilder` lowering for linac delivery and LQ survival ODEs        |
-| `src/projections/`       | `dicomRtToScad` and `dicomRtToSysML2` cross-language projections to OpenSCAD 3D CSG and SysML v2       |
-| `src/workspace-index.ts` | `DicomRtWorkspaceIndex` multi-file workspace symbol indexer (`IWorkspaceIndex`)                        |
-| `src/lsp.ts`             | Language Server Protocol validation, symbols, hover cards, completions, and definitions                |
+| Path               | Description                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------ |
+| `src/index.ts`     | Primary package entry point and public API re-exports                                                  |
+| `src/language.ts`  | `dicomRtLanguage` definition, compiler actions, and MCP tool (`dicom_rt_verify_dvh`)                   |
+| `src/types.ts`     | Core data structures for `RTSTRUCT`, `RTPLAN`, `RTDOSE`, DVH curves, and diagnostics                   |
+| `src/parser/`      | `parseDicomRt` unified DICOM-RT XML, DICOM PS3.18 JSON, and declarative DSL parser                     |
+| `src/lints/`       | `DicomRtErrorCode` and `lintDicomRtDocument` AAPM/QUANTEC radiotherapy safety linter (`M9201`–`M9210`) |
+| `src/dosimetry/`   | `evaluateDicomRtDosimetry`, `computeBiologicallyEffectiveDose`, and `computeEqd2`                      |
+| `src/dae/`         | `lowerDicomRtToDae` linear-memory `DAEBuilder` lowering for linac delivery and LQ survival ODEs        |
+| `src/projections/` | `dicomRtToScad` and `dicomRtToSysML2` cross-language projections to OpenSCAD 3D CSG and SysML v2       |
+| `src/lsp.ts`       | Language Server Protocol validation, symbols, hover cards, completions, and definitions                |
 
 ---
 
@@ -57,15 +58,15 @@ DICOM-RT (`RTPLAN`, `RTSTRUCT`, `RTDOSE`) radiation oncology treatment planning,
 
 ```bash
 # Lint a DICOM-RT treatment plan (M9201-M9210)
-npx msx dicom-rt lint prostate_vmat.rtplan
+msx dicom-rt lint prostate_vmat.rtplan
 
 # Evaluate clinical DVH metrics (D98, D95, D2, HI, CI, BED, EQD2)
-npx msx dicom-rt dosimetry prostate_vmat.rtplan
+msx dicom-rt dosimetry prostate_vmat.rtplan
 
 # Lower linac kinematics & LQ survival ODEs to DAE or project to OpenSCAD / SysML v2
-npx msx dicom-rt to-dae prostate_vmat.rtplan
-npx msx dicom-rt to-scad prostate_vmat.rtplan
-npx msx dicom-rt to-sysml2 prostate_vmat.rtplan
+msx dicom-rt to-dae prostate_vmat.rtplan
+msx dicom-rt to-scad prostate_vmat.rtplan
+msx dicom-rt to-sysml2 prostate_vmat.rtplan
 ```
 
 ### Programmatic API

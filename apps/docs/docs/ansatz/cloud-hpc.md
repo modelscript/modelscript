@@ -42,7 +42,7 @@ Organizations and individual engineers allocate jobs against pre-configured hard
 
 When a job is submitted via the **Cloud Simulation Modal** in `/editor` or via `msx cloud dispatch`:
 
-1. **Deterministic Workspace Packaging**: The compiler resolves `msx.lock` dependencies, verifies SHA-256 digests, and packs the model, compiled `.wasm` arena snapshot, and solver configuration into a content-addressed bundle.
+1. **Deterministic Workspace Packaging**: The compiler resolves `modelscript.lock` dependencies, verifies SHA-256 digests, and packs the model, compiled `.wasm` arena snapshot, and solver configuration into a content-addressed bundle.
 2. **Rootless Apptainer / Singularity Execution**: The Slurm job script runs inside an immutable, network-isolated Apptainer image (`modelscript-hpc-runtime.sif`) containing SUNDIALS 7.x (KLU/SuperLU_MT sparse linear solvers), CalculiX, SU2, and OpenMPI.
 3. **Live Checkpointing & Preemption Recovery**: Long-running transient integrations periodically flush binary DAE state checkpoints (`checkpoint_<step>.bin`) to scratch storage so preempted spot allocations resume without losing progress.
 

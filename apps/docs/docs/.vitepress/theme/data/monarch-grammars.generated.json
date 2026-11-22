@@ -1931,5 +1931,59 @@
       "<!--",
       "-->"
     ]
+  },
+  "atopile": {
+    "keywords": [
+      "assert",
+      "component",
+      "from",
+      "import",
+      "interface",
+      "module",
+      "new",
+      "pin",
+      "signal",
+      "to",
+      "within"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "kicad": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "magicdraw": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [],
+    "blockComment": [
+      "<!--",
+      "-->"
+    ]
+  },
+  "sparql": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
   }
 }

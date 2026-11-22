@@ -319,6 +319,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
     if (
       versionStr === "download" ||
       versionStr === "salsa-index.db" ||
+      versionStr === "index.msidx" ||
       versionStr === "memos" ||
       versionStr === "lsp-bundle" ||
       versionStr === "lockfile"
@@ -2835,6 +2836,72 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
   );
 
   /**
+   * GET /api/v1/libraries/:name/:version/index.msidx
+   * GET /api/v1/libraries/:scope/:name/:version/index.msidx
+   *
+   * Download (or Range-query) the pre-computed relocatable binary package index (.msidx).
+   * Supports HTTP 206 Partial Content via Express sendFile + Accept-Ranges: bytes.
+   */
+  router.get(
+    ["/:name/:version/index.msidx", "/:scope/:name/:version/index.msidx"],
+    (req: Request, res: Response, next: NextFunction): void => {
+      if (isScopeInvalid(req)) return next();
+      const { name, version } = extractPkgAndVersion(req);
+
+      if (
+        typeof name !== "string" ||
+        typeof version !== "string" ||
+        !isValidPackageName(name) ||
+        !semver.valid(version)
+      ) {
+        res.status(400).json({ error: "Valid package name and semantic version are required" });
+        return;
+      }
+
+      const msidxPath = storage.getBinaryIndexPath(name, version);
+      if (!fs.existsSync(msidxPath)) {
+        res.status(404).json({ error: `Binary package index not found for "${name}@${version}"` });
+        return;
+      }
+
+      const safeFileBase = `${name}-${version}`.replace(/[^a-zA-Z0-9._-]/g, "_");
+      try {
+        const reqModule = createRequire(import.meta.url);
+        const { parsePackageIndexHeader, MSIDX_HEADER_SIZE } = reqModule(
+          "@modelscript/runtime",
+        ) as typeof import("@modelscript/runtime");
+        const fd = fs.openSync(msidxPath, "r");
+        try {
+          const hdrBuf = Buffer.alloc(MSIDX_HEADER_SIZE);
+          const bytesRead = fs.readSync(fd, hdrBuf, 0, MSIDX_HEADER_SIZE, 0);
+          if (bytesRead === MSIDX_HEADER_SIZE) {
+            const hdr = parsePackageIndexHeader(hdrBuf);
+            const etag = `"msidx-abi${hdr.compilerAbiVersion}-${hdr.contentHashHex}"`;
+            res.setHeader("ETag", etag);
+            if (req.headers["if-none-match"] === etag) {
+              res.status(304).end();
+              return;
+            }
+          }
+        } finally {
+          fs.closeSync(fd);
+        }
+      } catch {
+        // Non-fatal: still serve the file even if ETag probe fails
+      }
+
+      res.setHeader("Content-Type", "application/vnd.modelscript.index");
+      res.setHeader("Accept-Ranges", "bytes");
+      res.setHeader("Content-Disposition", `attachment; filename="${safeFileBase}.msidx"`);
+      res.setHeader(
+        "Cache-Control",
+        req.query["hash"] ? "public, max-age=31536000, immutable" : "public, max-age=86400, must-revalidate",
+      );
+      res.sendFile(path.resolve(msidxPath));
+    },
+  );
+
+  /**
    * GET /api/v1/libraries/:name/:version/memos
    * GET /api/v1/libraries/:scope/:name/:version/memos
    *
@@ -2848,8 +2915,13 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       const { name, version } = extractPkgAndVersion(req);
       const keysParam = req.query["keys"];
 
-      if (typeof name !== "string" || typeof version !== "string") {
-        res.status(400).json({ error: "Package name and version are required" });
+      if (
+        typeof name !== "string" ||
+        typeof version !== "string" ||
+        !isValidPackageName(name) ||
+        !semver.valid(version)
+      ) {
+        res.status(400).json({ error: "Valid package name and semantic version are required" });
         return;
       }
 

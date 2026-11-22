@@ -1,7 +1,9 @@
 <div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
 <div align="center">In the name of Allah, the Compassionate, the Merciful</div>
 
-# `@modelscript/matpower`
+# @modelscript/matpower
+
+**Maturity:** Alpha · **Extensions:** `.m`, `.matpower` · **Docs:** [modelscript.org/languages/matpower](https://modelscript.org/languages/matpower)
 
 MATPOWER power flow, optimal power flow (OPF), and transmission network simulation package for ModelScript.
 

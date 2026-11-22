@@ -3,7 +3,9 @@
 
 # @modelscript/pdb
 
-**Protein Data Bank (`.pdb`, `.ent`) & Macromolecular Crystallographic Information File (`.cif`, `.mmcif`) 3D Structural Biology** parser, stereochemical validator, **Gaussian Network Model (GNM) elastic fluctuation solver**, and coarse-grained dynamical compiler for ModelScript. Features a zero-regex character-by-character wwPDB v3.3 and PDBx/mmCIF STAR parser (`parsePdb`, `parseMmCif`, `serializePdb`), multi-file workspace indexing (`PdbWorkspaceIndex`), 3D backbone Ramachandran $(\phi, \psi, \omega)$ dihedral calculation (`computeRamachandranAngles`), mass-weighted radius of gyration $R_g$ and Bahar–Atilgan $\text{C}_\alpha$ Kirchhoff matrix $\Gamma$ eigendecomposition (`solveProteinBiophysics`), direct linear-memory `DAEBuilder` lowering (`lowerPdbToDae`), 10 structural biology & crystallographic pre-flight lint rules (`M9251`–`M9260`, `lintPdb`), Modelica 3.x coarse-grained elastic network oscillator projection (`pdbToModelica`), and Language Server Protocol (LSP) services.
+**Maturity:** Alpha · **Extensions:** `.pdb`, `.ent`, `.cif`, `.mmcif` · **Docs:** [modelscript.org/languages/pdb](https://modelscript.org/languages/pdb)
+
+**Protein Data Bank (`.pdb`, `.ent`) & Macromolecular Crystallographic Information File (`.cif`, `.mmcif`) 3D Structural Biology** parser, stereochemical validator, **Gaussian Network Model (GNM) elastic fluctuation solver**, and coarse-grained dynamical compiler for ModelScript. Features a zero-regex character-by-character wwPDB v3.3 and PDBx/mmCIF STAR parser (`parsePdb`, `parseMmCif`, `serializePdb`), multi-file workspace indexing, 3D backbone Ramachandran $(\phi, \psi, \omega)$ dihedral calculation (`computeRamachandranAngles`), mass-weighted radius of gyration $R_g$ and Bahar–Atilgan $\text{C}_\alpha$ Kirchhoff matrix $\Gamma$ eigendecomposition (`solveProteinBiophysics`), direct linear-memory `DAEBuilder` lowering (`lowerPdbToDae`), 10 structural biology & crystallographic pre-flight lint rules (`M9251`–`M9260`, `lintPdb`), Modelica 3.x coarse-grained elastic network oscillator projection (`pdbToModelica`), and Language Server Protocol (LSP) services.
 
 ---
 
@@ -14,7 +16,7 @@
   - **PDBx/mmCIF STAR Syntax**: Character-by-character lexer for `data_` blocks, scalar tags (`_entry.id`, `_struct.title`, `_refine.ls_d_res_high`), and `loop_` tables (`_atom_site.*`, `_struct_conf.*`, `_struct_conn.*`).
   - **Hierarchical Grouping**: Automatically organizes atomic coordinates into `PdbResidue` and `PdbChain` objects with canonical 1-letter amino acid sequences.
 - **Biophysics & Gaussian Network Model (GNM) Solver (`solveProteinBiophysics`)**:
-  - Computes exact **mass-weighted center of mass** $\mathbf{R}_{\text{CM}}$, **molecular weight** (Da), **end-to-end $\text{C}_\alpha$ distance**, and **radius of gyration**:
+  - Computes exact **mass-weighted center of mass** $\mathbf{R}_{\text{CM}}$, **molecular weight** (Da), \**end-to-end $\text{C}_\alpha$ distance**, and **radius of gyration**:
     $$R_g = \sqrt{\frac{\sum_{i=1}^{N} m_i \|\mathbf{r}_i - \mathbf{R}_{\text{CM}}\|^2}{\sum_{i=1}^{N} m_i}}$$
   - Evaluates 3D **Ramachandran backbone dihedral torsions** $(\phi_i, \psi_i, \omega_i)$ across all polypeptide chains and classifies residues into `favored_alpha`, `favored_beta`, `allowed`, `glycine_proline`, and steric `outlier` regions.
   - Constructs the $\text{C}_\alpha$ **contact map** ($r_c = 7.0\text{ \AA}$) and symmetric **Kirchhoff matrix** $\Gamma$, computing the Moore–Penrose pseudoinverse $\Gamma^+$ via Jacobi eigendecomposition to predict **mean-square thermal fluctuations** $\langle (\Delta \mathbf{R}_i)^2 \rangle = \frac{3 k_B T}{\gamma} \Gamma^+_{ii}$, theoretical **crystallographic B-factors** $B_i = \frac{8\pi^2}{3}\langle (\Delta \mathbf{R}_i)^2 \rangle$, and Pearson correlation $r$ against experimental X-ray B-factors.
@@ -42,7 +44,6 @@
 | `src/dae/index.ts`                         | DAE lowering barrel exports                                                                                            |
 | `src/projections/pdb-to-modelica.ts`       | `pdbToModelica` translator to Modelica 3.x coarse-grained elastic network oscillator models                            |
 | `src/projections/index.ts`                 | Projections barrel exports                                                                                             |
-| `src/workspace-index.ts`                   | `PdbWorkspaceIndex` implementing `IWorkspaceIndex` across `.pdb`, `.ent`, `.cif`, and `.mmcif` files                   |
 | `src/lsp.ts`                               | LSP hover, completion, diagnostic, and symbol providers                                                                |
 
 ---

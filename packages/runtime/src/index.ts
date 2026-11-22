@@ -205,4 +205,6 @@ export * from "./math/double64.js";
 export * from "./solvers/distributed-krylov.js";
 export * from "./solvers/sparse_arnoldi.js";
 export * from "./util/snowflake.js";
+export * from "./workspace/manifest-projection.js";
 export * from "./workspace/manifest.js";
+export * from "./workspace/package_index.js";
