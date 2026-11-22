@@ -94,6 +94,9 @@ importers:
       ajv:
         specifier: ^8.17.0
         version: 8.20.0
+      assemblyscript:
+        specifier: ^0.28.19
+        version: 0.28.20
       esbuild:
         specifier: ^0.28.1
         version: 0.28.2
