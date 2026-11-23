@@ -3237,7 +3237,7 @@ export function extractClassEquations(
                   } else {
                     diffExprId = addArenaValueAsExpr(dae, diffVal, VarType.Real);
                   }
-                  dae.diffusionExprIds.set(stateVarIdx, diffExprId);
+                  dae.stochastic.addDiffusion(stateVarIdx, diffExprId);
                 }
               }
               if (t && emittedEqIndices.length > 0) {
@@ -3337,11 +3337,9 @@ export function extractClassEquations(
                 const scopeId = flattener.currentClassId;
                 if (!firstSeg || !scopeId || !flattener.db) return false;
                 const resolveSimple = flattener.db.query("resolveSimpleName", scopeId) as
-                  | ((n: string) => SymbolEntry | null)
-                  | undefined;
+                  ((n: string) => SymbolEntry | null) | undefined;
                 const resolveFull = flattener.db.query("resolveName", scopeId) as
-                  | ((n: string) => SymbolEntry | null)
-                  | undefined;
+                  ((n: string) => SymbolEntry | null) | undefined;
                 const compSym = resolveSimple?.(firstSeg) ?? resolveFull?.(firstSeg);
                 if (!compSym || compSym.kind !== "Component") return false;
                 const compClassId = flattener.db.query("classInstance", compSym.id) as SymbolId | null | undefined;

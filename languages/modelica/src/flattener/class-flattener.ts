@@ -8,12 +8,13 @@
  */
 
 import type { TopologyGraph } from "@modelscript/diagram";
-import { EqKind, ExprKind } from "@modelscript/dsl";
+import { ExprKind } from "@modelscript/dsl";
 import {
   BinOp,
   Causality,
   DAEBuilder,
   eliminateArenaAliases,
+  EqKind,
   evaluateConstantArenaExpression,
   foldArenaConstants,
   type QueryDB,
@@ -21,6 +22,7 @@ import {
   StmtKind,
   type SymbolEntry,
   type SymbolId,
+  type SymbolIndex,
   UnaryOp,
   UnifiedWorkspace,
   VarAttrKind,
@@ -1008,7 +1010,8 @@ export class ModelicaFlattener {
     prefix: string,
     parameterOverrides?: ReadonlyMap<string, number>,
   ) {
-    return tryInlineForeignComponentInModelica(symbolId, dae, prefix, parameterOverrides, this.db.index);
+    const symbolIndex = (this.db as unknown as { index?: SymbolIndex }).index;
+    return tryInlineForeignComponentInModelica(symbolId, dae, prefix, parameterOverrides, symbolIndex);
   }
 
   private getElementDiagRange(target: any): any {
@@ -1146,7 +1149,7 @@ export class ModelicaFlattener {
     // 4. SDE
     const sde = evaluator.evaluate(cst, "sde");
     if (sde) {
-      dae.extensionMetadata.sde = {
+      dae.extensionMetadata["sde"] = {
         method: sde.method ? String(sde.method) : undefined,
         ensemblePaths: sde.ensemblePaths ? Number(sde.ensemblePaths) : undefined,
         seed: sde.seed ? Number(sde.seed) : undefined,
@@ -1156,7 +1159,7 @@ export class ModelicaFlattener {
     // 5. BVP
     const bvp = evaluator.evaluate(cst, "bvp");
     if (bvp) {
-      dae.extensionMetadata.bvp = {
+      dae.extensionMetadata["bvp"] = {
         boundaryConditions: Array.isArray(bvp.boundaryConditions) ? bvp.boundaryConditions.map(String) : undefined,
         method: bvp.method ? String(bvp.method) : undefined,
         intervals: bvp.intervals ? Number(bvp.intervals) : undefined,
