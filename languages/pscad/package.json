@@ -81,6 +81,7 @@
     "@modelscript/runtime": "workspace:*"
   },
   "devDependencies": {
+    "@modelscript/psse": "workspace:*",
     "@types/react": "^19.2.7"
   },
   "peerDependencies": {
