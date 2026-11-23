@@ -638,4 +638,202 @@ export async function seedPrepackagedLibraries(
       console.log(`[Seed] Skipped background worker queue for ${pkg.name}@${pkg.version} (already pre-indexed).`);
     }
   }
+
+  await seedCleanroomStdlibs(storage, database, repoRoot);
+}
+
+function parseCleanroomManifest(yamlText: string): {
+  name: string;
+  version: string;
+  license: string;
+  description: string;
+  language: string;
+} | null {
+  const unquote = (v: string): string => {
+    const trimmed = v.trim();
+    if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+      return trimmed.slice(1, -1).replace(/\\"/g, '"');
+    }
+    return trimmed;
+  };
+  let name = "";
+  let version = "0.1.0";
+  let license = "AGPL-3.0-or-later";
+  let description = "";
+  let language = "";
+  for (const rawLine of yamlText.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const colon = line.indexOf(":");
+    if (colon === -1) continue;
+    const key = line.slice(0, colon).trim();
+    const val = unquote(line.slice(colon + 1));
+    if (key === "name") name = val;
+    else if (key === "version" && val) version = val;
+    else if (key === "license" && val) license = val;
+    else if (key === "description") description = val;
+    else if (key === "language") language = val;
+  }
+  if (!name) return null;
+  return { name, version, license, description, language: language || "modelica" };
+}
+
+/**
+ * Publishes all built-in cleanroom standard libraries (`languages/<lang>/assets/<lang>-std-lib`)
+ * to the local package registry so they are available by default in flagship deployments.
+ */
+export async function seedCleanroomStdlibs(
+  storage: LibraryStorage,
+  database: LibraryDatabase,
+  repoRoot: string,
+): Promise<number> {
+  const languagesDir = path.join(repoRoot, "languages");
+  if (!fs.existsSync(languagesDir)) return 0;
+
+  const langEntries = fs.readdirSync(languagesDir, { withFileTypes: true }).filter((d) => d.isDirectory());
+  let AdmZipCtor: typeof import("adm-zip") | null = null;
+  let publishedCount = 0;
+
+  for (const entry of langEntries) {
+    const stdLibDir = path.join(languagesDir, entry.name, "assets", `${entry.name}-std-lib`);
+    const manifestPath = path.join(stdLibDir, "modelscript.yaml");
+    const symbolsPath = path.join(stdLibDir, "dist", "symbols.json");
+    if (!fs.existsSync(manifestPath) || !fs.existsSync(symbolsPath)) continue;
+
+    const meta = parseCleanroomManifest(fs.readFileSync(manifestPath, "utf-8"));
+    if (!meta) continue;
+
+    const existingPkg = database.getPackage(meta.name);
+    if (existingPkg) {
+      const existingVer = database.getPackageVersion(existingPkg.id, meta.version);
+      if (
+        existingVer &&
+        storage.exists(meta.name, meta.version) &&
+        database.getClassCount(meta.name, meta.version) > 0
+      ) {
+        continue;
+      }
+    }
+
+    try {
+      if (!AdmZipCtor) {
+        AdmZipCtor = (await import("adm-zip")).default;
+      }
+      const zip = new AdmZipCtor();
+      zip.addLocalFolder(stdLibDir, "", (filePath) => !filePath.startsWith(".cache"));
+      const zipBuffer = zip.toBuffer();
+
+      try {
+        await storage.store(meta.name, meta.version, zipBuffer);
+      } catch (err: unknown) {
+        const errObj = err as { name?: string | undefined; message?: string | undefined };
+        if (errObj?.name !== "ConflictError" && !errObj?.message?.includes("already exists")) {
+          throw err;
+        }
+      }
+      await storage.extractLibrary(meta.name, meta.version);
+
+      const { id: packageId } = database.getOrCreatePackage(meta.name);
+      const shasum = crypto.createHash("sha1").update(zipBuffer).digest("hex");
+      const sha256 = crypto.createHash("sha256").update(zipBuffer).digest("hex");
+      const manifestObj = {
+        name: meta.name,
+        version: meta.version,
+        description: meta.description,
+        license: meta.license,
+        language: meta.language,
+        modelscript: {
+          category: "library",
+          language: meta.language,
+          domains: [meta.language],
+        },
+      };
+
+      if (!database.getPackageVersion(packageId, meta.version)) {
+        database.storePackageVersion(
+          packageId,
+          meta.version,
+          `cleanroom://${meta.name}/${meta.version}`,
+          shasum,
+          null,
+          zipBuffer.length,
+          JSON.stringify(manifestObj),
+          null,
+          null,
+        );
+      }
+      database.setDistTag(packageId, "latest", meta.version);
+      database.updatePackageMeta(packageId, {
+        description: meta.description,
+        license: meta.license,
+      });
+      database.saveLibraryRelease({
+        libraryName: meta.name,
+        libraryVersion: meta.version,
+        contentHash: `sha256:${sha256}`,
+        signature: null,
+        publishedBy: null,
+      });
+
+      const symbols = JSON.parse(fs.readFileSync(symbolsPath, "utf-8")) as Array<{
+        name: string;
+        kind?: string;
+        namePath?: string;
+        inherits?: string[];
+        metadata?: {
+          label?: string;
+          description?: string;
+          parameters?: Array<{ key: string; type?: string; defaultValue?: unknown; description?: string }>;
+        };
+      }>;
+      const diagramsPath = path.join(stdLibDir, "dist", "diagrams.json");
+      const diagramMap = new Map<string, string>();
+      if (fs.existsSync(diagramsPath)) {
+        const diagrams = JSON.parse(fs.readFileSync(diagramsPath, "utf-8")) as Array<{
+          namePath?: string;
+          svg?: string;
+        }>;
+        for (const d of diagrams) {
+          if (d.namePath && d.svg) diagramMap.set(d.namePath, d.svg);
+        }
+      }
+
+      const classes = symbols.map((sym) => {
+        const className = sym.namePath || sym.name;
+        const svg = diagramMap.get(className) ?? null;
+        if (svg) {
+          storage.storeSvg(meta.name, meta.version, className, svg, svg);
+        }
+        return {
+          className,
+          classKind: (sym.kind || "model").toLowerCase(),
+          description: sym.metadata?.label || sym.metadata?.description || null,
+          documentation: sym.metadata?.description || null,
+          baseClasses: Array.isArray(sym.inherits) ? sym.inherits : [],
+          components: Array.isArray(sym.metadata?.parameters)
+            ? sym.metadata.parameters.map((p) => ({
+                name: p.key,
+                typeName: p.type || "Real",
+                description: p.description || null,
+                causality: null,
+                variability: "parameter",
+                modifiers: p.defaultValue !== undefined ? [{ name: "default", value: String(p.defaultValue) }] : [],
+              }))
+            : [],
+        };
+      });
+
+      if (classes.length > 0) {
+        database.storeClassBatch(meta.name, meta.version, classes);
+      }
+      publishedCount++;
+    } catch (err) {
+      console.warn(`[Seed] Failed to publish cleanroom library ${meta.name}:`, err);
+    }
+  }
+
+  if (publishedCount > 0) {
+    console.log(`[Seed] Published ${publishedCount} cleanroom standard libraries to package registry.`);
+  }
+  return publishedCount;
 }
