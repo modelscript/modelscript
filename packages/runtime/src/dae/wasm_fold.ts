@@ -4660,37 +4660,81 @@ export function foldArenaConstants(
     }
   }
 
-  // Fold constant expressions, evaluated parameters, and algorithm control expressions across statements
-  for (let s = 0; s < arena.stmtCount; s++) {
+  // Fold constant expressions, evaluated parameters, and algorithm control expressions across statements,
+  // respecting for-loop iterator shadowing of outer constants/parameters.
+  const shadowedByStmt = new Map<number, ReadonlySet<string>>();
+  const foldStmtAt = (s: number, activeSubMap: Map<string, number>, shadowed: ReadonlySet<string>): number => {
+    if (s < 0 || s >= arena.stmtCount) return s + 1;
+    if (shadowed.size > 0) shadowedByStmt.set(s, shadowed);
     const sk = arena.getStmtKind(s);
     if (sk === StmtKind.For) {
       const rangeId = arena.getStmtLeft(s);
       if (rangeId >= 0) {
-        const subRange = substituteArenaConstants(arena, rangeId, eqSubMap, nameToIdx);
+        const subRange = substituteArenaConstants(arena, rangeId, activeSubMap, nameToIdx);
         if (subRange !== rangeId) arena.setStmtLeft(s, subRange);
       }
-    } else if (sk === StmtKind.ProcedureCall) {
+      const indexNameRaw = arena.interner.resolve(arena.getStmtData1(s));
+      const indexName = indexNameRaw?.startsWith("\0loop\0") ? indexNameRaw.substring(6) : indexNameRaw;
+      let bodySubMap = activeSubMap;
+      let bodyShadowed = shadowed;
+      if (indexName) {
+        if (activeSubMap.has(indexName)) {
+          bodySubMap = new Map(activeSubMap);
+          bodySubMap.delete(indexName);
+        }
+        if (!shadowed.has(indexName)) {
+          const nextShadowed = new Set(shadowed);
+          nextShadowed.add(indexName);
+          bodyShadowed = nextShadowed;
+        }
+      }
+      const bodyCount = arena.getStmtRight(s);
+      let next = s + 1;
+      for (let i = 0; i < bodyCount && next < arena.stmtCount; i++) {
+        next = foldStmtAt(next, bodySubMap, bodyShadowed);
+      }
+      return next;
+    }
+    if (sk === StmtKind.ProcedureCall) {
       const callId = arena.getStmtData1(s);
       if (callId >= 0) {
         let curCall = simplifyArenaIfElse(arena, callId, ifElseFoldMap, nameToIdx, omcCompatibility);
-        curCall = substituteArenaConstants(arena, curCall, eqSubMap, nameToIdx);
+        curCall = substituteArenaConstants(arena, curCall, activeSubMap, nameToIdx);
         if (curCall !== callId) arena.setStmtData1(s, curCall);
       }
-    } else if (sk === StmtKind.If || sk === StmtKind.While || sk === StmtKind.When || sk === StmtKind.Block) {
+      return s + 1;
+    }
+    if (sk === StmtKind.If || sk === StmtKind.While || sk === StmtKind.When || sk === StmtKind.Block) {
       const condId = arena.getStmtData1(s);
       if (condId >= 0) {
         let curCond = simplifyArenaIfElse(arena, condId, ifElseFoldMap, nameToIdx, omcCompatibility);
-        curCond = substituteArenaConstants(arena, curCond, eqSubMap, nameToIdx);
+        curCond = substituteArenaConstants(arena, curCond, activeSubMap, nameToIdx);
         if (curCond !== condId) arena.setStmtData1(s, curCond);
       }
-    } else if (sk === StmtKind.Assignment) {
+      const childCount =
+        sk === StmtKind.While || sk === StmtKind.Block
+          ? arena.getStmtLeft(s)
+          : arena.getStmtLeft(s) + arena.getStmtRight(s);
+      let next = s + 1;
+      for (let i = 0; i < childCount && next < arena.stmtCount; i++) {
+        next = foldStmtAt(next, activeSubMap, shadowed);
+      }
+      return next;
+    }
+    if (sk === StmtKind.Assignment) {
       const rhsExpr = arena.getStmtLeft(s);
       if (rhsExpr >= 0) {
         let curRhs = simplifyArenaIfElse(arena, rhsExpr, ifElseFoldMap, nameToIdx, omcCompatibility);
-        curRhs = substituteArenaConstants(arena, curRhs, eqSubMap, nameToIdx);
+        curRhs = substituteArenaConstants(arena, curRhs, activeSubMap, nameToIdx);
         if (curRhs !== rhsExpr) arena.setStmtLeft(s, curRhs);
       }
+      return s + 1;
     }
+    return s + 1;
+  };
+
+  for (let s = 0; s < arena.stmtCount;) {
+    s = foldStmtAt(s, eqSubMap, new Set<string>());
   }
 
   // Fold constant function calls and constant array constructors in algorithm assignment statements
@@ -4705,6 +4749,35 @@ export function foldArenaConstants(
       if (rhsKind !== ExprKind.Call && rhsKind !== ExprKind.ArrayCtor) continue;
       const lhsKind = arena.getExprKind(lhsExpr);
       if (lhsKind !== ExprKind.Name && lhsKind !== ExprKind.Subscript) continue;
+      const shadowed = shadowedByStmt.get(s);
+      if (shadowed && shadowed.size > 0) {
+        const exprRefsShadowed = (eId: number, depth = 0): boolean => {
+          if (eId < 0 || depth > 32) return false;
+          const ek = arena.getExprKind(eId);
+          if (ek === ExprKind.Name) {
+            const nm = arena.interner.resolve(arena.getExprData1(eId));
+            return Boolean(nm && shadowed.has(nm));
+          }
+          if (ek === ExprKind.Call) {
+            const argCount = arena.getExprRight(eId);
+            for (let ai = 0; ai < argCount; ai++) {
+              if (exprRefsShadowed(arena.getExprLeft(eId + ai), depth + 1)) return true;
+            }
+            return false;
+          }
+          if (ek === ExprKind.ArrayCtor) {
+            const count = arena.getExprData1(eId);
+            for (let ei = 0; ei < count; ei++) {
+              if (exprRefsShadowed(arena.getExprLeft(eId + ei), depth + 1)) return true;
+            }
+            return false;
+          }
+          return (
+            exprRefsShadowed(arena.getExprLeft(eId), depth + 1) || exprRefsShadowed(arena.getExprRight(eId), depth + 1)
+          );
+        };
+        if (exprRefsShadowed(rhsExpr)) continue;
+      }
       const foldedRhs = evaluateConstantArenaExpression(
         arena,
         rhsExpr,

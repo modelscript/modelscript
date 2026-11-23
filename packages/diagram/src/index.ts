@@ -4973,6 +4973,7 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
   // active drag handles, selection states, and focus.
   const existingCells = g.getCells();
   const isFirstRender = existingCells.length === 0;
+  yUpCoordsByGraph.set(g, Boolean(data.coordinateSystem));
 
   if (!isFirstRender && !moduleChanged && !loadingCompleted) {
     const existingNodeIds = new Set<string>();
@@ -4997,7 +4998,6 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
     }
 
     // ── Keyed Differential Cell Reconciler (Zero-Flicker) ──
-    yUpCoordsByGraph.set(g, Boolean(data.coordinateSystem));
     g.batchUpdate("diagram-diff", () => {
       if (!data.coordinateSystem) {
         const bg = g.getCellById("__diagram_background__");
@@ -5019,10 +5019,7 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
       for (const nodeData of nodes) {
         const cell = g.getCellById(nodeData.id);
         if (!cell || !cell.isNode()) {
-          const added = g.addNode(nodeData);
-          if (nodeData.data?.["flipX"] || nodeData.data?.["flipY"]) {
-            applyNodeFlipVisuals(added, g, Boolean(nodeData.data["flipX"]), Boolean(nodeData.data["flipY"]));
-          }
+          g.addNode(nodeData);
           continue;
         }
 
@@ -5049,9 +5046,14 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
 
         // Update data (properties)
         if (nodeData.data) {
+          const prevData = (cell.getData?.() || {}) as Record<string, unknown>;
+          const prevFlipX = Boolean(prevData["flipX"]);
+          const prevFlipY = Boolean(prevData["flipY"]);
+          const nextFlipX = Boolean(nodeData.data["flipX"]);
+          const nextFlipY = Boolean(nodeData.data["flipY"]);
           cell.setData(nodeData.data, { overwrite: true });
-          if (nodeData.data["flipX"] !== undefined || nodeData.data["flipY"] !== undefined) {
-            applyNodeFlipVisuals(cell, g, Boolean(nodeData.data["flipX"]), Boolean(nodeData.data["flipY"]));
+          if (prevFlipX !== nextFlipX || prevFlipY !== nextFlipY) {
+            applyNodeFlipVisuals(cell, g, nextFlipX, nextFlipY);
           }
         }
 

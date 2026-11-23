@@ -40,6 +40,8 @@ export interface PlanePointerEvent {
   metaKey: boolean;
   altKey: boolean;
   phase: "down" | "move" | "up" | "cancel" | "dblclick";
+  /** Optional explicit DOM port hit (from `.x6-port` / `[magnet="true"]` target). */
+  pointerPortHit?: { nodeId: string; portId: string } | null | undefined;
 }
 
 export interface SpatialPlane3D {
@@ -133,6 +135,14 @@ export interface PointerFsmCallbacks {
   onNodeInteractiveClick?: ((nodeId: string, phase: "down" | "up" | "click", u: number, v: number) => void) | undefined;
   validateConnection?:
     ((srcNodeId: string, srcPortId: string, tgtNodeId: string, tgtPortId: string) => boolean) | undefined;
+  validateMagnet?: ((nodeId: string, portId: string) => boolean) | undefined;
+  canInteract?:
+    | ((
+        cellId: string,
+        kind: "node" | "edge",
+      ) => boolean | { nodeMovable?: boolean | undefined; edgeMovable?: boolean | undefined })
+    | undefined;
+  selectionFilter?: ((cellId: string) => boolean) | undefined;
 }
 
 export interface PointerFsmOptions {
@@ -308,9 +318,18 @@ export class CanvasPointerFSM {
     }
   }
 
+  private segmentDragMoved = false;
+
+  public setPortSnapRadius(radius: number): void {
+    if (Number.isFinite(radius) && radius > 0) {
+      this.portSnapRadius = radius;
+    }
+  }
+
   private handleDown(evt: PlanePointerEvent): void {
     this.dragStart = { x: evt.u, y: evt.v };
     this.panLastScreen = { x: evt.screenX ?? evt.u, y: evt.screenY ?? evt.v };
+    this.segmentDragMoved = false;
 
     // Middle-click or Alt+click pans camera regardless of focused portal
     if (evt.button === 1 || (evt.button === 0 && evt.altKey)) {
@@ -331,8 +350,33 @@ export class CanvasPointerFSM {
 
     // 1. Check port hit first (for starting orthogonal wire connection)
     if (!this.readOnly) {
-      const portHit = this.scene.hitTestPort(evt.u, evt.v, this.portSnapRadius * 0.65);
-      if (portHit) {
+      let portHit: { nodeId: string; portId: string; x: number; y: number } | null = null;
+      if (evt.pointerPortHit) {
+        const hitPos = this.scene.getPortWorldPosition(evt.pointerPortHit.nodeId, evt.pointerPortHit.portId);
+        if (hitPos) {
+          portHit = {
+            nodeId: evt.pointerPortHit.nodeId,
+            portId: evt.pointerPortHit.portId,
+            x: hitPos.x,
+            y: hitPos.y,
+          };
+        }
+      }
+      if (!portHit) {
+        // Use a tight radius so small nodes (e.g. 20x20 Modelica components) are selectable/draggable
+        // by clicking their body without ports swallowing the whole component.
+        const tightRadius = Math.min(4, this.portSnapRadius * 0.25);
+        const worldPortHit = this.scene.hitTestPort(evt.u, evt.v, tightRadius);
+        if (worldPortHit) {
+          portHit = {
+            nodeId: worldPortHit.nodeId,
+            portId: worldPortHit.portId,
+            x: worldPortHit.x,
+            y: worldPortHit.y,
+          };
+        }
+      }
+      if (portHit && (this.callbacks.validateMagnet?.(portHit.nodeId, portHit.portId) ?? true)) {
         this.mode = "wiring";
         this.wiringPreview = {
           sourceNodeId: portHit.nodeId,
@@ -350,23 +394,28 @@ export class CanvasPointerFSM {
     const nodeHit = this.scene.hitTestNode(evt.u, evt.v);
     if (nodeHit) {
       this.callbacks.onNodeInteractiveClick?.(nodeHit.id, "down", evt.u, evt.v);
-      const multi = evt.shiftKey || evt.ctrlKey || evt.metaKey;
-      if (multi) {
-        if (this.selectedNodeIds.has(nodeHit.id)) {
-          this.selectedNodeIds.delete(nodeHit.id);
-          this.scene.setNodeFlag(nodeHit.id, SceneNodeFlags.SELECTED, false);
-        } else {
+      const selectable = this.callbacks.selectionFilter ? this.callbacks.selectionFilter(nodeHit.id) : true;
+      if (selectable) {
+        const multi = evt.shiftKey || evt.ctrlKey || evt.metaKey;
+        if (multi) {
+          if (this.selectedNodeIds.has(nodeHit.id)) {
+            this.selectedNodeIds.delete(nodeHit.id);
+            this.scene.setNodeFlag(nodeHit.id, SceneNodeFlags.SELECTED, false);
+          } else {
+            this.selectedNodeIds.add(nodeHit.id);
+            this.scene.setNodeFlag(nodeHit.id, SceneNodeFlags.SELECTED, true);
+          }
+        } else if (!this.selectedNodeIds.has(nodeHit.id)) {
+          this.clearSelectionInternal();
           this.selectedNodeIds.add(nodeHit.id);
           this.scene.setNodeFlag(nodeHit.id, SceneNodeFlags.SELECTED, true);
         }
-      } else if (!this.selectedNodeIds.has(nodeHit.id)) {
-        this.clearSelectionInternal();
-        this.selectedNodeIds.add(nodeHit.id);
-        this.scene.setNodeFlag(nodeHit.id, SceneNodeFlags.SELECTED, true);
+        this.emitSelection();
       }
-      this.emitSelection();
 
-      if (!this.readOnly && (nodeHit.flags & (SceneNodeFlags.LOCKED | SceneNodeFlags.READONLY)) === 0) {
+      const interact = this.callbacks.canInteract ? this.callbacks.canInteract(nodeHit.id, "node") : true;
+      const nodeMovable = typeof interact === "boolean" ? interact : interact.nodeMovable !== false;
+      if (!this.readOnly && nodeMovable && (nodeHit.flags & (SceneNodeFlags.LOCKED | SceneNodeFlags.READONLY)) === 0) {
         this.dragInitialPositions.clear();
         for (const id of this.selectedNodeIds) {
           const n = this.scene.getNode(id);
@@ -384,11 +433,16 @@ export class CanvasPointerFSM {
     // 3. Check edge hit (select or start orthogonal segment drag)
     const edgeHit = this.scene.hitTestEdge(evt.u, evt.v, 8);
     if (edgeHit) {
-      const multi = evt.shiftKey || evt.ctrlKey || evt.metaKey;
-      if (!multi) this.clearSelectionInternal();
-      this.selectedEdgeIds.add(edgeHit.edge.id);
-      this.emitSelection();
-      if (!this.readOnly) {
+      const selectable = this.callbacks.selectionFilter ? this.callbacks.selectionFilter(edgeHit.edge.id) : true;
+      if (selectable) {
+        const multi = evt.shiftKey || evt.ctrlKey || evt.metaKey;
+        if (!multi) this.clearSelectionInternal();
+        this.selectedEdgeIds.add(edgeHit.edge.id);
+        this.emitSelection();
+      }
+      const interact = this.callbacks.canInteract ? this.callbacks.canInteract(edgeHit.edge.id, "edge") : true;
+      const edgeMovable = typeof interact === "boolean" ? interact : interact.edgeMovable !== false;
+      if (!this.readOnly && edgeMovable) {
         this.startSegmentDrag(edgeHit.edge.id, edgeHit.segmentIndex, evt.u, evt.v);
       }
       return;
@@ -591,6 +645,10 @@ export class CanvasPointerFSM {
       if (!edge) return;
 
       const delta = orientation === "horizontal" ? evt.v - this.dragStart.y : evt.u - this.dragStart.x;
+      if (!this.segmentDragMoved) {
+        if (Math.abs(delta) <= 2) return;
+        this.segmentDragMoved = true;
+      }
       const p1 = fullPolyline[segmentIndex]!;
       const p2 = fullPolyline[segmentIndex + 1]!;
       const isFirst = segmentIndex === 0;

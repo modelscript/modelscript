@@ -976,7 +976,8 @@ export class WasmEmitter {
     }
     if (node.type === "PostfixExpression") {
       const calleeNode = node.childForFieldName?.("callee");
-      if (calleeNode) {
+      const hasCallParen = node.children?.some((c) => c.type === "(" || c.text === "(");
+      if (calleeNode && hasCallParen) {
         return this.fnReturnTypes.get(calleeNode.text || "") || "i32";
       }
       const objNode = node.childForFieldName?.("object");
@@ -1645,7 +1646,8 @@ export class WasmEmitter {
 
       case "PostfixExpression": {
         const calleeNode = node.childForFieldName?.("callee");
-        if (calleeNode) {
+        const hasCallParen = node.children?.some((c) => c.type === "(" || c.text === "(");
+        if (calleeNode && hasCallParen) {
           const callee = calleeNode.text || "fn";
           const argsNode = node.childForFieldName?.("arguments");
           const argsWat: string[] = [];

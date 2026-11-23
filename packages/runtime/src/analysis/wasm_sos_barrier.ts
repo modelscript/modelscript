@@ -190,20 +190,61 @@ export class SosBarrierSynthesizer {
       }
     }
 
-    const sdpProblem: SdpProblem = {
-      n,
-      m: sdpA.length,
-      C: Array.from({ length: n }, (_, i) => {
-        const row = new Array<number>(n).fill(0);
-        row[i] = 1.0;
-        return row;
-      }),
-      A: sdpA,
-      b: sdpB,
-    };
+    let P: number[][];
+    const isStable2x2 =
+      n === 2 && A[0]![0]! + A[1]![1]! < -1e-9 && A[0]![0]! * A[1]![1]! - A[0]![1]! * A[1]![0]! > 1e-9;
 
-    const sdpRes = SdpSolver.solve(sdpProblem);
-    const P = sdpRes.X;
+    if (isStable2x2) {
+      // Exact closed-form 3x3 linear solve for A^T P + P A = -2 I when n = 2
+      const a11 = A[0]![0]!;
+      const a12 = A[0]![1]!;
+      const a21 = A[1]![0]!;
+      const a22 = A[1]![1]!;
+      const M = [
+        [2 * a11, 2 * a21, 0, -2],
+        [a12, a11 + a22, a21, 0],
+        [0, 2 * a12, 2 * a22, -2],
+      ];
+      for (let col = 0; col < 3; col++) {
+        let piv = col;
+        for (let r = col + 1; r < 3; r++) {
+          if (Math.abs(M[r]![col]!) > Math.abs(M[piv]![col]!)) piv = r;
+        }
+        [M[col], M[piv]] = [M[piv]!, M[col]!];
+        const div = M[col]![col]!;
+        if (Math.abs(div) > 1e-12) {
+          for (let j = col; j < 4; j++) M[col]![j]! /= div;
+          for (let r = 0; r < 3; r++) {
+            if (r !== col) {
+              const f = M[r]![col]!;
+              for (let j = col; j < 4; j++) M[r]![j]! -= f * M[col]![j]!;
+            }
+          }
+        }
+      }
+      const p11 = M[0]![3]!;
+      const p12 = M[1]![3]!;
+      const p22 = M[2]![3]!;
+      P = [
+        [p11, p12],
+        [p12, p22],
+      ];
+    } else {
+      const sdpProblem: SdpProblem = {
+        n,
+        m: sdpA.length,
+        C: Array.from({ length: n }, (_, i) => {
+          const row = new Array<number>(n).fill(0);
+          row[i] = 1.0;
+          return row;
+        }),
+        A: sdpA,
+        b: sdpB,
+      };
+
+      const sdpRes = SdpSolver.solve(sdpProblem);
+      P = sdpRes.X;
+    }
 
     // Compute negative Lyapunov derivative matrix Q = -(A^T P + P A)
     const Q: number[][] = Array.from({ length: n }, () => new Array<number>(n).fill(0));
@@ -229,21 +270,41 @@ export class SosBarrierSynthesizer {
     let lambdaMinP = Infinity;
     let minDecayRate = Infinity;
 
-    for (let i = 0; i < n; i++) {
-      const pii = P[i]![i] ?? 0;
-      let offDiagP = 0;
-      let offDiagQ = 0;
-      for (let j = 0; j < n; j++) {
-        if (i !== j) {
-          offDiagP += Math.abs(P[i]![j] ?? 0);
-          offDiagQ += Math.abs(Q[i]![j] ?? 0);
-        }
+    if (n === 2) {
+      const a = P[0]![0] ?? 0;
+      const b = P[0]![1] ?? 0;
+      const c = P[1]![1] ?? 0;
+      const halfTraceP = 0.5 * (a + c);
+      const discP = Math.sqrt(Math.max(0, 0.25 * (a - c) * (a - c) + b * b));
+      lambdaMaxP = halfTraceP + discP;
+      lambdaMinP = Math.max(0, halfTraceP - discP);
+
+      const qa = Q[0]![0] ?? 0;
+      const qb = Q[0]![1] ?? 0;
+      const qc = Q[1]![1] ?? 0;
+      const halfTraceQ = 0.5 * (qa + qc);
+      const discQ = Math.sqrt(Math.max(0, 0.25 * (qa - qc) * (qa - qc) + qb * qb));
+      const lambdaMinQ = Math.max(0, halfTraceQ - discQ);
+      if (lambdaMaxP > 1e-8) {
+        minDecayRate = lambdaMinQ / (2 * lambdaMaxP);
       }
-      lambdaMaxP = Math.max(lambdaMaxP, pii + offDiagP);
-      lambdaMinP = Math.min(lambdaMinP, Math.max(0, pii - offDiagP));
-      const qMinRow = (Q[i]![i] ?? 0) - offDiagQ;
-      if (pii > 1e-8) {
-        minDecayRate = Math.min(minDecayRate, qMinRow / (2 * (pii + offDiagP)));
+    } else {
+      for (let i = 0; i < n; i++) {
+        const pii = P[i]![i] ?? 0;
+        let offDiagP = 0;
+        let offDiagQ = 0;
+        for (let j = 0; j < n; j++) {
+          if (i !== j) {
+            offDiagP += Math.abs(P[i]![j] ?? 0);
+            offDiagQ += Math.abs(Q[i]![j] ?? 0);
+          }
+        }
+        lambdaMaxP = Math.max(lambdaMaxP, pii + offDiagP);
+        lambdaMinP = Math.min(lambdaMinP, Math.max(0, pii - offDiagP));
+        const qMinRow = (Q[i]![i] ?? 0) - offDiagQ;
+        if (pii > 1e-8) {
+          minDecayRate = Math.min(minDecayRate, qMinRow / (2 * (pii + offDiagP)));
+        }
       }
     }
 

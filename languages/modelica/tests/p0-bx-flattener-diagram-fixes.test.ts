@@ -492,4 +492,79 @@ end HugeCanvas;`;
     assert.strictEqual((diag.edges[0] as any).target.cell, "bus");
     assert.strictEqual((diag.edges[0] as any).target.port, "speed");
   });
+
+  it("keeps Modelica component text upright (0 deg net rotation) at 90, 180, and 270 degree rotations", async () => {
+    const makeRotated = (rot: number) => ({
+      name: `Rotated_${rot}`,
+      qualifiedName: `Rotated_${rot}`,
+      components: [
+        {
+          name: "r1",
+          className: "Resistor",
+          classInstance: {
+            name: "Resistor",
+            qualifiedName: "Modelica.Electrical.Analog.Basic.Resistor",
+            components: [],
+            connectEquations: [],
+            annotation: () => ({
+              coordinateSystem: {
+                extent: [
+                  [-100, -100],
+                  [100, 100],
+                ],
+              },
+              graphics: [
+                {
+                  "@type": "Text",
+                  extent: [
+                    [-100, 40],
+                    [100, 80],
+                  ],
+                  textString: "%name",
+                },
+              ],
+            }),
+          },
+          annotation: (type: string) =>
+            type === "Placement"
+              ? {
+                  transformation: {
+                    origin: [0, 0],
+                    extent: [
+                      [-10, -10],
+                      [10, 10],
+                    ],
+                    rotation: rot,
+                  },
+                }
+              : null,
+        },
+      ],
+      connectEquations: [],
+      annotation: () => ({
+        coordinateSystem: {
+          extent: [
+            [-100, -100],
+            [100, 100],
+          ],
+        },
+        graphics: [],
+      }),
+    });
+
+    for (const [rot, expectedCounter] of [
+      [90, 90], // Modelica rotation=90 -> X6 angle=-90 -> counter=+90 (net 0)
+      [180, 180], // Modelica rotation=180 -> X6 angle=-180 -> counter=180 (net 0)
+      [270, 270], // Modelica rotation=270 -> X6 angle=-270 -> counter=270 (net 0)
+    ] as const) {
+      const diag = await buildDiagramData(makeRotated(rot) as any);
+      const node = diag.nodes.find((n) => n.id === "r1")!;
+      assert.ok(node, `Node r1 missing for rot=${rot}`);
+      const markupStr = JSON.stringify(node.markup || "");
+      assert.ok(
+        markupStr.includes(`rotate(${expectedCounter} `),
+        `Expected counter-rotation rotate(${expectedCounter} ...) for Modelica rotation=${rot} (angle=${node.angle}), got ${markupStr}`,
+      );
+    }
+  });
 });

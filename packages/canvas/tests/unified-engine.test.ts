@@ -10,6 +10,7 @@ import {
   UnifiedSelection,
   UnifiedTransform,
   compileGlyphMarkup,
+  materializeGlyphToSvg,
   paintGlyphToCanvas2D,
   patchGlyphAttrPath,
   readGlyphAttrPath,
@@ -843,6 +844,178 @@ describe("Unified SoA SceneGraph, GlyphCompiler, PointerFSM & UnifiedGraph", () 
     assert.deepEqual(brushed.linkedIds, ["REQ-001", "REQ-014", "REQ-022"]);
     const tableWidget = graph.getCanvasWidgets().find((w) => w.id === "req_table");
     assert.deepEqual(tableWidget?.table?.highlightedRowIds, ["REQ-001", "REQ-014", "REQ-022"]);
+    graph.dispose();
+  });
+
+  test("compiles string children, fractional refX/refY, textVerticalAnchor, resolves port groups & prop(ports), and selects 20x20 Modelica nodes cleanly", () => {
+    const glyph = compileGlyphMarkup([
+      {
+        tagName: "rect",
+        selector: "body",
+        attrs: { refWidth: 1, refHeight: 1 },
+      },
+      {
+        tagName: "text",
+        selector: "label",
+        attrs: { refX: 0.5, refY: 0.5, textVerticalAnchor: "middle" },
+        children: "R1",
+      } as unknown as { tagName: string; selector: string; attrs: Record<string, string | number> },
+    ]);
+    assert.equal(glyph.roots[1]?.textContent, "R1");
+
+    const svgChildren: Array<{ tag: string; attrs: Record<string, string>; text: string | null }> = [];
+    const fakeDoc = {
+      createElementNS: (_ns: string, tag: string) => {
+        const attrs: Record<string, string> = {};
+        const el = {
+          tagName: tag,
+          textContent: null as string | null,
+          setAttribute: (k: string, v: string) => {
+            attrs[k] = v;
+          },
+          setAttributeNS: (_ns2: string, k: string, v: string) => {
+            attrs[k] = v;
+          },
+          getAttribute: (k: string) => attrs[k] ?? null,
+          appendChild: (c: unknown) => {
+            if (tag === "g" && c && typeof c === "object") {
+              const childObj = c as { tagName: string; _attrs: Record<string, string>; textContent: string | null };
+              svgChildren.push({ tag: childObj.tagName, attrs: childObj._attrs, text: childObj.textContent });
+            }
+          },
+          _attrs: attrs,
+        };
+        return el;
+      },
+    } as unknown as Document;
+
+    materializeGlyphToSvg(glyph, fakeDoc, 200, 100);
+    const rectOut = svgChildren.find((c) => c.tag === "rect");
+    const textOut = svgChildren.find((c) => c.tag === "text");
+    assert.equal(rectOut?.attrs["width"], "200");
+    assert.equal(rectOut?.attrs["height"], "100");
+    assert.equal(rectOut?.attrs["magnet"], undefined);
+    assert.equal(textOut?.attrs["x"], "100");
+    assert.equal(textOut?.attrs["y"], "50");
+    assert.equal(textOut?.attrs["dominant-baseline"], "central");
+    assert.equal(textOut?.text, "R1");
+
+    // 20x20 Modelica component: interior click selects node instead of port wiring; explicit pointerPortHit starts wiring
+    const graph = new UnifiedGraph({ grid: 1 });
+    const r1 = graph.addNode({
+      id: "R1",
+      x: 100,
+      y: 100,
+      width: 20,
+      height: 20,
+      ports: {
+        groups: { left: { position: "left" }, right: { position: "right" } },
+        items: [
+          { id: "p", group: "left" },
+          { id: "n", group: "right" },
+        ],
+      },
+    });
+    const r2 = graph.addNode({
+      id: "R2",
+      x: 200,
+      y: 100,
+      width: 20,
+      height: 20,
+      ports: [
+        { id: "p", args: { x: 0, y: 10 } },
+        { id: "n", args: { x: 20, y: 10 } },
+      ],
+    });
+
+    assert.equal(r1.getPorts()[0]?.args?.x, 0);
+    assert.equal(r1.getPorts()[0]?.args?.y, 10);
+    assert.equal(r1.getPorts()[1]?.args?.x, 20);
+    assert.equal(r1.getPorts()[1]?.args?.y, 10);
+
+    // Click center of 20x20 R1 -> selects & enters dragging-nodes, NOT wiring
+    graph.fsm.handleEvent({
+      planeId: "primary",
+      u: 110,
+      v: 110,
+      button: 0,
+      buttons: 1,
+      shiftKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      altKey: false,
+      phase: "down",
+    });
+    assert.equal(graph.fsm.mode, "dragging-nodes");
+    assert.deepEqual(
+      graph.getSelectedCells().map((c) => c.id),
+      ["R1"],
+    );
+    graph.fsm.handleEvent({
+      planeId: "primary",
+      u: 110,
+      v: 110,
+      button: 0,
+      buttons: 0,
+      shiftKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      altKey: false,
+      phase: "up",
+    });
+
+    // Click port R1.n with explicit pointerPortHit and drag to R2.p -> connects edge
+    graph.fsm.handleEvent({
+      planeId: "primary",
+      u: 120,
+      v: 110,
+      button: 0,
+      buttons: 1,
+      shiftKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      altKey: false,
+      phase: "down",
+      pointerPortHit: { nodeId: "R1", portId: "n" },
+    });
+    assert.equal(graph.fsm.mode, "wiring");
+    graph.fsm.handleEvent({
+      planeId: "primary",
+      u: 200,
+      v: 110,
+      button: 0,
+      buttons: 1,
+      shiftKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      altKey: false,
+      phase: "move",
+    });
+    graph.fsm.handleEvent({
+      planeId: "primary",
+      u: 200,
+      v: 110,
+      button: 0,
+      buttons: 0,
+      shiftKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      altKey: false,
+      phase: "up",
+    });
+    assert.equal(graph.getEdges().length, 1);
+    assert.equal(graph.getEdges()[0]?.getSource().cell, "R1");
+    assert.equal(graph.getEdges()[0]?.getSource().port, "n");
+    assert.equal(graph.getEdges()[0]?.getTarget().cell, "R2");
+    assert.equal(graph.getEdges()[0]?.getTarget().port, "p");
+
+    // prop("ports", ...) & setPortProp() update SoA scene ports
+    r2.prop("ports", [{ id: "p", args: { x: 0, y: 5 } }]);
+    assert.equal(graph.scene.getNodePorts("R2").length, 1);
+    assert.equal(graph.scene.getNodePorts("R2")[0]?.localY, 5);
+    r2.setPortProp("p", "args", { x: 0, y: 15 });
+    assert.equal(graph.scene.getNodePorts("R2")[0]?.localY, 15);
+
     graph.dispose();
   });
 });

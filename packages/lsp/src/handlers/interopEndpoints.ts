@@ -225,7 +225,7 @@ export function registerInteropEndpoints(context: LspContext) {
                 kind: "create",
                 uri: targetUri,
                 options: { overwrite: true },
-              } as import("vscode-languageserver-protocol").CreateFile,
+              } as import("vscode-languageserver").CreateFile,
               {
                 textDocument: { uri: targetUri, version: null },
                 edits: [

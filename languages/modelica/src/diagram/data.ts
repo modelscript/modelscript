@@ -495,9 +495,7 @@ export async function buildDiagramData(
   // Pre-gather all connect equations (including inherited ones)
   const connectEquations = !isIconMode && classInstance ? collectAllConnectEquations(classInstance) : [];
   const classObj = classInstance as
-    | { context?: unknown; entry?: { resourceId?: string }; db?: { cstNode?: unknown } }
-    | null
-    | undefined;
+    { context?: unknown; entry?: { resourceId?: string }; db?: { cstNode?: unknown } } | null | undefined;
   const isRealClass = Boolean(classObj?.context || classObj?.entry?.resourceId || classObj?.db?.cstNode);
 
   let lastYield = performance.now();
@@ -3112,10 +3110,6 @@ function unrotateText(node: X6Markup, rotateAngle: number): void {
       const textY = Number(child.attrs["y"] ?? 0);
       let rot = -rotateAngle % 360;
       if (rot < 0) rot += 360;
-      // Keep text right-side up and readable from left-to-right or bottom-to-top
-      if (rot > 90 && rot <= 270) {
-        rot = (rot + 180) % 360;
-      }
       const existingTransform = (child.attrs["transform"] as string) || "";
       const rotTransform = `rotate(${rot} ${textX} ${textY})`;
       child.attrs["transform"] = existingTransform ? `${existingTransform} ${rotTransform}` : rotTransform;

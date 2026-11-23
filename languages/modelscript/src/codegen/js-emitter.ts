@@ -226,7 +226,8 @@ export class JsEmitter {
           return `${this.emit(objNode)}.${propNode.text}`;
         }
         const calleeNode = node.childForFieldName?.("callee");
-        if (calleeNode) {
+        const hasCallParen = node.children?.some((c) => c.type === "(" || c.text === "(");
+        if (calleeNode && hasCallParen) {
           const argsNode = node.childForFieldName?.("arguments");
           const argsText = argsNode ? this.emit(argsNode) : "";
           return `${this.emit(calleeNode)}(${argsText})`;
