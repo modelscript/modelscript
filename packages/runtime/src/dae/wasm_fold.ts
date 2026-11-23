@@ -462,6 +462,9 @@ export function evaluateConstantArenaExpression(
   if (kind === ExprKind.Name) {
     const nameId = arena.getExprData1(exprId);
     const varName = arena.interner.resolve(nameId);
+    if ((paramMap as { _shadowed?: ReadonlySet<string> } | undefined)?._shadowed?.has(varName)) {
+      return null;
+    }
     if (paramMap) {
       if (paramMap.has(varName)) {
         return paramMap.get(varName) ?? null;
@@ -2598,6 +2601,9 @@ export function substituteArenaConstants(
     case ExprKind.Name: {
       const nameId = arena.getExprData1(exprId);
       const varName = arena.interner.resolve(nameId);
+      if ((constMap as { _shadowed?: ReadonlySet<string> } | undefined)?._shadowed?.has(varName)) {
+        return exprId;
+      }
       if (constMap.has(varName)) {
         const val = constMap.get(varName)!;
         const varIdx = nameToIdx?.get(varName);
@@ -4678,14 +4684,17 @@ export function foldArenaConstants(
       let bodySubMap = activeSubMap;
       let bodyShadowed = shadowed;
       if (indexName) {
-        if (activeSubMap.has(indexName)) {
-          bodySubMap = new Map(activeSubMap);
-          bodySubMap.delete(indexName);
-        }
         if (!shadowed.has(indexName)) {
           const nextShadowed = new Set(shadowed);
           nextShadowed.add(indexName);
           bodyShadowed = nextShadowed;
+        }
+        if (activeSubMap.has(indexName) || bodyShadowed !== shadowed) {
+          bodySubMap = new Map(activeSubMap);
+          bodySubMap.delete(indexName);
+          const allParamMap = (activeSubMap as { _allParamMap?: Map<string, any> })._allParamMap;
+          if (allParamMap) (bodySubMap as { _allParamMap?: Map<string, any> })._allParamMap = allParamMap;
+          (bodySubMap as { _shadowed?: ReadonlySet<string> })._shadowed = bodyShadowed;
         }
       }
       const bodyCount = arena.getStmtRight(s);
