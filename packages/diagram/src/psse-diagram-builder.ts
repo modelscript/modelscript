@@ -608,22 +608,23 @@ export function buildPsseDiagram(
   // Apply Sugiyama barycenter ordering within rows to minimize crossings
   orderRowsByBarycenter(rows, neighbors);
 
-  const startY = 150;
-  const rowSpacingY = 230;
-  const busSpacingX = 250;
+  const startY = 180;
+  const rowSpacingY = 300;
+  const busSpacingX = 380;
+
+  const busGridPos = new Map<number, { row: number; col: number }>();
 
   for (let rIdx = 0; rIdx < rows.length; rIdx++) {
     const rowBuses = rows[rIdx]!;
     const yBase = startY + rIdx * rowSpacingY;
     const rowWidth = (rowBuses.length - 1) * busSpacingX;
-    const startX = Math.max(160, Math.round(540 - rowWidth / 2) + (rIdx % 2 === 1 && rowBuses.length > 1 ? 35 : 0));
+    const startX = Math.max(200, Math.round(620 - rowWidth / 2) + (rIdx % 2 === 1 && rowBuses.length > 1 ? 45 : 0));
 
     for (let bIdx = 0; bIdx < rowBuses.length; bIdx++) {
       const b = rowBuses[bIdx]!;
       const x = startX + bIdx * busSpacingX;
-      // Slight vertical stagger on middle buses in a wide row so horizontal tie-lines don't overlap busbars
-      const staggerY = rowBuses.length >= 3 && bIdx % 2 === 1 ? 30 : 0;
-      busCoords.set(b.i, { x, y: yBase + staggerY });
+      busCoords.set(b.i, { x, y: yBase });
+      busGridPos.set(b.i, { row: rIdx, col: bIdx });
     }
   }
 
@@ -676,7 +677,16 @@ export function buildPsseDiagram(
     return x >= vp.minX - vpMargin && x <= vp.maxX + vpMargin && y >= vp.minY - vpMargin && y <= vp.maxY + vpMargin;
   };
 
+  const estimateBoxWidth = (text: string, fontSize: number, minWidth: number, padX = 24): number => {
+    let maxLen = 0;
+    for (const line of text.split("\n")) {
+      if (line.length > maxLen) maxLen = line.length;
+    }
+    return Math.max(minWidth, Math.ceil(maxLen * fontSize * 0.62 + padX));
+  };
+
   const visibleBusSet = new Set<number>();
+  const busDims = new Map<number, { width: number; height: number }>();
 
   for (const b of busList) {
     const pos = busCoords.get(b.i) ?? { x: 200, y: 200 };
@@ -718,13 +728,17 @@ export function buildPsseDiagram(
       ? `Bus ${b.i}`
       : `Bus ${b.i}: ${b.name.trim()}\n${formatKv(b.baseKv)} (${typeLabel}${vmText}${vaText})`;
 
+    const busWidth = isLowDetail ? 110 : estimateBoxWidth(busLabel, 10, 210, 28);
+    const busHeight = isLowDetail ? 32 : 46;
+    busDims.set(b.i, { width: busWidth, height: busHeight });
+
     cells.push({
       id: `bus_${b.i}`,
       shape: "rect",
-      x: x - 78,
-      y: y - 20,
-      width: 156,
-      height: 40,
+      x: x - busWidth / 2,
+      y: y - busHeight / 2,
+      width: busWidth,
+      height: busHeight,
       label: busLabel,
       attrs: {
         body: {
@@ -782,10 +796,6 @@ export function buildPsseDiagram(
 
         const genIdClean = g.id.trim() || "1";
         const genNodeId = `gen_${g.i}_${genIdClean}`;
-        const offsetX = genCount > 1 ? (idx - (genCount - 1) / 2) * 72 : 0;
-        const gx = g.position?.x ?? bPos.x + offsetX;
-        const gy = g.position?.y ?? bPos.y - 74;
-
         const genKind = classifyGeneratorKind(g, hostBus?.name);
         const kindBadge =
           genKind === "wind" ? "WTG" : genKind === "solar" ? "PV" : genKind === "condenser" ? "SC" : "G~";
@@ -796,19 +806,28 @@ export function buildPsseDiagram(
           genIdClean.toUpperCase() === kindBadge.toUpperCase() ? kindBadge : `${kindBadge} ${genIdClean}`;
         const genLabel = `${genPrefix} · ${pGen.toFixed(1)} MW\n${qSign}${qGen.toFixed(1)} Mvar`;
 
+        const genWidth = estimateBoxWidth(genLabel, 8.5, 118, 26);
+        const genHeight = 42;
+        const offsetX = genCount > 1 ? (idx - (genCount - 1) / 2) * (genWidth + 18) : 0;
+        const gx = g.position?.x ?? bPos.x + offsetX;
+        const gy = g.position?.y ?? bPos.y - 86;
+        const hostH = busDims.get(g.i)?.height ?? 46;
+
         cells.push({
           id: genNodeId,
-          shape: "circle",
-          x: gx - 24,
-          y: gy - 24,
-          width: 48,
-          height: 48,
+          shape: "rect",
+          x: gx - genWidth / 2,
+          y: gy - genHeight / 2,
+          width: genWidth,
+          height: genHeight,
           label: genLabel,
           attrs: {
             body: {
               fill: "#0f172a",
               stroke: strokeColor,
               strokeWidth: 2.5,
+              rx: 21,
+              ry: 21,
             },
             label: {
               text: genLabel,
@@ -834,6 +853,10 @@ export function buildPsseDiagram(
           shape: "edge",
           source: { cell: genNodeId },
           target: { cell: `bus_${g.i}` },
+          vertices: [
+            { x: gx, y: gy + genHeight / 2 + 10 },
+            { x: gx, y: bPos.y - hostH / 2 - 10 },
+          ],
           attrs: {
             line: {
               stroke: strokeColor,
@@ -856,18 +879,21 @@ export function buildPsseDiagram(
       loads.forEach((l, idx) => {
         const loadIdClean = l.id.trim() || "1";
         const loadNodeId = `load_${l.i}_${loadIdClean}`;
-        const offsetX = loadCount > 1 ? (idx - (loadCount - 1) / 2) * 92 : 0;
-        const lx = l.position?.x ?? bPos.x + offsetX;
-        const ly = l.position?.y ?? bPos.y + 68;
         const loadLabel = `Load ${l.pl.toFixed(1)} MW\n${l.ql.toFixed(1)} Mvar`;
+        const loadWidth = estimateBoxWidth(loadLabel, 9, 114, 22);
+        const loadHeight = 38;
+        const offsetX = loadCount > 1 ? (idx - (loadCount - 1) / 2) * (loadWidth + 16) : 0;
+        const lx = l.position?.x ?? bPos.x + offsetX;
+        const ly = l.position?.y ?? bPos.y + 82;
+        const hostH = busDims.get(l.i)?.height ?? 46;
 
         cells.push({
           id: loadNodeId,
           shape: "rect",
-          x: lx - 42,
-          y: ly - 15,
-          width: 84,
-          height: 30,
+          x: lx - loadWidth / 2,
+          y: ly - loadHeight / 2,
+          width: loadWidth,
+          height: loadHeight,
           label: loadLabel,
           attrs: {
             body: {
@@ -898,6 +924,10 @@ export function buildPsseDiagram(
           shape: "edge",
           source: { cell: `bus_${l.i}` },
           target: { cell: loadNodeId },
+          vertices: [
+            { x: lx, y: bPos.y + hostH / 2 + 10 },
+            { x: lx, y: ly - loadHeight / 2 - 10 },
+          ],
           attrs: {
             line: {
               stroke: "#f59e0b",
@@ -963,21 +993,24 @@ export function buildPsseDiagram(
       const hasLoadOnBus = (inServiceLoadsByBus.get(busNum)?.length ?? 0) > 0;
 
       shunts.forEach((sh, idx) => {
-        // Place shunt bank to the bottom-right if bus already has a load below it, or directly below
-        const sx = sh.position?.x ?? (hasLoadOnBus ? bPos.x + 76 + idx * 66 : bPos.x + idx * 66);
-        const sy = sh.position?.y ?? bPos.y + 66;
         const isCap = sh.bMvar >= 0;
         const typeTag = sh.isSwitched ? (isCap ? "SwCap" : "SwReac") : isCap ? "Cap" : "Reac";
         const sign = sh.bMvar >= 0 ? "+" : "";
         const shuntLabel = `${typeTag} ${sh.shuntId}\n${sign}${sh.bMvar.toFixed(1)} Mvar`;
+        const shuntWidth = estimateBoxWidth(shuntLabel, 8.5, 102, 20);
+        const shuntHeight = 36;
+        // Place shunt bank to the bottom-right if bus already has a load below it, or directly below
+        const sx =
+          sh.position?.x ?? (hasLoadOnBus ? bPos.x + 135 + idx * (shuntWidth + 14) : bPos.x + idx * (shuntWidth + 14));
+        const sy = sh.position?.y ?? bPos.y + 82;
 
         cells.push({
           id: sh.id,
           shape: "rect",
-          x: sx - 32,
-          y: sy - 15,
-          width: 64,
-          height: 30,
+          x: sx - shuntWidth / 2,
+          y: sy - shuntHeight / 2,
+          width: shuntWidth,
+          height: shuntHeight,
           label: shuntLabel,
           attrs: {
             body: {
@@ -1097,17 +1130,47 @@ export function buildPsseDiagram(
   }
 
   // 4. Add AC Transmission Lines
+  const rowBypassCounter = new Map<number, number>();
   for (const br of c.branches) {
     if (br.st !== 1) continue;
     if (!visibleBusSet.has(br.i) || !visibleBusSet.has(br.j)) continue;
     const fromBus = busMap.get(br.i);
-    if (!fromBus || !busCoords.has(br.i) || !busCoords.has(br.j)) continue;
+    const posI = busCoords.get(br.i);
+    const posJ = busCoords.get(br.j);
+    if (!fromBus || !posI || !posJ) continue;
 
     const cktId = br.ckt.trim() || "1";
     const pairKey = `${Math.min(br.i, br.j)}_${Math.max(br.i, br.j)}`;
     const parallelCount = pairCounts.get(pairKey) ?? 1;
     const parallelIndex = pairIndices.get(pairKey) ?? 0;
     pairIndices.set(pairKey, parallelIndex + 1);
+
+    let vertices: { x: number; y: number }[] | undefined;
+    const gridI = busGridPos.get(br.i);
+    const gridJ = busGridPos.get(br.j);
+    if (gridI && gridJ && gridI.row === gridJ.row && Math.abs(gridI.col - gridJ.col) > 1) {
+      const bypassIdx = rowBypassCounter.get(gridI.row) ?? 0;
+      rowBypassCounter.set(gridI.row, bypassIdx + 1);
+      const goAbove = bypassIdx % 2 === 0;
+      const tier = Math.floor(bypassIdx / 2);
+      const bypassY = goAbove ? posI.y - 150 - tier * 36 : posI.y + 148 + tier * 36;
+      const dir = posJ.x > posI.x ? 1 : -1;
+      vertices = [
+        { x: posI.x + dir * 56, y: bypassY },
+        { x: posJ.x - dir * 56, y: bypassY },
+      ];
+    } else if (parallelCount > 1) {
+      const dx = posJ.x - posI.x;
+      const dy = posJ.y - posI.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const offset = (parallelIndex - (parallelCount - 1) / 2) * 34;
+      vertices = [
+        {
+          x: Math.round((posI.x + posJ.x) / 2 - (dy / len) * offset),
+          y: Math.round((posI.y + posJ.y) / 2 + (dx / len) * offset),
+        },
+      ];
+    }
 
     const pfBr = pfBranchMap.get(`${br.i}_${br.j}_${cktId}`);
     let color = getVoltageColor(fromBus.baseKv);
@@ -1136,6 +1199,7 @@ export function buildPsseDiagram(
       shape: "edge",
       source: { cell: `bus_${br.i}` },
       target: { cell: `bus_${br.j}` },
+      ...(vertices ? { vertices } : {}),
       ...(edgeLabel
         ? {
             label: edgeLabel,

@@ -101,7 +101,9 @@ function clonePrimitive(raw: DiagramMarkupNode, selectors: Map<string, CompiledP
     list.push(prim);
   }
 
-  if (Array.isArray(raw.children)) {
+  if (typeof raw.children === "string") {
+    if (prim.textContent === undefined) prim.textContent = raw.children;
+  } else if (Array.isArray(raw.children)) {
     for (const child of raw.children) {
       if (child && typeof child === "object") {
         prim.children.push(clonePrimitive(child, selectors));
@@ -230,16 +232,45 @@ export function readGlyphAttrPath(glyph: CompiledGlyph, path: string): unknown {
   return prim.attrs[prop] ?? prim.attrs[normalizeSvgAttrName(prop)];
 }
 
-function resolveRefNumeric(raw: string | number | undefined, refSize: number): number | undefined {
+function resolveRefNumeric(
+  raw: string | number | undefined,
+  refSize: number,
+  allowFraction = true,
+): number | undefined {
   if (raw === undefined) return undefined;
-  if (typeof raw === "number") return raw;
+  if (typeof raw === "number") {
+    return allowFraction && raw > 0 && raw <= 1 ? raw * refSize : raw;
+  }
   const trimmed = raw.trim();
   if (trimmed.endsWith("%")) {
     const pct = parseFloat(trimmed.slice(0, -1));
     return Number.isFinite(pct) ? (pct / 100) * refSize : undefined;
   }
   const n = parseFloat(trimmed);
-  return Number.isFinite(n) ? n : undefined;
+  if (!Number.isFinite(n)) return undefined;
+  return allowFraction && n > 0 && n <= 1 ? n * refSize : n;
+}
+
+/**
+ * Sets SVG `<text>` content, splitting multi-line strings on `\n` into vertically centered `<tspan>` elements.
+ */
+export function setSvgTextContent(el: Element, text: string, doc: Document): void {
+  if (!text.includes("\n")) {
+    el.textContent = text;
+    return;
+  }
+  const lines = text.split("\n");
+  const xAttr = el.getAttribute("x") ?? "0";
+  const lineHeightEm = 1.25;
+  const firstDy = `${-((lines.length - 1) * lineHeightEm) / 2}em`;
+  el.textContent = "";
+  for (let i = 0; i < lines.length; i++) {
+    const tspan = doc.createElementNS(SVG_NS, "tspan");
+    tspan.setAttribute("x", xAttr);
+    tspan.setAttribute("dy", i === 0 ? firstDy : `${lineHeightEm}em`);
+    tspan.textContent = lines[i]!;
+    el.appendChild(tspan);
+  }
 }
 
 /**
@@ -258,7 +289,9 @@ export function materializeGlyphToSvg(
   const buildEl = (prim: CompiledPrimitive): Element => {
     const el = doc.createElementNS(SVG_NS, prim.tagName);
     if (prim.selector) {
-      el.setAttribute("magnet", prim.selector === "portBody" ? "true" : (el.getAttribute("magnet") ?? ""));
+      if (prim.selector === "portBody") {
+        el.setAttribute("magnet", "true");
+      }
       el.setAttribute("data-selector", prim.selector);
       if (selectorElements) {
         let list = selectorElements.get(prim.selector);
@@ -286,6 +319,14 @@ export function materializeGlyphToSvg(
       } else if (k === "refY") {
         const val = resolveRefNumeric(v, height);
         if (val !== undefined) el.setAttribute("y", String(val));
+      } else if (k === "textVerticalAnchor" || k === "text-vertical-anchor") {
+        const sv = String(v);
+        const baseline = sv === "top" ? "hanging" : sv === "middle" ? "central" : "alphabetic";
+        el.setAttribute("dominant-baseline", baseline);
+      } else if (k === "text" && prim.tagName === "text") {
+        if (prim.textContent === undefined) {
+          setSvgTextContent(el, String(v), doc);
+        }
       } else if (k === "xlink:href") {
         el.setAttributeNS(XLINK_NS, "xlink:href", String(v));
       } else {
@@ -301,7 +342,11 @@ export function materializeGlyphToSvg(
     }
 
     if (prim.textContent !== undefined) {
-      el.textContent = prim.textContent;
+      if (prim.tagName === "text") {
+        setSvgTextContent(el, prim.textContent, doc);
+      } else {
+        el.textContent = prim.textContent;
+      }
     }
 
     for (const child of prim.children) {

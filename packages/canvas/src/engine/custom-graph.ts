@@ -27,6 +27,7 @@ import {
   paintGlyphToCanvas2D,
   patchGlyphAttrPath,
   readGlyphAttrPath,
+  setSvgTextContent,
   type Canvas2DContextLike,
   type CompiledGlyph,
   type DiagramMarkupNode,
@@ -3204,7 +3205,12 @@ export class UnifiedGraph {
     if (!els || els.length === 0) return;
     for (const el of els) {
       if (key === "text" || key === "textContent") {
-        el.textContent = val === null || val === undefined ? "" : String(val);
+        const str = val === null || val === undefined ? "" : String(val);
+        if (el.tagName.toLowerCase() === "text" && typeof document !== "undefined") {
+          setSvgTextContent(el, str, document);
+        } else {
+          el.textContent = str;
+        }
       } else if (val === null || val === undefined) {
         el.removeAttribute(key);
       } else {
