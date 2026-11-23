@@ -4692,8 +4692,8 @@ export function foldArenaConstants(
         if (activeSubMap.has(indexName) || bodyShadowed !== shadowed) {
           bodySubMap = new Map(activeSubMap);
           bodySubMap.delete(indexName);
-          const allParamMap = (activeSubMap as { _allParamMap?: Map<string, any> })._allParamMap;
-          if (allParamMap) (bodySubMap as { _allParamMap?: Map<string, any> })._allParamMap = allParamMap;
+          const allParamMap = (activeSubMap as { _allParamMap?: Map<string, unknown> })._allParamMap;
+          if (allParamMap) (bodySubMap as { _allParamMap?: Map<string, unknown> })._allParamMap = allParamMap;
           (bodySubMap as { _shadowed?: ReadonlySet<string> })._shadowed = bodyShadowed;
         }
       }
