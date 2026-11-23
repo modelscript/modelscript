@@ -1,0 +1,375 @@
+[
+  {
+    "namePath": "GENERIC.RES",
+    "aliases": [
+      "RESISTOR",
+      "R"
+    ],
+    "label": "Resistor (RES)",
+    "category": "Passive",
+    "domain": "electronics",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">PASS</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">RES</text></svg>",
+    "ports": [
+      {
+        "name": "P",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "N",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "GENERIC.CAP",
+    "aliases": [
+      "CAPACITOR",
+      "C"
+    ],
+    "label": "Capacitor (CAP)",
+    "category": "Passive",
+    "domain": "electronics",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">PASS</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CAP</text></svg>",
+    "ports": [
+      {
+        "name": "P",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "N",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "GENERIC.IND",
+    "aliases": [
+      "INDUCTOR",
+      "L"
+    ],
+    "label": "Inductor (IND)",
+    "category": "Passive",
+    "domain": "electronics",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">PASS</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">IND</text></svg>",
+    "ports": [
+      {
+        "name": "P",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "N",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "GENERIC.GND",
+    "aliases": [
+      "GROUND",
+      "VSS",
+      "0"
+    ],
+    "label": "Ground Reference (GND)",
+    "category": "Supply",
+    "domain": "electronics",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b2247\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">PWR</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">GND</text></svg>",
+    "ports": [
+      {
+        "name": "P",
+        "kind": "electrical",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "GENERIC.VCC",
+    "aliases": [
+      "VDD",
+      "PWR",
+      "SUPPLY"
+    ],
+    "label": "DC Supply Rail (VCC)",
+    "category": "Supply",
+    "domain": "electronics",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b2247\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">PWR</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">VCC</text></svg>",
+    "ports": [
+      {
+        "name": "P",
+        "kind": "electrical",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "GENERIC.AND2",
+    "aliases": [
+      "AND"
+    ],
+    "label": "2-Input AND Gate",
+    "category": "Combinational",
+    "domain": "electronics",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">GATE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">AND2</text></svg>",
+    "ports": [
+      {
+        "name": "A",
+        "kind": "digital",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "B",
+        "kind": "digital",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "Y",
+        "kind": "digital",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "GENERIC.OR2",
+    "aliases": [
+      "OR"
+    ],
+    "label": "2-Input OR Gate",
+    "category": "Combinational",
+    "domain": "electronics",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">GATE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">OR2</text></svg>",
+    "ports": [
+      {
+        "name": "A",
+        "kind": "digital",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "B",
+        "kind": "digital",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "Y",
+        "kind": "digital",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "GENERIC.NAND2",
+    "aliases": [
+      "NAND"
+    ],
+    "label": "2-Input NAND Gate",
+    "category": "Combinational",
+    "domain": "electronics",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">GATE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">NAND2</text></svg>",
+    "ports": [
+      {
+        "name": "A",
+        "kind": "digital",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "B",
+        "kind": "digital",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "Y",
+        "kind": "digital",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "GENERIC.NOR2",
+    "aliases": [
+      "NOR"
+    ],
+    "label": "2-Input NOR Gate",
+    "category": "Combinational",
+    "domain": "electronics",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">GATE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">NOR2</text></svg>",
+    "ports": [
+      {
+        "name": "A",
+        "kind": "digital",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "B",
+        "kind": "digital",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "Y",
+        "kind": "digital",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "GENERIC.INV",
+    "aliases": [
+      "NOT",
+      "INVERTER"
+    ],
+    "label": "Inverter (INV)",
+    "category": "Combinational",
+    "domain": "electronics",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">GATE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">INV</text></svg>",
+    "ports": [
+      {
+        "name": "A",
+        "kind": "digital",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "Y",
+        "kind": "digital",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "GENERIC.XOR2",
+    "aliases": [
+      "XOR"
+    ],
+    "label": "2-Input XOR Gate",
+    "category": "Combinational",
+    "domain": "electronics",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">GATE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">XOR2</text></svg>",
+    "ports": [
+      {
+        "name": "A",
+        "kind": "digital",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "B",
+        "kind": "digital",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "Y",
+        "kind": "digital",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "GENERIC.DFF",
+    "aliases": [
+      "D_FF",
+      "FLIPFLOP"
+    ],
+    "label": "D Flip-Flop (DFF)",
+    "category": "Sequential",
+    "domain": "electronics",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a2c1d\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fb923c\">SEQ</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DFF</text></svg>",
+    "ports": [
+      {
+        "name": "D",
+        "kind": "digital",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "CLK",
+        "kind": "digital",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "Q",
+        "kind": "digital",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  }
+]

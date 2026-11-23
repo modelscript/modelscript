@@ -44,8 +44,82 @@ export function getLocalSymbolSeq(id: SymbolId): number {
   return id & 0x00ffffff;
 }
 
-export function getLanguageDomainId(language: string): LanguageDomainId {
-  const norm = language.toLowerCase();
+export const DYNAMIC_DOMAIN_START = 0x20;
+const dynamicDomainByName = new Map<string, number>();
+const dynamicNameByDomain = new Map<number, string>();
+let nextDynamicDomainId = DYNAMIC_DOMAIN_START;
+
+const WELL_KNOWN_DOMAIN_NAMES: ReadonlyMap<number, string> = new Map<number, string>([
+  [LanguageDomainId.Default, "default"],
+  [LanguageDomainId.Modelica, "modelica"],
+  [LanguageDomainId.SysML2, "sysml2"],
+  [LanguageDomainId.STEP_CAD, "step"],
+  [LanguageDomainId.OWL2, "owl2"],
+  [LanguageDomainId.SSP, "ssp"],
+  [LanguageDomainId.CFD, "cfd"],
+  [LanguageDomainId.FEA, "fea"],
+  [LanguageDomainId.ModelScript, "modelscript"],
+  [LanguageDomainId.SCAD, "scad"],
+  [LanguageDomainId.CSV, "csv"],
+  [LanguageDomainId.PSCAD, "pscad"],
+  [LanguageDomainId.PSSE, "psse"],
+  [LanguageDomainId.ReqIF, "reqif"],
+  [LanguageDomainId.QIF, "qif"],
+]);
+
+/**
+ * Registers a language name in the 8-bit polyglot domain partition (`0x20..0xff`).
+ * If the language matches a well-known `LanguageDomainId` or was already registered,
+ * returns its existing domain ID idempotently.
+ */
+export function registerLanguageDomain(language: string, explicitId?: number): number {
+  const norm = language.trim().toLowerCase();
+  if (!norm) return LanguageDomainId.Default;
+
+  const existingWellKnown = matchWellKnownDomainId(norm);
+  if (existingWellKnown !== null) return existingWellKnown;
+
+  const existingDynamic = dynamicDomainByName.get(norm);
+  if (existingDynamic !== undefined) return existingDynamic;
+
+  let assigned: number;
+  if (explicitId !== undefined) {
+    if (explicitId < DYNAMIC_DOMAIN_START || explicitId > 0xff) {
+      throw new RangeError(`Dynamic domain ID must be in [0x20, 0xff], got ${explicitId}`);
+    }
+    assigned = explicitId;
+  } else {
+    while (nextDynamicDomainId <= 0xff && dynamicNameByDomain.has(nextDynamicDomainId)) {
+      nextDynamicDomainId++;
+    }
+    if (nextDynamicDomainId > 0xff) {
+      throw new RangeError("Exhausted 8-bit polyglot LanguageDomainId space (max 256 domains)");
+    }
+    assigned = nextDynamicDomainId++;
+  }
+
+  dynamicDomainByName.set(norm, assigned);
+  dynamicNameByDomain.set(assigned, norm);
+  return assigned;
+}
+
+/**
+ * Resolves a numeric 8-bit domain ID back to its canonical language identifier.
+ */
+export function getDomainLanguageName(domainId: number): string {
+  const wellKnown = WELL_KNOWN_DOMAIN_NAMES.get(domainId);
+  if (wellKnown !== undefined) return wellKnown;
+  return dynamicNameByDomain.get(domainId) ?? `domain_${domainId}`;
+}
+
+/**
+ * Returns all currently registered dynamic domains as `[languageName, domainId]` pairs.
+ */
+export function listRegisteredDynamicDomains(): Array<[string, number]> {
+  return Array.from(dynamicDomainByName.entries());
+}
+
+function matchWellKnownDomainId(norm: string): LanguageDomainId | null {
   if (norm.includes("modelica")) return LanguageDomainId.Modelica;
   if (norm.includes("sysml")) return LanguageDomainId.SysML2;
   if (norm.includes("reqif")) return LanguageDomainId.ReqIF;
@@ -69,6 +143,15 @@ export function getLanguageDomainId(language: string): LanguageDomainId {
   )
     return LanguageDomainId.PSCAD;
   if (norm.includes("psse") || norm.includes("raw") || norm.includes("dyr")) return LanguageDomainId.PSSE;
+  return null;
+}
+
+export function getLanguageDomainId(language: string): LanguageDomainId {
+  const norm = language.trim().toLowerCase();
+  const wellKnown = matchWellKnownDomainId(norm);
+  if (wellKnown !== null) return wellKnown;
+  const dynamic = dynamicDomainByName.get(norm);
+  if (dynamic !== undefined) return dynamic as LanguageDomainId;
   return LanguageDomainId.Default;
 }
 

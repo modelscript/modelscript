@@ -1,0 +1,253 @@
+[
+  {
+    "namePath": "APDL.Elements.LINK180",
+    "aliases": [
+      "LINK8",
+      "TRUSS",
+      "SPAR"
+    ],
+    "label": "LINK180 3D Spar / Truss",
+    "category": "1D Truss / Beam",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"22\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"17\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">1D</text><line x1=\"52\" y1=\"14\" x2=\"72\" y2=\"14\" stroke=\"#60a5fa\" stroke-width=\"2.0\"/><circle cx=\"52\" cy=\"14\" r=\"2.2\" fill=\"#60a5fa\"/><circle cx=\"72\" cy=\"14\" r=\"2.2\" fill=\"#60a5fa\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">LINK180</text></svg>",
+    "ports": [
+      {
+        "name": "node_i",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "node_j",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 16
+      },
+      {
+        "name": "material",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "APDL.Elements.BEAM188",
+    "aliases": [
+      "BEAM3",
+      "BEAM4",
+      "BEAM189",
+      "BEAM"
+    ],
+    "label": "BEAM188 3D 2-Node Beam",
+    "category": "1D Truss / Beam",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"22\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"17\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">1D</text><line x1=\"52\" y1=\"14\" x2=\"72\" y2=\"14\" stroke=\"#60a5fa\" stroke-width=\"2.0\"/><circle cx=\"52\" cy=\"14\" r=\"2.2\" fill=\"#60a5fa\"/><circle cx=\"72\" cy=\"14\" r=\"2.2\" fill=\"#60a5fa\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">BEAM188</text></svg>",
+    "ports": [
+      {
+        "name": "node_i",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "node_j",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 16
+      },
+      {
+        "name": "material",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "APDL.Elements.PLANE182",
+    "aliases": [
+      "PLANE42",
+      "QUAD4",
+      "PLANE_STRESS"
+    ],
+    "label": "PLANE182 2D 4-Node Solid",
+    "category": "2D Plane / Shell",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"22\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"17\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">2D</text><polygon points=\"54,8 72,10 70,21 52,19\" fill=\"none\" stroke=\"#2dd4bf\" stroke-width=\"1.3\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">PLANE182</text></svg>",
+    "ports": [
+      {
+        "name": "node_i",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "node_j",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 16
+      },
+      {
+        "name": "material",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "APDL.Elements.SHELL181",
+    "aliases": [
+      "SHELL63",
+      "SHELL4",
+      "SHELL"
+    ],
+    "label": "SHELL181 4-Node Shell",
+    "category": "2D Plane / Shell",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"22\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"17\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">2D</text><polygon points=\"54,8 72,10 70,21 52,19\" fill=\"none\" stroke=\"#2dd4bf\" stroke-width=\"1.3\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">SHELL181</text></svg>",
+    "ports": [
+      {
+        "name": "node_i",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "node_j",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 16
+      },
+      {
+        "name": "material",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "APDL.Elements.SOLID185",
+    "aliases": [
+      "SOLID45",
+      "HEX8",
+      "BRICK8"
+    ],
+    "label": "SOLID185 3D 8-Node Solid",
+    "category": "3D Solid",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"22\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"17\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">3D</text><polygon points=\"54,10 66,10 66,21 54,21\" fill=\"none\" stroke=\"#818cf8\" stroke-width=\"1.2\"/><polyline points=\"54,10 59,6 71,6 71,17 66,21\" fill=\"none\" stroke=\"#818cf8\" stroke-width=\"1.1\"/><line x1=\"66\" y1=\"10\" x2=\"71\" y2=\"6\" stroke=\"#818cf8\" stroke-width=\"1.1\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">SOLID185</text></svg>",
+    "ports": [
+      {
+        "name": "node_i",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "node_j",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 16
+      },
+      {
+        "name": "material",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "APDL.Elements.MASS21",
+    "aliases": [
+      "POINT_MASS",
+      "LUMPED_MASS"
+    ],
+    "label": "MASS21 Structural Mass",
+    "category": "Discrete Mass / Spring",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"22\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"17\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">0D</text><polyline points=\"52,14 56,14 58,9 61,19 64,9 67,19 69,14 73,14\" fill=\"none\" stroke=\"#fb923c\" stroke-width=\"1.3\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">MASS21</text></svg>",
+    "ports": [
+      {
+        "name": "node_i",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "inertia",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "APDL.Elements.COMBIN14",
+    "aliases": [
+      "SPRING",
+      "SPRING_DAMPER"
+    ],
+    "label": "COMBIN14 Spring-Damper",
+    "category": "Discrete Mass / Spring",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"22\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"17\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">0D</text><polyline points=\"52,14 56,14 58,9 61,19 64,9 67,19 69,14 73,14\" fill=\"none\" stroke=\"#fb923c\" stroke-width=\"1.3\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">COMBIN14</text></svg>",
+    "ports": [
+      {
+        "name": "node_i",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "node_j",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 16
+      },
+      {
+        "name": "material",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      }
+    ]
+  }
+]

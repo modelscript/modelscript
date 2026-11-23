@@ -346,3 +346,41 @@ function createDiagramEdge(
     },
   };
 }
+
+export interface BddFaultTreeOverlayInput {
+  readonly hazardName: string;
+  readonly topEventProbability: number;
+  readonly minimalCutSets: readonly (readonly string[])[];
+  readonly importance: readonly {
+    readonly eventId: string;
+    readonly failureProb: number;
+    readonly birnbaum: number;
+    readonly fussellVesely: number;
+  }[];
+}
+
+/**
+ * Converts an exact ROBDD `FaultTreeAnalysisResult` into a renderable Fault Tree `DiagramData`
+ * with top-event unavailability and per-cut-set probability overlays.
+ */
+export function synthesizeFaultTreeFromBddResult(result: BddFaultTreeOverlayInput): DiagramData {
+  const probById = new Map<string, number>();
+  for (const imp of result.importance) probById.set(imp.eventId, imp.failureProb);
+
+  const minimalCutSets: MinimalCutSetItem[] = result.minimalCutSets.map((cs) => {
+    let csProb = 1.0;
+    for (const id of cs) csProb *= probById.get(id) ?? 1.0;
+    return {
+      order: cs.length,
+      faultIds: [...cs],
+      faultNames: [...cs],
+      probability: csProb,
+    };
+  });
+
+  return synthesizeFaultTreeDiagram({
+    hazardName: result.hazardName,
+    hazardDescription: `P(Top) = ${result.topEventProbability.toExponential(3)} (${minimalCutSets.length} MCS)`,
+    minimalCutSets,
+  });
+}

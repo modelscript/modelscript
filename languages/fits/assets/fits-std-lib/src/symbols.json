@@ -1,0 +1,699 @@
+[
+  {
+    "name": "SIMPLE",
+    "kind": "fits_keyword",
+    "namePath": "fits.SIMPLE",
+    "exports": [
+      "conforms"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SIMPLE (Primary Conformance)",
+      "category": "Mandatory Header",
+      "domain": "astronomy",
+      "description": "Mandatory logical first keyword of a Primary HDU indicating FITS 4.0 conformance (T/F).",
+      "provenance": "IAU FITS 4.0 Standard §4.4.1.1",
+      "aliases": [
+        "PRIMARY_HEADER"
+      ],
+      "parameters": [
+        {
+          "key": "conforms",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "bool",
+          "description": "1 for T (conforms to FITS 4.0), 0 for F"
+        }
+      ],
+      "wasmKernel": "fitsEval",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "BITPIX",
+    "kind": "fits_keyword",
+    "namePath": "fits.BITPIX",
+    "exports": [
+      "bitpix"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "BITPIX (Bits Per Pixel)",
+      "category": "Mandatory Header",
+      "domain": "astronomy",
+      "description": "Mandatory integer specifying bits per pixel: 8, 16, 32, 64 (big-endian int) or -32, -64 (IEEE float).",
+      "provenance": "IAU FITS 4.0 Standard §4.4.1.1",
+      "aliases": [
+        "DATA_BITS"
+      ],
+      "parameters": [
+        {
+          "key": "bitpix",
+          "type": "real",
+          "defaultValue": -32,
+          "unit": "bits",
+          "description": "Bits per data value (-32 = IEEE 754 float32)"
+        }
+      ],
+      "wasmKernel": "fitsEval",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "NAXIS",
+    "kind": "fits_keyword",
+    "namePath": "fits.NAXIS",
+    "exports": [
+      "naxis",
+      "naxis1",
+      "naxis2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NAXIS (Data Array Axes)",
+      "category": "Mandatory Header",
+      "domain": "astronomy",
+      "description": "Mandatory integer specifying number of axes (0..999) in the associated data array.",
+      "provenance": "IAU FITS 4.0 Standard §4.4.1.1",
+      "aliases": [
+        "NAXIS1",
+        "NAXIS2"
+      ],
+      "parameters": [
+        {
+          "key": "naxis",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "count",
+          "description": "Number of axes"
+        },
+        {
+          "key": "naxis1",
+          "type": "real",
+          "defaultValue": 512,
+          "unit": "px",
+          "description": "Length of axis 1 (columns)"
+        },
+        {
+          "key": "naxis2",
+          "type": "real",
+          "defaultValue": 512,
+          "unit": "px",
+          "description": "Length of axis 2 (rows)"
+        }
+      ],
+      "wasmKernel": "fitsEval",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "BSCALE",
+    "kind": "fits_keyword",
+    "namePath": "fits.BSCALE",
+    "exports": [
+      "bscale",
+      "bzero"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "BSCALE (Physical Scale Factor)",
+      "category": "Physical Scaling",
+      "domain": "astronomy",
+      "description": "Linear scaling coefficient converting stored array values to physical units: physical = BZERO + BSCALE * raw.",
+      "provenance": "IAU FITS 4.0 Standard §4.4.2.5",
+      "aliases": [
+        "SCALE"
+      ],
+      "parameters": [
+        {
+          "key": "bscale",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Linear scaling multiplier (must be non-zero)"
+        },
+        {
+          "key": "bzero",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Companion physical offset"
+        }
+      ],
+      "wasmKernel": "fitsEval",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "BZERO",
+    "kind": "fits_keyword",
+    "namePath": "fits.BZERO",
+    "exports": [
+      "bzero",
+      "bscale"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "BZERO (Physical Zero Offset)",
+      "category": "Physical Scaling",
+      "domain": "astronomy",
+      "description": "Physical zero-point offset added to scaled array values (e.g., 32768 for unsigned 16-bit integers).",
+      "provenance": "IAU FITS 4.0 Standard §4.4.2.5",
+      "aliases": [
+        "OFFSET"
+      ],
+      "parameters": [
+        {
+          "key": "bzero",
+          "type": "real",
+          "defaultValue": 32768,
+          "unit": "1",
+          "description": "Physical zero offset"
+        },
+        {
+          "key": "bscale",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Companion linear scaling factor"
+        }
+      ],
+      "wasmKernel": "fitsEval",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "XTENSION",
+    "kind": "fits_keyword",
+    "namePath": "fits.XTENSION",
+    "exports": [
+      "pcount",
+      "gcount"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "XTENSION (Extension HDU Type)",
+      "category": "Extension Table",
+      "domain": "astronomy",
+      "description": "Mandatory first keyword of an extension HDU declaring 'IMAGE', 'TABLE', or 'BINTABLE'.",
+      "provenance": "IAU FITS 4.0 Standard §4.4.1.2",
+      "aliases": [
+        "IMAGE",
+        "TABLE",
+        "BINTABLE"
+      ],
+      "parameters": [
+        {
+          "key": "pcount",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "bytes",
+          "description": "Random group / heap parameter count"
+        },
+        {
+          "key": "gcount",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "count",
+          "description": "Group count (1 for standard extensions)"
+        }
+      ],
+      "wasmKernel": "fitsEval",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "TFIELDS",
+    "kind": "fits_keyword",
+    "namePath": "fits.TFIELDS",
+    "exports": [
+      "tfields"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TFIELDS (Table Field Count)",
+      "category": "Extension Table",
+      "domain": "astronomy",
+      "description": "Number of columns (fields) in each row of a TABLE or BINTABLE extension.",
+      "provenance": "IAU FITS 4.0 Standard §7.2–7.3",
+      "aliases": [
+        "TTYPE",
+        "TFORM"
+      ],
+      "parameters": [
+        {
+          "key": "tfields",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "count",
+          "description": "Number of fields per row"
+        }
+      ],
+      "wasmKernel": "fitsEval",
+      "archetypeId": 7
+    }
+  },
+  {
+    "name": "RA---TAN",
+    "kind": "fits_keyword",
+    "namePath": "fits.RA---TAN",
+    "exports": [
+      "crval1",
+      "crval2",
+      "crpix1",
+      "crpix2",
+      "cd1_1",
+      "cd2_2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "RA---TAN (Gnomonic Tangent Projection)",
+      "category": "WCS Astrometry",
+      "domain": "astronomy",
+      "description": "Right Ascension axis with gnomonic (tangent-plane) zenithal projection per Calabretta & Greisen (2002).",
+      "provenance": "FITS WCS Paper II (A&A 395, 1077)",
+      "aliases": [
+        "TAN",
+        "GNOMONIC"
+      ],
+      "parameters": [
+        {
+          "key": "crval1",
+          "type": "real",
+          "defaultValue": 180,
+          "unit": "deg",
+          "description": "Reference Right Ascension (J2000 deg)"
+        },
+        {
+          "key": "crval2",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "Reference Declination (J2000 deg)"
+        },
+        {
+          "key": "crpix1",
+          "type": "real",
+          "defaultValue": 256.5,
+          "unit": "px",
+          "description": "Reference X pixel (1-based)"
+        },
+        {
+          "key": "crpix2",
+          "type": "real",
+          "defaultValue": 256.5,
+          "unit": "px",
+          "description": "Reference Y pixel (1-based)"
+        },
+        {
+          "key": "cd1_1",
+          "type": "real",
+          "defaultValue": -0.0002777778,
+          "unit": "deg/px",
+          "description": "CD matrix element (1,1)"
+        },
+        {
+          "key": "cd2_2",
+          "type": "real",
+          "defaultValue": 0.0002777778,
+          "unit": "deg/px",
+          "description": "CD matrix element (2,2)"
+        }
+      ],
+      "wasmKernel": "fitsEval",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "DEC--TAN",
+    "kind": "fits_keyword",
+    "namePath": "fits.DEC--TAN",
+    "exports": [
+      "crval1",
+      "crval2",
+      "crpix1",
+      "crpix2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "DEC--TAN (Declination Gnomonic Axis)",
+      "category": "WCS Astrometry",
+      "domain": "astronomy",
+      "description": "Declination axis paired with RA---TAN for gnomonic celestial tangent-plane astrometry.",
+      "provenance": "FITS WCS Paper II (A&A 395, 1077)",
+      "aliases": [
+        "DECTAN"
+      ],
+      "parameters": [
+        {
+          "key": "crval1",
+          "type": "real",
+          "defaultValue": 180,
+          "unit": "deg",
+          "description": "Reference Right Ascension (J2000 deg)"
+        },
+        {
+          "key": "crval2",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "Reference Declination (J2000 deg)"
+        },
+        {
+          "key": "crpix1",
+          "type": "real",
+          "defaultValue": 256.5,
+          "unit": "px",
+          "description": "Reference X pixel (1-based)"
+        },
+        {
+          "key": "crpix2",
+          "type": "real",
+          "defaultValue": 256.5,
+          "unit": "px",
+          "description": "Reference Y pixel (1-based)"
+        }
+      ],
+      "wasmKernel": "fitsEval",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "RA---SIN",
+    "kind": "fits_keyword",
+    "namePath": "fits.RA---SIN",
+    "exports": [
+      "crval1",
+      "crval2",
+      "crpix1",
+      "crpix2",
+      "cd1_1",
+      "cd2_2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "RA---SIN (Slant Orthographic Projection)",
+      "category": "WCS Astrometry",
+      "domain": "astronomy",
+      "description": "Slant orthographic celestial projection widely used in radio interferometry synthesis imaging.",
+      "provenance": "FITS WCS Paper II (A&A 395, 1077)",
+      "aliases": [
+        "SIN",
+        "ORTHOGRAPHIC",
+        "DEC--SIN"
+      ],
+      "parameters": [
+        {
+          "key": "crval1",
+          "type": "real",
+          "defaultValue": 180,
+          "unit": "deg",
+          "description": "Reference Right Ascension (J2000 deg)"
+        },
+        {
+          "key": "crval2",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "Reference Declination (J2000 deg)"
+        },
+        {
+          "key": "crpix1",
+          "type": "real",
+          "defaultValue": 256.5,
+          "unit": "px",
+          "description": "Reference X pixel (1-based)"
+        },
+        {
+          "key": "crpix2",
+          "type": "real",
+          "defaultValue": 256.5,
+          "unit": "px",
+          "description": "Reference Y pixel (1-based)"
+        },
+        {
+          "key": "cd1_1",
+          "type": "real",
+          "defaultValue": -0.0002777778,
+          "unit": "deg/px",
+          "description": "CD matrix element (1,1)"
+        },
+        {
+          "key": "cd2_2",
+          "type": "real",
+          "defaultValue": 0.0002777778,
+          "unit": "deg/px",
+          "description": "CD matrix element (2,2)"
+        }
+      ],
+      "wasmKernel": "fitsEval",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "RA---ARC",
+    "kind": "fits_keyword",
+    "namePath": "fits.RA---ARC",
+    "exports": [
+      "crval1",
+      "crval2",
+      "crpix1",
+      "crpix2",
+      "cd1_1",
+      "cd2_2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "RA---ARC (Zenithal Equidistant Projection)",
+      "category": "WCS Astrometry",
+      "domain": "astronomy",
+      "description": "Zenithal equidistant (Schmidt camera) projection preserving true angular distance from the reference pole.",
+      "provenance": "FITS WCS Paper II (A&A 395, 1077)",
+      "aliases": [
+        "ARC",
+        "ZENITHAL_EQUIDISTANT",
+        "DEC--ARC"
+      ],
+      "parameters": [
+        {
+          "key": "crval1",
+          "type": "real",
+          "defaultValue": 180,
+          "unit": "deg",
+          "description": "Reference Right Ascension (J2000 deg)"
+        },
+        {
+          "key": "crval2",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "Reference Declination (J2000 deg)"
+        },
+        {
+          "key": "crpix1",
+          "type": "real",
+          "defaultValue": 256.5,
+          "unit": "px",
+          "description": "Reference X pixel (1-based)"
+        },
+        {
+          "key": "crpix2",
+          "type": "real",
+          "defaultValue": 256.5,
+          "unit": "px",
+          "description": "Reference Y pixel (1-based)"
+        },
+        {
+          "key": "cd1_1",
+          "type": "real",
+          "defaultValue": -0.0002777778,
+          "unit": "deg/px",
+          "description": "CD matrix element (1,1)"
+        },
+        {
+          "key": "cd2_2",
+          "type": "real",
+          "defaultValue": 0.0002777778,
+          "unit": "deg/px",
+          "description": "CD matrix element (2,2)"
+        }
+      ],
+      "wasmKernel": "fitsEval",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "CRVAL",
+    "kind": "fits_keyword",
+    "namePath": "fits.CRVAL",
+    "exports": [
+      "crval1",
+      "crval2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "CRVAL (Reference World Coordinate)",
+      "category": "WCS Astrometry",
+      "domain": "astronomy",
+      "description": "World coordinate value (RA/Dec in degrees) at the reference pixel CRPIX.",
+      "provenance": "IAU FITS 4.0 Standard §8.2",
+      "aliases": [
+        "CRVAL1",
+        "CRVAL2"
+      ],
+      "parameters": [
+        {
+          "key": "crval1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "Axis 1 reference world coordinate"
+        },
+        {
+          "key": "crval2",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "Axis 2 reference world coordinate"
+        }
+      ],
+      "wasmKernel": "fitsEval",
+      "archetypeId": 14
+    }
+  },
+  {
+    "name": "CRPIX",
+    "kind": "fits_keyword",
+    "namePath": "fits.CRPIX",
+    "exports": [
+      "crpix1",
+      "crpix2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "CRPIX (Reference Pixel Coordinate)",
+      "category": "WCS Astrometry",
+      "domain": "astronomy",
+      "description": "1-based pixel coordinates corresponding to the WCS fiducial point CRVAL.",
+      "provenance": "IAU FITS 4.0 Standard §8.2",
+      "aliases": [
+        "CRPIX1",
+        "CRPIX2"
+      ],
+      "parameters": [
+        {
+          "key": "crpix1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "px",
+          "description": "Axis 1 reference pixel"
+        },
+        {
+          "key": "crpix2",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "px",
+          "description": "Axis 2 reference pixel"
+        }
+      ],
+      "wasmKernel": "fitsEval",
+      "archetypeId": 15
+    }
+  },
+  {
+    "name": "CDELT",
+    "kind": "fits_keyword",
+    "namePath": "fits.CDELT",
+    "exports": [
+      "cdelt1",
+      "cdelt2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "CDELT (Coordinate Increment)",
+      "category": "WCS Astrometry",
+      "domain": "astronomy",
+      "description": "Coordinate increment per pixel along each axis at the reference point.",
+      "provenance": "IAU FITS 4.0 Standard §8.2",
+      "aliases": [
+        "CDELT1",
+        "CDELT2"
+      ],
+      "parameters": [
+        {
+          "key": "cdelt1",
+          "type": "real",
+          "defaultValue": -0.0002777778,
+          "unit": "deg/px",
+          "description": "Axis 1 pixel scale"
+        },
+        {
+          "key": "cdelt2",
+          "type": "real",
+          "defaultValue": 0.0002777778,
+          "unit": "deg/px",
+          "description": "Axis 2 pixel scale"
+        }
+      ],
+      "wasmKernel": "fitsEval",
+      "archetypeId": 16
+    }
+  },
+  {
+    "name": "CD_MATRIX",
+    "kind": "fits_keyword",
+    "namePath": "fits.CD_MATRIX",
+    "exports": [
+      "cd1_1",
+      "cd1_2",
+      "cd2_1",
+      "cd2_2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "CD Matrix (Linear WCS Jacobian)",
+      "category": "WCS Astrometry",
+      "domain": "astronomy",
+      "description": "2x2 linear transformation matrix encoding plate scale, rotation, and shear from pixel to intermediate world coordinates.",
+      "provenance": "IAU FITS 4.0 Standard §8.2",
+      "aliases": [
+        "CD1_1",
+        "CD1_2",
+        "CD2_1",
+        "CD2_2"
+      ],
+      "parameters": [
+        {
+          "key": "cd1_1",
+          "type": "real",
+          "defaultValue": -0.0002777778,
+          "unit": "deg/px",
+          "description": "d(xi)/dx"
+        },
+        {
+          "key": "cd1_2",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg/px",
+          "description": "d(xi)/dy"
+        },
+        {
+          "key": "cd2_1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg/px",
+          "description": "d(eta)/dx"
+        },
+        {
+          "key": "cd2_2",
+          "type": "real",
+          "defaultValue": 0.0002777778,
+          "unit": "deg/px",
+          "description": "d(eta)/dy"
+        }
+      ],
+      "wasmKernel": "fitsEval",
+      "archetypeId": 17
+    }
+  }
+]

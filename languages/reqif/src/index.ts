@@ -2,6 +2,7 @@
 
 export * from "./diagram.js";
 export * from "./indexing.js";
+export * from "./interop.js";
 export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp-actions.js";

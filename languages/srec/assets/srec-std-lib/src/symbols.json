@@ -1,0 +1,697 @@
+[
+  {
+    "name": "S0",
+    "kind": "Class",
+    "namePath": "srec.S0",
+    "exports": [
+      "addressBits",
+      "addressBytes",
+      "maxPayloadBytes"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "S0 Header Record",
+      "category": "Record Types",
+      "domain": "firmware",
+      "description": "Vendor-specific ASCII header record with 16-bit address (typically 0x0000) and module metadata.",
+      "provenance": "Motorola S-Record Specification (1974)",
+      "aliases": [
+        "HEADER",
+        "S0_HEADER"
+      ],
+      "parameters": [
+        {
+          "key": "addressBits",
+          "type": "integer",
+          "defaultValue": 16,
+          "unit": "bit",
+          "description": "Address field width in bits"
+        },
+        {
+          "key": "addressBytes",
+          "type": "integer",
+          "defaultValue": 2,
+          "unit": "B",
+          "description": "Address field width in bytes"
+        },
+        {
+          "key": "maxPayloadBytes",
+          "type": "integer",
+          "defaultValue": 252,
+          "unit": "B",
+          "description": "Maximum payload bytes per record"
+        }
+      ],
+      "wasmKernel": "srecModelEval",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "S1",
+    "kind": "Class",
+    "namePath": "srec.S1",
+    "exports": [
+      "addressBits",
+      "addressBytes",
+      "maxPayloadBytes"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "S1 16-bit Data Record",
+      "category": "Record Types",
+      "domain": "firmware",
+      "description": "Data record carrying binary payload for 16-bit (64 KiB) address spaces such as Motorola 6800/6809.",
+      "provenance": "Motorola S-Record Specification (1974)",
+      "aliases": [
+        "DATA16",
+        "S1_DATA"
+      ],
+      "parameters": [
+        {
+          "key": "addressBits",
+          "type": "integer",
+          "defaultValue": 16,
+          "unit": "bit",
+          "description": "Address field width in bits"
+        },
+        {
+          "key": "addressBytes",
+          "type": "integer",
+          "defaultValue": 2,
+          "unit": "B",
+          "description": "Address field width in bytes"
+        },
+        {
+          "key": "maxPayloadBytes",
+          "type": "integer",
+          "defaultValue": 252,
+          "unit": "B",
+          "description": "Maximum payload bytes per record"
+        }
+      ],
+      "wasmKernel": "srecModelEval",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "S2",
+    "kind": "Class",
+    "namePath": "srec.S2",
+    "exports": [
+      "addressBits",
+      "addressBytes",
+      "maxPayloadBytes"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "S2 24-bit Data Record",
+      "category": "Record Types",
+      "domain": "firmware",
+      "description": "Data record carrying binary payload for 24-bit (16 MiB) address spaces such as Motorola 68000.",
+      "provenance": "Motorola S-Record Specification (1979)",
+      "aliases": [
+        "DATA24",
+        "S2_DATA"
+      ],
+      "parameters": [
+        {
+          "key": "addressBits",
+          "type": "integer",
+          "defaultValue": 24,
+          "unit": "bit",
+          "description": "Address field width in bits"
+        },
+        {
+          "key": "addressBytes",
+          "type": "integer",
+          "defaultValue": 3,
+          "unit": "B",
+          "description": "Address field width in bytes"
+        },
+        {
+          "key": "maxPayloadBytes",
+          "type": "integer",
+          "defaultValue": 251,
+          "unit": "B",
+          "description": "Maximum payload bytes per record"
+        }
+      ],
+      "wasmKernel": "srecModelEval",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "S3",
+    "kind": "Class",
+    "namePath": "srec.S3",
+    "exports": [
+      "addressBits",
+      "addressBytes",
+      "maxPayloadBytes"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "S3 32-bit Data Record",
+      "category": "Record Types",
+      "domain": "firmware",
+      "description": "Data record carrying binary payload for 32-bit (4 GiB) address spaces such as 68020, ColdFire, and PowerPC.",
+      "provenance": "Motorola S-Record Specification (1984)",
+      "aliases": [
+        "DATA32",
+        "S3_DATA"
+      ],
+      "parameters": [
+        {
+          "key": "addressBits",
+          "type": "integer",
+          "defaultValue": 32,
+          "unit": "bit",
+          "description": "Address field width in bits"
+        },
+        {
+          "key": "addressBytes",
+          "type": "integer",
+          "defaultValue": 4,
+          "unit": "B",
+          "description": "Address field width in bytes"
+        },
+        {
+          "key": "maxPayloadBytes",
+          "type": "integer",
+          "defaultValue": 250,
+          "unit": "B",
+          "description": "Maximum payload bytes per record"
+        }
+      ],
+      "wasmKernel": "srecModelEval",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "S4",
+    "kind": "Class",
+    "namePath": "srec.S4",
+    "exports": [
+      "addressBits",
+      "addressBytes",
+      "maxPayloadBytes"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "S4 Reserved Record",
+      "category": "Record Types",
+      "domain": "firmware",
+      "description": "Reserved record type in Motorola S-Record specification; flagged as invalid (SREC3001) in firmware images.",
+      "provenance": "Motorola S-Record Specification",
+      "aliases": [
+        "RESERVED",
+        "S4_RESERVED"
+      ],
+      "parameters": [
+        {
+          "key": "addressBits",
+          "type": "integer",
+          "defaultValue": 16,
+          "unit": "bit",
+          "description": "Reserved"
+        },
+        {
+          "key": "addressBytes",
+          "type": "integer",
+          "defaultValue": 2,
+          "unit": "B",
+          "description": "Reserved"
+        },
+        {
+          "key": "maxPayloadBytes",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "B",
+          "description": "Reserved"
+        }
+      ],
+      "wasmKernel": "srecModelEval",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "S5",
+    "kind": "Class",
+    "namePath": "srec.S5",
+    "exports": [
+      "addressBits",
+      "addressBytes",
+      "maxCount"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "S5 16-bit Record Count",
+      "category": "Record Types",
+      "domain": "firmware",
+      "description": "Optional 16-bit count of preceding S1/S2/S3 data records (up to 65,535 records).",
+      "provenance": "Motorola S-Record Specification",
+      "aliases": [
+        "COUNT16",
+        "S5_COUNT"
+      ],
+      "parameters": [
+        {
+          "key": "addressBits",
+          "type": "integer",
+          "defaultValue": 16,
+          "unit": "bit",
+          "description": "Count field width in bits"
+        },
+        {
+          "key": "addressBytes",
+          "type": "integer",
+          "defaultValue": 2,
+          "unit": "B",
+          "description": "Count field width in bytes"
+        },
+        {
+          "key": "maxCount",
+          "type": "integer",
+          "defaultValue": 65535,
+          "unit": "records",
+          "description": "Maximum representable record count"
+        }
+      ],
+      "wasmKernel": "srecModelEval",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "S6",
+    "kind": "Class",
+    "namePath": "srec.S6",
+    "exports": [
+      "addressBits",
+      "addressBytes",
+      "maxCount"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "S6 24-bit Record Count",
+      "category": "Record Types",
+      "domain": "firmware",
+      "description": "Optional 24-bit count of preceding S1/S2/S3 data records (up to 16,777,215 records).",
+      "provenance": "Motorola S-Record Specification",
+      "aliases": [
+        "COUNT24",
+        "S6_COUNT"
+      ],
+      "parameters": [
+        {
+          "key": "addressBits",
+          "type": "integer",
+          "defaultValue": 24,
+          "unit": "bit",
+          "description": "Count field width in bits"
+        },
+        {
+          "key": "addressBytes",
+          "type": "integer",
+          "defaultValue": 3,
+          "unit": "B",
+          "description": "Count field width in bytes"
+        },
+        {
+          "key": "maxCount",
+          "type": "integer",
+          "defaultValue": 16777215,
+          "unit": "records",
+          "description": "Maximum representable record count"
+        }
+      ],
+      "wasmKernel": "srecModelEval",
+      "archetypeId": 7
+    }
+  },
+  {
+    "name": "S7",
+    "kind": "Class",
+    "namePath": "srec.S7",
+    "exports": [
+      "addressBits",
+      "addressBytes",
+      "pairedDataType"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "S7 32-bit Start Address",
+      "category": "Record Types",
+      "domain": "firmware",
+      "description": "Termination record specifying a 32-bit execution entry point for S3 data images.",
+      "provenance": "Motorola S-Record Specification (1984)",
+      "aliases": [
+        "TERM32",
+        "S7_START"
+      ],
+      "parameters": [
+        {
+          "key": "addressBits",
+          "type": "integer",
+          "defaultValue": 32,
+          "unit": "bit",
+          "description": "Start address width in bits"
+        },
+        {
+          "key": "addressBytes",
+          "type": "integer",
+          "defaultValue": 4,
+          "unit": "B",
+          "description": "Start address width in bytes"
+        },
+        {
+          "key": "pairedDataType",
+          "type": "integer",
+          "defaultValue": 3,
+          "unit": "",
+          "description": "Paired data record type (S3)"
+        }
+      ],
+      "wasmKernel": "srecModelEval",
+      "archetypeId": 8
+    }
+  },
+  {
+    "name": "S8",
+    "kind": "Class",
+    "namePath": "srec.S8",
+    "exports": [
+      "addressBits",
+      "addressBytes",
+      "pairedDataType"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "S8 24-bit Start Address",
+      "category": "Record Types",
+      "domain": "firmware",
+      "description": "Termination record specifying a 24-bit execution entry point for S2 data images.",
+      "provenance": "Motorola S-Record Specification (1979)",
+      "aliases": [
+        "TERM24",
+        "S8_START"
+      ],
+      "parameters": [
+        {
+          "key": "addressBits",
+          "type": "integer",
+          "defaultValue": 24,
+          "unit": "bit",
+          "description": "Start address width in bits"
+        },
+        {
+          "key": "addressBytes",
+          "type": "integer",
+          "defaultValue": 3,
+          "unit": "B",
+          "description": "Start address width in bytes"
+        },
+        {
+          "key": "pairedDataType",
+          "type": "integer",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "Paired data record type (S2)"
+        }
+      ],
+      "wasmKernel": "srecModelEval",
+      "archetypeId": 9
+    }
+  },
+  {
+    "name": "S9",
+    "kind": "Class",
+    "namePath": "srec.S9",
+    "exports": [
+      "addressBits",
+      "addressBytes",
+      "pairedDataType"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "S9 16-bit Start Address",
+      "category": "Record Types",
+      "domain": "firmware",
+      "description": "Termination record specifying a 16-bit execution entry point for S1 data images.",
+      "provenance": "Motorola S-Record Specification (1974)",
+      "aliases": [
+        "TERM16",
+        "S9_START"
+      ],
+      "parameters": [
+        {
+          "key": "addressBits",
+          "type": "integer",
+          "defaultValue": 16,
+          "unit": "bit",
+          "description": "Start address width in bits"
+        },
+        {
+          "key": "addressBytes",
+          "type": "integer",
+          "defaultValue": 2,
+          "unit": "B",
+          "description": "Start address width in bytes"
+        },
+        {
+          "key": "pairedDataType",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Paired data record type (S1)"
+        }
+      ],
+      "wasmKernel": "srecModelEval",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "MC6800",
+    "kind": "Class",
+    "namePath": "srec.MC6800",
+    "exports": [
+      "addressBits",
+      "ramBase",
+      "romBase",
+      "resetVector"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Motorola 6800 Memory Map",
+      "category": "Motorola Memory Maps",
+      "domain": "firmware",
+      "description": "Classic 8-bit Motorola MC6800 16-bit address map (RAM 0x0000, ROM 0xE000, Reset Vector 0xFFFE, S1/S9).",
+      "provenance": "Motorola M6800 Microprocessor Applications Manual (1975)",
+      "aliases": [
+        "6800",
+        "M6800",
+        "S19_6800"
+      ],
+      "parameters": [
+        {
+          "key": "addressBits",
+          "type": "integer",
+          "defaultValue": 16,
+          "unit": "bit",
+          "description": "16-bit linear address bus"
+        },
+        {
+          "key": "ramBase",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "addr",
+          "description": "Zero-page & user RAM base"
+        },
+        {
+          "key": "romBase",
+          "type": "integer",
+          "defaultValue": 57344,
+          "unit": "addr",
+          "description": "Monitor / firmware ROM base"
+        },
+        {
+          "key": "resetVector",
+          "type": "integer",
+          "defaultValue": 65534,
+          "unit": "addr",
+          "description": "16-bit big-endian reset vector"
+        }
+      ],
+      "wasmKernel": "srecModelEval",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "MC68000",
+    "kind": "Class",
+    "namePath": "srec.MC68000",
+    "exports": [
+      "addressBits",
+      "vectorBase",
+      "romBase",
+      "ramBase"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Motorola 68000 Memory Map",
+      "category": "Motorola Memory Maps",
+      "domain": "firmware",
+      "description": "Classic Motorola 68000 24-bit address map (Vector Table 0x000000, ROM 0x000400, RAM 0x800000, S2/S8).",
+      "provenance": "Motorola MC68000 User's Manual (1979)",
+      "aliases": [
+        "68000",
+        "M68K",
+        "S28_68K"
+      ],
+      "parameters": [
+        {
+          "key": "addressBits",
+          "type": "integer",
+          "defaultValue": 24,
+          "unit": "bit",
+          "description": "24-bit physical address bus"
+        },
+        {
+          "key": "vectorBase",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "addr",
+          "description": "Exception vector table base (SSP + PC)"
+        },
+        {
+          "key": "romBase",
+          "type": "integer",
+          "defaultValue": 1024,
+          "unit": "addr",
+          "description": "Boot ROM code base"
+        },
+        {
+          "key": "ramBase",
+          "type": "integer",
+          "defaultValue": 8388608,
+          "unit": "addr",
+          "description": "System RAM base"
+        }
+      ],
+      "wasmKernel": "srecModelEval",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "COLDFIRE",
+    "kind": "Class",
+    "namePath": "srec.COLDFIRE",
+    "exports": [
+      "addressBits",
+      "flashBase",
+      "sramBase",
+      "periphBase"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Motorola ColdFire Memory Map",
+      "category": "Motorola Memory Maps",
+      "domain": "firmware",
+      "description": "32-bit Motorola/Freescale ColdFire embedded flash & SRAM map (Flash 0x00000000, SRAM 0x20000000, S3/S7).",
+      "provenance": "Motorola ColdFire Family Programmer's Reference Manual",
+      "aliases": [
+        "MCF5200",
+        "MCF5400",
+        "S37_COLDFIRE"
+      ],
+      "parameters": [
+        {
+          "key": "addressBits",
+          "type": "integer",
+          "defaultValue": 32,
+          "unit": "bit",
+          "description": "32-bit address bus"
+        },
+        {
+          "key": "flashBase",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "addr",
+          "description": "Internal/External Flash base"
+        },
+        {
+          "key": "sramBase",
+          "type": "integer",
+          "defaultValue": 536870912,
+          "unit": "addr",
+          "description": "On-chip SRAM base"
+        },
+        {
+          "key": "periphBase",
+          "type": "integer",
+          "defaultValue": 1073741824,
+          "unit": "addr",
+          "description": "IPSBAR peripheral register base"
+        }
+      ],
+      "wasmKernel": "srecModelEval",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "POWERPC",
+    "kind": "Class",
+    "namePath": "srec.POWERPC",
+    "exports": [
+      "addressBits",
+      "ramBase",
+      "bootFlashBase",
+      "resetVector"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Motorola PowerPC Memory Map",
+      "category": "Motorola Memory Maps",
+      "domain": "firmware",
+      "description": "32-bit Motorola/Freescale PowerPC embedded map (SRAM 0x00000000, Boot Flash 0xFFF00000, Reset 0xFFF00100, S3/S7).",
+      "provenance": "Motorola PowerPC MPC5xx / MPC8xx Reference Manual",
+      "aliases": [
+        "MPC555",
+        "MPC860",
+        "PPC",
+        "S37_PPC"
+      ],
+      "parameters": [
+        {
+          "key": "addressBits",
+          "type": "integer",
+          "defaultValue": 32,
+          "unit": "bit",
+          "description": "32-bit Book-E / Classic PPC address space"
+        },
+        {
+          "key": "ramBase",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "addr",
+          "description": "System SDRAM / SRAM base"
+        },
+        {
+          "key": "bootFlashBase",
+          "type": "integer",
+          "defaultValue": 4293918720,
+          "unit": "addr",
+          "description": "High boot ROM / Flash base"
+        },
+        {
+          "key": "resetVector",
+          "type": "integer",
+          "defaultValue": 4293918976,
+          "unit": "addr",
+          "description": "System reset exception vector"
+        }
+      ],
+      "wasmKernel": "srecModelEval",
+      "archetypeId": 23
+    }
+  }
+]

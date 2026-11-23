@@ -1,0 +1,633 @@
+[
+  {
+    "name": "Project",
+    "kind": "cdf_schema",
+    "namePath": "NASA_CDF.ISTP_Global.Project",
+    "exports": [
+      "required"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Project (ISTP Global)",
+      "category": "ISTP Global",
+      "domain": "space-physics",
+      "description": "Required ISTP global attribute naming the overarching mission or program (e.g. THEMIS, MMS, Parker Solar Probe).",
+      "provenance": "NASA SPDF ISTP/IACG Metadata Guidelines §2.1",
+      "aliases": [
+        "PROJECT"
+      ],
+      "parameters": [
+        {
+          "key": "required",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "bool",
+          "description": "Mandatory ISTP global attribute"
+        }
+      ],
+      "wasmKernel": "cdfEval",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "Source_name",
+    "kind": "cdf_schema",
+    "namePath": "NASA_CDF.ISTP_Global.Source_name",
+    "exports": [
+      "required"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Source_name (ISTP Global)",
+      "category": "ISTP Global",
+      "domain": "space-physics",
+      "description": "Required ISTP global attribute identifying the spacecraft or ground observatory.",
+      "provenance": "NASA SPDF ISTP/IACG Metadata Guidelines §2.1",
+      "aliases": [
+        "SOURCE_NAME"
+      ],
+      "parameters": [
+        {
+          "key": "required",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "bool",
+          "description": "Mandatory ISTP global attribute"
+        }
+      ],
+      "wasmKernel": "cdfEval",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "Discipline",
+    "kind": "cdf_schema",
+    "namePath": "NASA_CDF.ISTP_Global.Discipline",
+    "exports": [
+      "required"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Discipline (ISTP Global)",
+      "category": "ISTP Global",
+      "domain": "space-physics",
+      "description": "Required ISTP global attribute specifying scientific discipline (e.g. 'Space Physics>Magnetospheric Science').",
+      "provenance": "NASA SPDF ISTP/IACG Metadata Guidelines §2.1",
+      "aliases": [
+        "DISCIPLINE"
+      ],
+      "parameters": [
+        {
+          "key": "required",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "bool",
+          "description": "Mandatory ISTP global attribute"
+        }
+      ],
+      "wasmKernel": "cdfEval",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "Data_type",
+    "kind": "cdf_schema",
+    "namePath": "NASA_CDF.ISTP_Global.Data_type",
+    "exports": [
+      "level"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Data_type (ISTP Global)",
+      "category": "ISTP Global",
+      "domain": "space-physics",
+      "description": "Required ISTP global attribute classifying product level (e.g. 'L2>Level 2 Science Data', 'K0>Key Parameter').",
+      "provenance": "NASA SPDF ISTP/IACG Metadata Guidelines §2.1",
+      "aliases": [
+        "DATA_TYPE"
+      ],
+      "parameters": [
+        {
+          "key": "level",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "level",
+          "description": "Science data processing level"
+        }
+      ],
+      "wasmKernel": "cdfEval",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "Descriptor",
+    "kind": "cdf_schema",
+    "namePath": "NASA_CDF.ISTP_Global.Descriptor",
+    "exports": [
+      "required"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Descriptor (ISTP Global)",
+      "category": "ISTP Global",
+      "domain": "space-physics",
+      "description": "Required ISTP global attribute naming the instrument (e.g. 'FGM>Fluxgate Magnetometer').",
+      "provenance": "NASA SPDF ISTP/IACG Metadata Guidelines §2.1",
+      "aliases": [
+        "DESCRIPTOR"
+      ],
+      "parameters": [
+        {
+          "key": "required",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "bool",
+          "description": "Mandatory ISTP global attribute"
+        }
+      ],
+      "wasmKernel": "cdfEval",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "DEPEND_0",
+    "kind": "cdf_schema",
+    "namePath": "NASA_CDF.ISTP_Variable.DEPEND_0",
+    "exports": [
+      "axis"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "DEPEND_0 (Time Dependency)",
+      "category": "ISTP Variable",
+      "domain": "space-physics",
+      "description": "Required ISTP variable attribute linking a record-varying science channel to its Epoch/TT2000 time variable.",
+      "provenance": "NASA SPDF ISTP/IACG Metadata Guidelines §3.1",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "axis",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "index",
+          "description": "Record (time) axis index"
+        }
+      ],
+      "wasmKernel": "cdfEval",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "UNITS",
+    "kind": "cdf_schema",
+    "namePath": "NASA_CDF.ISTP_Variable.UNITS",
+    "exports": [
+      "required"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "UNITS (Physical Units)",
+      "category": "ISTP Variable",
+      "domain": "space-physics",
+      "description": "Required ISTP variable attribute giving SI or space-physics units (e.g. 'nT', 'cm^-3', 'km/s', 'eV').",
+      "provenance": "NASA SPDF ISTP/IACG Metadata Guidelines §3.1",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "required",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "bool",
+          "description": "Mandatory for physical channels"
+        }
+      ],
+      "wasmKernel": "cdfEval",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "VALIDMIN",
+    "kind": "cdf_schema",
+    "namePath": "NASA_CDF.ISTP_Variable.VALIDMIN",
+    "exports": [
+      "minVal"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "VALIDMIN (Lower Valid Bound)",
+      "category": "ISTP Variable",
+      "domain": "space-physics",
+      "description": "Required ISTP variable attribute defining the minimum physically valid value.",
+      "provenance": "NASA SPDF ISTP/IACG Metadata Guidelines §3.1",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "minVal",
+          "type": "real",
+          "defaultValue": -65536,
+          "unit": "nT",
+          "description": "Default lower physical bound"
+        }
+      ],
+      "wasmKernel": "cdfEval",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "VALIDMAX",
+    "kind": "cdf_schema",
+    "namePath": "NASA_CDF.ISTP_Variable.VALIDMAX",
+    "exports": [
+      "maxVal"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "VALIDMAX (Upper Valid Bound)",
+      "category": "ISTP Variable",
+      "domain": "space-physics",
+      "description": "Required ISTP variable attribute defining the maximum physically valid value.",
+      "provenance": "NASA SPDF ISTP/IACG Metadata Guidelines §3.1",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "maxVal",
+          "type": "real",
+          "defaultValue": 65536,
+          "unit": "nT",
+          "description": "Default upper physical bound"
+        }
+      ],
+      "wasmKernel": "cdfEval",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "FILLVAL",
+    "kind": "cdf_schema",
+    "namePath": "NASA_CDF.ISTP_Variable.FILLVAL",
+    "exports": [
+      "fillVal"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "FILLVAL (Missing Data Sentinel)",
+      "category": "ISTP Variable",
+      "domain": "space-physics",
+      "description": "ISTP sentinel value indicating missing or invalid telemetry samples (commonly -1.0e31 for CDF_REAL4).",
+      "provenance": "NASA SPDF ISTP/IACG Metadata Guidelines §3.1",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "fillVal",
+          "type": "real",
+          "defaultValue": -1e+31,
+          "unit": "sentinel",
+          "description": "Standard ISTP float32 fill value"
+        }
+      ],
+      "wasmKernel": "cdfEval",
+      "archetypeId": 14
+    }
+  },
+  {
+    "name": "CATDESC",
+    "kind": "cdf_schema",
+    "namePath": "NASA_CDF.ISTP_Variable.CATDESC",
+    "exports": [
+      "required"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "CATDESC (Catalog Description)",
+      "category": "ISTP Variable",
+      "domain": "space-physics",
+      "description": "Human-readable catalog description of a CDF variable for SPDF CDAWeb.",
+      "provenance": "NASA SPDF ISTP/IACG Metadata Guidelines §3.1",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "required",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "bool",
+          "description": "Catalog description"
+        }
+      ],
+      "wasmKernel": "cdfEval",
+      "archetypeId": 15
+    }
+  },
+  {
+    "name": "FIELDNAM",
+    "kind": "cdf_schema",
+    "namePath": "NASA_CDF.ISTP_Variable.FIELDNAM",
+    "exports": [
+      "maxChars"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "FIELDNAM (Short Field Name)",
+      "category": "ISTP Variable",
+      "domain": "space-physics",
+      "description": "Short display label for plotting and tabular exports.",
+      "provenance": "NASA SPDF ISTP/IACG Metadata Guidelines §3.1",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "maxChars",
+          "type": "real",
+          "defaultValue": 30,
+          "unit": "chars",
+          "description": "Recommended maximum label length"
+        }
+      ],
+      "wasmKernel": "cdfEval",
+      "archetypeId": 16
+    }
+  },
+  {
+    "name": "VAR_TYPE",
+    "kind": "cdf_schema",
+    "namePath": "NASA_CDF.ISTP_Variable.VAR_TYPE",
+    "exports": [
+      "roleCode"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "VAR_TYPE (ISTP Variable Role)",
+      "category": "ISTP Variable",
+      "domain": "space-physics",
+      "description": "Classifies a variable as 'data', 'support_data', 'metadata', or 'ignore_data'.",
+      "provenance": "NASA SPDF ISTP/IACG Metadata Guidelines §3.1",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "roleCode",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "enum",
+          "description": "1=data, 2=support_data, 3=metadata"
+        }
+      ],
+      "wasmKernel": "cdfEval",
+      "archetypeId": 17
+    }
+  },
+  {
+    "name": "EPOCH",
+    "kind": "cdf_schema",
+    "namePath": "NASA_CDF.Magnetometer.EPOCH",
+    "exports": [
+      "cadenceSec",
+      "j2000EpochMs"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "EPOCH (Spacecraft Time Tag)",
+      "category": "Magnetometer",
+      "domain": "space-physics",
+      "description": "Monotonically increasing spacecraft observation timestamps in CDF_EPOCH (ms since 0000-01-01) or CDF_TIME_TT2000.",
+      "provenance": "NASA SPDF CDF User's Guide §2.5",
+      "aliases": [
+        "Epoch",
+        "CDF_EPOCH",
+        "CDF_TIME_TT2000"
+      ],
+      "parameters": [
+        {
+          "key": "cadenceSec",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Nominal telemetry sampling cadence"
+        },
+        {
+          "key": "j2000EpochMs",
+          "type": "real",
+          "defaultValue": 63113947200000,
+          "unit": "ms",
+          "description": "CDF_EPOCH milliseconds at J2000.0 UTC"
+        }
+      ],
+      "wasmKernel": "cdfEval",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "B_GSE",
+    "kind": "cdf_schema",
+    "namePath": "NASA_CDF.Magnetometer.B_GSE",
+    "exports": [
+      "bx",
+      "by",
+      "bz"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "B_GSE (3-Axis Magnetometer GSE)",
+      "category": "Magnetometer",
+      "domain": "space-physics",
+      "description": "3-component magnetic field vector [Bx, By, Bz] in Geocentric Solar Ecliptic (GSE) coordinates (nT).",
+      "provenance": "NASA SPDF ISTP Magnetometer Schema",
+      "aliases": [
+        "BGSE",
+        "BGSEc"
+      ],
+      "parameters": [
+        {
+          "key": "bx",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "nT",
+          "description": "GSE X component (Sunward)"
+        },
+        {
+          "key": "by",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "nT",
+          "description": "GSE Y component (Duskward)"
+        },
+        {
+          "key": "bz",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "nT",
+          "description": "GSE Z component (Ecliptic North)"
+        }
+      ],
+      "wasmKernel": "cdfEval",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "B_GSM",
+    "kind": "cdf_schema",
+    "namePath": "NASA_CDF.Magnetometer.B_GSM",
+    "exports": [
+      "bx",
+      "by",
+      "bz"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "B_GSM (3-Axis Magnetometer GSM)",
+      "category": "Magnetometer",
+      "domain": "space-physics",
+      "description": "3-component magnetic field vector [Bx, By, Bz] in Geocentric Solar Magnetospheric (GSM) coordinates (nT).",
+      "provenance": "NASA SPDF ISTP Magnetometer Schema",
+      "aliases": [
+        "BGSM"
+      ],
+      "parameters": [
+        {
+          "key": "bx",
+          "type": "real",
+          "defaultValue": 2.5,
+          "unit": "nT",
+          "description": "GSM X component"
+        },
+        {
+          "key": "by",
+          "type": "real",
+          "defaultValue": -3,
+          "unit": "nT",
+          "description": "GSM Y component"
+        },
+        {
+          "key": "bz",
+          "type": "real",
+          "defaultValue": -2,
+          "unit": "nT",
+          "description": "GSM Z component (Southward IMF drives reconnection)"
+        }
+      ],
+      "wasmKernel": "cdfEval",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "B_MAG",
+    "kind": "cdf_schema",
+    "namePath": "NASA_CDF.Magnetometer.B_MAG",
+    "exports": [
+      "bMag"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "B_MAG (Magnetic Field Magnitude)",
+      "category": "Magnetometer",
+      "domain": "space-physics",
+      "description": "Scalar magnetic field magnitude |B| = sqrt(Bx^2 + By^2 + Bz^2) in nT.",
+      "provenance": "NASA SPDF ISTP Magnetometer Schema",
+      "aliases": [
+        "BTOTAL",
+        "B_TOTAL"
+      ],
+      "parameters": [
+        {
+          "key": "bMag",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "nT",
+          "description": "Nominal interplanetary magnetic field magnitude"
+        }
+      ],
+      "wasmKernel": "cdfEval",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "N_PROTON",
+    "kind": "cdf_schema",
+    "namePath": "NASA_CDF.Plasma_Telemetry.N_PROTON",
+    "exports": [
+      "densityCm3"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "N_PROTON (Solar Wind Proton Density)",
+      "category": "Plasma Telemetry",
+      "domain": "space-physics",
+      "description": "Solar wind proton number density in cm^-3 (1 cm^-3 = 1e6 m^-3).",
+      "provenance": "NASA SPDF ISTP Plasma Telemetry Schema",
+      "aliases": [
+        "Np",
+        "DENSITY"
+      ],
+      "parameters": [
+        {
+          "key": "densityCm3",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "cm^-3",
+          "description": "Nominal 1 AU solar wind proton density"
+        }
+      ],
+      "wasmKernel": "cdfEval",
+      "archetypeId": 24
+    }
+  },
+  {
+    "name": "V_SW",
+    "kind": "cdf_schema",
+    "namePath": "NASA_CDF.Plasma_Telemetry.V_SW",
+    "exports": [
+      "speedKmS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "V_SW (Solar Wind Bulk Velocity)",
+      "category": "Plasma Telemetry",
+      "domain": "space-physics",
+      "description": "Solar wind proton bulk flow speed in km/s.",
+      "provenance": "NASA SPDF ISTP Plasma Telemetry Schema",
+      "aliases": [
+        "V_GSE",
+        "BULK_SPEED"
+      ],
+      "parameters": [
+        {
+          "key": "speedKmS",
+          "type": "real",
+          "defaultValue": 400,
+          "unit": "km/s",
+          "description": "Nominal 1 AU solar wind bulk speed"
+        }
+      ],
+      "wasmKernel": "cdfEval",
+      "archetypeId": 25
+    }
+  },
+  {
+    "name": "T_PROTON",
+    "kind": "cdf_schema",
+    "namePath": "NASA_CDF.Plasma_Telemetry.T_PROTON",
+    "exports": [
+      "tempK"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "T_PROTON (Proton Kinetic Temperature)",
+      "category": "Plasma Telemetry",
+      "domain": "space-physics",
+      "description": "Solar wind proton kinetic temperature in Kelvin.",
+      "provenance": "NASA SPDF ISTP Plasma Telemetry Schema",
+      "aliases": [
+        "Tp",
+        "TEMP_P"
+      ],
+      "parameters": [
+        {
+          "key": "tempK",
+          "type": "real",
+          "defaultValue": 100000,
+          "unit": "K",
+          "description": "Nominal 1 AU solar wind proton temperature"
+        }
+      ],
+      "wasmKernel": "cdfEval",
+      "archetypeId": 26
+    }
+  }
+]

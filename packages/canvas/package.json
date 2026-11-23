@@ -1,0 +1,106 @@
+{
+  "name": "@modelscript/canvas",
+  "version": "0.1.0",
+  "description": "Polyglot Infinite Spatial Canvas — zoomable multiplayer whiteboard for all 106 ModelScript languages with live Digital Thread & FMI/SSP visual wiring",
+  "keywords": [
+    "modelscript",
+    "canvas",
+    "spatial",
+    "whiteboard",
+    "digital-thread",
+    "fmi",
+    "multiplayer"
+  ],
+  "homepage": "https://modelscript.org",
+  "bugs": {
+    "url": "https://github.com/modelscript/modelscript/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/modelscript/modelscript.git",
+    "directory": "packages/canvas"
+  },
+  "license": "AGPL-3.0-or-later",
+  "author": "ModelScript Contributors",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./schema": {
+      "types": "./dist/schema/canvas-document.d.ts",
+      "default": "./dist/schema/canvas-document.js"
+    },
+    "./serializer": {
+      "types": "./dist/schema/serializer.d.ts",
+      "default": "./dist/schema/serializer.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "default": "./dist/core/index.js"
+    },
+    "./engine": {
+      "types": "./dist/engine/index.d.ts",
+      "default": "./dist/engine/index.js"
+    },
+    "./renderers": {
+      "types": "./dist/renderers/index.d.ts",
+      "default": "./dist/renderers/index.js"
+    },
+    "./webgpu": {
+      "types": "./dist/renderers/webgpu-renderer.d.ts",
+      "default": "./dist/renderers/webgpu-renderer.js"
+    },
+    "./widgets": {
+      "types": "./dist/widgets/index.d.ts",
+      "default": "./dist/widgets/index.js"
+    },
+    "./tiles": {
+      "types": "./dist/tiles/registry.d.ts",
+      "default": "./dist/tiles/registry.js"
+    },
+    "./threads": {
+      "types": "./dist/threads/index.d.ts",
+      "default": "./dist/threads/index.js"
+    },
+    "./collab": {
+      "types": "./dist/collab/crdt-store.d.ts",
+      "default": "./dist/collab/crdt-store.js"
+    },
+    "./ui": {
+      "types": "./dist/ui/SpatialCanvas.d.ts",
+      "default": "./dist/ui/SpatialCanvas.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist/**"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "lint": "eslint src tests --no-warn-ignored",
+    "test": "node ../../scripts/ci/test-runner.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "@types/react": "^19.2.7",
+    "react": "^19.2.7",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "modelscript": {
+    "tier": "beta",
+    "category": "core"
+  }
+}

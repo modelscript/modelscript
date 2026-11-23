@@ -1,0 +1,11 @@
+name: "@modelscript/gams-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom GAMS intrinsic set/math operators and GAMSlib archetypes (10 schemas, SVG block icons, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: gams
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

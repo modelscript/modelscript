@@ -1,0 +1,11 @@
+name: "@modelscript/irig106-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom IRIG 106 Chapter 9 TMATS standard library (9 schemas: TMATS groups G/T/M/P/D/C and IRIG-106 standard sync words, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: irig106
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

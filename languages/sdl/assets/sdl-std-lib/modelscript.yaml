@@ -1,0 +1,11 @@
+name: "@modelscript/sdl-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom ITU-T Z.100 SDL-88 predefined sorts and telecom protocol standard library (13 schemas, cleanroom SVG block icons, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: sdl
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

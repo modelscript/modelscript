@@ -1,7 +1,7 @@
 {
   "name": "@modelscript/diagram",
   "version": "0.1.0",
-  "description": "ModelScript diagramming engine — AntV X6 graph renderer, polyglot visual builder, sequence layout, and diagram RPC protocol",
+  "description": "ModelScript diagramming engine — unified custom spatial/schematic canvas renderer, polyglot visual builder, sequence layout, and diagram RPC protocol",
   "keywords": [
     "modelscript",
     "diagram",
@@ -188,8 +188,7 @@
   },
   "dependencies": {
     "@antv/layout": "^0.3.25",
-    "@antv/x6": "^3.1.7",
-    "@antv/x6-plugin-selection": "^2.2.2",
+    "@modelscript/canvas": "workspace:*",
     "helmlab": "^0.11.9",
     "vscode-languageserver-protocol": "^3.18.2"
   },

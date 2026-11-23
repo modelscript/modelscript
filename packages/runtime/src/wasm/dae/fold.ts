@@ -19,6 +19,26 @@ import {
   EQ_KIND,
   EQ_LHS,
   EQ_RHS,
+  OBJ_STRIDE,
+  OBJ_MAYER_EXPR,
+  OBJ_LAGRANGE_EXPR,
+  CON_STRIDE,
+  CON_EXPR,
+  DIFF_STRIDE,
+  DIFF_EXPR,
+  DELAY_STRIDE,
+  DELAY_TARGET_EXPR,
+  DELAY_TAU_EXPR,
+  DELAY_HISTORY_EXPR,
+  JUMP_STRIDE,
+  JUMP_PROPENSITY_EXPR,
+  AFFECT_STRIDE,
+  AFFECT_EXPR,
+  STL_STRIDE,
+  STL_OP,
+  STL_LEFT,
+  StlOp,
+  NULL_ID,
 } from "./types";
 import { ExprAccessor, EqAccessor, VarAccessor } from "./accessors";
 import { cas_getRealValue, cas_isZero, cas_isOne, cas_isConstant } from "./cas";
@@ -769,7 +789,7 @@ export function foldDaeConstants(dae: DaeBuilder, maxIterations: u32 = 100, omcC
   for (let eqIdx: u32 = 0; eqIdx < dae.eqCount; eqIdx++) {
     if (dae.isEqRemoved(eqIdx)) continue;
     let eq = EqAccessor.at(dae.getEqData(), eqIdx);
-    if (!eq.isSimple && eq.kind != EqKind.InitialSimple && eq.kind != EqKind.Array) continue;
+    if (!eq.isSimple && eq.kind != EqKind.InitialSimple && eq.kind != EqKind.Array && eq.kind != EqKind.Boundary) continue;
 
     let lhsId = eq.lhs;
     let rhsId = eq.rhs;
@@ -797,6 +817,102 @@ export function foldDaeConstants(dae: DaeBuilder, maxIterations: u32 = 100, omcC
       let curRhs = eq.rhs;
       if (curLhs == curRhs) {
         dae.setEqRemoved(eqIdx, true);
+      }
+    }
+  }
+
+  // Pass 4: Simplify expressions stored in lazily-allocated multi-problem side-tables
+  if (dae.objectiveCount > 0) {
+    let tbl = dae.getObjectivesData();
+    for (let i: u32 = 0; i < dae.objectiveCount; i++) {
+      let off = i * OBJ_STRIDE;
+      let mId = tbl.get(off + OBJ_MAYER_EXPR) as u32;
+      if (mId != NULL_ID && mId < dae.exprCount) {
+        let s = simplifyAlgebraicExpr(dae, mId, onlyConstants);
+        if (s != mId) tbl.set(off + OBJ_MAYER_EXPR, s as i32);
+      }
+      let lId = tbl.get(off + OBJ_LAGRANGE_EXPR) as u32;
+      if (lId != NULL_ID && lId < dae.exprCount) {
+        let s = simplifyAlgebraicExpr(dae, lId, onlyConstants);
+        if (s != lId) tbl.set(off + OBJ_LAGRANGE_EXPR, s as i32);
+      }
+    }
+  }
+  if (dae.constraintCount > 0) {
+    let tbl = dae.getConstraintsData();
+    for (let i: u32 = 0; i < dae.constraintCount; i++) {
+      let off = i * CON_STRIDE + CON_EXPR;
+      let eId = tbl.get(off) as u32;
+      if (eId != NULL_ID && eId < dae.exprCount) {
+        let s = simplifyAlgebraicExpr(dae, eId, onlyConstants);
+        if (s != eId) tbl.set(off, s as i32);
+      }
+    }
+  }
+  if (dae.diffusionCount > 0) {
+    let tbl = dae.getDiffusionData();
+    for (let i: u32 = 0; i < dae.diffusionCount; i++) {
+      let off = i * DIFF_STRIDE + DIFF_EXPR;
+      let eId = tbl.get(off) as u32;
+      if (eId != NULL_ID && eId < dae.exprCount) {
+        let s = simplifyAlgebraicExpr(dae, eId, onlyConstants);
+        if (s != eId) tbl.set(off, s as i32);
+      }
+    }
+  }
+  if (dae.delayCount > 0) {
+    let tbl = dae.getDelayData();
+    for (let i: u32 = 0; i < dae.delayCount; i++) {
+      let off = i * DELAY_STRIDE;
+      let tId = tbl.get(off + DELAY_TARGET_EXPR) as u32;
+      if (tId != NULL_ID && tId < dae.exprCount) {
+        let s = simplifyAlgebraicExpr(dae, tId, onlyConstants);
+        if (s != tId) tbl.set(off + DELAY_TARGET_EXPR, s as i32);
+      }
+      let tauId = tbl.get(off + DELAY_TAU_EXPR) as u32;
+      if (tauId != NULL_ID && tauId < dae.exprCount) {
+        let s = simplifyAlgebraicExpr(dae, tauId, onlyConstants);
+        if (s != tauId) tbl.set(off + DELAY_TAU_EXPR, s as i32);
+      }
+      let hId = tbl.get(off + DELAY_HISTORY_EXPR) as u32;
+      if (hId != NULL_ID && hId < dae.exprCount) {
+        let s = simplifyAlgebraicExpr(dae, hId, onlyConstants);
+        if (s != hId) tbl.set(off + DELAY_HISTORY_EXPR, s as i32);
+      }
+    }
+  }
+  if (dae.jumpCount > 0) {
+    let tbl = dae.getJumpData();
+    for (let i: u32 = 0; i < dae.jumpCount; i++) {
+      let off = i * JUMP_STRIDE + JUMP_PROPENSITY_EXPR;
+      let eId = tbl.get(off) as u32;
+      if (eId != NULL_ID && eId < dae.exprCount) {
+        let s = simplifyAlgebraicExpr(dae, eId, onlyConstants);
+        if (s != eId) tbl.set(off, s as i32);
+      }
+    }
+  }
+  if (dae.jumpAffectCount > 0) {
+    let tbl = dae.getJumpAffects();
+    for (let i: u32 = 0; i < dae.jumpAffectCount; i++) {
+      let off = i * AFFECT_STRIDE + AFFECT_EXPR;
+      let eId = tbl.get(off) as u32;
+      if (eId != NULL_ID && eId < dae.exprCount) {
+        let s = simplifyAlgebraicExpr(dae, eId, onlyConstants);
+        if (s != eId) tbl.set(off, s as i32);
+      }
+    }
+  }
+  if (dae.stlCount > 0) {
+    let tbl = dae.getStlData();
+    for (let i: u32 = 0; i < dae.stlCount; i++) {
+      let off = i * STL_STRIDE;
+      if (tbl.get(off + STL_OP) == StlOp.Atomic) {
+        let eId = tbl.get(off + STL_LEFT) as u32;
+        if (eId != NULL_ID && eId < dae.exprCount) {
+          let s = simplifyAlgebraicExpr(dae, eId, onlyConstants);
+          if (s != eId) tbl.set(off + STL_LEFT, s as i32);
+        }
       }
     }
   }

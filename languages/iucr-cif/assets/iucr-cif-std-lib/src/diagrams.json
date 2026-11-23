@@ -1,0 +1,237 @@
+[
+  {
+    "namePath": "iucr-cif:_cell",
+    "aliases": [
+      "CELL",
+      "UNIT_CELL"
+    ],
+    "label": "Unit Cell Category (_cell)",
+    "category": "CIF Core Dictionary",
+    "domain": "materials",
+    "width": 92,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 54\" width=\"92\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"50\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><polygon points=\"16,28 24,20 32,28 24,36\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"1.2\"/><circle cx=\"24\" cy=\"28\" r=\"2.5\" fill=\"#38bdf8\"/><text x=\"58\" y=\"22\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">CIF</text><text x=\"58\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">_CELL</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 27
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 27
+      }
+    ]
+  },
+  {
+    "namePath": "iucr-cif:_symmetry",
+    "aliases": [
+      "SYMMETRY",
+      "SPACE_GROUP"
+    ],
+    "label": "Space-Group Symmetry Category (_symmetry)",
+    "category": "CIF Core Dictionary",
+    "domain": "materials",
+    "width": 92,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 54\" width=\"92\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"50\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><polygon points=\"16,28 24,20 32,28 24,36\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"1.2\"/><circle cx=\"24\" cy=\"28\" r=\"2.5\" fill=\"#38bdf8\"/><text x=\"58\" y=\"22\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">CIF</text><text x=\"58\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">_SYMMETRY</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 27
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 27
+      }
+    ]
+  },
+  {
+    "namePath": "iucr-cif:_atom_site",
+    "aliases": [
+      "ATOM_SITE",
+      "ATOMS"
+    ],
+    "label": "Atomic Site Category (_atom_site)",
+    "category": "CIF Core Dictionary",
+    "domain": "materials",
+    "width": 92,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 54\" width=\"92\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"50\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><polygon points=\"16,28 24,20 32,28 24,36\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"1.2\"/><circle cx=\"24\" cy=\"28\" r=\"2.5\" fill=\"#38bdf8\"/><text x=\"58\" y=\"22\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">CIF</text><text x=\"58\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">_ATOM_SITE</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 27
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 27
+      }
+    ]
+  },
+  {
+    "namePath": "iucr-cif:_diffrn",
+    "aliases": [
+      "DIFFRN",
+      "XRD"
+    ],
+    "label": "Diffraction Measurement Category (_diffrn)",
+    "category": "CIF Core Dictionary",
+    "domain": "materials",
+    "width": 92,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 54\" width=\"92\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"50\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.5\"/><polygon points=\"16,28 24,20 32,28 24,36\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"1.2\"/><circle cx=\"24\" cy=\"28\" r=\"2.5\" fill=\"#38bdf8\"/><text x=\"58\" y=\"22\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">CIF</text><text x=\"58\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">_DIFFRN</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 27
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 27
+      }
+    ]
+  },
+  {
+    "namePath": "iucr-cif:SILICON_FD3M",
+    "aliases": [
+      "SI",
+      "SILICON",
+      "DIAMOND_CUBIC"
+    ],
+    "label": "Silicon (Diamond Cubic Fd-3m)",
+    "category": "Canonical Crystals",
+    "domain": "materials",
+    "width": 92,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 54\" width=\"92\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"50\" rx=\"6\" fill=\"#1e3a2f\" stroke=\"#34d399\" stroke-width=\"1.5\"/><polygon points=\"16,28 24,20 32,28 24,36\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.2\"/><circle cx=\"24\" cy=\"28\" r=\"2.5\" fill=\"#34d399\"/><text x=\"58\" y=\"22\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">XTAL</text><text x=\"58\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">SILICON_FD3</text></svg>",
+    "ports": [
+      {
+        "name": "lattice",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 18
+      },
+      {
+        "name": "xrd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 36
+      }
+    ]
+  },
+  {
+    "namePath": "iucr-cif:NACL_FM3M",
+    "aliases": [
+      "NACL",
+      "HALITE",
+      "ROCK_SALT"
+    ],
+    "label": "NaCl Rock Salt (Fm-3m)",
+    "category": "Canonical Crystals",
+    "domain": "materials",
+    "width": 92,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 54\" width=\"92\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"50\" rx=\"6\" fill=\"#1e3a2f\" stroke=\"#34d399\" stroke-width=\"1.5\"/><polygon points=\"16,28 24,20 32,28 24,36\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.2\"/><circle cx=\"24\" cy=\"28\" r=\"2.5\" fill=\"#34d399\"/><text x=\"58\" y=\"22\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">XTAL</text><text x=\"58\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">NACL_FM3M</text></svg>",
+    "ports": [
+      {
+        "name": "lattice",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 18
+      },
+      {
+        "name": "xrd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 36
+      }
+    ]
+  },
+  {
+    "namePath": "iucr-cif:ALPHA_QUARTZ",
+    "aliases": [
+      "QUARTZ",
+      "SIO2",
+      "A_QUARTZ"
+    ],
+    "label": "alpha-Quartz (SiO2, P3_1 2 1)",
+    "category": "Canonical Crystals",
+    "domain": "materials",
+    "width": 92,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 54\" width=\"92\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"50\" rx=\"6\" fill=\"#1e3a2f\" stroke=\"#34d399\" stroke-width=\"1.5\"/><polygon points=\"16,28 24,20 32,28 24,36\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.2\"/><circle cx=\"24\" cy=\"28\" r=\"2.5\" fill=\"#34d399\"/><text x=\"58\" y=\"22\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">XTAL</text><text x=\"58\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">ALPHA_QUART</text></svg>",
+    "ports": [
+      {
+        "name": "lattice",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 18
+      },
+      {
+        "name": "xrd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 36
+      }
+    ]
+  },
+  {
+    "namePath": "iucr-cif:FCC_COPPER",
+    "aliases": [
+      "CU",
+      "COPPER"
+    ],
+    "label": "FCC Copper (Cu, Fm-3m)",
+    "category": "Canonical Crystals",
+    "domain": "materials",
+    "width": 92,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 54\" width=\"92\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"50\" rx=\"6\" fill=\"#1e3a2f\" stroke=\"#34d399\" stroke-width=\"1.5\"/><polygon points=\"16,28 24,20 32,28 24,36\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.2\"/><circle cx=\"24\" cy=\"28\" r=\"2.5\" fill=\"#34d399\"/><text x=\"58\" y=\"22\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">XTAL</text><text x=\"58\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">FCC_COPPER</text></svg>",
+    "ports": [
+      {
+        "name": "lattice",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 18
+      },
+      {
+        "name": "xrd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 36
+      }
+    ]
+  }
+]

@@ -1,0 +1,11 @@
+name: "@modelscript/datcom-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom USAF Digital DATCOM NACA airfoil & aircraft configuration standard library (8 schemas, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: datcom
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

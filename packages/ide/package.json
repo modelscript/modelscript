@@ -34,6 +34,7 @@
     "@modelscript/c": "workspace:*",
     "@modelscript/cad": "workspace:*",
     "@modelscript/cantera": "workspace:*",
+    "@modelscript/canvas": "workspace:*",
     "@modelscript/cfd": "workspace:*",
     "@modelscript/csv": "workspace:*",
     "@modelscript/diagram": "workspace:*",

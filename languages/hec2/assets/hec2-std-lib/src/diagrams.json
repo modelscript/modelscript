@@ -1,0 +1,611 @@
+[
+  {
+    "namePath": "HEC2.ConcreteChannels.CONCRETE_TROWELED",
+    "aliases": [
+      "concrete_smooth",
+      "troweled_concrete"
+    ],
+    "label": "Troweled Concrete Channel",
+    "category": "Concrete Channels",
+    "domain": "hydraulics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#94a3b8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#94a3b8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#94a3b8\">CONC</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">CONCRETE TRO</text></svg>",
+    "ports": [
+      {
+        "name": "upstream",
+        "kind": "hydraulic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "downstream",
+        "kind": "hydraulic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HEC2.ConcreteChannels.CONCRETE_FLOAT_FINISHED",
+    "aliases": [
+      "concrete_lined",
+      "float_concrete"
+    ],
+    "label": "Float-Finished Concrete Channel",
+    "category": "Concrete Channels",
+    "domain": "hydraulics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#94a3b8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#94a3b8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#94a3b8\">CONC</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">CONCRETE FLO</text></svg>",
+    "ports": [
+      {
+        "name": "upstream",
+        "kind": "hydraulic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "downstream",
+        "kind": "hydraulic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HEC2.ConcreteChannels.CONCRETE_UNFINISHED",
+    "aliases": [
+      "unfinished_concrete",
+      "gunite"
+    ],
+    "label": "Unfinished Concrete Channel",
+    "category": "Concrete Channels",
+    "domain": "hydraulics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#94a3b8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#94a3b8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#94a3b8\">CONC</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">CONCRETE UNF</text></svg>",
+    "ports": [
+      {
+        "name": "upstream",
+        "kind": "hydraulic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "downstream",
+        "kind": "hydraulic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HEC2.ConcreteChannels.CONCRETE_SHOTCRETE",
+    "aliases": [
+      "shotcrete",
+      "gunite_wavy"
+    ],
+    "label": "Shotcrete / Gunite Lined Channel",
+    "category": "Concrete Channels",
+    "domain": "hydraulics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#94a3b8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#94a3b8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#94a3b8\">CONC</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">CONCRETE SHO</text></svg>",
+    "ports": [
+      {
+        "name": "upstream",
+        "kind": "hydraulic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "downstream",
+        "kind": "hydraulic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HEC2.EarthChannels.EARTH_CLEAN_STRAIGHT",
+    "aliases": [
+      "earth_clean",
+      "excavated_earth"
+    ],
+    "label": "Excavated Earth — Clean & Straight",
+    "category": "Earth Channels",
+    "domain": "hydraulics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b2f1e\" stroke=\"#d97706\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#d97706\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#d97706\">ERTH</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">EARTH CLEAN </text></svg>",
+    "ports": [
+      {
+        "name": "upstream",
+        "kind": "hydraulic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "downstream",
+        "kind": "hydraulic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HEC2.EarthChannels.EARTH_GRAVEL_UNIFORM",
+    "aliases": [
+      "earth_gravel",
+      "gravel_canal"
+    ],
+    "label": "Excavated Earth — Uniform Gravel",
+    "category": "Earth Channels",
+    "domain": "hydraulics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b2f1e\" stroke=\"#d97706\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#d97706\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#d97706\">ERTH</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">EARTH GRAVEL</text></svg>",
+    "ports": [
+      {
+        "name": "upstream",
+        "kind": "hydraulic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "downstream",
+        "kind": "hydraulic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HEC2.EarthChannels.EARTH_SHORT_GRASS_WEEDS",
+    "aliases": [
+      "earth_grass",
+      "earth_weeds"
+    ],
+    "label": "Excavated Earth — Short Grass & Few Weeds",
+    "category": "Earth Channels",
+    "domain": "hydraulics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b2f1e\" stroke=\"#d97706\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#d97706\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#d97706\">ERTH</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">EARTH SHORT </text></svg>",
+    "ports": [
+      {
+        "name": "upstream",
+        "kind": "hydraulic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "downstream",
+        "kind": "hydraulic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HEC2.EarthChannels.EARTH_DENSE_WEEDS",
+    "aliases": [
+      "earth_unmaintained",
+      "weedy_ditch"
+    ],
+    "label": "Unmaintained Earth — Dense Weeds",
+    "category": "Earth Channels",
+    "domain": "hydraulics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b2f1e\" stroke=\"#d97706\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#d97706\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#d97706\">ERTH</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">EARTH DENSE </text></svg>",
+    "ports": [
+      {
+        "name": "upstream",
+        "kind": "hydraulic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "downstream",
+        "kind": "hydraulic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HEC2.NaturalStreams.STREAM_CLEAN_STRAIGHT",
+    "aliases": [
+      "natural_stream_clean",
+      "stream_straight"
+    ],
+    "label": "Natural Stream — Clean & Straight",
+    "category": "Natural Streams",
+    "domain": "hydraulics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#0f3443\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">STRM</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">STREAM CLEAN</text></svg>",
+    "ports": [
+      {
+        "name": "upstream",
+        "kind": "hydraulic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "downstream",
+        "kind": "hydraulic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HEC2.NaturalStreams.STREAM_WINDING_POOLS",
+    "aliases": [
+      "natural_stream_winding",
+      "winding_stream"
+    ],
+    "label": "Natural Stream — Clean, Winding with Pools",
+    "category": "Natural Streams",
+    "domain": "hydraulics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#0f3443\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">STRM</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">STREAM WINDI</text></svg>",
+    "ports": [
+      {
+        "name": "upstream",
+        "kind": "hydraulic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "downstream",
+        "kind": "hydraulic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HEC2.NaturalStreams.STREAM_SLUGGISH_WEEDY",
+    "aliases": [
+      "sluggish_stream",
+      "weedy_stream"
+    ],
+    "label": "Natural Stream — Sluggish, Weedy & Deep Pools",
+    "category": "Natural Streams",
+    "domain": "hydraulics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#0f3443\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">STRM</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">STREAM SLUGG</text></svg>",
+    "ports": [
+      {
+        "name": "upstream",
+        "kind": "hydraulic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "downstream",
+        "kind": "hydraulic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HEC2.NaturalStreams.STREAM_MOUNTAIN_COBBLES",
+    "aliases": [
+      "mountain_stream",
+      "cobble_stream"
+    ],
+    "label": "Mountain Stream — Gravel, Cobbles & Boulders",
+    "category": "Natural Streams",
+    "domain": "hydraulics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#0f3443\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">STRM</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">STREAM MOUNT</text></svg>",
+    "ports": [
+      {
+        "name": "upstream",
+        "kind": "hydraulic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "downstream",
+        "kind": "hydraulic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HEC2.Floodplains.FLOODPLAIN_PASTURE_SHORT",
+    "aliases": [
+      "floodplain_pasture",
+      "overbank_pasture"
+    ],
+    "label": "Floodplain — Short Grass Pasture",
+    "category": "Floodplains",
+    "domain": "hydraulics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1b3b2b\" stroke=\"#4ade80\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#4ade80\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#4ade80\">FLDP</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">FLOODPLAIN P</text></svg>",
+    "ports": [
+      {
+        "name": "upstream",
+        "kind": "hydraulic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "downstream",
+        "kind": "hydraulic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HEC2.Floodplains.FLOODPLAIN_CULTIVATED_CROPS",
+    "aliases": [
+      "floodplain_crops",
+      "cultivated_overbank"
+    ],
+    "label": "Floodplain — Mature Row Crops",
+    "category": "Floodplains",
+    "domain": "hydraulics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1b3b2b\" stroke=\"#4ade80\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#4ade80\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#4ade80\">FLDP</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">FLOODPLAIN C</text></svg>",
+    "ports": [
+      {
+        "name": "upstream",
+        "kind": "hydraulic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "downstream",
+        "kind": "hydraulic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HEC2.Floodplains.FLOODPLAIN_SCATTERED_BRUSH",
+    "aliases": [
+      "floodplain_brush",
+      "overbank_brush"
+    ],
+    "label": "Floodplain — Scattered Brush & Heavy Weeds",
+    "category": "Floodplains",
+    "domain": "hydraulics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1b3b2b\" stroke=\"#4ade80\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#4ade80\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#4ade80\">FLDP</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">FLOODPLAIN S</text></svg>",
+    "ports": [
+      {
+        "name": "upstream",
+        "kind": "hydraulic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "downstream",
+        "kind": "hydraulic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HEC2.Floodplains.FLOODPLAIN_HEAVY_TIMBER",
+    "aliases": [
+      "floodplain_timber",
+      "floodplain_forest"
+    ],
+    "label": "Floodplain — Heavy Stand of Timber",
+    "category": "Floodplains",
+    "domain": "hydraulics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1b3b2b\" stroke=\"#4ade80\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#4ade80\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#4ade80\">FLDP</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">FLOODPLAIN H</text></svg>",
+    "ports": [
+      {
+        "name": "upstream",
+        "kind": "hydraulic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "downstream",
+        "kind": "hydraulic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HEC2.BridgeCulvertLosses.TRANSITION_GRADUAL",
+    "aliases": [
+      "gradual_transition",
+      "no_transition_loss"
+    ],
+    "label": "Gradual Channel Transition",
+    "category": "Bridge & Culvert Losses",
+    "domain": "hydraulics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b1e2e\" stroke=\"#f472b6\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#f472b6\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f472b6\">LOSS</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">TRANSITION G</text></svg>",
+    "ports": [
+      {
+        "name": "upstream",
+        "kind": "hydraulic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "downstream",
+        "kind": "hydraulic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HEC2.BridgeCulvertLosses.BRIDGE_TYPICAL",
+    "aliases": [
+      "typical_bridge",
+      "bridge_section"
+    ],
+    "label": "Typical Bridge Section Transition",
+    "category": "Bridge & Culvert Losses",
+    "domain": "hydraulics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b1e2e\" stroke=\"#f472b6\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#f472b6\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f472b6\">LOSS</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">BRIDGE TYPIC</text></svg>",
+    "ports": [
+      {
+        "name": "upstream",
+        "kind": "hydraulic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "downstream",
+        "kind": "hydraulic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HEC2.BridgeCulvertLosses.TRANSITION_ABRUPT",
+    "aliases": [
+      "abrupt_transition",
+      "severe_bridge"
+    ],
+    "label": "Abrupt Transition / Severe Bridge",
+    "category": "Bridge & Culvert Losses",
+    "domain": "hydraulics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b1e2e\" stroke=\"#f472b6\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#f472b6\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f472b6\">LOSS</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">TRANSITION A</text></svg>",
+    "ports": [
+      {
+        "name": "upstream",
+        "kind": "hydraulic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "downstream",
+        "kind": "hydraulic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HEC2.BridgeCulvertLosses.CULVERT_BOX_WINGWALL",
+    "aliases": [
+      "box_culvert",
+      "culvert_box"
+    ],
+    "label": "Reinforced Concrete Box Culvert (30°-75° Wingwalls)",
+    "category": "Bridge & Culvert Losses",
+    "domain": "hydraulics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b1e2e\" stroke=\"#f472b6\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#f472b6\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f472b6\">LOSS</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">CULVERT BOX </text></svg>",
+    "ports": [
+      {
+        "name": "upstream",
+        "kind": "hydraulic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "downstream",
+        "kind": "hydraulic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HEC2.BridgeCulvertLosses.CULVERT_PIPE_PROJECTING",
+    "aliases": [
+      "pipe_culvert",
+      "cmp_culvert"
+    ],
+    "label": "Corrugated Metal Pipe Culvert (Projecting)",
+    "category": "Bridge & Culvert Losses",
+    "domain": "hydraulics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b1e2e\" stroke=\"#f472b6\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#f472b6\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f472b6\">LOSS</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">CULVERT PIPE</text></svg>",
+    "ports": [
+      {
+        "name": "upstream",
+        "kind": "hydraulic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "downstream",
+        "kind": "hydraulic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  }
+]

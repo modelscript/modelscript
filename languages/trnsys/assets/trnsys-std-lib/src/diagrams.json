@@ -1,0 +1,234 @@
+[
+  {
+    "namePath": "TRNSYS.Type1",
+    "aliases": [
+      "TYPE1",
+      "TYPE 1",
+      "SOLAR_COLLECTOR",
+      "COLLECTOR"
+    ],
+    "label": "Type 1 — Flat-Plate Solar Collector",
+    "category": "Solar Thermal",
+    "domain": "thermal",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a2511\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f59e0b\">SOLR</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE1</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "TRNSYS.Type2",
+    "aliases": [
+      "TYPE2",
+      "TYPE 2",
+      "CONTROLLER",
+      "DIFF_CONTROLLER"
+    ],
+    "label": "Type 2 — Differential Controller",
+    "category": "Controllers",
+    "domain": "thermal",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e1f47\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#a78bfa\">CTRL</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE2</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      },
+      {
+        "name": "signal",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "TRNSYS.Type3",
+    "aliases": [
+      "TYPE3",
+      "TYPE 3",
+      "PUMP"
+    ],
+    "label": "Type 3 — Circulation Pump",
+    "category": "Hydronics",
+    "domain": "thermal",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#143547\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">HYDR</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE3</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "TRNSYS.Type4",
+    "aliases": [
+      "TYPE4",
+      "TYPE 4",
+      "STORAGE_TANK",
+      "TANK"
+    ],
+    "label": "Type 4 — Stratified Storage Tank",
+    "category": "Thermal Storage",
+    "domain": "thermal",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#431a24\" stroke=\"#fb7185\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fb7185\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fb7185\">TANK</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE4</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "TRNSYS.Type14",
+    "aliases": [
+      "TYPE14",
+      "TYPE 14",
+      "FORCING_FUNCTION",
+      "SCHEDULE"
+    ],
+    "label": "Type 14 — Time-Dependent Forcing Function",
+    "category": "Utility & Weather",
+    "domain": "thermal",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#173b2d\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">UTIL</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE14</text></svg>",
+    "ports": [
+      {
+        "name": "out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "TRNSYS.Type15",
+    "aliases": [
+      "TYPE15",
+      "TYPE 15",
+      "WEATHER",
+      "TMY"
+    ],
+    "label": "Type 15 — Weather Data Processor",
+    "category": "Utility & Weather",
+    "domain": "thermal",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#173b2d\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">UTIL</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE15</text></svg>",
+    "ports": [
+      {
+        "name": "out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "TRNSYS.Type25",
+    "aliases": [
+      "TYPE25",
+      "TYPE 25",
+      "PRINTER"
+    ],
+    "label": "Type 25 — Simulation Printer",
+    "category": "Utility & Weather",
+    "domain": "thermal",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#173b2d\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">UTIL</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE25</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "TRNSYS.Type56",
+    "aliases": [
+      "TYPE56",
+      "TYPE 56",
+      "BUILDING",
+      "MULTIZONE_BUILDING"
+    ],
+    "label": "Type 56 — Multi-Zone Building",
+    "category": "Buildings",
+    "domain": "thermal",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#283044\" stroke=\"#94a3b8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#94a3b8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#94a3b8\">BLDG</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE56</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  }
+]

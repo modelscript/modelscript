@@ -61,6 +61,7 @@
     "@modelscript/atp": "workspace:*",
     "@modelscript/automationml": "workspace:*",
     "@modelscript/cad": "workspace:*",
+    "@modelscript/canvas": "workspace:*",
     "@modelscript/cellml": "workspace:*",
     "@modelscript/comtrade": "workspace:*",
     "@modelscript/diagram": "workspace:*",

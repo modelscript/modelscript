@@ -1,0 +1,266 @@
+[
+  {
+    "namePath": "irig106:TMATS_G",
+    "aliases": [
+      "G",
+      "GENERAL"
+    ],
+    "label": "G — General Information Group",
+    "category": "TMATS Groups",
+    "domain": "aerospace",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"34\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"23\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">TMATS</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">TMATS_G</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "irig106:TMATS_T",
+    "aliases": [
+      "T",
+      "TRANSMISSION"
+    ],
+    "label": "T — Transmission Attributes Group",
+    "category": "TMATS Groups",
+    "domain": "aerospace",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"34\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"23\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">TMATS</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">TMATS_T</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "irig106:TMATS_M",
+    "aliases": [
+      "M",
+      "MULTIPLEX"
+    ],
+    "label": "M — Multiplex / Modulation Group",
+    "category": "TMATS Groups",
+    "domain": "aerospace",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"34\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"23\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">TMATS</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">TMATS_M</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "irig106:TMATS_P",
+    "aliases": [
+      "P",
+      "PCM_FORMAT"
+    ],
+    "label": "P — PCM Format Attributes Group",
+    "category": "TMATS Groups",
+    "domain": "aerospace",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"34\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"23\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">TMATS</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">TMATS_P</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "irig106:TMATS_D",
+    "aliases": [
+      "D",
+      "PCM_MEASUREMENT"
+    ],
+    "label": "D — PCM Measurement Description Group",
+    "category": "TMATS Groups",
+    "domain": "aerospace",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"34\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"23\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">TMATS</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">TMATS_D</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "irig106:TMATS_C",
+    "aliases": [
+      "C",
+      "DATA_CONVERSION"
+    ],
+    "label": "C — Data Conversion Attributes Group",
+    "category": "TMATS Groups",
+    "domain": "aerospace",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"34\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"23\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">TMATS</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">TMATS_C</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "irig106:SYNC_16_EB90",
+    "aliases": [
+      "EB90",
+      "0xEB90",
+      "SYNC16"
+    ],
+    "label": "IRIG-106 16-bit Sync (EB90)",
+    "category": "IRIG-106 Sync Words",
+    "domain": "aerospace",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#2e1f47\" stroke=\"#a855f7\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"34\" height=\"12\" rx=\"3\" fill=\"#a855f7\" fill-opacity=\"0.22\"/><text x=\"23\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#a855f7\">SYNC</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">SYNC_16_EB90</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "irig106:SYNC_24_FAF320",
+    "aliases": [
+      "FAF320",
+      "0xFAF320",
+      "SYNC24"
+    ],
+    "label": "IRIG-106 24-bit Sync (FAF320)",
+    "category": "IRIG-106 Sync Words",
+    "domain": "aerospace",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#2e1f47\" stroke=\"#a855f7\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"34\" height=\"12\" rx=\"3\" fill=\"#a855f7\" fill-opacity=\"0.22\"/><text x=\"23\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#a855f7\">SYNC</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">SYNC_24_FAF3</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "irig106:SYNC_32_FE6B2840",
+    "aliases": [
+      "FE6B2840",
+      "0xFE6B2840",
+      "SYNC32"
+    ],
+    "label": "IRIG-106 32-bit Sync (FE6B2840)",
+    "category": "IRIG-106 Sync Words",
+    "domain": "aerospace",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#2e1f47\" stroke=\"#a855f7\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"34\" height=\"12\" rx=\"3\" fill=\"#a855f7\" fill-opacity=\"0.22\"/><text x=\"23\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#a855f7\">SYNC</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">SYNC_32_FE6B</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  }
+]

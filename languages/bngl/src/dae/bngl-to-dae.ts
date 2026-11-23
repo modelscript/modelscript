@@ -8,7 +8,16 @@
  * reaction fluxes directly into ModelScript's zero-GC DAEBuilder.
  */
 
-import { BinOp, Causality, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime";
+import {
+  BinOp,
+  Causality,
+  DAEBuilder,
+  EqKind,
+  JumpAffectMode,
+  JumpRateKind,
+  Variability,
+  VarType,
+} from "@modelscript/runtime";
 import { generateBnglNetwork } from "../solvers/bngl-solver.js";
 import type { BnglDocument } from "../types.js";
 
@@ -17,6 +26,8 @@ export interface BnglDaeOptions {
   modelName?: string | undefined;
   maxIterations?: number | undefined;
   maxSpecies?: number | undefined;
+  /** When true, also lowers concrete BNGL reactions into `dae.jumps` for WASM SSA / Hybrid simulation. */
+  emitJumps?: boolean | undefined;
 }
 
 function isDigit(ch: string): boolean {
@@ -294,7 +305,29 @@ export function lowerBnglToDae(doc: BnglDocument, options?: BnglDaeOptions): DAE
   for (const rxn of network.reactions) {
     const fluxVar = dae.addVariable(`v_${rxn.id}`, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
     rxnFluxMap.set(rxn.id, fluxVar);
-    dae.addEquation(EqKind.Simple, dae.addName(fluxVar), lowerFormulaExpr(rxn.rateLaw));
+    const fluxExpr = lowerFormulaExpr(rxn.rateLaw);
+    dae.addEquation(EqKind.Simple, dae.addName(fluxVar), fluxExpr);
+
+    if (options?.emitJumps) {
+      const netStoich = new Map<number, number>();
+      for (const rId of rxn.reactantIds) {
+        const sVar = speciesVarMap.get(rId);
+        if (sVar !== undefined) netStoich.set(sVar, (netStoich.get(sVar) ?? 0) - 1);
+      }
+      for (const pId of rxn.productIds) {
+        const sVar = speciesVarMap.get(pId);
+        if (sVar !== undefined) netStoich.set(sVar, (netStoich.get(sVar) ?? 0) + 1);
+      }
+      const affects: { targetVarId: number; deltaExprId: number; mode: JumpAffectMode }[] = [];
+      for (const [sVar, delta] of netStoich) {
+        if (delta !== 0) {
+          affects.push({ targetVarId: sVar, deltaExprId: dae.addRealLiteral(delta), mode: JumpAffectMode.Additive });
+        }
+      }
+      if (affects.length > 0) {
+        dae.jumps.addJump(fluxExpr, affects, JumpRateKind.MassAction);
+      }
+    }
   }
 
   // 6. Emit Concrete Species Differential Balance Equations

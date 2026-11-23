@@ -1,0 +1,1052 @@
+[
+  {
+    "name": "CVH_VOLUME",
+    "kind": "class",
+    "namePath": "melcor.CVH.CVH_VOLUME",
+    "exports": [
+      "volume",
+      "p0",
+      "t0",
+      "rGas",
+      "cv"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "CVH Control Volume",
+      "category": "CVH Control Volume",
+      "domain": "nuclear-severe-accident",
+      "description": "Two-phase / non-condensable compressible control volume with mass and internal energy conservation.",
+      "provenance": "Sandia MELCOR 2.2 Reference Manual (SAND2015-6691), CVH Package",
+      "aliases": [
+        "CVH",
+        "CV_ID",
+        "CONTROL_VOLUME"
+      ],
+      "parameters": [
+        {
+          "key": "volume",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "m^3",
+          "description": "Total hydrodynamic volume"
+        },
+        {
+          "key": "p0",
+          "type": "real",
+          "defaultValue": 15500000,
+          "unit": "Pa",
+          "description": "Initial pressure"
+        },
+        {
+          "key": "t0",
+          "type": "real",
+          "defaultValue": 580,
+          "unit": "K",
+          "description": "Initial temperature"
+        },
+        {
+          "key": "rGas",
+          "type": "real",
+          "defaultValue": 461.52,
+          "unit": "J/(kg*K)",
+          "description": "Effective gas constant"
+        },
+        {
+          "key": "cv",
+          "type": "real",
+          "defaultValue": 1500,
+          "unit": "J/(kg*K)",
+          "description": "Isochoric specific heat"
+        }
+      ],
+      "wasmKernel": "melModelEvalDerivatives",
+      "archetypeId": 1,
+      "melcorPackage": "CVH"
+    }
+  },
+  {
+    "name": "CVH_TMDP",
+    "kind": "class",
+    "namePath": "melcor.CVH.CVH_TMDP",
+    "exports": [
+      "pBnd",
+      "tBnd"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "CVH Time-Independent Volume",
+      "category": "CVH Control Volume",
+      "domain": "nuclear-severe-accident",
+      "description": "Constant-state boundary control volume (containment / environment sink).",
+      "provenance": "Sandia MELCOR 2.2 Reference Manual, CVH Package",
+      "aliases": [
+        "TIME_INDEPENDENT_CV"
+      ],
+      "parameters": [
+        {
+          "key": "pBnd",
+          "type": "real",
+          "defaultValue": 101325,
+          "unit": "Pa",
+          "description": "Boundary pressure"
+        },
+        {
+          "key": "tBnd",
+          "type": "real",
+          "defaultValue": 300,
+          "unit": "K",
+          "description": "Boundary temperature"
+        }
+      ],
+      "wasmKernel": "melModelEvalDerivatives",
+      "archetypeId": 2,
+      "melcorPackage": "CVH"
+    }
+  },
+  {
+    "name": "FL_PATH",
+    "kind": "class",
+    "namePath": "melcor.FL.FL_PATH",
+    "exports": [
+      "area",
+      "length",
+      "kFwd",
+      "kRev",
+      "cd",
+      "openFrac"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "FL Hydrodynamic Flow Path",
+      "category": "FL Flow Path",
+      "domain": "nuclear-severe-accident",
+      "description": "Inter-volume momentum flow path with form loss K and critical/unchoked orifice limit.",
+      "provenance": "Sandia MELCOR 2.2 Reference Manual, FL Package",
+      "aliases": [
+        "FL",
+        "FL_ID",
+        "FLOW_PATH"
+      ],
+      "parameters": [
+        {
+          "key": "area",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "m^2",
+          "description": "Flow cross-sectional area"
+        },
+        {
+          "key": "length",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "m",
+          "description": "Inertial flow length"
+        },
+        {
+          "key": "kFwd",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "-",
+          "description": "Forward form loss coefficient"
+        },
+        {
+          "key": "kRev",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "-",
+          "description": "Reverse form loss coefficient"
+        },
+        {
+          "key": "cd",
+          "type": "real",
+          "defaultValue": 0.85,
+          "unit": "-",
+          "description": "Discharge coefficient"
+        },
+        {
+          "key": "openFrac",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Open area fraction"
+        }
+      ],
+      "wasmKernel": "melModelEvalDerivatives",
+      "archetypeId": 10,
+      "melcorPackage": "FL"
+    }
+  },
+  {
+    "name": "FL_VALVE",
+    "kind": "class",
+    "namePath": "melcor.FL.FL_VALVE",
+    "exports": [
+      "area",
+      "kFwd",
+      "pSet",
+      "pFull",
+      "cd"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "FL Relief Valve / Rupture Disk",
+      "category": "FL Flow Path",
+      "domain": "nuclear-severe-accident",
+      "description": "Pressure-actuated relief valve or containment rupture disk flow path.",
+      "provenance": "Sandia MELCOR 2.2 Reference Manual, FL Package",
+      "aliases": [
+        "FL_VLV",
+        "RUPTURE_DISK"
+      ],
+      "parameters": [
+        {
+          "key": "area",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "m^2",
+          "description": "Valve throat area"
+        },
+        {
+          "key": "kFwd",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "-",
+          "description": "Forward form loss coefficient"
+        },
+        {
+          "key": "pSet",
+          "type": "real",
+          "defaultValue": 16200000,
+          "unit": "Pa",
+          "description": "Opening setpoint pressure"
+        },
+        {
+          "key": "pFull",
+          "type": "real",
+          "defaultValue": 16700000,
+          "unit": "Pa",
+          "description": "Full-open pressure"
+        },
+        {
+          "key": "cd",
+          "type": "real",
+          "defaultValue": 0.85,
+          "unit": "-",
+          "description": "Discharge coefficient"
+        }
+      ],
+      "wasmKernel": "melModelEvalDerivatives",
+      "archetypeId": 11,
+      "melcorPackage": "FL"
+    }
+  },
+  {
+    "name": "HS_SLAB",
+    "kind": "class",
+    "namePath": "melcor.HS.HS_SLAB",
+    "exports": [
+      "mass",
+      "cp",
+      "area",
+      "htcLeft",
+      "htcRight",
+      "t0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "HS 1D Heat Structure",
+      "category": "HS Heat Structure",
+      "domain": "nuclear-severe-accident",
+      "description": "Lumped/1D heat-conducting structure exchanging convective heat with left and right CVH volumes.",
+      "provenance": "Sandia MELCOR 2.2 Reference Manual, HS Package",
+      "aliases": [
+        "HS",
+        "HS_ID",
+        "HEAT_STRUCTURE"
+      ],
+      "parameters": [
+        {
+          "key": "mass",
+          "type": "real",
+          "defaultValue": 5000,
+          "unit": "kg",
+          "description": "Structure mass"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "J/(kg*K)",
+          "description": "Specific heat capacity"
+        },
+        {
+          "key": "area",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "m^2",
+          "description": "Heat transfer surface area"
+        },
+        {
+          "key": "htcLeft",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "W/(m^2*K)",
+          "description": "Left boundary HTC"
+        },
+        {
+          "key": "htcRight",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "W/(m^2*K)",
+          "description": "Right boundary HTC"
+        },
+        {
+          "key": "t0",
+          "type": "real",
+          "defaultValue": 560,
+          "unit": "K",
+          "description": "Initial structure temperature"
+        }
+      ],
+      "wasmKernel": "melModelEvalDerivatives",
+      "archetypeId": 20,
+      "melcorPackage": "HS"
+    }
+  },
+  {
+    "name": "COR_CELL",
+    "kind": "class",
+    "namePath": "melcor.COR.COR_CELL",
+    "exports": [
+      "mass",
+      "cp",
+      "qDecay",
+      "t0",
+      "htcCool",
+      "areaCool"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "COR Core Thermal Cell",
+      "category": "COR Core & Oxidation",
+      "domain": "nuclear-severe-accident",
+      "description": "PWR/BWR core fuel + Zircaloy cladding cell with decay heat and exothermic oxidation coupling.",
+      "provenance": "Sandia MELCOR 2.2 Reference Manual, COR Package",
+      "aliases": [
+        "COR",
+        "COR_RP",
+        "COR_ZDF"
+      ],
+      "parameters": [
+        {
+          "key": "mass",
+          "type": "real",
+          "defaultValue": 80000,
+          "unit": "kg",
+          "description": "Total core cell mass"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 350,
+          "unit": "J/(kg*K)",
+          "description": "Effective core specific heat"
+        },
+        {
+          "key": "qDecay",
+          "type": "real",
+          "defaultValue": 30000000,
+          "unit": "W",
+          "description": "Decay heat thermal power"
+        },
+        {
+          "key": "t0",
+          "type": "real",
+          "defaultValue": 600,
+          "unit": "K",
+          "description": "Initial core temperature"
+        },
+        {
+          "key": "htcCool",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "W/(m^2*K)",
+          "description": "Coolant heat transfer coefficient"
+        },
+        {
+          "key": "areaCool",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "m^2",
+          "description": "Cladding surface area"
+        }
+      ],
+      "wasmKernel": "melModelEvalDerivatives",
+      "archetypeId": 30,
+      "melcorPackage": "COR"
+    }
+  },
+  {
+    "name": "COR_OX_UH",
+    "kind": "class",
+    "namePath": "melcor.COR.COR_OX_UH",
+    "exports": [
+      "aLow",
+      "eLow",
+      "aHigh",
+      "eHigh",
+      "cladArea",
+      "deltaH"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "COR Urbanic-Heidrick Zr Oxidation",
+      "category": "COR Core & Oxidation",
+      "domain": "nuclear-severe-accident",
+      "description": "Parabolic Zircaloy-4/steam oxidation kinetics (Urbanic-Heidrick 1978) with H2 and heat generation.",
+      "provenance": "Urbanic & Heidrick (1978), J. Nucl. Mater. 75, 251-261; MELCOR COR Package",
+      "aliases": [
+        "URBANIC_HEIDRICK",
+        "ZR_OXIDATION"
+      ],
+      "parameters": [
+        {
+          "key": "aLow",
+          "type": "real",
+          "defaultValue": 29.6,
+          "unit": "kg^2/(m^4*s)",
+          "description": "Low-T (<1853 K) parabolic pre-exponential"
+        },
+        {
+          "key": "eLow",
+          "type": "real",
+          "defaultValue": 16820,
+          "unit": "K",
+          "description": "Low-T activation temperature Ea/R"
+        },
+        {
+          "key": "aHigh",
+          "type": "real",
+          "defaultValue": 87.9,
+          "unit": "kg^2/(m^4*s)",
+          "description": "High-T (>=1853 K) parabolic pre-exponential"
+        },
+        {
+          "key": "eHigh",
+          "type": "real",
+          "defaultValue": 16610,
+          "unit": "K",
+          "description": "High-T activation temperature Ea/R"
+        },
+        {
+          "key": "cladArea",
+          "type": "real",
+          "defaultValue": 4500,
+          "unit": "m^2",
+          "description": "Active Zircaloy cladding surface area"
+        },
+        {
+          "key": "deltaH",
+          "type": "real",
+          "defaultValue": 6450000,
+          "unit": "J/kg",
+          "description": "Exothermic heat of Zr oxidation"
+        }
+      ],
+      "wasmKernel": "melModelEvalDerivatives",
+      "archetypeId": 31,
+      "melcorPackage": "COR"
+    }
+  },
+  {
+    "name": "COR_DECAY_ANS",
+    "kind": "class",
+    "namePath": "melcor.COR.COR_DECAY_ANS",
+    "exports": [
+      "pRated",
+      "tOp",
+      "mult"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "COR ANS-5.1 Decay Heat",
+      "category": "COR Core & Oxidation",
+      "domain": "nuclear-severe-accident",
+      "description": "ANSI/ANS-5.1-1979 fission product decay heat power curve after reactor SCRAM.",
+      "provenance": "ANSI/ANS-5.1-1979; MELCOR DCH Package",
+      "aliases": [
+        "DCH",
+        "ANS79_DECAY"
+      ],
+      "parameters": [
+        {
+          "key": "pRated",
+          "type": "real",
+          "defaultValue": 3000000000,
+          "unit": "W",
+          "description": "Pre-scram rated thermal power"
+        },
+        {
+          "key": "tOp",
+          "type": "real",
+          "defaultValue": 31536000,
+          "unit": "s",
+          "description": "Prior full-power irradiation duration"
+        },
+        {
+          "key": "mult",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Decay heat multiplier"
+        }
+      ],
+      "wasmKernel": "melModelEvalDerivatives",
+      "archetypeId": 32,
+      "melcorPackage": "COR"
+    }
+  },
+  {
+    "name": "RN1_AEROSOL",
+    "kind": "class",
+    "namePath": "melcor.RN1.RN1_AEROSOL",
+    "exports": [
+      "mInit",
+      "kRelease",
+      "kSettle"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "RN1 Fission Product Aerosol",
+      "category": "RN1 Radionuclide",
+      "domain": "nuclear-severe-accident",
+      "description": "CORSOR-M Arrhenius fission-product release and first-order containment aerosol gravitational settling.",
+      "provenance": "Sandia MELCOR 2.2 Reference Manual, RN1 Package",
+      "aliases": [
+        "RN1",
+        "RN1_CLS",
+        "CORSOR"
+      ],
+      "parameters": [
+        {
+          "key": "mInit",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "kg",
+          "description": "Initial radionuclide class inventory"
+        },
+        {
+          "key": "kRelease",
+          "type": "real",
+          "defaultValue": 0.0001,
+          "unit": "1/s",
+          "description": "Release rate constant"
+        },
+        {
+          "key": "kSettle",
+          "type": "real",
+          "defaultValue": 0.00005,
+          "unit": "1/s",
+          "description": "Gravitational settling rate constant"
+        }
+      ],
+      "wasmKernel": "melModelEvalDerivatives",
+      "archetypeId": 40,
+      "melcorPackage": "RN1"
+    }
+  },
+  {
+    "name": "CF_FUNC",
+    "kind": "class",
+    "namePath": "melcor.CF.CF_FUNC",
+    "exports": [
+      "scale",
+      "add",
+      "w1",
+      "w2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "CF Control Function",
+      "category": "CF/TF Control & Table",
+      "domain": "nuclear-severe-accident",
+      "description": "Linear combination / scaling control function y = scale * (a*x1 + b*x2) + add.",
+      "provenance": "Sandia MELCOR 2.2 Reference Manual, CF Package",
+      "aliases": [
+        "CF",
+        "CF_ID",
+        "CONTROL_FUNCTION"
+      ],
+      "parameters": [
+        {
+          "key": "scale",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Output scale factor"
+        },
+        {
+          "key": "add",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "-",
+          "description": "Additive offset"
+        },
+        {
+          "key": "w1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Weight for argument 1"
+        },
+        {
+          "key": "w2",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "-",
+          "description": "Weight for argument 2"
+        }
+      ],
+      "wasmKernel": "melModelEvalDerivatives",
+      "archetypeId": 50,
+      "melcorPackage": "CF"
+    }
+  },
+  {
+    "name": "TF_TABLE",
+    "kind": "class",
+    "namePath": "melcor.TF.TF_TABLE",
+    "exports": [
+      "scale",
+      "add",
+      "x0",
+      "y0",
+      "x1",
+      "y1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TF Tabular Function",
+      "category": "CF/TF Control & Table",
+      "domain": "nuclear-severe-accident",
+      "description": "Piecewise-linear tabular function y(x) = scale * interp(x) + add.",
+      "provenance": "Sandia MELCOR 2.2 Reference Manual, TF Package",
+      "aliases": [
+        "TF",
+        "TF_ID",
+        "TABULAR_FUNCTION"
+      ],
+      "parameters": [
+        {
+          "key": "scale",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Output scale factor"
+        },
+        {
+          "key": "add",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "-",
+          "description": "Additive offset"
+        },
+        {
+          "key": "x0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "-",
+          "description": "Table point 0 abscissa"
+        },
+        {
+          "key": "y0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "-",
+          "description": "Table point 0 ordinate"
+        },
+        {
+          "key": "x1",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "-",
+          "description": "Table point 1 abscissa"
+        },
+        {
+          "key": "y1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Table point 1 ordinate"
+        }
+      ],
+      "wasmKernel": "melModelEvalDerivatives",
+      "archetypeId": 51,
+      "melcorPackage": "TF"
+    }
+  },
+  {
+    "name": "MP_UO2",
+    "kind": "class",
+    "namePath": "melcor.MP.MP_UO2",
+    "exports": [
+      "rho",
+      "cp",
+      "k",
+      "tMelt",
+      "hFusion"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "MP UO2 Nuclear Fuel",
+      "category": "MP Material Property",
+      "domain": "nuclear-severe-accident",
+      "description": "PWR/BWR sintered UO2 fuel thermophysical properties (MATPRO / MELCOR MP default).",
+      "provenance": "NUREG/CR-6150 (MATPRO) & Sandia MELCOR MP Package",
+      "aliases": [
+        "UO2",
+        "URANIUM_DIOXIDE"
+      ],
+      "parameters": [
+        {
+          "key": "rho",
+          "type": "real",
+          "defaultValue": 10960,
+          "unit": "kg/m^3",
+          "description": "Theoretical density at 300 K"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 300,
+          "unit": "J/(kg*K)",
+          "description": "Nominal specific heat"
+        },
+        {
+          "key": "k",
+          "type": "real",
+          "defaultValue": 3.6,
+          "unit": "W/(m*K)",
+          "description": "Thermal conductivity at 1000 K"
+        },
+        {
+          "key": "tMelt",
+          "type": "real",
+          "defaultValue": 3113,
+          "unit": "K",
+          "description": "Melting temperature"
+        },
+        {
+          "key": "hFusion",
+          "type": "real",
+          "defaultValue": 274000,
+          "unit": "J/kg",
+          "description": "Latent heat of fusion"
+        }
+      ],
+      "wasmKernel": "melModelEvalDerivatives",
+      "archetypeId": 60,
+      "melcorPackage": "MP"
+    }
+  },
+  {
+    "name": "MP_ZIRCALOY4",
+    "kind": "class",
+    "namePath": "melcor.MP.MP_ZIRCALOY4",
+    "exports": [
+      "rho",
+      "cp",
+      "k",
+      "tMelt",
+      "hFusion"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "MP Zircaloy-4 Cladding",
+      "category": "MP Material Property",
+      "domain": "nuclear-severe-accident",
+      "description": "PWR/BWR Zircaloy-4 fuel cladding thermophysical properties.",
+      "provenance": "NUREG/CR-6150 (MATPRO) & Sandia MELCOR MP Package",
+      "aliases": [
+        "ZIRCALOY4",
+        "ZIRCALOY-4",
+        "ZR4",
+        "ZR"
+      ],
+      "parameters": [
+        {
+          "key": "rho",
+          "type": "real",
+          "defaultValue": 6560,
+          "unit": "kg/m^3",
+          "description": "Density at 300 K"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 330,
+          "unit": "J/(kg*K)",
+          "description": "Specific heat capacity"
+        },
+        {
+          "key": "k",
+          "type": "real",
+          "defaultValue": 18,
+          "unit": "W/(m*K)",
+          "description": "Thermal conductivity at 800 K"
+        },
+        {
+          "key": "tMelt",
+          "type": "real",
+          "defaultValue": 2098,
+          "unit": "K",
+          "description": "Melting temperature"
+        },
+        {
+          "key": "hFusion",
+          "type": "real",
+          "defaultValue": 225000,
+          "unit": "J/kg",
+          "description": "Latent heat of fusion"
+        }
+      ],
+      "wasmKernel": "melModelEvalDerivatives",
+      "archetypeId": 61,
+      "melcorPackage": "MP"
+    }
+  },
+  {
+    "name": "MP_SS304",
+    "kind": "class",
+    "namePath": "melcor.MP.MP_SS304",
+    "exports": [
+      "rho",
+      "cp",
+      "k",
+      "tMelt",
+      "hFusion"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "MP Stainless Steel 304",
+      "category": "MP Material Property",
+      "domain": "nuclear-severe-accident",
+      "description": "Reactor vessel & core-support AISI 304 stainless steel properties.",
+      "provenance": "Sandia MELCOR MP Package Default Material Library",
+      "aliases": [
+        "SS304",
+        "STAINLESS_STEEL",
+        "SS"
+      ],
+      "parameters": [
+        {
+          "key": "rho",
+          "type": "real",
+          "defaultValue": 7930,
+          "unit": "kg/m^3",
+          "description": "Density"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 530,
+          "unit": "J/(kg*K)",
+          "description": "Specific heat capacity"
+        },
+        {
+          "key": "k",
+          "type": "real",
+          "defaultValue": 21.5,
+          "unit": "W/(m*K)",
+          "description": "Thermal conductivity at 800 K"
+        },
+        {
+          "key": "tMelt",
+          "type": "real",
+          "defaultValue": 1700,
+          "unit": "K",
+          "description": "Melting temperature"
+        },
+        {
+          "key": "hFusion",
+          "type": "real",
+          "defaultValue": 268000,
+          "unit": "J/kg",
+          "description": "Latent heat of fusion"
+        }
+      ],
+      "wasmKernel": "melModelEvalDerivatives",
+      "archetypeId": 62,
+      "melcorPackage": "MP"
+    }
+  },
+  {
+    "name": "NCG_H2",
+    "kind": "class",
+    "namePath": "melcor.NCG.NCG_H2",
+    "exports": [
+      "molarMass",
+      "rSpec",
+      "cp",
+      "gamma"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NCG Hydrogen (H2)",
+      "category": "NCG Gas Property",
+      "domain": "nuclear-severe-accident",
+      "description": "Hydrogen gas properties for cladding oxidation & containment flammability analysis.",
+      "provenance": "Sandia MELCOR NCG Package",
+      "aliases": [
+        "H2",
+        "HYDROGEN"
+      ],
+      "parameters": [
+        {
+          "key": "molarMass",
+          "type": "real",
+          "defaultValue": 2.01588,
+          "unit": "g/mol",
+          "description": "Molecular weight"
+        },
+        {
+          "key": "rSpec",
+          "type": "real",
+          "defaultValue": 4124.2,
+          "unit": "J/(kg*K)",
+          "description": "Specific gas constant"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 14307,
+          "unit": "J/(kg*K)",
+          "description": "Isobaric specific heat at 300 K"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.405,
+          "unit": "-",
+          "description": "Heat capacity ratio cp/cv"
+        }
+      ],
+      "wasmKernel": "melModelEvalDerivatives",
+      "archetypeId": 70,
+      "melcorPackage": "NCG"
+    }
+  },
+  {
+    "name": "NCG_N2",
+    "kind": "class",
+    "namePath": "melcor.NCG.NCG_N2",
+    "exports": [
+      "molarMass",
+      "rSpec",
+      "cp",
+      "gamma"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NCG Nitrogen (N2)",
+      "category": "NCG Gas Property",
+      "domain": "nuclear-severe-accident",
+      "description": "Nitrogen non-condensable gas properties for BWR inerted containment & PWR accumulators.",
+      "provenance": "Sandia MELCOR NCG Package",
+      "aliases": [
+        "N2",
+        "NITROGEN"
+      ],
+      "parameters": [
+        {
+          "key": "molarMass",
+          "type": "real",
+          "defaultValue": 28.0134,
+          "unit": "g/mol",
+          "description": "Molecular weight"
+        },
+        {
+          "key": "rSpec",
+          "type": "real",
+          "defaultValue": 296.8,
+          "unit": "J/(kg*K)",
+          "description": "Specific gas constant"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 1040,
+          "unit": "J/(kg*K)",
+          "description": "Isobaric specific heat at 300 K"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.4,
+          "unit": "-",
+          "description": "Heat capacity ratio cp/cv"
+        }
+      ],
+      "wasmKernel": "melModelEvalDerivatives",
+      "archetypeId": 71,
+      "melcorPackage": "NCG"
+    }
+  },
+  {
+    "name": "NCG_H2O",
+    "kind": "class",
+    "namePath": "melcor.NCG.NCG_H2O",
+    "exports": [
+      "molarMass",
+      "rSpec",
+      "cp",
+      "gamma"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NCG Steam / Water (H2O)",
+      "category": "NCG Gas Property",
+      "domain": "nuclear-severe-accident",
+      "description": "Water vapor / coolant properties for primary system & containment thermal-hydraulics.",
+      "provenance": "IAPWS-IF97 & Sandia MELCOR H2O Package",
+      "aliases": [
+        "H2O",
+        "STEAM",
+        "WATER"
+      ],
+      "parameters": [
+        {
+          "key": "molarMass",
+          "type": "real",
+          "defaultValue": 18.01528,
+          "unit": "g/mol",
+          "description": "Molecular weight"
+        },
+        {
+          "key": "rSpec",
+          "type": "real",
+          "defaultValue": 461.52,
+          "unit": "J/(kg*K)",
+          "description": "Specific gas constant"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 2080,
+          "unit": "J/(kg*K)",
+          "description": "Superheated steam specific heat"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.33,
+          "unit": "-",
+          "description": "Steam heat capacity ratio"
+        }
+      ],
+      "wasmKernel": "melModelEvalDerivatives",
+      "archetypeId": 72,
+      "melcorPackage": "NCG"
+    }
+  }
+]

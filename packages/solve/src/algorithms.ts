@@ -94,6 +94,104 @@ export interface EnsembleAlgorithm extends AbstractAlgorithm<"ensemble"> {
   readonly subAlgorithm?: AbstractAlgorithm | undefined;
 }
 
+export interface SpectralAlgorithm extends AbstractAlgorithm<"spectral"> {
+  readonly name: "FFT" | "WelchPSD" | "STFT" | "DWT" | "Prony" | "MatrixPencil";
+}
+
+export interface SysIdAlgorithm extends AbstractAlgorithm<"sysid"> {
+  readonly name: "VectorFitting" | "N4SID" | "DMD" | "KoopmanEDMD";
+  readonly enforcePassivity?: boolean | undefined;
+}
+
+export interface MorAlgorithm extends AbstractAlgorithm<"mor"> {
+  readonly name: "BalancedTruncation" | "IRKA" | "DEIM";
+}
+
+export interface IdentifiabilityAlgorithm extends AbstractAlgorithm<"identifiability"> {
+  readonly name: "ObservabilityRank" | "FisherInformation";
+}
+
+export interface ProbabilisticInferenceAlgorithm extends AbstractAlgorithm<"probabilistic-inference"> {
+  readonly name: "NUTS" | "HMC" | "ParticleFilter" | "ADVI";
+}
+
+export interface CausalAlgorithm extends AbstractAlgorithm<"causal"> {
+  readonly name: "DoCalculus" | "JunctionTree" | "PC_Discovery";
+}
+
+export interface ReliabilityAlgorithm extends AbstractAlgorithm<"reliability"> {
+  readonly name: "BDDFaultTree" | "CTMCUniformization";
+}
+
+export interface MotionPlanningAlgorithm extends AbstractAlgorithm<"motion-planning"> {
+  readonly name: "RRTStar" | "BITStar" | "HybridAStar";
+  readonly maxIterations?: number | undefined;
+}
+
+export interface TrajectoryOptAlgorithm extends AbstractAlgorithm<"trajectory-opt"> {
+  readonly name: "DirectCollocation" | "iLQR" | "SCP";
+}
+
+export interface MultibodyAlgorithm extends AbstractAlgorithm<"multibody"> {
+  readonly name: "FeatherstoneABA" | "FeatherstoneRNEA" | "LCPContact";
+}
+
+export interface SynthesisAlgorithm extends AbstractAlgorithm<"synthesis"> {
+  readonly name: "CBFCLFQP" | "GR1" | "CEGIS";
+}
+
+export interface GameEquilibriumAlgorithm extends AbstractAlgorithm<"game-equilibrium"> {
+  readonly name: "NashLemkeHowson" | "StackelbergBilevel";
+}
+
+export interface SchedulingAlgorithm extends AbstractAlgorithm<"scheduling"> {
+  readonly name: "CPSAT" | "RCPSP" | "STN";
+}
+
+export interface GraphFlowAlgorithm extends AbstractAlgorithm<"graph-flow"> {
+  readonly name: "DinicMaxFlow" | "MinCostFlow";
+}
+
+export interface GraphPartitionAlgorithm extends AbstractAlgorithm<"graph-partition"> {
+  readonly name: "MultilevelKWay";
+}
+
+export interface DesAlgorithm extends AbstractAlgorithm<"des"> {
+  readonly name: "EventCalendar" | "JacksonQueueing";
+}
+
+export interface TopologyOptAlgorithm extends AbstractAlgorithm<"topology-opt"> {
+  readonly name: "SIMP" | "LevelSet";
+}
+
+export interface EdaLayoutAlgorithm extends AbstractAlgorithm<"eda-layout"> {
+  readonly name: "ForceDirectedPlace" | "NegotiatedRoute" | "VF2LVS";
+}
+
+export interface GeometryAlgorithm extends AbstractAlgorithm<"geometry"> {
+  readonly name: "BowyerWatson" | "MarchingCubes" | "NURBS";
+}
+
+export interface StochasticKineticsAlgorithm extends AbstractAlgorithm<"stochastic-kinetics"> {
+  readonly name: "GillespieDirect" | "TauLeaping";
+}
+
+export interface FbaAlgorithm extends AbstractAlgorithm<"fba"> {
+  readonly name: "SimplexFBA" | "FVA";
+}
+
+export interface ChemicalEqAlgorithm extends AbstractAlgorithm<"chemical-eq"> {
+  readonly name: "GibbsMinimization";
+}
+
+export interface ElectromagneticsAlgorithm extends AbstractAlgorithm<"electromagnetics"> {
+  readonly name: "FDTD3D" | "RayOptics";
+}
+
+export interface DoseTransportAlgorithm extends AbstractAlgorithm<"dose-transport"> {
+  readonly name: "PencilBeam" | "CollapsedCone";
+}
+
 export type AnyAlgorithm =
   | ExplicitRKAlgorithm
   | StiffODEAlgorithm
@@ -104,6 +202,30 @@ export type AnyAlgorithm =
   | DDEAlgorithm
   | BVPAlgorithm
   | EnsembleAlgorithm
+  | SpectralAlgorithm
+  | SysIdAlgorithm
+  | MorAlgorithm
+  | IdentifiabilityAlgorithm
+  | ProbabilisticInferenceAlgorithm
+  | CausalAlgorithm
+  | ReliabilityAlgorithm
+  | MotionPlanningAlgorithm
+  | TrajectoryOptAlgorithm
+  | MultibodyAlgorithm
+  | SynthesisAlgorithm
+  | GameEquilibriumAlgorithm
+  | SchedulingAlgorithm
+  | GraphFlowAlgorithm
+  | GraphPartitionAlgorithm
+  | DesAlgorithm
+  | TopologyOptAlgorithm
+  | EdaLayoutAlgorithm
+  | GeometryAlgorithm
+  | StochasticKineticsAlgorithm
+  | FbaAlgorithm
+  | ChemicalEqAlgorithm
+  | ElectromagneticsAlgorithm
+  | DoseTransportAlgorithm
   | AbstractAlgorithm;
 
 // Ergonomic algorithm factory constructors (mirroring DifferentialEquations.jl)

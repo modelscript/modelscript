@@ -11,6 +11,7 @@ export * from "../src/wasm/cse";
 export * from "../src/wasm/dae/types";
 export * from "../src/wasm/dae/accessors";
 export * from "../src/wasm/dae/builder";
+export * from "../src/wasm/dae/problem_kernels";
 export * from "../src/wasm/simulation/delay";
 export * from "../src/wasm/simulation/doe";
 export * from "../src/wasm/simulation/events";
@@ -103,6 +104,7 @@ export * from "../src/wasm/cad/wasm_bsp_bvh";
 export * from "../src/wasm/diagram/wasm_layout";
 export * from "../src/wasm/solvers/wasm_advanced_solvers";
 export * from "../src/wasm/polyglot/dbsp_zset";
+export * from "../src/wasm/polyglot/tgg_pic";
 export * from "./flattener";
 
 
@@ -967,4 +969,6 @@ export function alloc(size: i32): usize {
 export function free(ptr: usize): void {
   heap.free(ptr);
 }
+
+export { wasmFftRadix2, wasmSimpSensitivityFilter } from "../src/wasm/dsp/wasm_fft";
 

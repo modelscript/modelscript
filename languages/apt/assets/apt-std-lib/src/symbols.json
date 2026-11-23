@@ -1,0 +1,642 @@
+[
+  {
+    "name": "POINT",
+    "kind": "Class",
+    "namePath": "APT.POINT",
+    "exports": [
+      "X",
+      "Y",
+      "Z"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "APT Point Definition",
+      "category": "Analytic Geometry",
+      "domain": "manufacturing",
+      "description": "Defines a 2D/3D canonical point by Cartesian coordinates, line/circle intersection, or circle center.",
+      "provenance": "MIT APT III / ISO 4342 Section 6.1",
+      "aliases": [
+        "PT"
+      ],
+      "parameters": [
+        {
+          "key": "X",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "X coordinate"
+        },
+        {
+          "key": "Y",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Y coordinate"
+        },
+        {
+          "key": "Z",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Z coordinate"
+        }
+      ],
+      "wasmKernel": "aptEvalKernel",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "LINE",
+    "kind": "Class",
+    "namePath": "APT.LINE",
+    "exports": [
+      "X1",
+      "Y1",
+      "X2",
+      "Y2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "APT Line Definition",
+      "category": "Analytic Geometry",
+      "domain": "manufacturing",
+      "description": "Defines an infinite canonical 2D line through two points, at an angle, parallel, perpendicular, or tangent to a circle.",
+      "provenance": "MIT APT III / ISO 4342 Section 6.2",
+      "aliases": [
+        "LN"
+      ],
+      "parameters": [
+        {
+          "key": "X1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Start point X"
+        },
+        {
+          "key": "Y1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Start point Y"
+        },
+        {
+          "key": "X2",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "mm",
+          "description": "End point X"
+        },
+        {
+          "key": "Y2",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "End point Y"
+        }
+      ],
+      "wasmKernel": "aptEvalKernel",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "CIRCLE",
+    "kind": "Class",
+    "namePath": "APT.CIRCLE",
+    "exports": [
+      "CX",
+      "CY",
+      "CZ",
+      "RADIUS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "APT Circle Definition",
+      "category": "Analytic Geometry",
+      "domain": "manufacturing",
+      "description": "Defines a canonical circle by center and radius, tangency to a line, or fillet tangency between two lines.",
+      "provenance": "MIT APT III / ISO 4342 Section 6.3",
+      "aliases": [
+        "CIR"
+      ],
+      "parameters": [
+        {
+          "key": "CX",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Center X coordinate"
+        },
+        {
+          "key": "CY",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Center Y coordinate"
+        },
+        {
+          "key": "CZ",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Center Z coordinate"
+        },
+        {
+          "key": "RADIUS",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "mm",
+          "description": "Circle radius"
+        }
+      ],
+      "wasmKernel": "aptEvalKernel",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "PLANE",
+    "kind": "Class",
+    "namePath": "APT.PLANE",
+    "exports": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "APT Plane Definition",
+      "category": "Analytic Geometry",
+      "domain": "manufacturing",
+      "description": "Defines a 3D canonical plane (a*x + b*y + c*z = d) by coefficients or three non-collinear points.",
+      "provenance": "MIT APT III / ISO 4342 Section 6.4",
+      "aliases": [
+        "PL"
+      ],
+      "parameters": [
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Normal X component"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Normal Y component"
+        },
+        {
+          "key": "C",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Normal Z component"
+        },
+        {
+          "key": "D",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Signed plane offset from origin"
+        }
+      ],
+      "wasmKernel": "aptEvalKernel",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "PATERN",
+    "kind": "Class",
+    "namePath": "APT.PATERN",
+    "exports": [
+      "COUNT",
+      "SPACING"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "APT Point Pattern Definition",
+      "category": "Analytic Geometry",
+      "domain": "manufacturing",
+      "description": "Defines a linear or circular bolt-hole pattern of points for drilling or point-to-point cycles.",
+      "provenance": "ISO 4342 Section 6.10",
+      "aliases": [
+        "PATTERN"
+      ],
+      "parameters": [
+        {
+          "key": "COUNT",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "1",
+          "description": "Number of points in pattern"
+        },
+        {
+          "key": "SPACING",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "mm",
+          "description": "Linear spacing or angular step"
+        }
+      ],
+      "wasmKernel": "aptEvalKernel",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "CUTTER",
+    "kind": "Function",
+    "namePath": "APT.CUTTER",
+    "exports": [
+      "DIAMETER",
+      "CORNER_RADIUS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "APT Cutter Geometry",
+      "category": "Machining Setup",
+      "domain": "manufacturing",
+      "description": "Defines the cylindrical or toroidal milling cutter diameter and optional corner radius.",
+      "provenance": "MIT APT III / ISO 4342 Section 7.1",
+      "aliases": [
+        "TOOL"
+      ],
+      "parameters": [
+        {
+          "key": "DIAMETER",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "in",
+          "description": "Cutter diameter"
+        },
+        {
+          "key": "CORNER_RADIUS",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "in",
+          "description": "Corner fillet radius"
+        }
+      ],
+      "wasmKernel": "aptEvalKernel",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "SPINDL",
+    "kind": "Function",
+    "namePath": "APT.SPINDL",
+    "exports": [
+      "RPM",
+      "DIR"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "APT Spindle Control",
+      "category": "Machining Setup",
+      "domain": "manufacturing",
+      "description": "Sets spindle rotational speed in RPM and rotation direction (CLW / CCLW / OFF).",
+      "provenance": "ISO 4342 Section 9.2",
+      "aliases": [
+        "SPINDLE"
+      ],
+      "parameters": [
+        {
+          "key": "RPM",
+          "type": "real",
+          "defaultValue": 1500,
+          "unit": "rpm",
+          "description": "Spindle rotational speed"
+        },
+        {
+          "key": "DIR",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Rotation direction (+1 CLW, -1 CCLW, 0 OFF)"
+        }
+      ],
+      "wasmKernel": "aptEvalKernel",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "FEDRAT",
+    "kind": "Function",
+    "namePath": "APT.FEDRAT",
+    "exports": [
+      "FEED"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "APT Feed Rate Control",
+      "category": "Machining Setup",
+      "domain": "manufacturing",
+      "description": "Sets linear cutting feed rate in program units per minute (IPM or mm/min).",
+      "provenance": "ISO 4342 Section 9.1",
+      "aliases": [
+        "FEED"
+      ],
+      "parameters": [
+        {
+          "key": "FEED",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "in/min",
+          "description": "Programmed cutting feed rate"
+        }
+      ],
+      "wasmKernel": "aptEvalKernel",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "FROM",
+    "kind": "Function",
+    "namePath": "APT.FROM",
+    "exports": [
+      "X",
+      "Y",
+      "Z"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "APT Initial Tool Position",
+      "category": "Continuous Motion",
+      "domain": "manufacturing",
+      "description": "Establishes the initial reference position of the cutter center in machine coordinates.",
+      "provenance": "MIT APT III / ISO 4342 Section 7.2",
+      "aliases": [
+        "START"
+      ],
+      "parameters": [
+        {
+          "key": "X",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Initial X position"
+        },
+        {
+          "key": "Y",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Initial Y position"
+        },
+        {
+          "key": "Z",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Initial Z position"
+        }
+      ],
+      "wasmKernel": "aptEvalKernel",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "GOTO",
+    "kind": "Function",
+    "namePath": "APT.GOTO",
+    "exports": [
+      "X",
+      "Y",
+      "Z"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "APT Point-to-Point Move",
+      "category": "Continuous Motion",
+      "domain": "manufacturing",
+      "description": "Moves the cutter center directly in a straight line to a target point or pattern.",
+      "provenance": "MIT APT III / ISO 4342 Section 7.3",
+      "aliases": [
+        "PTP"
+      ],
+      "parameters": [
+        {
+          "key": "X",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Target X position"
+        },
+        {
+          "key": "Y",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Target Y position"
+        },
+        {
+          "key": "Z",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Target Z position"
+        }
+      ],
+      "wasmKernel": "aptEvalKernel",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "GODLTA",
+    "kind": "Function",
+    "namePath": "APT.GODLTA",
+    "exports": [
+      "DX",
+      "DY",
+      "DZ"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "APT Incremental Move",
+      "category": "Continuous Motion",
+      "domain": "manufacturing",
+      "description": "Moves the cutter center incrementally by (dX, dY, dZ) relative to the current position.",
+      "provenance": "MIT APT III / ISO 4342 Section 7.3",
+      "aliases": [
+        "DELTA"
+      ],
+      "parameters": [
+        {
+          "key": "DX",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Incremental dX"
+        },
+        {
+          "key": "DY",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Incremental dY"
+        },
+        {
+          "key": "DZ",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Incremental dZ"
+        }
+      ],
+      "wasmKernel": "aptEvalKernel",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "GO",
+    "kind": "Function",
+    "namePath": "APT.GO",
+    "exports": [
+      "OFFSET_SIGN"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "APT Continuous-Path Startup",
+      "category": "Continuous Motion",
+      "domain": "manufacturing",
+      "description": "Brings the cutter into contact (TO / ON / PAST) with drive, part, and optional check surfaces.",
+      "provenance": "MIT APT III / ISO 4342 Section 7.4",
+      "aliases": [
+        "STARTUP"
+      ],
+      "parameters": [
+        {
+          "key": "OFFSET_SIGN",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "1",
+          "description": "Surface relation (-1 TO, 0 ON, +1 PAST)"
+        }
+      ],
+      "wasmKernel": "aptEvalKernel",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "GOLFT",
+    "kind": "Function",
+    "namePath": "APT.GOLFT",
+    "exports": [
+      "TURN_SIGN"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "APT Turn Left Along Drive Surface",
+      "category": "Continuous Motion",
+      "domain": "manufacturing",
+      "description": "Turns left onto the specified drive surface and travels until the check surface condition is met.",
+      "provenance": "MIT APT III / ISO 4342 Section 7.5",
+      "aliases": [
+        "GOLEFT"
+      ],
+      "parameters": [
+        {
+          "key": "TURN_SIGN",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Left turn indicator (+1)"
+        }
+      ],
+      "wasmKernel": "aptEvalKernel",
+      "archetypeId": 24
+    }
+  },
+  {
+    "name": "GORGT",
+    "kind": "Function",
+    "namePath": "APT.GORGT",
+    "exports": [
+      "TURN_SIGN"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "APT Turn Right Along Drive Surface",
+      "category": "Continuous Motion",
+      "domain": "manufacturing",
+      "description": "Turns right onto the specified drive surface and travels until the check surface condition is met.",
+      "provenance": "MIT APT III / ISO 4342 Section 7.5",
+      "aliases": [
+        "GORIGHT"
+      ],
+      "parameters": [
+        {
+          "key": "TURN_SIGN",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "1",
+          "description": "Right turn indicator (-1)"
+        }
+      ],
+      "wasmKernel": "aptEvalKernel",
+      "archetypeId": 25
+    }
+  },
+  {
+    "name": "GOFWD",
+    "kind": "Function",
+    "namePath": "APT.GOFWD",
+    "exports": [
+      "TURN_SIGN"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "APT Continue Forward Along Drive Surface",
+      "category": "Continuous Motion",
+      "domain": "manufacturing",
+      "description": "Continues forward tangentially onto a new drive surface (e.g., tangent fillet arc or line).",
+      "provenance": "MIT APT III / ISO 4342 Section 7.5",
+      "aliases": [
+        "GOFORWARD"
+      ],
+      "parameters": [
+        {
+          "key": "TURN_SIGN",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Forward tangent indicator (0)"
+        }
+      ],
+      "wasmKernel": "aptEvalKernel",
+      "archetypeId": 26
+    }
+  },
+  {
+    "name": "GOBACK",
+    "kind": "Function",
+    "namePath": "APT.GOBACK",
+    "exports": [
+      "TURN_SIGN"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "APT Reverse Along Drive Surface",
+      "category": "Continuous Motion",
+      "domain": "manufacturing",
+      "description": "Reverses direction onto the specified drive surface until the check surface condition is met.",
+      "provenance": "MIT APT III / ISO 4342 Section 7.5",
+      "aliases": [
+        "GOREV"
+      ],
+      "parameters": [
+        {
+          "key": "TURN_SIGN",
+          "type": "real",
+          "defaultValue": -2,
+          "unit": "1",
+          "description": "Reverse indicator"
+        }
+      ],
+      "wasmKernel": "aptEvalKernel",
+      "archetypeId": 27
+    }
+  }
+]

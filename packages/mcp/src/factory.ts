@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { registerAdvancedAlgorithmTools } from "./advanced-algorithm-tools.js";
 import { registerAlmTools } from "./alm-tools.js";
+import { registerCanvasTools } from "./canvas-tools.js";
 import { registerMagicDrawTools } from "./magicdraw-tools.js";
 import { PolyglotMcpHost } from "./polyglot-server.js";
 import { registerResources } from "./resources.js";
@@ -29,8 +31,10 @@ export function createModelScriptMcpServer(ctx: ServerContext, options?: CreateM
 
   registerTools(server, ctx);
   registerAlmTools(server, ctx);
+  registerCanvasTools(server, ctx);
   registerMagicDrawTools(server, ctx);
   registerUqTools(server, ctx);
+  registerAdvancedAlgorithmTools(server, ctx);
   registerResources(server, ctx);
 
   return server;

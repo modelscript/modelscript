@@ -77,11 +77,11 @@ export class ArenaStringPool {
     this.stringLengths = createChunkedUint32Array(1024);
     this.stringCount = 1; // 0 reserved for null / empty
 
-    let mapPtr = atomicChunkAlloc(sizeof<UnmanagedMap64>());
+    let mapPtr = atomicChunkAlloc(offsetof<UnmanagedMap64>() as u32);
     this.stringMapPtr = mapPtr;
     this.getStringMap().init(1024);
 
-    let pMapPtr = atomicChunkAlloc(sizeof<UnmanagedMap64>());
+    let pMapPtr = atomicChunkAlloc(offsetof<UnmanagedMap64>() as u32);
     this.pathMapPtr = pMapPtr;
     this.getPathMap().init(1024);
 
@@ -818,7 +818,7 @@ export class ArenaStringPool {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function stringPool_create(): usize {
-  let ptr = atomicChunkAlloc(sizeof<ArenaStringPool>());
+  let ptr = atomicChunkAlloc(offsetof<ArenaStringPool>() as u32);
   let pool = changetype<ArenaStringPool>(ptr);
   pool.init();
   return ptr;

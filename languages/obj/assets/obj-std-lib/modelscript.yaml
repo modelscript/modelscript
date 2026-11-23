@@ -1,0 +1,11 @@
+name: "@modelscript/obj-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom Wavefront OBJ geometry primitives & engineering MTL materials standard library (13 schemas, cleanroom SVG icons, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: obj
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

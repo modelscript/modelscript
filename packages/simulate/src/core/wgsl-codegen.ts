@@ -1075,6 +1075,100 @@ export function generateWGSL(arena: DAEBuilder, gpuBuffers: GPUArenaBuffers, opt
   return lines.join("\n");
 }
 
+/**
+ * Generates a WebGPU WGSL compute shader for massively parallel Euler-Maruyama SDE ensembles
+ * directly from a `DAEBuilder` arena using `dae.stochastic.getDiffusions()` and Philox-style
+ * stateless PRNG + Box-Muller transform.
+ */
+export function generateWgslSdeEnsembleShader(
+  arena: DAEBuilder,
+  stateVarIds: readonly number[],
+  driftExprIds: readonly number[],
+  workgroupSize: number = 64,
+): string {
+  const nStates = stateVarIds.length;
+  const diffusions = arena.stochastic.getDiffusions();
+  const stateIdxMap = new Map<number, number>();
+  for (let i = 0; i < nStates; i++) stateIdxMap.set(stateVarIds[i]!, i);
+
+  const emitExpr = (exprId: number): string => {
+    if (exprId < 0 || exprId >= arena.getExprCount()) return "0.0";
+    const kind = arena.getExprKind(exprId);
+    if (kind === ExprKind.RealLiteral) return formatF32(arena.getExprRealValue(exprId));
+    if (kind === ExprKind.IntLiteral || kind === ExprKind.BoolLiteral) return formatF32(arena.getExprData1(exprId));
+    if (kind === ExprKind.Name) {
+      const raw = arena.getExprData1(exprId);
+      const vId = raw < arena.getVarCount() ? raw : resolveVarIdx(arena, raw);
+      const sIdx = stateIdxMap.get(vId);
+      if (sIdx !== undefined) return `y[${sIdx}u]`;
+      return vId >= 0 ? formatF32(arena.getVarStartValue(vId)) : "0.0";
+    }
+    if (kind === ExprKind.Negate) return `(-(${emitExpr(arena.getExprLeft(exprId))}))`;
+    if (kind === ExprKind.Unary) {
+      const op = arena.getExprData1(exprId);
+      const inner = emitExpr(arena.getExprLeft(exprId));
+      return op === UnaryOp.Negate ? `(-(${inner}))` : `select(1.0, 0.0, (${inner}) != 0.0)`;
+    }
+    if (kind === ExprKind.Binary) {
+      const op = arena.getExprData1(exprId);
+      const l = emitExpr(arena.getExprLeft(exprId));
+      const r = emitExpr(arena.getExprRight(exprId));
+      if (op === BinOp.Add || op === BinOp.ElemAdd) return `((${l}) + (${r}))`;
+      if (op === BinOp.Sub || op === BinOp.ElemSub) return `((${l}) - (${r}))`;
+      if (op === BinOp.Mul || op === BinOp.ElemMul) return `((${l}) * (${r}))`;
+      if (op === BinOp.Div || op === BinOp.ElemDiv) return `((${l}) / (${r}))`;
+      if (op === BinOp.Pow || op === BinOp.ElemPow) return `pow((${l}), (${r}))`;
+    }
+    return "0.0";
+  };
+
+  const lines: string[] = [
+    "// Auto-generated WebGPU Euler-Maruyama SDE Ensemble Shader (from DAEBuilder.stochastic)",
+    "struct SdeParams { dt: f32, sqrt_dt: f32, num_paths: u32, step_idx: u32, seed: u32 };",
+    "@group(0) @binding(0) var<uniform> params: SdeParams;",
+    "@group(0) @binding(1) var<storage, read_write> states: array<f32>;",
+    "",
+    "fn pcg_hash(input: u32) -> u32 {",
+    "  let state = input * 747796405u + 2891336453u;",
+    "  let word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;",
+    "  return (word >> 22u) ^ word;",
+    "}",
+    "fn rand_normal(seed_in: u32) -> f32 {",
+    "  let u1 = max(f32(pcg_hash(seed_in)) / 4294967295.0, 1e-7);",
+    "  let u2 = f32(pcg_hash(seed_in ^ 0x9e3779b9u)) / 4294967295.0;",
+    "  return sqrt(-2.0 * log(u1)) * cos(6.2831853 * u2);",
+    "}",
+    "",
+    `@compute @workgroup_size(${workgroupSize})`,
+    "fn sde_step(@builtin(global_invocation_id) gid: vec3<u32>) {",
+    "  let path_id = gid.x;",
+    "  if (path_id >= params.num_paths) { return; }",
+    `  let base = path_id * ${nStates}u;`,
+    `  var y: array<f32, ${Math.max(1, nStates)}>;`,
+    `  for (var i = 0u; i < ${nStates}u; i++) { y[i] = states[base + i]; }`,
+    `  var y_next: array<f32, ${Math.max(1, nStates)}>;`,
+  ];
+
+  for (let i = 0; i < nStates; i++) {
+    const fExpr = emitExpr(driftExprIds[i]!);
+    lines.push(`  y_next[${i}u] = y[${i}u] + (${fExpr}) * params.dt;`);
+  }
+  for (let d = 0; d < diffusions.length; d++) {
+    const diff = diffusions[d]!;
+    const sIdx = stateIdxMap.get(diff.stateVarId);
+    if (sIdx === undefined || diff.exprId < 0) continue;
+    const gExpr = emitExpr(diff.exprId);
+    lines.push(
+      `  let dW_${d} = rand_normal(params.seed ^ (path_id * 1664525u + params.step_idx * 1013904223u + ${diff.noiseChannelId}u * 7919u)) * params.sqrt_dt;`,
+    );
+    lines.push(`  y_next[${sIdx}u] = y_next[${sIdx}u] + (${gExpr}) * dW_${d};`);
+  }
+  lines.push(`  for (var i = 0u; i < ${nStates}u; i++) { states[base + i] = y_next[i]; }`);
+  lines.push("}");
+  lines.push("");
+  return lines.join("\n");
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────

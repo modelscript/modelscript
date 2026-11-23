@@ -1,0 +1,17 @@
+{
+  "targets": {
+    "release": {
+      "outFile": "dist/runtime.wasm",
+      "sourceMap": false,
+      "optimizeLevel": 3,
+      "shrinkLevel": 0,
+      "noAssert": true
+    }
+  },
+  "options": {
+    "bindings": "raw",
+    "initialMemory": 2,
+    "maximumMemory": 256,
+    "memoryBase": 1024
+  }
+}

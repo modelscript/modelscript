@@ -1,0 +1,379 @@
+[
+  {
+    "name": "RES",
+    "kind": "Cell",
+    "namePath": "GENERIC.RES",
+    "exports": [
+      "R"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Resistor (RES)",
+      "category": "Passive",
+      "domain": "electronics",
+      "description": "Two-terminal linear Ohm's law resistor (V = I * R).",
+      "provenance": "EIA-548 / EDIF 2.0.0 GENERIC Standard Library",
+      "aliases": [
+        "RESISTOR",
+        "R"
+      ],
+      "parameters": [
+        {
+          "key": "R",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "Ohm",
+          "description": "Electrical resistance"
+        }
+      ],
+      "wasmKernel": "edif_eval",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "CAP",
+    "kind": "Cell",
+    "namePath": "GENERIC.CAP",
+    "exports": [
+      "C"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Capacitor (CAP)",
+      "category": "Passive",
+      "domain": "electronics",
+      "description": "Two-terminal linear capacitor (I = C * dV/dt).",
+      "provenance": "EIA-548 / EDIF 2.0.0 GENERIC Standard Library",
+      "aliases": [
+        "CAPACITOR",
+        "C"
+      ],
+      "parameters": [
+        {
+          "key": "C",
+          "type": "real",
+          "defaultValue": 0.000001,
+          "unit": "F",
+          "description": "Electrical capacitance"
+        }
+      ],
+      "wasmKernel": "edif_eval",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "IND",
+    "kind": "Cell",
+    "namePath": "GENERIC.IND",
+    "exports": [
+      "L"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Inductor (IND)",
+      "category": "Passive",
+      "domain": "electronics",
+      "description": "Two-terminal linear inductor (V = L * dI/dt).",
+      "provenance": "EIA-548 / EDIF 2.0.0 GENERIC Standard Library",
+      "aliases": [
+        "INDUCTOR",
+        "L"
+      ],
+      "parameters": [
+        {
+          "key": "L",
+          "type": "real",
+          "defaultValue": 0.001,
+          "unit": "H",
+          "description": "Electrical inductance"
+        }
+      ],
+      "wasmKernel": "edif_eval",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "GND",
+    "kind": "Cell",
+    "namePath": "GENERIC.GND",
+    "exports": [
+      "V"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Ground Reference (GND)",
+      "category": "Supply",
+      "domain": "electronics",
+      "description": "Zero-volt electrical reference node (V = 0 V).",
+      "provenance": "EIA-548 / EDIF 2.0.0 GENERIC Standard Library",
+      "aliases": [
+        "GROUND",
+        "VSS",
+        "0"
+      ],
+      "parameters": [
+        {
+          "key": "V",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "V",
+          "description": "Reference potential"
+        }
+      ],
+      "wasmKernel": "edif_eval",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "VCC",
+    "kind": "Cell",
+    "namePath": "GENERIC.VCC",
+    "exports": [
+      "V"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "DC Supply Rail (VCC)",
+      "category": "Supply",
+      "domain": "electronics",
+      "description": "Ideal DC supply voltage rail (default V = 5.0 V).",
+      "provenance": "EIA-548 / EDIF 2.0.0 GENERIC Standard Library",
+      "aliases": [
+        "VDD",
+        "PWR",
+        "SUPPLY"
+      ],
+      "parameters": [
+        {
+          "key": "V",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "V",
+          "description": "Supply voltage"
+        }
+      ],
+      "wasmKernel": "edif_eval",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "AND2",
+    "kind": "Cell",
+    "namePath": "GENERIC.AND2",
+    "exports": [
+      "VDD"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2-Input AND Gate",
+      "category": "Combinational",
+      "domain": "electronics",
+      "description": "Two-input logical conjunction gate (Y = A & B).",
+      "provenance": "EIA-548 / EDIF 2.0.0 GENERIC Standard Library",
+      "aliases": [
+        "AND"
+      ],
+      "parameters": [
+        {
+          "key": "VDD",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "V",
+          "description": "Logic high voltage"
+        }
+      ],
+      "wasmKernel": "edif_eval",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "OR2",
+    "kind": "Cell",
+    "namePath": "GENERIC.OR2",
+    "exports": [
+      "VDD"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2-Input OR Gate",
+      "category": "Combinational",
+      "domain": "electronics",
+      "description": "Two-input logical disjunction gate (Y = A | B).",
+      "provenance": "EIA-548 / EDIF 2.0.0 GENERIC Standard Library",
+      "aliases": [
+        "OR"
+      ],
+      "parameters": [
+        {
+          "key": "VDD",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "V",
+          "description": "Logic high voltage"
+        }
+      ],
+      "wasmKernel": "edif_eval",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "NAND2",
+    "kind": "Cell",
+    "namePath": "GENERIC.NAND2",
+    "exports": [
+      "VDD"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2-Input NAND Gate",
+      "category": "Combinational",
+      "domain": "electronics",
+      "description": "Two-input logical NAND gate (Y = ~(A & B)).",
+      "provenance": "EIA-548 / EDIF 2.0.0 GENERIC Standard Library",
+      "aliases": [
+        "NAND"
+      ],
+      "parameters": [
+        {
+          "key": "VDD",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "V",
+          "description": "Logic high voltage"
+        }
+      ],
+      "wasmKernel": "edif_eval",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "NOR2",
+    "kind": "Cell",
+    "namePath": "GENERIC.NOR2",
+    "exports": [
+      "VDD"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2-Input NOR Gate",
+      "category": "Combinational",
+      "domain": "electronics",
+      "description": "Two-input logical NOR gate (Y = ~(A | B)).",
+      "provenance": "EIA-548 / EDIF 2.0.0 GENERIC Standard Library",
+      "aliases": [
+        "NOR"
+      ],
+      "parameters": [
+        {
+          "key": "VDD",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "V",
+          "description": "Logic high voltage"
+        }
+      ],
+      "wasmKernel": "edif_eval",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "INV",
+    "kind": "Cell",
+    "namePath": "GENERIC.INV",
+    "exports": [
+      "VDD"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Inverter (INV)",
+      "category": "Combinational",
+      "domain": "electronics",
+      "description": "Single-input logical inverter (Y = ~A).",
+      "provenance": "EIA-548 / EDIF 2.0.0 GENERIC Standard Library",
+      "aliases": [
+        "NOT",
+        "INVERTER"
+      ],
+      "parameters": [
+        {
+          "key": "VDD",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "V",
+          "description": "Logic high voltage"
+        }
+      ],
+      "wasmKernel": "edif_eval",
+      "archetypeId": 14
+    }
+  },
+  {
+    "name": "XOR2",
+    "kind": "Cell",
+    "namePath": "GENERIC.XOR2",
+    "exports": [
+      "VDD"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2-Input XOR Gate",
+      "category": "Combinational",
+      "domain": "electronics",
+      "description": "Two-input exclusive-OR gate (Y = A ^ B).",
+      "provenance": "EIA-548 / EDIF 2.0.0 GENERIC Standard Library",
+      "aliases": [
+        "XOR"
+      ],
+      "parameters": [
+        {
+          "key": "VDD",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "V",
+          "description": "Logic high voltage"
+        }
+      ],
+      "wasmKernel": "edif_eval",
+      "archetypeId": 15
+    }
+  },
+  {
+    "name": "DFF",
+    "kind": "Cell",
+    "namePath": "GENERIC.DFF",
+    "exports": [
+      "VDD",
+      "Q0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "D Flip-Flop (DFF)",
+      "category": "Sequential",
+      "domain": "electronics",
+      "description": "Positive-edge-triggered D flip-flop with Q output.",
+      "provenance": "EIA-548 / EDIF 2.0.0 GENERIC Standard Library",
+      "aliases": [
+        "D_FF",
+        "FLIPFLOP"
+      ],
+      "parameters": [
+        {
+          "key": "VDD",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "V",
+          "description": "Logic high voltage"
+        },
+        {
+          "key": "Q0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial state"
+        }
+      ],
+      "wasmKernel": "edif_eval",
+      "archetypeId": 16
+    }
+  }
+]

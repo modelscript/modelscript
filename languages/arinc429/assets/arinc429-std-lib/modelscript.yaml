@@ -1,0 +1,11 @@
+name: "@modelscript/arinc429-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom ARINC 429 commercial avionics equipment label standard library (10 schemas: ADC 203/205/206/211, IRS 310/311/314/324/325, Radio Altimeter 164)"
+library:
+  category: library
+  language: arinc429
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

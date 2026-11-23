@@ -1,0 +1,329 @@
+[
+  {
+    "namePath": "Lustre.Std.Edge",
+    "aliases": [
+      "AnyEdge",
+      "edge"
+    ],
+    "label": "Boolean Edge Detector",
+    "category": "Edge & Boolean",
+    "domain": "controls",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#38bdf8\">EDGE</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">Edge</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Lustre.Std.RisingEdge",
+    "aliases": [
+      "REdge",
+      "rising_edge",
+      "PosEdge"
+    ],
+    "label": "Rising Edge Detector",
+    "category": "Edge & Boolean",
+    "domain": "controls",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#38bdf8\">EDGE</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">RisingEdge</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Lustre.Std.FallingEdge",
+    "aliases": [
+      "FEdge",
+      "falling_edge",
+      "NegEdge"
+    ],
+    "label": "Falling Edge Detector",
+    "category": "Edge & Boolean",
+    "domain": "controls",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#38bdf8\">EDGE</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">FallingEdge</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Lustre.Std.Counter",
+    "aliases": [
+      "Count",
+      "UpCounter"
+    ],
+    "label": "Resettable Synchronous Counter",
+    "category": "Counters & Timers",
+    "domain": "controls",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#60a5fa\">CNT</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">Counter</text></svg>",
+    "ports": [
+      {
+        "name": "init",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 13
+      },
+      {
+        "name": "incr",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "reset",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 39
+      },
+      {
+        "name": "n",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Lustre.Std.Timer",
+    "aliases": [
+      "CountdownTimer",
+      "ElapsedTimer"
+    ],
+    "label": "Synchronous Tick Timer",
+    "category": "Counters & Timers",
+    "domain": "controls",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#60a5fa\">CNT</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">Timer</text></svg>",
+    "ports": [
+      {
+        "name": "reset",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 17
+      },
+      {
+        "name": "limit",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 35
+      },
+      {
+        "name": "expired",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Lustre.Std.IntegratorEuler",
+    "aliases": [
+      "DiscreteIntegrator",
+      "EulerIntegrator"
+    ],
+    "label": "Discrete Euler Integrator",
+    "category": "Discrete Control",
+    "domain": "controls",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#2dd4bf\">CTRL</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">IntegratorEu</text></svg>",
+    "ports": [
+      {
+        "name": "u",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 13
+      },
+      {
+        "name": "dt",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "y0",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 39
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Lustre.Std.PIDDiscrete",
+    "aliases": [
+      "PID",
+      "DiscretePID"
+    ],
+    "label": "Discrete PID Controller",
+    "category": "Discrete Control",
+    "domain": "controls",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#2dd4bf\">CTRL</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">PIDDiscrete</text></svg>",
+    "ports": [
+      {
+        "name": "err",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 17
+      },
+      {
+        "name": "dt",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 35
+      },
+      {
+        "name": "u",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Lustre.Std.Latch",
+    "aliases": [
+      "SRLatch",
+      "FlipFlop",
+      "Bistable"
+    ],
+    "label": "Synchronous SR Latch",
+    "category": "Edge & Boolean",
+    "domain": "controls",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#38bdf8\">EDGE</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">Latch</text></svg>",
+    "ports": [
+      {
+        "name": "set",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 13
+      },
+      {
+        "name": "reset",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "init",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 39
+      },
+      {
+        "name": "q",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Lustre.Std.OnceSince",
+    "aliases": [
+      "once_since",
+      "Since"
+    ],
+    "label": "OnceSince Temporal Observer",
+    "category": "Temporal Logic",
+    "domain": "controls",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#c084fc\">TEMP</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">OnceSince</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 17
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 35
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  }
+]

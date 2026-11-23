@@ -1,0 +1,11 @@
+name: "@modelscript/gdsii-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom GDSII CMOS foundry layer-map presets & standard cells (9 schemas, cleanroom SVG icons, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: gdsii
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

@@ -1,0 +1,11 @@
+name: "@modelscript/fits-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom NASA/IAU FITS 4.0 mandatory & WCS astrometry standard library (15 schemas, cleanroom SVG block icons, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: fits
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

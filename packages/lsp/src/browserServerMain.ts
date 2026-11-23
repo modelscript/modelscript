@@ -343,8 +343,7 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
   }
 
   const projectDependencies = params.initializationOptions?.projectDependencies as
-    | { name: string; version: string }[]
-    | undefined;
+    { name: string; version: string }[] | undefined;
 
   const useLocalMsl = (params.initializationOptions?.useLocalMsl as boolean) ?? false;
 
@@ -1202,7 +1201,11 @@ export interface SymbolicTraceResult {
 }
 
 // Listen on the connection
-import { LspContext } from "./lsp-context.js";
+import { LspContext, getSharedLspPolyglotEngine } from "./lsp-context.js";
+const polyglotEngine = getSharedLspPolyglotEngine();
+const polyglotContext = polyglotEngine.createContext({
+  contextId: `lsp-browser-${Date.now().toString(36)}`,
+});
 const lspContext: LspContext = {
   connection,
   documents,
@@ -1212,6 +1215,8 @@ const lspContext: LspContext = {
   parserService,
   diagramService,
   cadMetricsService,
+  polyglotEngine,
+  polyglotContext,
   state: {
     activeValidationPromises: validationService.activeValidationPromises,
     get sharedContext() {

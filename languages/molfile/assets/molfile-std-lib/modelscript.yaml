@@ -1,0 +1,11 @@
+name: "@modelscript/molfile-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom MDL Molfile/SDF periodic table and canonical molecule standard library (47 schemas, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: molfile
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

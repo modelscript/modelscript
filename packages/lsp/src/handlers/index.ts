@@ -2,6 +2,7 @@
 
 export * from "./actionRouter.js";
 export * from "./analysisEndpoints.js";
+export * from "./canvasEndpoints.js";
 export * from "./classqueryEndpoints.js";
 export * from "./diagramHandler.js";
 export * from "./interopEndpoints.js";

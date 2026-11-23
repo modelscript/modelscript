@@ -30,6 +30,7 @@ import { ScadPatcher, type ScadCstNode, type ScadCstTree } from "./patcher.js";
 
 export { buildScadDiagramFromCst } from "./diagram-builder.js";
 export * from "./indexing.js";
+export * from "./interop.js";
 export { evaluateScad, lintScadCst, parseScadSource, ScadErrorCode, ScadEvaluator, scadLanguage, ScadPatcher };
 export type {
   ScadCstNode,

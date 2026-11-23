@@ -1,0 +1,1230 @@
+[
+  {
+    "name": "1001",
+    "kind": "Constant",
+    "namePath": "MCNP.Isotopes.1001",
+    "exports": [
+      "atomicMass",
+      "sigmaS_fast",
+      "sigmaC_fast",
+      "sigmaF_fast",
+      "sigmaT_fast",
+      "nu_fast",
+      "sigmaS_th",
+      "sigmaC_th",
+      "sigmaF_th"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "H-1 (1001)",
+      "category": "Isotope",
+      "domain": "nuclear",
+      "description": "Hydrogen-1 (Protium) cleanroom 1-group/2-group neutron cross-sections.",
+      "provenance": "Cleanroom ENDF/B-VIII.0 / Lamarsh Standard",
+      "aliases": [
+        "H-1",
+        "1001.80c",
+        "1001.70c"
+      ],
+      "parameters": [
+        {
+          "key": "atomicMass",
+          "type": "real",
+          "defaultValue": 1.00784,
+          "unit": "amu",
+          "description": "Atomic mass"
+        },
+        {
+          "key": "sigmaS_fast",
+          "type": "real",
+          "defaultValue": 3.85,
+          "unit": "b",
+          "description": "Fast scattering cross-section"
+        },
+        {
+          "key": "sigmaC_fast",
+          "type": "real",
+          "defaultValue": 0.00004,
+          "unit": "b",
+          "description": "Fast capture cross-section"
+        },
+        {
+          "key": "sigmaF_fast",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "b",
+          "description": "Fast fission cross-section"
+        },
+        {
+          "key": "sigmaT_fast",
+          "type": "real",
+          "defaultValue": 3.85004,
+          "unit": "b",
+          "description": "Fast total cross-section"
+        },
+        {
+          "key": "nu_fast",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Fast neutrons per fission"
+        },
+        {
+          "key": "sigmaS_th",
+          "type": "real",
+          "defaultValue": 20.49,
+          "unit": "b",
+          "description": "Thermal scattering cross-section"
+        },
+        {
+          "key": "sigmaC_th",
+          "type": "real",
+          "defaultValue": 0.3326,
+          "unit": "b",
+          "description": "Thermal capture cross-section"
+        },
+        {
+          "key": "sigmaF_th",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "b",
+          "description": "Thermal fission cross-section"
+        }
+      ],
+      "wasmKernel": "mcnpEvalMacroscopicXs",
+      "archetypeId": 1001
+    }
+  },
+  {
+    "name": "5010",
+    "kind": "Constant",
+    "namePath": "MCNP.Isotopes.5010",
+    "exports": [
+      "atomicMass",
+      "sigmaS_fast",
+      "sigmaC_fast",
+      "sigmaF_fast",
+      "sigmaT_fast",
+      "nu_fast",
+      "sigmaS_th",
+      "sigmaC_th",
+      "sigmaF_th"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "B-10 (5010)",
+      "category": "Isotope",
+      "domain": "nuclear",
+      "description": "Boron-10 (Neutron Absorber) cleanroom 1-group/2-group neutron cross-sections.",
+      "provenance": "Cleanroom ENDF/B-VIII.0 / Lamarsh Standard",
+      "aliases": [
+        "B-10",
+        "5010.80c",
+        "5010.70c"
+      ],
+      "parameters": [
+        {
+          "key": "atomicMass",
+          "type": "real",
+          "defaultValue": 10.0129,
+          "unit": "amu",
+          "description": "Atomic mass"
+        },
+        {
+          "key": "sigmaS_fast",
+          "type": "real",
+          "defaultValue": 2.2,
+          "unit": "b",
+          "description": "Fast scattering cross-section"
+        },
+        {
+          "key": "sigmaC_fast",
+          "type": "real",
+          "defaultValue": 0.55,
+          "unit": "b",
+          "description": "Fast capture cross-section"
+        },
+        {
+          "key": "sigmaF_fast",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "b",
+          "description": "Fast fission cross-section"
+        },
+        {
+          "key": "sigmaT_fast",
+          "type": "real",
+          "defaultValue": 2.75,
+          "unit": "b",
+          "description": "Fast total cross-section"
+        },
+        {
+          "key": "nu_fast",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Fast neutrons per fission"
+        },
+        {
+          "key": "sigmaS_th",
+          "type": "real",
+          "defaultValue": 2.23,
+          "unit": "b",
+          "description": "Thermal scattering cross-section"
+        },
+        {
+          "key": "sigmaC_th",
+          "type": "real",
+          "defaultValue": 3837,
+          "unit": "b",
+          "description": "Thermal capture cross-section"
+        },
+        {
+          "key": "sigmaF_th",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "b",
+          "description": "Thermal fission cross-section"
+        }
+      ],
+      "wasmKernel": "mcnpEvalMacroscopicXs",
+      "archetypeId": 5010
+    }
+  },
+  {
+    "name": "6012",
+    "kind": "Constant",
+    "namePath": "MCNP.Isotopes.6012",
+    "exports": [
+      "atomicMass",
+      "sigmaS_fast",
+      "sigmaC_fast",
+      "sigmaF_fast",
+      "sigmaT_fast",
+      "nu_fast",
+      "sigmaS_th",
+      "sigmaC_th",
+      "sigmaF_th"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "C-12 (6012)",
+      "category": "Isotope",
+      "domain": "nuclear",
+      "description": "Carbon-12 (Graphite Moderator) cleanroom 1-group/2-group neutron cross-sections.",
+      "provenance": "Cleanroom ENDF/B-VIII.0 / Lamarsh Standard",
+      "aliases": [
+        "C-12",
+        "6012.80c",
+        "6012.70c"
+      ],
+      "parameters": [
+        {
+          "key": "atomicMass",
+          "type": "real",
+          "defaultValue": 12.011,
+          "unit": "amu",
+          "description": "Atomic mass"
+        },
+        {
+          "key": "sigmaS_fast",
+          "type": "real",
+          "defaultValue": 2.4,
+          "unit": "b",
+          "description": "Fast scattering cross-section"
+        },
+        {
+          "key": "sigmaC_fast",
+          "type": "real",
+          "defaultValue": 0.0002,
+          "unit": "b",
+          "description": "Fast capture cross-section"
+        },
+        {
+          "key": "sigmaF_fast",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "b",
+          "description": "Fast fission cross-section"
+        },
+        {
+          "key": "sigmaT_fast",
+          "type": "real",
+          "defaultValue": 2.4002,
+          "unit": "b",
+          "description": "Fast total cross-section"
+        },
+        {
+          "key": "nu_fast",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Fast neutrons per fission"
+        },
+        {
+          "key": "sigmaS_th",
+          "type": "real",
+          "defaultValue": 4.74,
+          "unit": "b",
+          "description": "Thermal scattering cross-section"
+        },
+        {
+          "key": "sigmaC_th",
+          "type": "real",
+          "defaultValue": 0.0035,
+          "unit": "b",
+          "description": "Thermal capture cross-section"
+        },
+        {
+          "key": "sigmaF_th",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "b",
+          "description": "Thermal fission cross-section"
+        }
+      ],
+      "wasmKernel": "mcnpEvalMacroscopicXs",
+      "archetypeId": 6012
+    }
+  },
+  {
+    "name": "8016",
+    "kind": "Constant",
+    "namePath": "MCNP.Isotopes.8016",
+    "exports": [
+      "atomicMass",
+      "sigmaS_fast",
+      "sigmaC_fast",
+      "sigmaF_fast",
+      "sigmaT_fast",
+      "nu_fast",
+      "sigmaS_th",
+      "sigmaC_th",
+      "sigmaF_th"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "O-16 (8016)",
+      "category": "Isotope",
+      "domain": "nuclear",
+      "description": "Oxygen-16 cleanroom 1-group/2-group neutron cross-sections.",
+      "provenance": "Cleanroom ENDF/B-VIII.0 / Lamarsh Standard",
+      "aliases": [
+        "O-16",
+        "8016.80c",
+        "8016.70c"
+      ],
+      "parameters": [
+        {
+          "key": "atomicMass",
+          "type": "real",
+          "defaultValue": 15.999,
+          "unit": "amu",
+          "description": "Atomic mass"
+        },
+        {
+          "key": "sigmaS_fast",
+          "type": "real",
+          "defaultValue": 2.9,
+          "unit": "b",
+          "description": "Fast scattering cross-section"
+        },
+        {
+          "key": "sigmaC_fast",
+          "type": "real",
+          "defaultValue": 0.0001,
+          "unit": "b",
+          "description": "Fast capture cross-section"
+        },
+        {
+          "key": "sigmaF_fast",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "b",
+          "description": "Fast fission cross-section"
+        },
+        {
+          "key": "sigmaT_fast",
+          "type": "real",
+          "defaultValue": 2.9001,
+          "unit": "b",
+          "description": "Fast total cross-section"
+        },
+        {
+          "key": "nu_fast",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Fast neutrons per fission"
+        },
+        {
+          "key": "sigmaS_th",
+          "type": "real",
+          "defaultValue": 3.76,
+          "unit": "b",
+          "description": "Thermal scattering cross-section"
+        },
+        {
+          "key": "sigmaC_th",
+          "type": "real",
+          "defaultValue": 0.00019,
+          "unit": "b",
+          "description": "Thermal capture cross-section"
+        },
+        {
+          "key": "sigmaF_th",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "b",
+          "description": "Thermal fission cross-section"
+        }
+      ],
+      "wasmKernel": "mcnpEvalMacroscopicXs",
+      "archetypeId": 8016
+    }
+  },
+  {
+    "name": "26056",
+    "kind": "Constant",
+    "namePath": "MCNP.Isotopes.26056",
+    "exports": [
+      "atomicMass",
+      "sigmaS_fast",
+      "sigmaC_fast",
+      "sigmaF_fast",
+      "sigmaT_fast",
+      "nu_fast",
+      "sigmaS_th",
+      "sigmaC_th",
+      "sigmaF_th"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Fe-56 (26056)",
+      "category": "Isotope",
+      "domain": "nuclear",
+      "description": "Iron-56 (Structural Shielding) cleanroom 1-group/2-group neutron cross-sections.",
+      "provenance": "Cleanroom ENDF/B-VIII.0 / Lamarsh Standard",
+      "aliases": [
+        "Fe-56",
+        "26056.80c",
+        "26056.70c"
+      ],
+      "parameters": [
+        {
+          "key": "atomicMass",
+          "type": "real",
+          "defaultValue": 55.9349,
+          "unit": "amu",
+          "description": "Atomic mass"
+        },
+        {
+          "key": "sigmaS_fast",
+          "type": "real",
+          "defaultValue": 2.85,
+          "unit": "b",
+          "description": "Fast scattering cross-section"
+        },
+        {
+          "key": "sigmaC_fast",
+          "type": "real",
+          "defaultValue": 0.006,
+          "unit": "b",
+          "description": "Fast capture cross-section"
+        },
+        {
+          "key": "sigmaF_fast",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "b",
+          "description": "Fast fission cross-section"
+        },
+        {
+          "key": "sigmaT_fast",
+          "type": "real",
+          "defaultValue": 2.856,
+          "unit": "b",
+          "description": "Fast total cross-section"
+        },
+        {
+          "key": "nu_fast",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Fast neutrons per fission"
+        },
+        {
+          "key": "sigmaS_th",
+          "type": "real",
+          "defaultValue": 11.44,
+          "unit": "b",
+          "description": "Thermal scattering cross-section"
+        },
+        {
+          "key": "sigmaC_th",
+          "type": "real",
+          "defaultValue": 2.59,
+          "unit": "b",
+          "description": "Thermal capture cross-section"
+        },
+        {
+          "key": "sigmaF_th",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "b",
+          "description": "Thermal fission cross-section"
+        }
+      ],
+      "wasmKernel": "mcnpEvalMacroscopicXs",
+      "archetypeId": 26056
+    }
+  },
+  {
+    "name": "92235",
+    "kind": "Constant",
+    "namePath": "MCNP.Isotopes.92235",
+    "exports": [
+      "atomicMass",
+      "sigmaS_fast",
+      "sigmaC_fast",
+      "sigmaF_fast",
+      "sigmaT_fast",
+      "nu_fast",
+      "sigmaS_th",
+      "sigmaC_th",
+      "sigmaF_th"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "U-235 (92235)",
+      "category": "Isotope",
+      "domain": "nuclear",
+      "description": "Uranium-235 (Fissile) cleanroom 1-group/2-group neutron cross-sections.",
+      "provenance": "Cleanroom ENDF/B-VIII.0 / LANL Godiva LA-10860",
+      "aliases": [
+        "U-235",
+        "92235.80c",
+        "92235.70c"
+      ],
+      "parameters": [
+        {
+          "key": "atomicMass",
+          "type": "real",
+          "defaultValue": 235.0439,
+          "unit": "amu",
+          "description": "Atomic mass"
+        },
+        {
+          "key": "sigmaS_fast",
+          "type": "real",
+          "defaultValue": 4.566,
+          "unit": "b",
+          "description": "Fast scattering cross-section"
+        },
+        {
+          "key": "sigmaC_fast",
+          "type": "real",
+          "defaultValue": 0.098,
+          "unit": "b",
+          "description": "Fast capture cross-section"
+        },
+        {
+          "key": "sigmaF_fast",
+          "type": "real",
+          "defaultValue": 1.235,
+          "unit": "b",
+          "description": "Fast fission cross-section"
+        },
+        {
+          "key": "sigmaT_fast",
+          "type": "real",
+          "defaultValue": 5.899,
+          "unit": "b",
+          "description": "Fast total cross-section"
+        },
+        {
+          "key": "nu_fast",
+          "type": "real",
+          "defaultValue": 2.58,
+          "unit": "1",
+          "description": "Fast neutrons per fission"
+        },
+        {
+          "key": "sigmaS_th",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "b",
+          "description": "Thermal scattering cross-section"
+        },
+        {
+          "key": "sigmaC_th",
+          "type": "real",
+          "defaultValue": 98.7,
+          "unit": "b",
+          "description": "Thermal capture cross-section"
+        },
+        {
+          "key": "sigmaF_th",
+          "type": "real",
+          "defaultValue": 585,
+          "unit": "b",
+          "description": "Thermal fission cross-section"
+        }
+      ],
+      "wasmKernel": "mcnpEvalMacroscopicXs",
+      "archetypeId": 92235
+    }
+  },
+  {
+    "name": "92238",
+    "kind": "Constant",
+    "namePath": "MCNP.Isotopes.92238",
+    "exports": [
+      "atomicMass",
+      "sigmaS_fast",
+      "sigmaC_fast",
+      "sigmaF_fast",
+      "sigmaT_fast",
+      "nu_fast",
+      "sigmaS_th",
+      "sigmaC_th",
+      "sigmaF_th"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "U-238 (92238)",
+      "category": "Isotope",
+      "domain": "nuclear",
+      "description": "Uranium-238 (Fertile) cleanroom 1-group/2-group neutron cross-sections.",
+      "provenance": "Cleanroom ENDF/B-VIII.0 / Lamarsh Standard",
+      "aliases": [
+        "U-238",
+        "92238.80c",
+        "92238.70c"
+      ],
+      "parameters": [
+        {
+          "key": "atomicMass",
+          "type": "real",
+          "defaultValue": 238.0508,
+          "unit": "amu",
+          "description": "Atomic mass"
+        },
+        {
+          "key": "sigmaS_fast",
+          "type": "real",
+          "defaultValue": 4.85,
+          "unit": "b",
+          "description": "Fast scattering cross-section"
+        },
+        {
+          "key": "sigmaC_fast",
+          "type": "real",
+          "defaultValue": 0.12,
+          "unit": "b",
+          "description": "Fast capture cross-section"
+        },
+        {
+          "key": "sigmaF_fast",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "b",
+          "description": "Fast fission cross-section"
+        },
+        {
+          "key": "sigmaT_fast",
+          "type": "real",
+          "defaultValue": 5.02,
+          "unit": "b",
+          "description": "Fast total cross-section"
+        },
+        {
+          "key": "nu_fast",
+          "type": "real",
+          "defaultValue": 2.75,
+          "unit": "1",
+          "description": "Fast neutrons per fission"
+        },
+        {
+          "key": "sigmaS_th",
+          "type": "real",
+          "defaultValue": 9.36,
+          "unit": "b",
+          "description": "Thermal scattering cross-section"
+        },
+        {
+          "key": "sigmaC_th",
+          "type": "real",
+          "defaultValue": 2.68,
+          "unit": "b",
+          "description": "Thermal capture cross-section"
+        },
+        {
+          "key": "sigmaF_th",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "b",
+          "description": "Thermal fission cross-section"
+        }
+      ],
+      "wasmKernel": "mcnpEvalMacroscopicXs",
+      "archetypeId": 92238
+    }
+  },
+  {
+    "name": "94239",
+    "kind": "Constant",
+    "namePath": "MCNP.Isotopes.94239",
+    "exports": [
+      "atomicMass",
+      "sigmaS_fast",
+      "sigmaC_fast",
+      "sigmaF_fast",
+      "sigmaT_fast",
+      "nu_fast",
+      "sigmaS_th",
+      "sigmaC_th",
+      "sigmaF_th"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Pu-239 (94239)",
+      "category": "Isotope",
+      "domain": "nuclear",
+      "description": "Plutonium-239 (Fissile) cleanroom 1-group/2-group neutron cross-sections.",
+      "provenance": "Cleanroom ENDF/B-VIII.0 / LANL Jezebel LA-10860",
+      "aliases": [
+        "Pu-239",
+        "94239.80c",
+        "94239.70c"
+      ],
+      "parameters": [
+        {
+          "key": "atomicMass",
+          "type": "real",
+          "defaultValue": 239.0522,
+          "unit": "amu",
+          "description": "Atomic mass"
+        },
+        {
+          "key": "sigmaS_fast",
+          "type": "real",
+          "defaultValue": 4.55,
+          "unit": "b",
+          "description": "Fast scattering cross-section"
+        },
+        {
+          "key": "sigmaC_fast",
+          "type": "real",
+          "defaultValue": 0.08,
+          "unit": "b",
+          "description": "Fast capture cross-section"
+        },
+        {
+          "key": "sigmaF_fast",
+          "type": "real",
+          "defaultValue": 1.8,
+          "unit": "b",
+          "description": "Fast fission cross-section"
+        },
+        {
+          "key": "sigmaT_fast",
+          "type": "real",
+          "defaultValue": 6.43,
+          "unit": "b",
+          "description": "Fast total cross-section"
+        },
+        {
+          "key": "nu_fast",
+          "type": "real",
+          "defaultValue": 3.16,
+          "unit": "1",
+          "description": "Fast neutrons per fission"
+        },
+        {
+          "key": "sigmaS_th",
+          "type": "real",
+          "defaultValue": 8,
+          "unit": "b",
+          "description": "Thermal scattering cross-section"
+        },
+        {
+          "key": "sigmaC_th",
+          "type": "real",
+          "defaultValue": 271,
+          "unit": "b",
+          "description": "Thermal capture cross-section"
+        },
+        {
+          "key": "sigmaF_th",
+          "type": "real",
+          "defaultValue": 747,
+          "unit": "b",
+          "description": "Thermal fission cross-section"
+        }
+      ],
+      "wasmKernel": "mcnpEvalMacroscopicXs",
+      "archetypeId": 94239
+    }
+  },
+  {
+    "name": "SO",
+    "kind": "Class",
+    "namePath": "MCNP.Surfaces.SO",
+    "exports": [
+      "R"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Sphere at Origin (SO)",
+      "category": "Surface",
+      "domain": "nuclear",
+      "description": "Sphere centered at origin: x^2 + y^2 + z^2 - R^2 = 0.",
+      "provenance": "LANL MCNP6 User Manual (LA-UR-17-29981)",
+      "aliases": [
+        "SphereOrigin"
+      ],
+      "parameters": [
+        {
+          "key": "R",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "cm",
+          "description": "Sphere radius"
+        }
+      ],
+      "archetypeId": 101
+    }
+  },
+  {
+    "name": "SPH",
+    "kind": "Class",
+    "namePath": "MCNP.Surfaces.SPH",
+    "exports": [
+      "vx",
+      "vy",
+      "vz",
+      "R"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Sphere Macrobody (SPH)",
+      "category": "Surface",
+      "domain": "nuclear",
+      "description": "Sphere centered at (vx, vy, vz) with radius R.",
+      "provenance": "LANL MCNP6 User Manual (LA-UR-17-29981)",
+      "aliases": [
+        "S",
+        "Sphere"
+      ],
+      "parameters": [
+        {
+          "key": "vx",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "cm",
+          "description": "Center X"
+        },
+        {
+          "key": "vy",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "cm",
+          "description": "Center Y"
+        },
+        {
+          "key": "vz",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "cm",
+          "description": "Center Z"
+        },
+        {
+          "key": "R",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "cm",
+          "description": "Radius"
+        }
+      ],
+      "archetypeId": 102
+    }
+  },
+  {
+    "name": "RPP",
+    "kind": "Class",
+    "namePath": "MCNP.Surfaces.RPP",
+    "exports": [
+      "xmin",
+      "xmax",
+      "ymin",
+      "ymax",
+      "zmin",
+      "zmax"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Rectangular Parallelepiped (RPP)",
+      "category": "Surface",
+      "domain": "nuclear",
+      "description": "Axis-aligned box [xmin, xmax] x [ymin, ymax] x [zmin, zmax].",
+      "provenance": "LANL MCNP6 User Manual (LA-UR-17-29981)",
+      "aliases": [
+        "Box"
+      ],
+      "parameters": [
+        {
+          "key": "xmin",
+          "type": "real",
+          "defaultValue": -5,
+          "unit": "cm"
+        },
+        {
+          "key": "xmax",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "cm"
+        },
+        {
+          "key": "ymin",
+          "type": "real",
+          "defaultValue": -5,
+          "unit": "cm"
+        },
+        {
+          "key": "ymax",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "cm"
+        },
+        {
+          "key": "zmin",
+          "type": "real",
+          "defaultValue": -5,
+          "unit": "cm"
+        },
+        {
+          "key": "zmax",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "cm"
+        }
+      ],
+      "archetypeId": 103
+    }
+  },
+  {
+    "name": "RCC",
+    "kind": "Class",
+    "namePath": "MCNP.Surfaces.RCC",
+    "exports": [
+      "vx",
+      "vy",
+      "vz",
+      "hx",
+      "hy",
+      "hz",
+      "R"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Right Circular Cylinder (RCC)",
+      "category": "Surface",
+      "domain": "nuclear",
+      "description": "Finite cylinder from base (vx,vy,vz) along (hx,hy,hz) with radius R.",
+      "provenance": "LANL MCNP6 User Manual (LA-UR-17-29981)",
+      "aliases": [
+        "RightCircularCylinder"
+      ],
+      "parameters": [
+        {
+          "key": "vx",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "cm"
+        },
+        {
+          "key": "vy",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "cm"
+        },
+        {
+          "key": "vz",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "cm"
+        },
+        {
+          "key": "hx",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "cm"
+        },
+        {
+          "key": "hy",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "cm"
+        },
+        {
+          "key": "hz",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "cm"
+        },
+        {
+          "key": "R",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "cm"
+        }
+      ],
+      "archetypeId": 104
+    }
+  },
+  {
+    "name": "PX",
+    "kind": "Class",
+    "namePath": "MCNP.Surfaces.PX",
+    "exports": [
+      "D"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Axis-Aligned Plane (PX/PY/PZ)",
+      "category": "Surface",
+      "domain": "nuclear",
+      "description": "Plane normal to coordinate axis: x - D = 0.",
+      "provenance": "LANL MCNP6 User Manual (LA-UR-17-29981)",
+      "aliases": [
+        "PY",
+        "PZ",
+        "P"
+      ],
+      "parameters": [
+        {
+          "key": "D",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "cm",
+          "description": "Axis intercept"
+        }
+      ],
+      "archetypeId": 105
+    }
+  },
+  {
+    "name": "CZ",
+    "kind": "Class",
+    "namePath": "MCNP.Surfaces.CZ",
+    "exports": [
+      "R"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Infinite Cylinder (CX/CY/CZ)",
+      "category": "Surface",
+      "domain": "nuclear",
+      "description": "Infinite cylinder parallel to axis with radius R.",
+      "provenance": "LANL MCNP6 User Manual (LA-UR-17-29981)",
+      "aliases": [
+        "CX",
+        "CY",
+        "C/X",
+        "C/Y",
+        "C/Z"
+      ],
+      "parameters": [
+        {
+          "key": "R",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "cm",
+          "description": "Cylinder radius"
+        }
+      ],
+      "archetypeId": 106
+    }
+  },
+  {
+    "name": "F1",
+    "kind": "Function",
+    "namePath": "MCNP.Tallies.F1",
+    "exports": [
+      "normFactor"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Surface Current Tally (F1)",
+      "category": "Tally",
+      "domain": "nuclear",
+      "description": "Current integrated over a surface (particles).",
+      "provenance": "LANL MCNP6 User Manual (LA-UR-17-29981)",
+      "aliases": [
+        "F1:N",
+        "F1:P"
+      ],
+      "parameters": [
+        {
+          "key": "normFactor",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "particles",
+          "description": "Tally multiplier"
+        }
+      ],
+      "archetypeId": 201
+    }
+  },
+  {
+    "name": "F2",
+    "kind": "Function",
+    "namePath": "MCNP.Tallies.F2",
+    "exports": [
+      "normFactor"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Surface Flux Tally (F2)",
+      "category": "Tally",
+      "domain": "nuclear",
+      "description": "Flux averaged over a surface (particles/cm^2).",
+      "provenance": "LANL MCNP6 User Manual (LA-UR-17-29981)",
+      "aliases": [
+        "F2:N",
+        "F2:P"
+      ],
+      "parameters": [
+        {
+          "key": "normFactor",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1/cm^2",
+          "description": "Tally multiplier"
+        }
+      ],
+      "archetypeId": 202
+    }
+  },
+  {
+    "name": "F4",
+    "kind": "Function",
+    "namePath": "MCNP.Tallies.F4",
+    "exports": [
+      "normFactor"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Cell Flux Tally (F4)",
+      "category": "Tally",
+      "domain": "nuclear",
+      "description": "Track-length estimate of flux averaged over a cell (particles/cm^2).",
+      "provenance": "LANL MCNP6 User Manual (LA-UR-17-29981)",
+      "aliases": [
+        "F4:N",
+        "F4:P"
+      ],
+      "parameters": [
+        {
+          "key": "normFactor",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1/cm^2",
+          "description": "Tally multiplier"
+        }
+      ],
+      "archetypeId": 204
+    }
+  },
+  {
+    "name": "F5",
+    "kind": "Function",
+    "namePath": "MCNP.Tallies.F5",
+    "exports": [
+      "normFactor"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Point Detector Flux Tally (F5)",
+      "category": "Tally",
+      "domain": "nuclear",
+      "description": "Next-event flux estimator at a point or ring detector (particles/cm^2).",
+      "provenance": "LANL MCNP6 User Manual (LA-UR-17-29981)",
+      "aliases": [
+        "F5:N",
+        "F5:P"
+      ],
+      "parameters": [
+        {
+          "key": "normFactor",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1/cm^2",
+          "description": "Tally multiplier"
+        }
+      ],
+      "archetypeId": 205
+    }
+  },
+  {
+    "name": "F6",
+    "kind": "Function",
+    "namePath": "MCNP.Tallies.F6",
+    "exports": [
+      "normFactor"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Energy Deposition Tally (F6)",
+      "category": "Tally",
+      "domain": "nuclear",
+      "description": "Track-length heating / energy deposition averaged over a cell (MeV/g).",
+      "provenance": "LANL MCNP6 User Manual (LA-UR-17-29981)",
+      "aliases": [
+        "F6:N",
+        "F6:P"
+      ],
+      "parameters": [
+        {
+          "key": "normFactor",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "MeV/g",
+          "description": "Tally multiplier"
+        }
+      ],
+      "archetypeId": 206
+    }
+  },
+  {
+    "name": "F8",
+    "kind": "Function",
+    "namePath": "MCNP.Tallies.F8",
+    "exports": [
+      "normFactor"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Pulse Height Tally (F8)",
+      "category": "Tally",
+      "domain": "nuclear",
+      "description": "Energy distribution of pulses created in a detector cell.",
+      "provenance": "LANL MCNP6 User Manual (LA-UR-17-29981)",
+      "aliases": [
+        "F8:N",
+        "F8:P"
+      ],
+      "parameters": [
+        {
+          "key": "normFactor",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "pulses",
+          "description": "Tally multiplier"
+        }
+      ],
+      "archetypeId": 208
+    }
+  }
+]

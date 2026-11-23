@@ -8,6 +8,7 @@ export * from "./documentFeaturesProvider.js";
 export * from "./formattingProvider.js";
 export * from "./hoverProvider.js";
 export * from "./inlayHintProvider.js";
+export * from "./semantic-tag-provider.js";
 export * from "./semanticTokensProvider.js";
 export * from "./signatureHelpProvider.js";
 export * from "./threadDiagnosticsProvider.js";

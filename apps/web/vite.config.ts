@@ -720,7 +720,6 @@ export default defineConfig({
   optimizeDeps: {
     include: [
       "@antv/layout",
-      "@antv/x6",
       "@monaco-editor/react",
       "@primer/octicons-react",
       "@primer/react",

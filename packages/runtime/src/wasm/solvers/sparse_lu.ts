@@ -83,7 +83,7 @@ export class SparseLU {
  */
 export function sparseLuFactor(A: CCSMatrix): SparseLU {
   let n = A.nCols;
-  let luPtr = atomicChunkAlloc(sizeof<SparseLU>());
+  let luPtr = atomicChunkAlloc(offsetof<SparseLU>() as u32);
   let lu = changetype<SparseLU>(luPtr);
   lu.init(n);
 

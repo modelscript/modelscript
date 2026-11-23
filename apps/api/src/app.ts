@@ -25,6 +25,7 @@ import { responseCompressionMiddleware } from "./middleware/compression.js";
 import { requireFeatureFlag } from "./middleware/feature-flag-middleware.js";
 import { defaultApiLimiter } from "./middleware/rate-limiter.js";
 import { allMigrations } from "./migrations/index.js";
+import { createApiRequestPolyglotContext } from "./polyglot-engine.js";
 import { adminRouter } from "./routes/admin.js";
 import { aiRouter } from "./routes/ai.js";
 import { almRouter } from "./routes/alm.js";
@@ -32,8 +33,10 @@ import { artifactViewerRouter } from "./routes/artifact-viewer.js";
 import { authRouter } from "./routes/auth.js";
 import { billingRouter } from "./routes/billing.js";
 import { caeRouter } from "./routes/cae.js";
+import { canvasRouter } from "./routes/canvas.js";
 import { cloudRouter } from "./routes/cloud.js";
 import { cosimRouter, mqttParticipantsRouter } from "./routes/cosim.js";
+import { diagramRouter } from "./routes/diagram.js";
 import { federationRouter } from "./routes/federation.js";
 import { fmuRouter } from "./routes/fmu.js";
 import { gitServerRouter } from "./routes/git-server.js";
@@ -596,6 +599,17 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   // Enterprise Edition (ee/) Air-Gap Security Headers
   app.use(createOptionalEnterpriseHeadersMiddleware());
 
+  // GraalVM-style Shared PolyglotEngine + Per-Request Sandboxed PolyglotContext Middleware
+  app.use((req, res, next) => {
+    const tenantId = String(req.headers["x-tenant-id"] ?? "public");
+    const polyglotCtx = createApiRequestPolyglotContext(tenantId);
+    res.locals["polyglotContext"] = polyglotCtx;
+    res.once("close", () => {
+      polyglotCtx.dispose();
+    });
+    next();
+  });
+
   // Multi-Tiered Maintenance Mode Enforcement Middleware ('read_only' & 'lockdown')
   app.use((req, res, next) => {
     if (req.method === "OPTIONS" || req.method === "HEAD") {
@@ -714,6 +728,8 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.use("/api/v1/users", createSigningKeysRouter(database));
   app.use("/api/v1/posts", createPostEvidenceRouter(database));
   app.use("/api/v1/solutions", solutionsRouter(database));
+  app.use("/api/v1/canvas", canvasRouter());
+  app.use("/api/v1/diagram", diagramRouter());
   app.use("/api/v1/spaces", spacesRouter(database));
   app.use("/api/v1/spaces", rfqRouter());
   app.use("/api/v1/supply-chain", supplyChainRouter());

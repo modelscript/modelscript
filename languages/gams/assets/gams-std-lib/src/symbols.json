@@ -1,0 +1,347 @@
+[
+  {
+    "name": "sum",
+    "kind": "Function",
+    "namePath": "GAMS.sum",
+    "exports": [
+      "n"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Indexed Summation (sum)",
+      "category": "Set & Indexed Operators",
+      "domain": "optimization",
+      "description": "Computes the algebraic summation over an indexed domain set with optional $-conditional filter.",
+      "provenance": "GAMS User's Guide (Brooke, Kendrick, Meeraus, 1988) — Indexed Operations",
+      "aliases": [
+        "SUM",
+        "sigma"
+      ],
+      "parameters": [
+        {
+          "key": "n",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "count",
+          "description": "Number of domain elements"
+        }
+      ],
+      "wasmKernel": "gams_sum",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "prod",
+    "kind": "Function",
+    "namePath": "GAMS.prod",
+    "exports": [
+      "n"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Indexed Product (prod)",
+      "category": "Set & Indexed Operators",
+      "domain": "optimization",
+      "description": "Computes the algebraic product over an indexed domain set.",
+      "provenance": "GAMS User's Guide (Brooke, Kendrick, Meeraus, 1988) — Indexed Operations",
+      "aliases": [
+        "PROD"
+      ],
+      "parameters": [
+        {
+          "key": "n",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "count",
+          "description": "Number of domain elements"
+        }
+      ],
+      "wasmKernel": "gams_prod",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "smin",
+    "kind": "Function",
+    "namePath": "GAMS.smin",
+    "exports": [
+      "n"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Indexed Minimum (smin)",
+      "category": "Set & Indexed Operators",
+      "domain": "optimization",
+      "description": "Returns the minimum value of an expression evaluated over an indexed domain set.",
+      "provenance": "GAMS User's Guide (Brooke, Kendrick, Meeraus, 1988) — Indexed Operations",
+      "aliases": [
+        "SMIN"
+      ],
+      "parameters": [
+        {
+          "key": "n",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "count",
+          "description": "Number of domain elements"
+        }
+      ],
+      "wasmKernel": "gams_smin",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "smax",
+    "kind": "Function",
+    "namePath": "GAMS.smax",
+    "exports": [
+      "n"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Indexed Maximum (smax)",
+      "category": "Set & Indexed Operators",
+      "domain": "optimization",
+      "description": "Returns the maximum value of an expression evaluated over an indexed domain set.",
+      "provenance": "GAMS User's Guide (Brooke, Kendrick, Meeraus, 1988) — Indexed Operations",
+      "aliases": [
+        "SMAX"
+      ],
+      "parameters": [
+        {
+          "key": "n",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "count",
+          "description": "Number of domain elements"
+        }
+      ],
+      "wasmKernel": "gams_smax",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "ord",
+    "kind": "Function",
+    "namePath": "GAMS.ord",
+    "exports": [
+      "index"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Ordinal Position (ord)",
+      "category": "Set & Indexed Operators",
+      "domain": "optimization",
+      "description": "Returns the 1-based ordinal position of an element within an ordered static GAMS set.",
+      "provenance": "GAMS User's Guide (Brooke, Kendrick, Meeraus, 1988) — Ordered Sets",
+      "aliases": [
+        "ORD"
+      ],
+      "parameters": [
+        {
+          "key": "index",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1-based",
+          "description": "1-based element index"
+        }
+      ],
+      "wasmKernel": "gams_ord",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "card",
+    "kind": "Function",
+    "namePath": "GAMS.card",
+    "exports": [
+      "count"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Set Cardinality (card)",
+      "category": "Set & Indexed Operators",
+      "domain": "optimization",
+      "description": "Returns the number of elements (cardinality) in a GAMS set.",
+      "provenance": "GAMS User's Guide (Brooke, Kendrick, Meeraus, 1988) — Ordered Sets",
+      "aliases": [
+        "CARD"
+      ],
+      "parameters": [
+        {
+          "key": "count",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "count",
+          "description": "Cardinality of the set"
+        }
+      ],
+      "wasmKernel": "gams_card",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "sameas",
+    "kind": "Function",
+    "namePath": "GAMS.sameas",
+    "exports": [
+      "a",
+      "b"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Set Element Equality (sameas)",
+      "category": "Set & Indexed Operators",
+      "domain": "optimization",
+      "description": "Returns 1 if two set element labels are identical (case-insensitive), otherwise 0.",
+      "provenance": "GAMS User's Guide (Brooke, Kendrick, Meeraus, 1988) — Set Comparisons",
+      "aliases": [
+        "SAMEAS"
+      ],
+      "parameters": [
+        {
+          "key": "a",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "id",
+          "description": "First element identifier"
+        },
+        {
+          "key": "b",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "id",
+          "description": "Second element identifier"
+        }
+      ],
+      "wasmKernel": "gams_sameas",
+      "archetypeId": 7
+    }
+  },
+  {
+    "name": "trnsport",
+    "kind": "Function",
+    "namePath": "GAMS.trnsport",
+    "exports": [
+      "freight",
+      "cap_seattle",
+      "cap_sandiego"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Transportation Problem (trnsport)",
+      "category": "GAMSlib Optimization Archetypes",
+      "domain": "optimization",
+      "description": "Dantzig's classic 2-plant, 3-market minimum-cost transportation LP (optimal objective = 153.675).",
+      "provenance": "G. B. Dantzig (1963), Linear Programming and Extensions; GAMSlib SEQ=1 (trnsport.gms)",
+      "aliases": [
+        "TRNSPORT",
+        "transport",
+        "dantzig_transport"
+      ],
+      "parameters": [
+        {
+          "key": "freight",
+          "type": "real",
+          "defaultValue": 90,
+          "unit": "$/case/1000mi",
+          "description": "Freight cost per case per thousand miles"
+        },
+        {
+          "key": "cap_seattle",
+          "type": "real",
+          "defaultValue": 350,
+          "unit": "cases",
+          "description": "Canning capacity at Seattle"
+        },
+        {
+          "key": "cap_sandiego",
+          "type": "real",
+          "defaultValue": 600,
+          "unit": "cases",
+          "description": "Canning capacity at San Diego"
+        }
+      ],
+      "wasmKernel": "gams_trnsport_cost",
+      "archetypeId": 101
+    }
+  },
+  {
+    "name": "diet",
+    "kind": "Function",
+    "namePath": "GAMS.diet",
+    "exports": [
+      "min_calories",
+      "min_protein"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Diet Optimization Problem (diet)",
+      "category": "GAMSlib Optimization Archetypes",
+      "domain": "optimization",
+      "description": "Minimum-cost nutritional diet LP satisfying daily nutrient lower bounds.",
+      "provenance": "G. J. Stigler (1945), The Cost of Subsistence; GAMSlib diet archetype",
+      "aliases": [
+        "DIET",
+        "stigler_diet"
+      ],
+      "parameters": [
+        {
+          "key": "min_calories",
+          "type": "real",
+          "defaultValue": 2000,
+          "unit": "kcal",
+          "description": "Minimum daily caloric intake"
+        },
+        {
+          "key": "min_protein",
+          "type": "real",
+          "defaultValue": 55,
+          "unit": "g",
+          "description": "Minimum daily protein intake"
+        }
+      ],
+      "wasmKernel": "gams_diet_cost",
+      "archetypeId": 102
+    }
+  },
+  {
+    "name": "blend",
+    "kind": "Function",
+    "namePath": "GAMS.blend",
+    "exports": [
+      "target_batch",
+      "min_grade"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Blending Problem (blend)",
+      "category": "GAMSlib Optimization Archetypes",
+      "domain": "optimization",
+      "description": "Minimum-cost raw material blending LP subject to composition ratio constraints.",
+      "provenance": "H. P. Williams (1978), Model Building in Mathematical Programming; GAMSlib blend archetype",
+      "aliases": [
+        "BLEND",
+        "alloy_blend"
+      ],
+      "parameters": [
+        {
+          "key": "target_batch",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "kg",
+          "description": "Target blended batch mass"
+        },
+        {
+          "key": "min_grade",
+          "type": "real",
+          "defaultValue": 0.4,
+          "unit": "fraction",
+          "description": "Minimum active component grade"
+        }
+      ],
+      "wasmKernel": "gams_blend_cost",
+      "archetypeId": 103
+    }
+  }
+]

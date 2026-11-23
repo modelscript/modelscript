@@ -3,6 +3,7 @@
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
 import { AcceleratorLatticeEditorProvider } from "../accelerator-lattice-panel.js";
+import { CanvasEditorProvider } from "../canvas-editor-provider.js";
 import { ClimateRasterEditorProvider } from "../climate-raster-panel.js";
 import { CrystallographyEditorProvider } from "../crystallography-panel.js";
 import { DiagramEditorProvider } from "../diagram-editor-provider.js";
@@ -189,7 +190,14 @@ export function registerCustomEditors(
     }),
   );
 
-  // 4. STEP, GCode, INP, CFG, RAW, OLGA
+  // 4. Spatial Canvas (.mscanvas), STEP, GCode, INP, CFG, RAW, OLGA
+  const canvasEditor = new CanvasEditorProvider(context, client);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(CanvasEditorProvider.viewType, canvasEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
   const stepEditor = new StepEditorProvider(context, client, stepCompilationService);
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(StepEditorProvider.viewType, stepEditor, {

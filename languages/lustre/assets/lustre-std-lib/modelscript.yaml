@@ -1,0 +1,11 @@
+name: "@modelscript/lustre-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom Lustre/SCADE synchronous temporal operator standard library (9 operators, cleanroom SVG block icons, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: lustre
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

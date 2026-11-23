@@ -7,6 +7,7 @@ export * from "./diagram/index.js";
 export * from "./drop-edits.js";
 export * from "./grammar/index.js";
 export * from "./indexing.js";
+export * from "./interop.js";
 export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp-actions.js";

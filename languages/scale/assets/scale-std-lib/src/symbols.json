@@ -1,0 +1,694 @@
+[
+  {
+    "name": "UO2",
+    "kind": "material",
+    "namePath": "SCALE.UO2",
+    "exports": [
+      "density",
+      "temperature",
+      "enrichment",
+      "molecularWeight"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "UO2 Fuel",
+      "category": "Standard Composition",
+      "domain": "nuclear-criticality",
+      "description": "Uranium dioxide nuclear fuel pellet (theoretical density 10.96 g/cm³).",
+      "provenance": "ORNL/TM-2005/39 SCALE Standard Composition Library",
+      "aliases": [
+        "uo2",
+        "uranium_dioxide"
+      ],
+      "parameters": [
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 10.96,
+          "unit": "g/cm^3",
+          "description": "Theoretical density of UO2"
+        },
+        {
+          "key": "temperature",
+          "type": "real",
+          "defaultValue": 900,
+          "unit": "K",
+          "description": "Nominal fuel operating temperature"
+        },
+        {
+          "key": "enrichment",
+          "type": "real",
+          "defaultValue": 3.5,
+          "unit": "wt%",
+          "description": "U-235 weight-percent enrichment"
+        },
+        {
+          "key": "molecularWeight",
+          "type": "real",
+          "defaultValue": 270.03,
+          "unit": "g/mol",
+          "description": "Molar mass"
+        }
+      ],
+      "wasmKernel": "scaleBatemanStep",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "H2O",
+    "kind": "material",
+    "namePath": "SCALE.H2O",
+    "exports": [
+      "density",
+      "temperature",
+      "molecularWeight"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "H2O Moderator",
+      "category": "Standard Composition",
+      "domain": "nuclear-criticality",
+      "description": "Light water moderator and coolant.",
+      "provenance": "ORNL/TM-2005/39 SCALE Standard Composition Library",
+      "aliases": [
+        "h2o",
+        "water",
+        "light_water"
+      ],
+      "parameters": [
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 0.9982,
+          "unit": "g/cm^3",
+          "description": "Density at 293.6 K"
+        },
+        {
+          "key": "temperature",
+          "type": "real",
+          "defaultValue": 293.6,
+          "unit": "K",
+          "description": "Reference temperature"
+        },
+        {
+          "key": "molecularWeight",
+          "type": "real",
+          "defaultValue": 18.015,
+          "unit": "g/mol",
+          "description": "Molar mass"
+        }
+      ],
+      "wasmKernel": "scaleBatemanStep",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "SS304",
+    "kind": "material",
+    "namePath": "SCALE.SS304",
+    "exports": [
+      "density",
+      "temperature",
+      "molecularWeight"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SS304 Steel",
+      "category": "Standard Composition",
+      "domain": "nuclear-criticality",
+      "description": "AISI 304 austenitic stainless steel structural alloy.",
+      "provenance": "ORNL/TM-2005/39 SCALE Standard Composition Library",
+      "aliases": [
+        "ss304",
+        "stainless_steel_304"
+      ],
+      "parameters": [
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 7.94,
+          "unit": "g/cm^3",
+          "description": "Nominal stainless steel density"
+        },
+        {
+          "key": "temperature",
+          "type": "real",
+          "defaultValue": 300,
+          "unit": "K",
+          "description": "Reference temperature"
+        },
+        {
+          "key": "molecularWeight",
+          "type": "real",
+          "defaultValue": 55.3,
+          "unit": "g/mol",
+          "description": "Effective molar mass"
+        }
+      ],
+      "wasmKernel": "scaleBatemanStep",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "ZIRC4",
+    "kind": "material",
+    "namePath": "SCALE.ZIRC4",
+    "exports": [
+      "density",
+      "temperature",
+      "molecularWeight"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Zircaloy-4",
+      "category": "Standard Composition",
+      "domain": "nuclear-criticality",
+      "description": "Zircaloy-4 PWR fuel cladding alloy.",
+      "provenance": "ORNL/TM-2005/39 SCALE Standard Composition Library",
+      "aliases": [
+        "zirc4",
+        "zircaloy-4",
+        "zircaloy4"
+      ],
+      "parameters": [
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 6.56,
+          "unit": "g/cm^3",
+          "description": "Cladding density"
+        },
+        {
+          "key": "temperature",
+          "type": "real",
+          "defaultValue": 600,
+          "unit": "K",
+          "description": "Nominal cladding temperature"
+        },
+        {
+          "key": "molecularWeight",
+          "type": "real",
+          "defaultValue": 91.22,
+          "unit": "g/mol",
+          "description": "Effective molar mass"
+        }
+      ],
+      "wasmKernel": "scaleBatemanStep",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "B4C",
+    "kind": "material",
+    "namePath": "SCALE.B4C",
+    "exports": [
+      "density",
+      "temperature",
+      "molecularWeight"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "B4C Absorber",
+      "category": "Standard Composition",
+      "domain": "nuclear-criticality",
+      "description": "Boron carbide neutron absorber control rod material.",
+      "provenance": "ORNL/TM-2005/39 SCALE Standard Composition Library",
+      "aliases": [
+        "b4c",
+        "boron_carbide"
+      ],
+      "parameters": [
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 2.52,
+          "unit": "g/cm^3",
+          "description": "Absorber pellet density"
+        },
+        {
+          "key": "temperature",
+          "type": "real",
+          "defaultValue": 300,
+          "unit": "K",
+          "description": "Reference temperature"
+        },
+        {
+          "key": "molecularWeight",
+          "type": "real",
+          "defaultValue": 55.255,
+          "unit": "g/mol",
+          "description": "Molar mass"
+        }
+      ],
+      "wasmKernel": "scaleBatemanStep",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "MOX",
+    "kind": "material",
+    "namePath": "SCALE.MOX",
+    "exports": [
+      "density",
+      "temperature",
+      "puWeightPercent",
+      "molecularWeight"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "MOX Fuel",
+      "category": "Standard Composition",
+      "domain": "nuclear-criticality",
+      "description": "Mixed oxide (UO2/PuO2) reactor fuel.",
+      "provenance": "ORNL/TM-2005/39 SCALE Standard Composition Library",
+      "aliases": [
+        "mox",
+        "mixed_oxide"
+      ],
+      "parameters": [
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 10.45,
+          "unit": "g/cm^3",
+          "description": "Nominal MOX density"
+        },
+        {
+          "key": "temperature",
+          "type": "real",
+          "defaultValue": 900,
+          "unit": "K",
+          "description": "Nominal fuel temperature"
+        },
+        {
+          "key": "puWeightPercent",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "wt%",
+          "description": "Plutonium weight fraction"
+        },
+        {
+          "key": "molecularWeight",
+          "type": "real",
+          "defaultValue": 270.4,
+          "unit": "g/mol",
+          "description": "Molar mass"
+        }
+      ],
+      "wasmKernel": "scaleBatemanStep",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "U-235",
+    "kind": "nuclide",
+    "namePath": "SCALE.U-235",
+    "exports": [
+      "decayConstant",
+      "sigmaAbsorption",
+      "sigmaFission",
+      "decayEnergyMeV"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "U-235",
+      "category": "Actinide Nuclide",
+      "domain": "nuclear-criticality",
+      "description": "Fissile uranium-235 actinide nuclide (sigma_f=585 b, sigma_a=683.7 b).",
+      "provenance": "ENDF/B-VIII.0 / ORIGEN-S Nuclear Data Library",
+      "aliases": [
+        "u235",
+        "u-235",
+        "92235"
+      ],
+      "parameters": [
+        {
+          "key": "decayConstant",
+          "type": "real",
+          "defaultValue": 3.120845229558131e-17,
+          "unit": "1/s",
+          "description": "Radioactive decay constant"
+        },
+        {
+          "key": "sigmaAbsorption",
+          "type": "real",
+          "defaultValue": 683.7,
+          "unit": "barns",
+          "description": "Thermal neutron absorption cross-section"
+        },
+        {
+          "key": "sigmaFission",
+          "type": "real",
+          "defaultValue": 585,
+          "unit": "barns",
+          "description": "Thermal neutron fission cross-section"
+        },
+        {
+          "key": "decayEnergyMeV",
+          "type": "real",
+          "defaultValue": 4.68,
+          "unit": "MeV",
+          "description": "Recoverable decay energy per disintegration"
+        }
+      ],
+      "wasmKernel": "scaleBatemanStep",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "U-238",
+    "kind": "nuclide",
+    "namePath": "SCALE.U-238",
+    "exports": [
+      "decayConstant",
+      "sigmaAbsorption",
+      "sigmaFission",
+      "decayEnergyMeV"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "U-238",
+      "category": "Actinide Nuclide",
+      "domain": "nuclear-criticality",
+      "description": "Fertile uranium-238 actinide nuclide capturing neutrons to breed Pu-239.",
+      "provenance": "ENDF/B-VIII.0 / ORIGEN-S Nuclear Data Library",
+      "aliases": [
+        "u238",
+        "u-238",
+        "92238"
+      ],
+      "parameters": [
+        {
+          "key": "decayConstant",
+          "type": "real",
+          "defaultValue": 4.915959875924379e-18,
+          "unit": "1/s",
+          "description": "Radioactive decay constant"
+        },
+        {
+          "key": "sigmaAbsorption",
+          "type": "real",
+          "defaultValue": 2.68,
+          "unit": "barns",
+          "description": "Thermal neutron capture cross-section"
+        },
+        {
+          "key": "sigmaFission",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "barns",
+          "description": "Thermal fission cross-section"
+        },
+        {
+          "key": "decayEnergyMeV",
+          "type": "real",
+          "defaultValue": 4.27,
+          "unit": "MeV",
+          "description": "Recoverable decay energy per disintegration"
+        }
+      ],
+      "wasmKernel": "scaleBatemanStep",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "Pu-239",
+    "kind": "nuclide",
+    "namePath": "SCALE.Pu-239",
+    "exports": [
+      "decayConstant",
+      "sigmaAbsorption",
+      "sigmaFission",
+      "decayEnergyMeV"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Pu-239",
+      "category": "Actinide Nuclide",
+      "domain": "nuclear-criticality",
+      "description": "Fissile plutonium-239 bred from U-238 neutron capture (sigma_f=747.4 b).",
+      "provenance": "ENDF/B-VIII.0 / ORIGEN-S Nuclear Data Library",
+      "aliases": [
+        "pu239",
+        "pu-239",
+        "94239"
+      ],
+      "parameters": [
+        {
+          "key": "decayConstant",
+          "type": "real",
+          "defaultValue": 9.110123901132364e-13,
+          "unit": "1/s",
+          "description": "Radioactive decay constant"
+        },
+        {
+          "key": "sigmaAbsorption",
+          "type": "real",
+          "defaultValue": 1017.7,
+          "unit": "barns",
+          "description": "Thermal neutron absorption cross-section"
+        },
+        {
+          "key": "sigmaFission",
+          "type": "real",
+          "defaultValue": 747.4,
+          "unit": "barns",
+          "description": "Thermal neutron fission cross-section"
+        },
+        {
+          "key": "decayEnergyMeV",
+          "type": "real",
+          "defaultValue": 5.24,
+          "unit": "MeV",
+          "description": "Recoverable decay energy per disintegration"
+        }
+      ],
+      "wasmKernel": "scaleBatemanStep",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "I-135",
+    "kind": "nuclide",
+    "namePath": "SCALE.I-135",
+    "exports": [
+      "decayConstant",
+      "sigmaAbsorption",
+      "u235FissionYield",
+      "decayEnergyMeV"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "I-135",
+      "category": "Fission Product",
+      "domain": "nuclear-criticality",
+      "description": "Iodine-135 fission product precursor to Xe-135 (T1/2 = 6.57 h).",
+      "provenance": "ENDF/B-VIII.0 / ORIGEN-S Nuclear Data Library",
+      "aliases": [
+        "i135",
+        "i-135",
+        "53135"
+      ],
+      "parameters": [
+        {
+          "key": "decayConstant",
+          "type": "real",
+          "defaultValue": 0.000029306070546251702,
+          "unit": "1/s",
+          "description": "Beta decay constant to Xe-135"
+        },
+        {
+          "key": "sigmaAbsorption",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "barns",
+          "description": "Thermal absorption cross-section"
+        },
+        {
+          "key": "u235FissionYield",
+          "type": "real",
+          "defaultValue": 0.0639,
+          "unit": "-",
+          "description": "Direct thermal fission yield from U-235"
+        },
+        {
+          "key": "decayEnergyMeV",
+          "type": "real",
+          "defaultValue": 1.16,
+          "unit": "MeV",
+          "description": "Recoverable beta/gamma decay energy"
+        }
+      ],
+      "wasmKernel": "scaleBatemanStep",
+      "archetypeId": 14
+    }
+  },
+  {
+    "name": "Xe-135",
+    "kind": "nuclide",
+    "namePath": "SCALE.Xe-135",
+    "exports": [
+      "decayConstant",
+      "sigmaAbsorption",
+      "u235FissionYield",
+      "decayEnergyMeV"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Xe-135",
+      "category": "Fission Product",
+      "domain": "nuclear-criticality",
+      "description": "Xenon-135 strong thermal neutron poison (T1/2 = 9.14 h, sigma_a = 2.65e6 b).",
+      "provenance": "ENDF/B-VIII.0 / ORIGEN-S Nuclear Data Library",
+      "aliases": [
+        "xe135",
+        "xe-135",
+        "54135"
+      ],
+      "parameters": [
+        {
+          "key": "decayConstant",
+          "type": "real",
+          "defaultValue": 0.000021065742176025568,
+          "unit": "1/s",
+          "description": "Beta decay constant to Cs-135"
+        },
+        {
+          "key": "sigmaAbsorption",
+          "type": "real",
+          "defaultValue": 2650000,
+          "unit": "barns",
+          "description": "Thermal neutron absorption cross-section"
+        },
+        {
+          "key": "u235FissionYield",
+          "type": "real",
+          "defaultValue": 0.00254,
+          "unit": "-",
+          "description": "Direct thermal fission yield from U-235"
+        },
+        {
+          "key": "decayEnergyMeV",
+          "type": "real",
+          "defaultValue": 0.56,
+          "unit": "MeV",
+          "description": "Recoverable beta/gamma decay energy"
+        }
+      ],
+      "wasmKernel": "scaleBatemanStep",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "Cs-137",
+    "kind": "nuclide",
+    "namePath": "SCALE.Cs-137",
+    "exports": [
+      "decayConstant",
+      "sigmaAbsorption",
+      "u235FissionYield",
+      "decayEnergyMeV"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Cs-137",
+      "category": "Fission Product",
+      "domain": "nuclear-criticality",
+      "description": "Cesium-137 long-lived fission product (T1/2 = 30.17 yr).",
+      "provenance": "ENDF/B-VIII.0 / ORIGEN-S Nuclear Data Library",
+      "aliases": [
+        "cs137",
+        "cs-137",
+        "55137"
+      ],
+      "parameters": [
+        {
+          "key": "decayConstant",
+          "type": "real",
+          "defaultValue": 7.280248168919498e-10,
+          "unit": "1/s",
+          "description": "Beta decay constant"
+        },
+        {
+          "key": "sigmaAbsorption",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "barns",
+          "description": "Thermal absorption cross-section"
+        },
+        {
+          "key": "u235FissionYield",
+          "type": "real",
+          "defaultValue": 0.0619,
+          "unit": "-",
+          "description": "Cumulative thermal fission yield from U-235"
+        },
+        {
+          "key": "decayEnergyMeV",
+          "type": "real",
+          "defaultValue": 0.78,
+          "unit": "MeV",
+          "description": "Recoverable decay energy (incl. Ba-137m)"
+        }
+      ],
+      "wasmKernel": "scaleBatemanStep",
+      "archetypeId": 15
+    }
+  },
+  {
+    "name": "Sr-90",
+    "kind": "nuclide",
+    "namePath": "SCALE.Sr-90",
+    "exports": [
+      "decayConstant",
+      "sigmaAbsorption",
+      "u235FissionYield",
+      "decayEnergyMeV"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Sr-90",
+      "category": "Fission Product",
+      "domain": "nuclear-criticality",
+      "description": "Strontium-90 long-lived fission product (T1/2 = 28.79 yr).",
+      "provenance": "ENDF/B-VIII.0 / ORIGEN-S Nuclear Data Library",
+      "aliases": [
+        "sr90",
+        "sr-90",
+        "38090"
+      ],
+      "parameters": [
+        {
+          "key": "decayConstant",
+          "type": "real",
+          "defaultValue": 7.629214562566908e-10,
+          "unit": "1/s",
+          "description": "Beta decay constant"
+        },
+        {
+          "key": "sigmaAbsorption",
+          "type": "real",
+          "defaultValue": 0.015,
+          "unit": "barns",
+          "description": "Thermal absorption cross-section"
+        },
+        {
+          "key": "u235FissionYield",
+          "type": "real",
+          "defaultValue": 0.0578,
+          "unit": "-",
+          "description": "Cumulative thermal fission yield from U-235"
+        },
+        {
+          "key": "decayEnergyMeV",
+          "type": "real",
+          "defaultValue": 1.13,
+          "unit": "MeV",
+          "description": "Recoverable decay energy (incl. Y-90)"
+        }
+      ],
+      "wasmKernel": "scaleBatemanStep",
+      "archetypeId": 16
+    }
+  }
+]

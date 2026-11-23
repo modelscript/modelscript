@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { DagreLayout } from "@antv/layout";
-import { Graph } from "@antv/x6";
+import { UnifiedGraph as Graph } from "@modelscript/canvas/engine";
 
 interface NotebookRendererOutputItem {
   json(): unknown;

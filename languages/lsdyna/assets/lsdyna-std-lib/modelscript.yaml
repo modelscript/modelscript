@@ -1,0 +1,11 @@
+name: "@modelscript/lsdyna-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom LS-DYNA / DYNA3D explicit dynamics material & section standard library (7 schemas, cleanroom SVG icons, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: lsdyna
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

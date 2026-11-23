@@ -1,0 +1,293 @@
+[
+  {
+    "namePath": "RINEX.C1",
+    "aliases": [
+      "C1C",
+      "CA_PSEUDORANGE"
+    ],
+    "label": "L1 C/A Code Pseudorange",
+    "category": "Observation Type",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"34\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"23\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#38bdf8\">OBS</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">C1</text></svg>",
+    "ports": [
+      {
+        "name": "signal_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "observable_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "RINEX.P1",
+    "aliases": [
+      "P1W",
+      "L1_P_CODE"
+    ],
+    "label": "L1 P(Y) Code Pseudorange",
+    "category": "Observation Type",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"34\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"23\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#38bdf8\">OBS</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">P1</text></svg>",
+    "ports": [
+      {
+        "name": "signal_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "observable_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "RINEX.P2",
+    "aliases": [
+      "P2W",
+      "L2_P_CODE"
+    ],
+    "label": "L2 P(Y) Code Pseudorange",
+    "category": "Observation Type",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"34\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"23\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#38bdf8\">OBS</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">P2</text></svg>",
+    "ports": [
+      {
+        "name": "signal_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "observable_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "RINEX.L1",
+    "aliases": [
+      "L1C",
+      "CARRIER_L1"
+    ],
+    "label": "L1 Carrier Phase",
+    "category": "Observation Type",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"34\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"23\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#38bdf8\">OBS</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">L1</text></svg>",
+    "ports": [
+      {
+        "name": "signal_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "observable_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "RINEX.L2",
+    "aliases": [
+      "L2W",
+      "CARRIER_L2"
+    ],
+    "label": "L2 Carrier Phase",
+    "category": "Observation Type",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"34\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"23\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#38bdf8\">OBS</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">L2</text></svg>",
+    "ports": [
+      {
+        "name": "signal_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "observable_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "RINEX.D1",
+    "aliases": [
+      "D1C",
+      "DOPPLER_L1"
+    ],
+    "label": "L1 Doppler Frequency",
+    "category": "Observation Type",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"34\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"23\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#38bdf8\">OBS</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">D1</text></svg>",
+    "ports": [
+      {
+        "name": "signal_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "observable_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "RINEX.S1",
+    "aliases": [
+      "S1C",
+      "SNR_L1"
+    ],
+    "label": "L1 Signal-to-Noise Ratio",
+    "category": "Observation Type",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"34\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"23\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#38bdf8\">OBS</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">S1</text></svg>",
+    "ports": [
+      {
+        "name": "signal_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "observable_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "RINEX.WGS84_MU",
+    "aliases": [
+      "MU",
+      "GM_EARTH"
+    ],
+    "label": "WGS-84 Gravitational Parameter",
+    "category": "WGS-84 Constant",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"34\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"23\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#34d399\">WGS84</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">WGS84_MU</text></svg>",
+    "ports": [
+      {
+        "name": "value_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "RINEX.WGS84_OMEGA_E_DOT",
+    "aliases": [
+      "OMEGA_E_DOT",
+      "EARTH_ROTATION_RATE"
+    ],
+    "label": "WGS-84 Earth Rotation Rate",
+    "category": "WGS-84 Constant",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"34\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"23\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#34d399\">WGS84</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">WGS84_OMEGA_</text></svg>",
+    "ports": [
+      {
+        "name": "value_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "RINEX.SPEED_OF_LIGHT",
+    "aliases": [
+      "C",
+      "C_VACUUM"
+    ],
+    "label": "Speed of Light",
+    "category": "WGS-84 Constant",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"34\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"23\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#34d399\">WGS84</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">SPEED_OF_LIG</text></svg>",
+    "ports": [
+      {
+        "name": "value_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "RINEX.GPS_F_REL",
+    "aliases": [
+      "F_REL",
+      "RELATIVISTIC_CONST"
+    ],
+    "label": "GPS Relativistic Clock Constant",
+    "category": "WGS-84 Constant",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"34\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"23\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#34d399\">WGS84</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">GPS_F_REL</text></svg>",
+    "ports": [
+      {
+        "name": "value_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  }
+]

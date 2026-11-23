@@ -33,6 +33,7 @@ export * from "./formatter.js";
 export * from "./fuml-bridge.js";
 export * from "./hybrid-cosim-orchestrator.js";
 export * from "./hybrid-flowpipe-bridge.js";
+export * from "./interop.js";
 export * from "./language.js";
 export { default, default as sysml2Language } from "./language.js";
 export * from "./loop-invariant-analyzer.js";

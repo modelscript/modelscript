@@ -2708,22 +2708,25 @@ export class ValidationService {
           }
         }
 
-        const relatedInformation = alignedElements
-          .filter((el: any) => el?.uri && el.uri !== uri)
-          .map((el: any) => {
-            const relLine = Math.max(0, (el.line ?? 1) - 1);
-            const relCol = Math.max(0, (el.column ?? 1) - 1);
-            return {
-              location: {
-                uri: el.uri as string,
-                range: {
-                  start: { line: relLine, character: relCol },
-                  end: { line: relLine, character: relCol + Math.max(1, (el.name || "").length) },
-                },
-              },
-              message: `Aligned ${String(el.domain || "domain").toUpperCase()} element '${el.name || td.elementName}'`,
-            };
-          });
+        const relatedInformation =
+          td.relatedInformation && td.relatedInformation.length > 0
+            ? td.relatedInformation.filter((r) => r.location.uri !== uri)
+            : alignedElements
+                .filter((el: any) => el?.uri && el.uri !== uri)
+                .map((el: any) => {
+                  const relLine = Math.max(0, (el.line ?? 1) - 1);
+                  const relCol = Math.max(0, (el.column ?? 1) - 1);
+                  return {
+                    location: {
+                      uri: el.uri as string,
+                      range: {
+                        start: { line: relLine, character: relCol },
+                        end: { line: relLine, character: relCol + Math.max(1, (el.name || "").length) },
+                      },
+                    },
+                    message: `Aligned ${String(el.domain || "domain").toUpperCase()} element '${el.name || td.elementName}'`,
+                  };
+                });
 
         diagnostics.push({
           range: {
@@ -3215,8 +3218,7 @@ export class ValidationService {
     if (cached) return cached;
 
     const uw = this.workspaceManager?.unifiedWorkspace as
-      | (UnifiedWorkspace & { createPolyglotTransformer?: (lang: string) => PolyglotTransformer | null })
-      | undefined;
+      (UnifiedWorkspace & { createPolyglotTransformer?: (lang: string) => PolyglotTransformer | null }) | undefined;
     let transformer: PolyglotTransformer | null = null;
     if (uw && typeof uw.createPolyglotTransformer === "function") {
       try {
@@ -3869,8 +3871,7 @@ export class ValidationService {
     try {
       if (cachedTree && cached?.text && cached.text !== text && typeof cachedTree.edit === "function") {
         const activeFacade = (plugin?.facade ?? this.parserService.getFacade(langId)) as
-          | { lastAstRoot?: number }
-          | undefined;
+          { lastAstRoot?: number } | undefined;
         if (!activeFacade || isWasmTreeActiveInFacade(cachedTree, activeFacade, uri)) {
           const edit = computeTreeEdit(cached.text, text);
           cachedTree.edit(edit as never);
@@ -4732,8 +4733,7 @@ export class ValidationService {
         docText.includes("@mesh_source:") ||
         docText.includes("annotation(twin");
       const unifiedWs = this.workspaceManager?.unifiedWorkspace as
-        | { getAllDocumentEntries?: () => Array<{ uri?: string; text?: string }> }
-        | undefined;
+        { getAllDocumentEntries?: () => Array<{ uri?: string; text?: string }> } | undefined;
       const indexedCount = unifiedWs?.getAllDocumentEntries ? unifiedWs.getAllDocumentEntries().length : 0;
       if (!hasDirective && indexedCount < 2) {
         return;
@@ -4795,8 +4795,7 @@ export class ValidationService {
           | { dirname: (p: string) => string; extname: (p: string) => string; join: (...p: string[]) => string }
           | undefined;
         const nodeUrl = procBuiltin.getBuiltinModule?.("node:url") as
-          | { fileURLToPath: (u: string) => string; pathToFileURL: (p: string) => { href: string } }
-          | undefined;
+          { fileURLToPath: (u: string) => string; pathToFileURL: (p: string) => { href: string } } | undefined;
         if (nodeFs?.promises && nodePath && nodeUrl) {
           const triggerDir = nodePath.dirname(nodeUrl.fileURLToPath(triggerUri));
           const now = Date.now();
@@ -5410,8 +5409,7 @@ export class ValidationService {
           if (lazyCache && lazyCache.tree) {
             const root = lazyCache.tree.rootNode ?? (lazyCache.tree as { tree?: CstTreeLike }).tree?.rootNode;
             const rootWithLookup = root as
-              | (CstNodeLike & { descendantForIndex?: (start: number, end: number) => CstNodeLike | null })
-              | undefined;
+              (CstNodeLike & { descendantForIndex?: (start: number, end: number) => CstNodeLike | null }) | undefined;
             if (rootWithLookup && typeof rootWithLookup.descendantForIndex === "function") {
               return rootWithLookup.descendantForIndex(startOffset, Math.max(startOffset, endOffset));
             }

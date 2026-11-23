@@ -70,9 +70,16 @@ test("AMPL DAE Lowering — lowers decision variables and equations to DAE arena
   const problem = instantiateAmpl(model);
   const dae = lowerAmplToDae(problem);
 
-  // x, y, _obj_Cost, and _slack_UpperBound
-  assert.ok(dae.variables().length >= 3);
-  assert.ok(dae.equations().length >= 2);
+  // First-class WASM optimization side-tables: x, y decision vars (no fake _obj/_slack vars)
+  assert.strictEqual(dae.variables().length, 2);
+  assert.strictEqual(dae.optimization.objectiveCount, 1);
+  assert.strictEqual(dae.optimization.constraintCount, 2);
+  const cons = dae.optimization.getConstraints();
+  assert.strictEqual(cons[0]!.lb, 10);
+  assert.strictEqual(cons[0]!.ub, 10);
+  assert.strictEqual(cons[1]!.ub, 15);
+  assert.strictEqual(dae.optimization.evalObjectives([5, 5])[0], 15);
+  assert.strictEqual(dae.optimization.maxConstraintViolation([5, 5]), 0);
 });
 
 test("AMPL Modelica Projection — generates valid acausal Modelica optimization model", () => {

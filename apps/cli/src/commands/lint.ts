@@ -1662,6 +1662,115 @@ export const Lint: CommandModule<{}, LintArgs> = {
           continue;
         }
 
+        const HERITAGE_VALIDATORS: Record<string, [string, string]> = {
+          acsl: ["@modelscript/acsl", "validateAcsl"],
+          apdl: ["@modelscript/apdl", "validateApdl"],
+          apt: ["@modelscript/apt", "validateApt"],
+          cea: ["@modelscript/cea", "validateCea"],
+          chemkin: ["@modelscript/chemkin", "validateChemkin"],
+          cif: ["@modelscript/cif", "validateCif"],
+          "cplex-lp": ["@modelscript/cplex-lp", "validateCplexLp"],
+          csmp: ["@modelscript/csmp", "validateCsmp"],
+          datcom: ["@modelscript/datcom", "validateDatcom"],
+          doe2: ["@modelscript/doe2", "validateDoe2"],
+          dxf: ["@modelscript/dxf", "validateDxf"],
+          dynamo: ["@modelscript/dynamo", "validateDynamo"],
+          edif: ["@modelscript/edif", "validateEdif"],
+          esl: ["@modelscript/esl", "validateEsl"],
+          esterel: ["@modelscript/esterel", "validateEsterel"],
+          fits: ["@modelscript/fits", "validateFits"],
+          gams: ["@modelscript/gams", "validateGams"],
+          gaussian: ["@modelscript/gaussian", "validateGaussian"],
+          gcode: ["@modelscript/gcode", "validateGCode"],
+          gdsii: ["@modelscript/gdsii", "validateGdsii"],
+          gerber: ["@modelscript/gerber", "validateGerber"],
+          gpss: ["@modelscript/gpss", "validateGpss"],
+          hec1: ["@modelscript/hec1", "validateHec1"],
+          hec2: ["@modelscript/hec2", "getHec2Diagnostics"],
+          "ieee-cdf": ["@modelscript/ieee-cdf", "validateIeeeCdf"],
+          iges: ["@modelscript/iges", "validateIges"],
+          lsdyna: ["@modelscript/lsdyna", "validateLsDyna"],
+          lustre: ["@modelscript/lustre", "validateLustre"],
+          mcnp: ["@modelscript/mcnp", "validateMcnp"],
+          melcor: ["@modelscript/melcor", "validateMelcor"],
+          molfile: ["@modelscript/molfile", "validateMolfile"],
+          mps: ["@modelscript/mps", "validateMps"],
+          nec2: ["@modelscript/nec2", "validateNec2"],
+          plot3d: ["@modelscript/plot3d", "validatePlot3d"],
+          scale: ["@modelscript/scale", "validateScale"],
+          sdl: ["@modelscript/sdl", "validateSdl"],
+          segy: ["@modelscript/segy", "validateSegy"],
+          simscript: ["@modelscript/simscript", "validateSimscript"],
+          sinda: ["@modelscript/sinda", "validateSinda"],
+          slam: ["@modelscript/slam", "validateSlam"],
+          trasys: ["@modelscript/trasys", "validateTrasys"],
+          trnsys: ["@modelscript/trnsys", "validateTrnsys"],
+          verilog: ["@modelscript/verilog", "validateVerilog"],
+          vhdl: ["@modelscript/vhdl", "validateVhdl"],
+          arinc429: ["@modelscript/arinc429", "validateArinc429"],
+          asn1: ["@modelscript/asn1", "validateAsn1"],
+          bufr: ["@modelscript/bufr", "validateBufr"],
+          endf6: ["@modelscript/endf6", "validateEndf6"],
+          grib: ["@modelscript/grib", "validateGrib"],
+          hdf4: ["@modelscript/hdf4", "validateHdf4"],
+          ihex: ["@modelscript/ihex", "validateIhex"],
+          irig106: ["@modelscript/irig106", "validateIrig106"],
+          "iucr-cif": ["@modelscript/iucr-cif", "validateIucrCif"],
+          "jcamp-dx": ["@modelscript/jcamp-dx", "validateJcampDx"],
+          jedec: ["@modelscript/jedec", "validateJedec"],
+          "nasa-cdf": ["@modelscript/nasa-cdf", "validateNasaCdf"],
+          netcdf: ["@modelscript/netcdf", "validateNetcdf"],
+          nmea0183: ["@modelscript/nmea0183", "validateNmea0183"],
+          obj: ["@modelscript/obj", "validateObj"],
+          rinex: ["@modelscript/rinex", "validateRinex"],
+          srec: ["@modelscript/srec", "validateSrec"],
+          stl: ["@modelscript/stl", "validateStl"],
+          "usgs-dem": ["@modelscript/usgs-dem", "validateUsgsDem"],
+        };
+        const heritageEntry = HERITAGE_VALIDATORS[langId];
+        if (heritageEntry) {
+          const [pkgName, fnName] = heritageEntry;
+          const mod = (await import(pkgName)) as Record<string, unknown>;
+          const fn = mod[fnName] as
+            | ((text: string) => Array<{
+                severity?: number | string;
+                code?: string | number;
+                message: string;
+                range?: { start: { line: number; character: number }; end: { line: number; character: number } };
+              }>)
+            | undefined;
+          if (typeof fn === "function") {
+            const lspDiags = fn(item.text) ?? [];
+            for (const d of lspDiags) {
+              const startLine = (d.range?.start.line ?? 0) + 1;
+              const startCol = (d.range?.start.character ?? 0) + 1;
+              const endLine = (d.range?.end.line ?? startLine - 1) + 1;
+              const endCol = (d.range?.end.character ?? startCol) + 1;
+              const startOffset = lineColToByte(item.text, startLine, startCol);
+              const endOffset = lineColToByte(item.text, endLine, endCol);
+              const sev: "error" | "warning" | "info" =
+                d.severity === 1 || d.severity === "error"
+                  ? "error"
+                  : d.severity === 2 || d.severity === "warning"
+                    ? "warning"
+                    : "info";
+              const codeStr = d.code !== undefined ? String(d.code) : langId.toUpperCase();
+              diagnostics.push({
+                severity: sev,
+                lintName: codeStr.toLowerCase(),
+                code: codeStr,
+                domain: langId,
+                message: d.message,
+                symbolId: null,
+                resourceId: filePath,
+                startOffset,
+                endOffset,
+              });
+            }
+          }
+          continue;
+        }
+
         if (langId === "ssp") {
           const { lintSsd, lintSsv } = await import("@modelscript/ssp");
           const isSsv = filePath.toLowerCase().endsWith(".ssv") || item.text.includes("<ssv:ParameterSet");

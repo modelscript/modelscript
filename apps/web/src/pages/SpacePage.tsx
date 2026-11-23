@@ -47,13 +47,14 @@ import { PostMarkdownContent } from "../components/post/PostMarkdownContent";
 import Spinner from "../components/Spinner";
 import { useToast } from "../components/ToastContext";
 import { usePageTitle } from "../util/title";
+import { SpaceCanvasTab } from "./space/SpaceCanvasTab";
 import { SpaceChangeControlTab } from "./space/SpaceChangeControlTab";
 import { SpaceCodeTab } from "./space/SpaceCodeTab";
 import { SpaceIssuesTab } from "./space/SpaceIssuesTab";
 import { SpacePackagesTab } from "./space/SpacePackagesTab";
 import { SpaceSettingsTab } from "./space/SpaceSettingsTab";
 
-type SpaceTab = "overview" | "code" | "issues" | "chat" | "docs" | "changes" | "plm" | "repos" | "settings";
+type SpaceTab = "overview" | "canvas" | "code" | "issues" | "chat" | "docs" | "changes" | "plm" | "repos" | "settings";
 
 const SpaceCockpitGrid = styled.div`
   display: grid;
@@ -198,6 +199,7 @@ export const SpacePage: React.FC = () => {
   const tabParam: SpaceTab = rawTabParam === "plm" || rawTabParam === "pulls" ? "changes" : (rawTabParam as SpaceTab);
   const activeTab: SpaceTab = [
     "overview",
+    "canvas",
     "code",
     "issues",
     "chat",
@@ -905,6 +907,7 @@ export const SpacePage: React.FC = () => {
           {(
             [
               { id: "overview", label: "Overview", icon: BookIcon },
+              { id: "canvas", label: "Canvas", icon: PackageIcon },
               { id: "code", label: "Code", icon: CodeIcon },
               {
                 id: "issues",
@@ -2442,6 +2445,20 @@ export const SpacePage: React.FC = () => {
       )}
 
       {/* ── Tab 5: Repositories, PDM & Packages ── */}
+      {activeTab === "canvas" && (
+        <div
+          style={{
+            maxWidth: "1280px",
+            margin: "0 auto",
+            padding: "16px 24px 48px",
+            width: "100%",
+            boxSizing: "border-box",
+          }}
+        >
+          <SpaceCanvasTab spaceSlug={detail?.space.slug || slug || "default"} spaceName={detail?.space.name} />
+        </div>
+      )}
+
       {activeTab === "repos" && (
         <div
           style={{

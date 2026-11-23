@@ -1,0 +1,11 @@
+name: "@modelscript/cif-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom MOSIS SCMOS & Mead-Conway CIF 2.0 IC layout standard library (14 schemas, SVG layer icons, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: cif
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

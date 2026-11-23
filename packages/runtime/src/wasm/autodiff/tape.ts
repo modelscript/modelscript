@@ -338,7 +338,7 @@ export function recordExpr(tape: AdTape, exprId: u32, dae: DaeBuilder, varValues
 // ----------------------------------------------------------------------------
 
 export function tape_create(): u32 {
-  let ptr = atomicChunkAlloc(sizeof<AdTape>());
+  let ptr = atomicChunkAlloc(offsetof<AdTape>() as u32);
   let tape = changetype<AdTape>(ptr);
   tape.init();
   return ptr as u32;
@@ -370,7 +370,7 @@ export function tape_getValue(tapePtr: u32, nodeIdx: u32): f64 {
 }
 
 export function dae_createAdTape(capacity: u32 = 512): u32 {
-  let ptr = atomicChunkAlloc(sizeof<AdTape>());
+  let ptr = atomicChunkAlloc(offsetof<AdTape>() as u32);
   let tape = changetype<AdTape>(ptr);
   tape.init(capacity);
   return ptr as u32;

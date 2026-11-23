@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Webview-side script: receives diagram data via postMessage and
-// renders it using AntV X6.
+// renders it using the unified @modelscript/canvas custom graph engine.
 
 import * as antvLayout from "@antv/layout";
-import * as x6 from "@antv/x6";
+import { UnifiedGraph, UnifiedSelection, UnifiedTransform } from "@modelscript/canvas/engine";
 
 import {
   applyNodeFlipVisuals,
@@ -26,6 +26,7 @@ import {
   type AutoLayoutOptions,
 } from "./auto-layout.js";
 import { adaptColorForDarkMode, adaptX6Markup } from "./color-inversion.js";
+import { registerDefaultDiagramConnectorsAndRouters } from "./connectors.js";
 import { hideContextMenu, showContextMenu } from "./context-menu.js";
 import {
   clearActiveDropPlaceholder,
@@ -43,21 +44,26 @@ import {
   isGraphReadOnly,
   peekGraphState,
 } from "./graph-state.js";
+import {
+  exportGraphPngDataUrl,
+  exportGraphSvgString,
+  isMinimapVisibleOnContainer,
+  setDiagramGridOnGraph,
+  setDiagramSnapOnGraph,
+  toggleMinimapOnContainer,
+  type DiagramGridMode,
+} from "./grid-controls.js";
 import { groupSelectedNodesOnGraph, ungroupSelectedNodesOnGraph, type GroupableGraphLike } from "./group-actions.js";
 import { defaultInteractiveStateManager, type InteractiveBinding, type InteractiveWriteAction } from "./interactive.js";
 import { ensureMinimapHud, isMinimapOpen, toggleMinimapHud, updateMinimapHud } from "./minimap.js";
 import {
   collectCommittedExistingWires,
-  computeFilletedOrthogonalPath,
-  computeJumpoverPath,
   computeOrthogonalRoute,
-  computeSmoothBezierPath,
   extractEdgePruneOptions,
   getNodeBBox,
   getPortOutwardNormal,
   healOrthogonalVertices,
   isContainerDiagramNode,
-  portOrthogonalRouter,
   pruneIntermediateVertices,
   pruneOrthogonalLoops,
   regularizeOrthogonalPolyline,
@@ -65,8 +71,6 @@ import {
   sideToNormal,
   simplifyCollinearPoints,
   translateConnectedEdgeStubs,
-  type JumpoverOptions,
-  type JumpoverSegment,
   type PointLike,
   type RectLike,
   type RouterNodeLike,
@@ -289,18 +293,13 @@ interface DagreLayoutInstance {
 
 type DagreLayoutConstructor = new (options: Record<string, unknown>) => DagreLayoutInstance;
 
-const x6Module = x6 as unknown as {
-  Graph?: GraphConstructor | undefined;
-  Selection?: PluginConstructor | undefined;
-  Transform?: PluginConstructor | undefined;
-};
 const antvLayoutModule = antvLayout as unknown as {
   DagreLayout?: DagreLayoutConstructor | undefined;
 };
 
-const Graph: GraphConstructor = x6Module.Graph || (class {} as unknown as GraphConstructor);
-const Selection: PluginConstructor = x6Module.Selection || (class {} as unknown as PluginConstructor);
-const Transform: PluginConstructor = x6Module.Transform || (class {} as unknown as PluginConstructor);
+const Graph: GraphConstructor = UnifiedGraph as unknown as GraphConstructor;
+const Selection: PluginConstructor = UnifiedSelection as unknown as PluginConstructor;
+const Transform: PluginConstructor = UnifiedTransform as unknown as PluginConstructor;
 const DagreLayout: DagreLayoutConstructor =
   antvLayoutModule.DagreLayout || (class {} as unknown as DagreLayoutConstructor);
 
@@ -314,172 +313,14 @@ export {
   getEdgeToolConfig,
   getTypicalNodeSize,
   isEphemeralDiagramNode,
+  registerDefaultDiagramConnectorsAndRouters,
   syncAllNodeSelectionBoxes,
   type DropPlaceholderOptions,
 };
 
-if (typeof Graph.registerRouter === "function") {
-  try {
-    Graph.registerRouter("port-orthogonal-astar", portOrthogonalRouter, true);
-  } catch {
-    // Already registered or duplicate in HMR
-  }
-}
-
-interface JumpoverEdgeLike {
-  id?: string | undefined;
-  findView?: ((graph: unknown) => { routePoints?: PointLike[] } | null | undefined) | undefined;
-  getVertices?: (() => PointLike[]) | undefined;
-  getSourcePoint?: (() => PointLike) | undefined;
-  source?: PointLike | undefined;
-  getTargetPoint?: (() => PointLike) | undefined;
-  target?: PointLike | undefined;
-  getConnector?: (() => string | { name?: string }) | undefined;
-  connector?: string | { name?: string } | undefined;
-}
-
-interface JumpoverNodeLike {
-  id?: string | undefined;
-  x?: number | undefined;
-  y?: number | undefined;
-  getPosition?: (() => PointLike | undefined) | undefined;
-  getSize?: (() => { width?: number; height?: number } | undefined) | undefined;
-}
-
-interface JumpoverEdgeViewLike {
-  graph?:
-    | {
-        getEdges?: (() => JumpoverEdgeLike[]) | undefined;
-        getNodes?: (() => JumpoverNodeLike[]) | undefined;
-      }
-    | undefined;
-  cell?: { id?: string | undefined } | undefined;
-}
-
-if (typeof Graph.registerConnector === "function") {
-  try {
-    Graph.registerConnector(
-      "jumpover",
-      (
-        sourcePoint: PointLike,
-        targetPoint: PointLike,
-        routePoints: PointLike[] = [],
-        args: JumpoverOptions = {},
-        edgeView?: JumpoverEdgeViewLike,
-      ) => {
-        const points = [sourcePoint, ...routePoints, targetPoint];
-        const obstacles: JumpoverSegment[] = [];
-        const solderDots: PointLike[] = [];
-
-        if (edgeView?.graph && typeof edgeView.graph.getEdges === "function") {
-          const currentCell = edgeView.cell;
-          const currentEdgeId = currentCell?.id;
-          const allEdges = edgeView.graph.getEdges();
-
-          // Collect solder dot positions to suppress jumpovers near connected net junctions
-          if (typeof edgeView.graph.getNodes === "function") {
-            for (const n of edgeView.graph.getNodes()) {
-              if (typeof n.id === "string" && n.id.startsWith("solder_dot_")) {
-                const pos = typeof n.getPosition === "function" ? n.getPosition() : { x: n.x, y: n.y };
-                const size = typeof n.getSize === "function" ? n.getSize() : { width: 3, height: 3 };
-                if (pos && typeof pos.x === "number" && typeof pos.y === "number") {
-                  solderDots.push({
-                    x: pos.x + (size?.width ?? 3) / 2,
-                    y: pos.y + (size?.height ?? 3) / 2,
-                  });
-                }
-              }
-            }
-          }
-
-          for (const edge of allEdges) {
-            if (edge.id === currentEdgeId) continue;
-
-            const otherView = typeof edge.findView === "function" ? edge.findView(edgeView.graph) : null;
-            const otherRoute = otherView?.routePoints;
-            const otherVertices =
-              otherRoute && otherRoute.length > 0
-                ? otherRoute
-                : typeof edge.getVertices === "function"
-                  ? edge.getVertices()
-                  : [];
-            const otherSrc = typeof edge.getSourcePoint === "function" ? edge.getSourcePoint() : edge.source;
-            const otherTgt = typeof edge.getTargetPoint === "function" ? edge.getTargetPoint() : edge.target;
-
-            if (otherSrc && otherTgt && typeof otherSrc.x === "number" && typeof otherTgt.x === "number") {
-              const otherConnector = typeof edge.getConnector === "function" ? edge.getConnector() : edge.connector;
-              const otherConnectorName = typeof otherConnector === "string" ? otherConnector : otherConnector?.name;
-              const hasJumpover = otherConnectorName === "jumpover";
-
-              const otherPoints: PointLike[] = [otherSrc, ...otherVertices, otherTgt];
-              for (let j = 0; j < otherPoints.length - 1; j++) {
-                obstacles.push({
-                  p1: otherPoints[j]!,
-                  p2: otherPoints[j + 1]!,
-                  edgeId: edge.id,
-                  hasJumpover,
-                });
-              }
-            }
-          }
-        }
-
-        return computeJumpoverPath(points, obstacles, {
-          radius: args.radius ?? 5,
-          axis: args.axis ?? "both",
-          horizontalHop: args.horizontalHop ?? "up",
-          verticalHop: args.verticalHop ?? "right",
-          edgeId: edgeView?.cell?.id,
-          solderDots,
-        });
-      },
-      true,
-    );
-  } catch {
-    // Already registered or duplicate in HMR
-  }
-  try {
-    Graph.registerConnector(
-      "smooth",
-      (sourcePoint: PointLike, targetPoint: PointLike, routePoints: PointLike[] = []) => {
-        const points = [sourcePoint, ...routePoints, targetPoint];
-        return computeSmoothBezierPath(points);
-      },
-      true,
-    );
-  } catch {
-    // Already registered or duplicate in HMR
-  }
-  try {
-    Graph.registerConnector(
-      "bezier",
-      (sourcePoint: PointLike, targetPoint: PointLike, routePoints: PointLike[] = []) => {
-        const points = [sourcePoint, ...routePoints, targetPoint];
-        return computeSmoothBezierPath(points);
-      },
-      true,
-    );
-  } catch {
-    // Already registered or duplicate in HMR
-  }
-  try {
-    Graph.registerConnector(
-      "fillet",
-      (
-        sourcePoint: PointLike,
-        targetPoint: PointLike,
-        routePoints: PointLike[] = [],
-        args: { radius?: number | undefined } = {},
-      ) => {
-        const points = [sourcePoint, ...routePoints, targetPoint];
-        return computeFilletedOrthogonalPath(points, args.radius ?? 5);
-      },
-      true,
-    );
-  } catch {
-    // Already registered or duplicate in HMR
-  }
-}
+registerDefaultDiagramConnectorsAndRouters(
+  Graph as unknown as Parameters<typeof registerDefaultDiagramConnectorsAndRouters>[0],
+);
 
 export interface DiagramHostMessage {
   type: string;
@@ -511,6 +352,8 @@ export interface DiagramRendererOptions {
   edgeSelectionStyle?: EdgeSelectionStyle | undefined;
   /** Target language ID (e.g. "modelica", "pscad", "spice"). */
   language?: string | undefined;
+  /** Prefer WebGPU instanced schematic pipeline for high-scale graphs (>1,500 nodes) with automatic Canvas2D fallback (default: true). */
+  preferWebGpu?: boolean | undefined;
   /** Callback invoked when the user performs a diagram edit action (move, resize, connect, disconnect, etc.). */
   onAction?: ((action: Record<string, unknown> | InteractiveWriteAction) => void) | undefined;
   /** Callback invoked when the selected component node changes (or `null` when deselected). */
@@ -855,9 +698,6 @@ export { ensurePatchedSegmentsTool, ensurePatchedTransformTool, ensurePatchedVer
  * orthogonal edge routers, and keyboard shortcuts.
  */
 export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph | null {
-  ensurePatchedVerticesTool(x6);
-  ensurePatchedSegmentsTool(x6);
-  ensurePatchedTransformTool(x6);
   ensureDiagramStyles();
   let container = targetContainer ?? currentOptions?.container;
   if (!container && typeof document !== "undefined") {
@@ -931,6 +771,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     container,
     width: containerW,
     height: containerH,
+    preferWebGpu: currentOptions?.preferWebGpu ?? true,
     async: false,
     autoResize: true,
     background: { color: bgColor },
@@ -4331,6 +4172,8 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
         properties: node.properties,
         animations: node.animations as ReactiveAnimationBinding[] | undefined,
         interactive: node.interactive,
+        ...((node as { portal?: unknown }).portal ? { portal: (node as { portal?: unknown }).portal } : {}),
+        ...((node as { widget?: unknown }).widget ? { widget: (node as { widget?: unknown }).widget } : {}),
         ...(node.data || {}),
       },
       autoLayout: node.autoLayout,
@@ -6348,39 +6191,14 @@ export function toggleGroupNodeCollapse(node: Node | null | undefined): void {
  * Serializes the active diagram's SVG DOM element into a standalone XML string.
  */
 export function exportDiagramSvg(): string {
-  if (!graph) return "";
-  const svgElem = graph.container?.querySelector("svg");
-  return svgElem ? new XMLSerializer().serializeToString(svgElem) : "";
+  return exportGraphSvgString(graph);
 }
 
 /**
  * Renders the active diagram SVG onto an offscreen HTML5 canvas and exports a PNG data URL.
  */
 export async function exportDiagramPng(scale = 2): Promise<string> {
-  const svgString = exportDiagramSvg();
-  if (!svgString || typeof document === "undefined") return "";
-  return new Promise((resolve) => {
-    const img = new Image();
-    const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = (img.width || 800) * scale;
-      canvas.height = (img.height || 600) * scale;
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.scale(scale, scale);
-        ctx.drawImage(img, 0, 0);
-      }
-      URL.revokeObjectURL(url);
-      resolve(canvas.toDataURL("image/png"));
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve("");
-    };
-    img.src = url;
-  });
+  return exportGraphPngDataUrl(graph, scale);
 }
 
 /**
@@ -6421,6 +6239,7 @@ export * from "./eclipse-diagram-builder.js";
 export * from "./epanet-diagram-builder.js";
 export * from "./fault-tree.js";
 export * from "./glyphs.js";
+export * from "./grid-controls.js";
 export * from "./html-diff-bundle.js";
 export * from "./incremental-layout.js";
 export * from "./interactive.js";
@@ -6462,42 +6281,13 @@ export * from "./viewport-culling.js";
 export * from "./visual-diff-graph.js";
 export * from "./visual-diff-renderer.js";
 
-export type DiagramGridMode = "doubleMesh" | "dot" | "mesh" | "none";
-
 /**
- * Dynamically switches the canvas background grid style.
+ * Dynamically switches the canvas background grid style (`doubleMesh`, `dot`, `mesh`, or `none`).
  */
 export function setDiagramGrid(mode: DiagramGridMode, g?: Graph | null): void {
   const targetGraph = g ?? graph;
-  if (!targetGraph || targetGraph.disposed) return;
-  if (mode === "none") {
-    targetGraph.hideGrid?.();
-    return;
-  }
-  targetGraph.showGrid?.();
   const opts = getOptionsForGraph(targetGraph);
-  const bgColor = (targetGraph.options as { background?: { color?: string } } | undefined)?.background?.color;
-  const isDark = opts?.isDark !== undefined ? opts.isDark : bgColor !== "#ffffff" && bgColor !== "#f8fafc";
-  const gridColor = isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(15, 23, 42, 0.12)";
-  if (mode === "dot") {
-    targetGraph.drawGrid({
-      type: "dot",
-      args: { color: gridColor, thickness: 1.5 },
-    });
-  } else if (mode === "mesh") {
-    targetGraph.drawGrid({
-      type: "mesh",
-      args: { color: gridColor, thickness: 1 },
-    });
-  } else if (mode === "doubleMesh") {
-    targetGraph.drawGrid({
-      type: "doubleMesh",
-      args: [
-        { color: "transparent", thickness: 0 },
-        { color: gridColor, thickness: 1, factor: 10 },
-      ],
-    });
-  }
+  setDiagramGridOnGraph(targetGraph, mode, { isDark: opts?.isDark });
 }
 
 /**
@@ -6505,34 +6295,23 @@ export function setDiagramGrid(mode: DiagramGridMode, g?: Graph | null): void {
  */
 export function setDiagramSnap(enabled: boolean, g?: Graph | null): void {
   const targetGraph = g ?? graph;
-  if (!targetGraph || targetGraph.disposed) return;
-  const baseGridSize = graphBaseGridSizes.get(targetGraph) ?? 2;
-  targetGraph.setGridSize?.(enabled ? baseGridSize : 1);
+  if (!targetGraph) return;
+  setDiagramSnapOnGraph(targetGraph, enabled, graphBaseGridSizes.get(targetGraph) ?? 2);
 }
 
 /**
  * Toggles the Minimap HUD for the active diagram.
  */
 export function toggleMinimap(container?: HTMLElement | null): boolean {
-  const c = container ?? graph?.container;
-  if (!c) return false;
-  const isOpened = toggleMinimapHud(c);
-  if (isOpened && graph && !graph.disposed) {
-    const hud = c.querySelector("#modelscript-minimap-hud") as HTMLElement | null;
-    if (hud) {
-      updateMinimapHud(hud, graph);
-    }
-  }
-  return isOpened;
+  const targetGraph = (container ? containerInstances.get(container)?.graph : undefined) ?? graph;
+  return toggleMinimapOnContainer(container, targetGraph);
 }
 
 /**
  * Returns true if the Minimap HUD is currently open.
  */
 export function isMinimapVisible(container?: HTMLElement | null): boolean {
-  const c = container ?? graph?.container;
-  if (!c) return false;
-  return isMinimapOpen(c);
+  return isMinimapVisibleOnContainer(container, graph?.container);
 }
 
 export {
@@ -6626,3 +6405,26 @@ export * from "./scl-diagram-builder.js";
 export * from "./segy-trace-builder.js";
 export * from "./tcc-diagram-builder.js";
 export * from "./water-network-diff.js";
+
+export {
+  AnimationPropKind,
+  CanvasPointerFSM,
+  CompiledAnimationEngine,
+  compileGlyphMarkup,
+  paintGlyphToCanvas2D,
+  projectRayToPlane,
+  SimulationTimelineStore,
+  SoaSceneGraph,
+  UnifiedCell,
+  UnifiedGraph,
+  UnifiedSelection,
+  UnifiedTransform,
+} from "@modelscript/canvas/engine";
+export {
+  isWebGpuAvailable,
+  packSceneForWebGpu,
+  Scissor3DPortalManager,
+  SpatialSurfaceBridge,
+  WebGpuSchematicRenderer,
+} from "@modelscript/canvas/renderers";
+export { paintCanvasPlot, paintCanvasTable, paintStickyBadge } from "@modelscript/canvas/widgets";

@@ -1,0 +1,540 @@
+[
+  {
+    "namePath": "melcor.CVH.CVH_VOLUME",
+    "aliases": [
+      "CVH",
+      "CV_ID",
+      "CONTROL_VOLUME"
+    ],
+    "label": "CVH Control Volume",
+    "category": "CVH Control Volume",
+    "domain": "nuclear-severe-accident",
+    "width": 92,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 48\" width=\"92\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">CVH</text><text x=\"46\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">CVH_VOLUME</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 24
+      },
+      {
+        "name": "heat",
+        "kind": "thermal",
+        "side": "top",
+        "dx": 46,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "melcor.CVH.CVH_TMDP",
+    "aliases": [
+      "TIME_INDEPENDENT_CV"
+    ],
+    "label": "CVH Time-Independent Volume",
+    "category": "CVH Control Volume",
+    "domain": "nuclear-severe-accident",
+    "width": 92,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 48\" width=\"92\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">CVH</text><text x=\"46\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">CVH_TMDP</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 24
+      },
+      {
+        "name": "heat",
+        "kind": "thermal",
+        "side": "top",
+        "dx": 46,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "melcor.FL.FL_PATH",
+    "aliases": [
+      "FL",
+      "FL_ID",
+      "FLOW_PATH"
+    ],
+    "label": "FL Hydrodynamic Flow Path",
+    "category": "FL Flow Path",
+    "domain": "nuclear-severe-accident",
+    "width": 92,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 48\" width=\"92\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"44\" rx=\"6\" fill=\"#164e63\" stroke=\"#22d3ee\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#22d3ee\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#22d3ee\">FL</text><text x=\"46\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">FL_PATH</text></svg>",
+    "ports": [
+      {
+        "name": "from_cv",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "to_cv",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "melcor.FL.FL_VALVE",
+    "aliases": [
+      "FL_VLV",
+      "RUPTURE_DISK"
+    ],
+    "label": "FL Relief Valve / Rupture Disk",
+    "category": "FL Flow Path",
+    "domain": "nuclear-severe-accident",
+    "width": 92,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 48\" width=\"92\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"44\" rx=\"6\" fill=\"#164e63\" stroke=\"#22d3ee\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#22d3ee\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#22d3ee\">FL</text><text x=\"46\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">FL_VALVE</text></svg>",
+    "ports": [
+      {
+        "name": "from_cv",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "to_cv",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "melcor.HS.HS_SLAB",
+    "aliases": [
+      "HS",
+      "HS_ID",
+      "HEAT_STRUCTURE"
+    ],
+    "label": "HS 1D Heat Structure",
+    "category": "HS Heat Structure",
+    "domain": "nuclear-severe-accident",
+    "width": 92,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 48\" width=\"92\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"44\" rx=\"6\" fill=\"#431407\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">HS</text><text x=\"46\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">HS_SLAB</text></svg>",
+    "ports": [
+      {
+        "name": "left_cv",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "right_cv",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 92,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "melcor.COR.COR_CELL",
+    "aliases": [
+      "COR",
+      "COR_RP",
+      "COR_ZDF"
+    ],
+    "label": "COR Core Thermal Cell",
+    "category": "COR Core & Oxidation",
+    "domain": "nuclear-severe-accident",
+    "width": 92,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 48\" width=\"92\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"44\" rx=\"6\" fill=\"#450a0a\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">COR</text><text x=\"46\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">COR_CELL</text></svg>",
+    "ports": [
+      {
+        "name": "coolant_cv",
+        "kind": "fluid",
+        "side": "bottom",
+        "dx": 46,
+        "dy": 48
+      },
+      {
+        "name": "h2_out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 24
+      },
+      {
+        "name": "power_in",
+        "kind": "signal",
+        "side": "top",
+        "dx": 46,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "melcor.COR.COR_OX_UH",
+    "aliases": [
+      "URBANIC_HEIDRICK",
+      "ZR_OXIDATION"
+    ],
+    "label": "COR Urbanic-Heidrick Zr Oxidation",
+    "category": "COR Core & Oxidation",
+    "domain": "nuclear-severe-accident",
+    "width": 92,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 48\" width=\"92\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"44\" rx=\"6\" fill=\"#450a0a\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">COR</text><text x=\"46\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">COR_OX_UH</text></svg>",
+    "ports": [
+      {
+        "name": "coolant_cv",
+        "kind": "fluid",
+        "side": "bottom",
+        "dx": 46,
+        "dy": 48
+      },
+      {
+        "name": "h2_out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 24
+      },
+      {
+        "name": "power_in",
+        "kind": "signal",
+        "side": "top",
+        "dx": 46,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "melcor.COR.COR_DECAY_ANS",
+    "aliases": [
+      "DCH",
+      "ANS79_DECAY"
+    ],
+    "label": "COR ANS-5.1 Decay Heat",
+    "category": "COR Core & Oxidation",
+    "domain": "nuclear-severe-accident",
+    "width": 92,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 48\" width=\"92\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"44\" rx=\"6\" fill=\"#450a0a\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">COR</text><text x=\"46\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">COR_DECAY_A</text></svg>",
+    "ports": [
+      {
+        "name": "coolant_cv",
+        "kind": "fluid",
+        "side": "bottom",
+        "dx": 46,
+        "dy": 48
+      },
+      {
+        "name": "h2_out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 24
+      },
+      {
+        "name": "power_in",
+        "kind": "signal",
+        "side": "top",
+        "dx": 46,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "melcor.RN1.RN1_AEROSOL",
+    "aliases": [
+      "RN1",
+      "RN1_CLS",
+      "CORSOR"
+    ],
+    "label": "RN1 Fission Product Aerosol",
+    "category": "RN1 Radionuclide",
+    "domain": "nuclear-severe-accident",
+    "width": 92,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 48\" width=\"92\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"44\" rx=\"6\" fill=\"#3b0764\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">RN1</text><text x=\"46\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">RN1_AEROSOL</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "melcor.CF.CF_FUNC",
+    "aliases": [
+      "CF",
+      "CF_ID",
+      "CONTROL_FUNCTION"
+    ],
+    "label": "CF Control Function",
+    "category": "CF/TF Control & Table",
+    "domain": "nuclear-severe-accident",
+    "width": 92,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 48\" width=\"92\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"44\" rx=\"6\" fill=\"#14532d\" stroke=\"#4ade80\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#4ade80\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#4ade80\">CF</text><text x=\"46\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">CF_FUNC</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "melcor.TF.TF_TABLE",
+    "aliases": [
+      "TF",
+      "TF_ID",
+      "TABULAR_FUNCTION"
+    ],
+    "label": "TF Tabular Function",
+    "category": "CF/TF Control & Table",
+    "domain": "nuclear-severe-accident",
+    "width": 92,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 48\" width=\"92\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"44\" rx=\"6\" fill=\"#14532d\" stroke=\"#4ade80\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#4ade80\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#4ade80\">CF</text><text x=\"46\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">TF_TABLE</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "melcor.MP.MP_UO2",
+    "aliases": [
+      "UO2",
+      "URANIUM_DIOXIDE"
+    ],
+    "label": "MP UO2 Nuclear Fuel",
+    "category": "MP Material Property",
+    "domain": "nuclear-severe-accident",
+    "width": 92,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 48\" width=\"92\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"44\" rx=\"6\" fill=\"#3f2e05\" stroke=\"#facc15\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#facc15\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#facc15\">MP</text><text x=\"46\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">MP_UO2</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "melcor.MP.MP_ZIRCALOY4",
+    "aliases": [
+      "ZIRCALOY4",
+      "ZIRCALOY-4",
+      "ZR4",
+      "ZR"
+    ],
+    "label": "MP Zircaloy-4 Cladding",
+    "category": "MP Material Property",
+    "domain": "nuclear-severe-accident",
+    "width": 92,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 48\" width=\"92\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"44\" rx=\"6\" fill=\"#3f2e05\" stroke=\"#facc15\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#facc15\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#facc15\">MP</text><text x=\"46\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">MP_ZIRCALOY</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "melcor.MP.MP_SS304",
+    "aliases": [
+      "SS304",
+      "STAINLESS_STEEL",
+      "SS"
+    ],
+    "label": "MP Stainless Steel 304",
+    "category": "MP Material Property",
+    "domain": "nuclear-severe-accident",
+    "width": 92,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 48\" width=\"92\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"44\" rx=\"6\" fill=\"#3f2e05\" stroke=\"#facc15\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#facc15\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#facc15\">MP</text><text x=\"46\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">MP_SS304</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "melcor.NCG.NCG_H2",
+    "aliases": [
+      "H2",
+      "HYDROGEN"
+    ],
+    "label": "NCG Hydrogen (H2)",
+    "category": "NCG Gas Property",
+    "domain": "nuclear-severe-accident",
+    "width": 92,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 48\" width=\"92\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"44\" rx=\"6\" fill=\"#1e293b\" stroke=\"#94a3b8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#94a3b8\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#94a3b8\">NCG</text><text x=\"46\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">NCG_H2</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "melcor.NCG.NCG_N2",
+    "aliases": [
+      "N2",
+      "NITROGEN"
+    ],
+    "label": "NCG Nitrogen (N2)",
+    "category": "NCG Gas Property",
+    "domain": "nuclear-severe-accident",
+    "width": 92,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 48\" width=\"92\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"44\" rx=\"6\" fill=\"#1e293b\" stroke=\"#94a3b8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#94a3b8\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#94a3b8\">NCG</text><text x=\"46\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">NCG_N2</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "melcor.NCG.NCG_H2O",
+    "aliases": [
+      "H2O",
+      "STEAM",
+      "WATER"
+    ],
+    "label": "NCG Steam / Water (H2O)",
+    "category": "NCG Gas Property",
+    "domain": "nuclear-severe-accident",
+    "width": 92,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 48\" width=\"92\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"44\" rx=\"6\" fill=\"#1e293b\" stroke=\"#94a3b8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#94a3b8\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#94a3b8\">NCG</text><text x=\"46\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">NCG_H2O</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 24
+      }
+    ]
+  }
+]

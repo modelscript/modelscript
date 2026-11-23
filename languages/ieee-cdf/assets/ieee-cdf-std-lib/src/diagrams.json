@@ -1,0 +1,195 @@
+[
+  {
+    "namePath": "ieee_cdf.buses.PQ_BUS",
+    "aliases": [
+      "BUS_PQ",
+      "LOAD_BUS",
+      "B ",
+      "TYPE_0",
+      "TYPE_1"
+    ],
+    "label": "PQ Load Bus",
+    "category": "Buses",
+    "domain": "electrical-power",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">BUS</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">PQ BUS</text></svg>",
+    "ports": [
+      {
+        "name": "terminal",
+        "kind": "electrical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "ieee_cdf.buses.PV_BUS",
+    "aliases": [
+      "BUS_PV",
+      "GEN_BUS",
+      "BQ",
+      "BE",
+      "TYPE_2"
+    ],
+    "label": "PV Generator Bus",
+    "category": "Buses",
+    "domain": "electrical-power",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">BUS</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">PV BUS</text></svg>",
+    "ports": [
+      {
+        "name": "terminal",
+        "kind": "electrical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "ieee_cdf.buses.SLACK_BUS",
+    "aliases": [
+      "SWING_BUS",
+      "REF_BUS",
+      "BS",
+      "TYPE_3"
+    ],
+    "label": "Slack / Swing Bus",
+    "category": "Buses",
+    "domain": "electrical-power",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">BUS</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">SLACK BUS</text></svg>",
+    "ports": [
+      {
+        "name": "terminal",
+        "kind": "electrical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "ieee_cdf.branches.TRANSMISSION_LINE",
+    "aliases": [
+      "LINE",
+      "PI_LINE",
+      "L ",
+      "E ",
+      "BRANCH_0"
+    ],
+    "label": "Transmission Line",
+    "category": "Branches",
+    "domain": "electrical-power",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">BRCH</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">TRANSMISSIO</text></svg>",
+    "ports": [
+      {
+        "name": "from_bus",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "to_bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ieee_cdf.branches.TAP_TRANSFORMER",
+    "aliases": [
+      "TRANSFORMER",
+      "XFMR",
+      "TCUL",
+      "T ",
+      "R ",
+      "BRANCH_1",
+      "BRANCH_2"
+    ],
+    "label": "Tap-Changing Transformer",
+    "category": "Branches",
+    "domain": "electrical-power",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">BRCH</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">TAP TRANSFO</text></svg>",
+    "ports": [
+      {
+        "name": "from_bus",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "to_bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ieee_cdf.branches.PHASE_SHIFTER",
+    "aliases": [
+      "PAR",
+      "PHASE_SHIFTING_TRANSFORMER",
+      "BRANCH_4"
+    ],
+    "label": "Phase-Shifting Transformer",
+    "category": "Branches",
+    "domain": "electrical-power",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">BRCH</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">PHASE SHIFT</text></svg>",
+    "ports": [
+      {
+        "name": "from_bus",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "to_bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ieee_cdf.shunts.SHUNT_ELEMENT",
+    "aliases": [
+      "SHUNT",
+      "CAPACITOR_BANK",
+      "REACTOR"
+    ],
+    "label": "Nodal Shunt Element",
+    "category": "Shunts",
+    "domain": "electrical-power",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b234a\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">SHNT</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">SHUNT ELEME</text></svg>",
+    "ports": [
+      {
+        "name": "terminal",
+        "kind": "electrical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 52
+      }
+    ]
+  }
+]

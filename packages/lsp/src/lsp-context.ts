@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { type PolyglotContext, PolyglotEngine, registerDefaultInteropLibraries } from "@modelscript/runtime";
 import { Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { CadMetricsService } from "./services/cad-metrics-service.js";
@@ -8,6 +9,20 @@ import { DocumentManager } from "./services/document-manager.js";
 import { ParserService } from "./services/parser-service.js";
 import { ValidationService } from "./services/validation-service.js";
 import { WorkspaceManager } from "./services/workspace-manager.js";
+
+let _sharedLspPolyglotEngine: PolyglotEngine | null = null;
+
+/**
+ * Returns the process-wide shared immutable `PolyglotEngine` for LSP workers and sessions,
+ * bootstrapped with flagship `SymbolInteropLibrary` adapters.
+ */
+export function getSharedLspPolyglotEngine(): PolyglotEngine {
+  if (!_sharedLspPolyglotEngine) {
+    _sharedLspPolyglotEngine = new PolyglotEngine();
+    registerDefaultInteropLibraries(_sharedLspPolyglotEngine.interopRegistry);
+  }
+  return _sharedLspPolyglotEngine;
+}
 
 /**
  * Shared server-wide dependency injection context passed to LSP request handlers and providers.
@@ -32,6 +47,10 @@ export interface LspContext {
   diagramService: DiagramService;
   /** Background OpenSCAD constructive solid geometry (CSG) meshing and metric service. */
   cadMetricsService?: CadMetricsService | undefined;
+  /** Shared immutable GraalVM-style `PolyglotEngine` holding compiled parsers & frozen stdlib snapshots. */
+  polyglotEngine?: PolyglotEngine | undefined;
+  /** Isolated per-session `PolyglotContext` overlay enforcing capability policies. */
+  polyglotContext?: PolyglotContext | undefined;
 
   /** Mutable server state shared across loosely coupled handlers and notifications. */
   state: {

@@ -1,0 +1,287 @@
+[
+  {
+    "namePath": "GAMS.sum",
+    "aliases": [
+      "SUM",
+      "sigma"
+    ],
+    "label": "Indexed Summation (sum)",
+    "category": "Set & Indexed Operators",
+    "domain": "optimization",
+    "width": 96,
+    "height": 56,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 56\" width=\"96\" height=\"56\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"52\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"2\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">OP</text><text x=\"48\" y=\"37\" text-anchor=\"middle\" font-family=\"sans-serif\" font-weight=\"600\" font-size=\"10\" fill=\"#f8fafc\">SUM</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 28
+      }
+    ]
+  },
+  {
+    "namePath": "GAMS.prod",
+    "aliases": [
+      "PROD"
+    ],
+    "label": "Indexed Product (prod)",
+    "category": "Set & Indexed Operators",
+    "domain": "optimization",
+    "width": 96,
+    "height": 56,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 56\" width=\"96\" height=\"56\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"52\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"2\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">OP</text><text x=\"48\" y=\"37\" text-anchor=\"middle\" font-family=\"sans-serif\" font-weight=\"600\" font-size=\"10\" fill=\"#f8fafc\">PROD</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 28
+      }
+    ]
+  },
+  {
+    "namePath": "GAMS.smin",
+    "aliases": [
+      "SMIN"
+    ],
+    "label": "Indexed Minimum (smin)",
+    "category": "Set & Indexed Operators",
+    "domain": "optimization",
+    "width": 96,
+    "height": 56,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 56\" width=\"96\" height=\"56\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"52\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"2\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">OP</text><text x=\"48\" y=\"37\" text-anchor=\"middle\" font-family=\"sans-serif\" font-weight=\"600\" font-size=\"10\" fill=\"#f8fafc\">SMIN</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 28
+      }
+    ]
+  },
+  {
+    "namePath": "GAMS.smax",
+    "aliases": [
+      "SMAX"
+    ],
+    "label": "Indexed Maximum (smax)",
+    "category": "Set & Indexed Operators",
+    "domain": "optimization",
+    "width": 96,
+    "height": 56,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 56\" width=\"96\" height=\"56\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"52\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"2\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">OP</text><text x=\"48\" y=\"37\" text-anchor=\"middle\" font-family=\"sans-serif\" font-weight=\"600\" font-size=\"10\" fill=\"#f8fafc\">SMAX</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 28
+      }
+    ]
+  },
+  {
+    "namePath": "GAMS.ord",
+    "aliases": [
+      "ORD"
+    ],
+    "label": "Ordinal Position (ord)",
+    "category": "Set & Indexed Operators",
+    "domain": "optimization",
+    "width": 96,
+    "height": 56,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 56\" width=\"96\" height=\"56\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"52\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"2\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">OP</text><text x=\"48\" y=\"37\" text-anchor=\"middle\" font-family=\"sans-serif\" font-weight=\"600\" font-size=\"10\" fill=\"#f8fafc\">ORD</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 28
+      }
+    ]
+  },
+  {
+    "namePath": "GAMS.card",
+    "aliases": [
+      "CARD"
+    ],
+    "label": "Set Cardinality (card)",
+    "category": "Set & Indexed Operators",
+    "domain": "optimization",
+    "width": 96,
+    "height": 56,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 56\" width=\"96\" height=\"56\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"52\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"2\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">OP</text><text x=\"48\" y=\"37\" text-anchor=\"middle\" font-family=\"sans-serif\" font-weight=\"600\" font-size=\"10\" fill=\"#f8fafc\">CARD</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 28
+      }
+    ]
+  },
+  {
+    "namePath": "GAMS.sameas",
+    "aliases": [
+      "SAMEAS"
+    ],
+    "label": "Set Element Equality (sameas)",
+    "category": "Set & Indexed Operators",
+    "domain": "optimization",
+    "width": 96,
+    "height": 56,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 56\" width=\"96\" height=\"56\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"52\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"2\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">OP</text><text x=\"48\" y=\"37\" text-anchor=\"middle\" font-family=\"sans-serif\" font-weight=\"600\" font-size=\"10\" fill=\"#f8fafc\">SAMEAS</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 28
+      }
+    ]
+  },
+  {
+    "namePath": "GAMS.trnsport",
+    "aliases": [
+      "TRNSPORT",
+      "transport",
+      "dantzig_transport"
+    ],
+    "label": "Transportation Problem (trnsport)",
+    "category": "GAMSlib Optimization Archetypes",
+    "domain": "optimization",
+    "width": 96,
+    "height": 56,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 56\" width=\"96\" height=\"56\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"52\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"2\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">OPT</text><text x=\"48\" y=\"37\" text-anchor=\"middle\" font-family=\"sans-serif\" font-weight=\"600\" font-size=\"8.5\" fill=\"#f8fafc\">TRNSPORT</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 28
+      }
+    ]
+  },
+  {
+    "namePath": "GAMS.diet",
+    "aliases": [
+      "DIET",
+      "stigler_diet"
+    ],
+    "label": "Diet Optimization Problem (diet)",
+    "category": "GAMSlib Optimization Archetypes",
+    "domain": "optimization",
+    "width": 96,
+    "height": 56,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 56\" width=\"96\" height=\"56\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"52\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"2\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">OPT</text><text x=\"48\" y=\"37\" text-anchor=\"middle\" font-family=\"sans-serif\" font-weight=\"600\" font-size=\"10\" fill=\"#f8fafc\">DIET</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 28
+      }
+    ]
+  },
+  {
+    "namePath": "GAMS.blend",
+    "aliases": [
+      "BLEND",
+      "alloy_blend"
+    ],
+    "label": "Blending Problem (blend)",
+    "category": "GAMSlib Optimization Archetypes",
+    "domain": "optimization",
+    "width": 96,
+    "height": 56,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 56\" width=\"96\" height=\"56\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"52\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"2\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">OPT</text><text x=\"48\" y=\"37\" text-anchor=\"middle\" font-family=\"sans-serif\" font-weight=\"600\" font-size=\"10\" fill=\"#f8fafc\">BLEND</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 28
+      }
+    ]
+  }
+]

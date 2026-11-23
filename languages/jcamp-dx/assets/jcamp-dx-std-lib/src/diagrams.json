@@ -1,0 +1,368 @@
+[
+  {
+    "namePath": "JCAMP.INFRARED_SPECTRUM",
+    "aliases": [
+      "INFRARED SPECTRUM",
+      "IR",
+      "FTIR"
+    ],
+    "label": "Infrared Spectrum (JCAMP-DX 4.24)",
+    "category": "Spectroscopy Types",
+    "domain": "chemistry",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#38bdf8\">SPEC</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">INFRARED_SPE</text></svg>",
+    "ports": [
+      {
+        "name": "x_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "absorbance_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 18
+      },
+      {
+        "name": "transmittance_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "JCAMP.NMR_SPECTRUM",
+    "aliases": [
+      "NMR SPECTRUM",
+      "1H NMR",
+      "13C NMR"
+    ],
+    "label": "NMR Spectrum (JCAMP-DX 5.01)",
+    "category": "Spectroscopy Types",
+    "domain": "chemistry",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#38bdf8\">SPEC</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">NMR_SPECTRUM</text></svg>",
+    "ports": [
+      {
+        "name": "x_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "absorbance_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 18
+      },
+      {
+        "name": "transmittance_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "JCAMP.MASS_SPECTRUM",
+    "aliases": [
+      "MASS SPECTRUM",
+      "MS",
+      "EI-MS"
+    ],
+    "label": "Mass Spectrum (JCAMP-DX 5.00)",
+    "category": "Spectroscopy Types",
+    "domain": "chemistry",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#38bdf8\">SPEC</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">MASS_SPECTRU</text></svg>",
+    "ports": [
+      {
+        "name": "x_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "absorbance_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 18
+      },
+      {
+        "name": "transmittance_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "JCAMP.UV_VIS_SPECTRUM",
+    "aliases": [
+      "UV/VIS SPECTRUM",
+      "UV-VIS",
+      "ULTRAVIOLET SPECTRUM"
+    ],
+    "label": "UV/Vis Electronic Spectrum (JCAMP-DX 4.24)",
+    "category": "Spectroscopy Types",
+    "domain": "chemistry",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#38bdf8\">SPEC</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">UV_VIS_SPECT</text></svg>",
+    "ports": [
+      {
+        "name": "x_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "absorbance_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 18
+      },
+      {
+        "name": "transmittance_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "JCAMP.RAMAN_SPECTRUM",
+    "aliases": [
+      "RAMAN SPECTRUM",
+      "RAMAN"
+    ],
+    "label": "Raman Scattering Spectrum (JCAMP-DX 4.24)",
+    "category": "Spectroscopy Types",
+    "domain": "chemistry",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#38bdf8\">SPEC</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">RAMAN_SPECTR</text></svg>",
+    "ports": [
+      {
+        "name": "x_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "absorbance_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 18
+      },
+      {
+        "name": "transmittance_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "JCAMP.IR_BAND_OH",
+    "aliases": [
+      "O-H",
+      "HYDROXYL",
+      "ALCOHOL_OH"
+    ],
+    "label": "IR O-H Stretch (3200–3600 cm^-1)",
+    "category": "IR Functional Groups",
+    "domain": "chemistry",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#2e1065\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#c084fc\">IR-FG</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">IR_BAND_OH</text></svg>",
+    "ports": [
+      {
+        "name": "x_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "absorbance_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 18
+      },
+      {
+        "name": "transmittance_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "JCAMP.IR_BAND_CO_CARBONYL",
+    "aliases": [
+      "C=O",
+      "CARBONYL",
+      "KETONE_CO"
+    ],
+    "label": "IR C=O Stretch (1680–1750 cm^-1)",
+    "category": "IR Functional Groups",
+    "domain": "chemistry",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#2e1065\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#c084fc\">IR-FG</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">IR_BAND_CO_C</text></svg>",
+    "ports": [
+      {
+        "name": "x_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "absorbance_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 18
+      },
+      {
+        "name": "transmittance_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "JCAMP.IR_BAND_CH_ALKANE",
+    "aliases": [
+      "C-H",
+      "ALKANE_CH"
+    ],
+    "label": "IR C-H Stretch (2850–2960 cm^-1)",
+    "category": "IR Functional Groups",
+    "domain": "chemistry",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#2e1065\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#c084fc\">IR-FG</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">IR_BAND_CH_A</text></svg>",
+    "ports": [
+      {
+        "name": "x_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "absorbance_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 18
+      },
+      {
+        "name": "transmittance_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "JCAMP.IR_BAND_CC_ALKENE",
+    "aliases": [
+      "C=C",
+      "ALKENE_CC"
+    ],
+    "label": "IR C=C Stretch (1620–1680 cm^-1)",
+    "category": "IR Functional Groups",
+    "domain": "chemistry",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#2e1065\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#c084fc\">IR-FG</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">IR_BAND_CC_A</text></svg>",
+    "ports": [
+      {
+        "name": "x_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "absorbance_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 18
+      },
+      {
+        "name": "transmittance_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "JCAMP.IR_BAND_CO_ETHER",
+    "aliases": [
+      "C-O",
+      "ETHER_CO"
+    ],
+    "label": "IR C-O Stretch (1050–1250 cm^-1)",
+    "category": "IR Functional Groups",
+    "domain": "chemistry",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#2e1065\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#c084fc\">IR-FG</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">IR_BAND_CO_E</text></svg>",
+    "ports": [
+      {
+        "name": "x_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "absorbance_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 18
+      },
+      {
+        "name": "transmittance_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 34
+      }
+    ]
+  }
+]

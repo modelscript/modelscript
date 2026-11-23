@@ -50,7 +50,7 @@ export interface PlacementItem {
   connectedOnly?: boolean | undefined;
 }
 
-// ── X6 Markup (DOM-free SVG tree for webview rendering) ──
+// ── Diagram Markup (DOM-free SVG tree for unified canvas & headless SVG rendering) ──
 
 export interface X6Markup {
   tagName: string;
@@ -61,6 +61,31 @@ export interface X6Markup {
   className?: string | undefined;
   children?: X6Markup[] | undefined;
   textContent?: string | undefined;
+}
+
+/** Canonical framework-agnostic alias for diagram vector glyph trees. */
+export type DiagramMarkup = X6Markup;
+
+/** Embedded live nested artifact portal inside a schematic diagram (e.g. live 3D CAD / FEA / CFD inside Modelica). */
+export interface EmbeddedArtifactSpec {
+  kind: "cad" | "fea" | "cfd" | "step" | "usd" | "urdf" | "vtk" | "subdiagram";
+  artifactUri: string;
+  targetSymbol?: string | undefined;
+  /** Optional 3D model-space CADPort / B-Rep feature pins projected to 2D schematic ports. */
+  featurePins?: Record<string, [number, number, number]> | undefined;
+  /** Optional live dynamic bindings synchronizing 3D transforms/fields with the schematic solver. */
+  animateWithSimulation?: boolean | undefined;
+}
+
+/** Modelon Impact-style on-canvas plot, table, or KPI sticky widget embedded in a diagram. */
+export interface CanvasWidgetSpec {
+  kind: "plot" | "table" | "sticky";
+  title: string;
+  /** Signal / variable names bound to this plot, table, or sticky badge. */
+  variables?: string[] | undefined;
+  plotKind?: "timeseries" | "xy" | "bode" | "scatter" | "pareto" | undefined;
+  tetherTargetNodeId?: string | undefined;
+  unit?: string | undefined;
 }
 
 // ── Property Inspector Schema ──
@@ -333,6 +358,10 @@ export interface DiagramNode {
         entries: string[];
       }[]
     | undefined;
+  /** Optional embedded live nested artifact (e.g. live 3D CAD, FEA, CFD, or sub-diagram portal). */
+  portal?: EmbeddedArtifactSpec | undefined;
+  /** Optional Modelon Impact-style pinned plot, table, or KPI sticky widget. */
+  widget?: CanvasWidgetSpec | undefined;
   attrs?: DiagramNodeAttrs | undefined;
   data?: DiagramNodeData | undefined;
 }

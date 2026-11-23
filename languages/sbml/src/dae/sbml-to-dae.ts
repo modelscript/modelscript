@@ -10,12 +10,23 @@
  *   3. Mass-action / kinetic stoichiometric balance ODEs: der(S_i)
  */
 
-import { BinOp, Causality, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime";
+import {
+  BinOp,
+  Causality,
+  DAEBuilder,
+  EqKind,
+  JumpAffectMode,
+  JumpRateKind,
+  Variability,
+  VarType,
+} from "@modelscript/runtime";
 import type { SbmlDocument } from "../types.js";
 
 export interface SbmlDaeOptions {
   builder?: DAEBuilder | undefined;
   modelName?: string | undefined;
+  /** When true, also lowers SBML reactions into `dae.jumps` for WASM Gillespie / Tau-Leaping / Hybrid SSA. */
+  emitJumps?: boolean | undefined;
 }
 
 export function lowerSbmlToDae(doc: SbmlDocument, options?: SbmlDaeOptions): DAEBuilder {
@@ -235,6 +246,33 @@ export function lowerSbmlToDae(doc: SbmlDocument, options?: SbmlDaeOptions): DAE
     }
 
     dae.addEquation(EqKind.Simple, dae.addName(fluxVar), fluxExpr);
+
+    if (options?.emitJumps) {
+      const netStoich = new Map<number, number>();
+      for (const ref of r.reactants) {
+        const sVar = speciesVarMap.get(ref.species);
+        const sp = model.species.get(ref.species);
+        if (sVar !== undefined && !sp?.constant && !sp?.boundaryCondition) {
+          netStoich.set(sVar, (netStoich.get(sVar) ?? 0) - ref.stoichiometry);
+        }
+      }
+      for (const ref of r.products) {
+        const sVar = speciesVarMap.get(ref.species);
+        const sp = model.species.get(ref.species);
+        if (sVar !== undefined && !sp?.constant && !sp?.boundaryCondition) {
+          netStoich.set(sVar, (netStoich.get(sVar) ?? 0) + ref.stoichiometry);
+        }
+      }
+      const affects: { targetVarId: number; deltaExprId: number; mode: JumpAffectMode }[] = [];
+      for (const [sVar, delta] of netStoich) {
+        if (delta !== 0) {
+          affects.push({ targetVarId: sVar, deltaExprId: dae.addRealLiteral(delta), mode: JumpAffectMode.Additive });
+        }
+      }
+      if (affects.length > 0) {
+        dae.jumps.addJump(fluxExpr, affects, JumpRateKind.MassAction);
+      }
+    }
   }
 
   // 5. Formulate Species Differential Balance Equations: der(S_i) = sum(stoich * v_r) / V_comp

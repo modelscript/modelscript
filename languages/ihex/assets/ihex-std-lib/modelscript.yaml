@@ -1,0 +1,11 @@
+name: "@modelscript/ihex-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom Intel HEX record types (00–05) and MCU flash layouts standard library (10 schemas, cleanroom SVG block icons, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: ihex
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

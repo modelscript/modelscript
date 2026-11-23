@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { buildSemanticTagTable } from "@modelscript/dsl";
 import { Connection, DocumentHighlightKind, DocumentSymbol, FoldingRange, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
@@ -7,6 +8,7 @@ import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { nodeRange } from "../utils/ast-utils.js";
 import type { SyntaxNode } from "../utils/cst-facade.js";
 import { extractWordAtOffset, isDigitCode } from "../utils/lexical-utils.js";
+import { extractDocumentSymbolsByTags, extractFoldingRangesByTags } from "./semantic-tag-provider.js";
 
 function isPosBefore(a: { line: number; character: number }, b: { line: number; character: number }): boolean {
   return a.line < b.line || (a.line === b.line && a.character < b.character);
@@ -23,8 +25,7 @@ export function sanitizeDocumentSymbols(symbols: unknown): DocumentSymbol[] {
 
     let range: { start: { line: number; character: number }; end: { line: number; character: number } };
     const rawRange = sObj["range"] as
-      | { start?: { line?: number; character?: number }; end?: { line?: number; character?: number } }
-      | undefined;
+      { start?: { line?: number; character?: number }; end?: { line?: number; character?: number } } | undefined;
     if (!rawRange || typeof rawRange.start?.line !== "number" || typeof rawRange.end?.line !== "number") {
       range = { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
     } else {
@@ -38,8 +39,7 @@ export function sanitizeDocumentSymbols(symbols: unknown): DocumentSymbol[] {
 
     let sel: { start: { line: number; character: number }; end: { line: number; character: number } };
     const rawSel = sObj["selectionRange"] as
-      | { start?: { line?: number; character?: number }; end?: { line?: number; character?: number } }
-      | undefined;
+      { start?: { line?: number; character?: number }; end?: { line?: number; character?: number } } | undefined;
     if (!rawSel || typeof rawSel.start?.line !== "number" || typeof rawSel.end?.line !== "number") {
       sel = { start: { ...range.start }, end: { ...range.end } };
     } else {
@@ -237,6 +237,15 @@ export function registerDocumentFeaturesProvider(
                 }
               }
             } catch {}
+          }
+          // Generic GraalVM-style SemanticCstTag fallback for any language without custom outline handlers
+          const cachedTree = getDocumentTree(params.textDocument.uri);
+          if (cachedTree) {
+            const explicitTags = (plugin.languageDef?.lsp as { semanticTags?: Record<string, number> } | undefined)
+              ?.semanticTags;
+            const tagTable = explicitTags ? buildSemanticTagTable([], explicitTags) : undefined;
+            const tagSymbols = extractDocumentSymbolsByTags(cachedTree, tagTable);
+            if (tagSymbols.length > 0) return sanitizeDocumentSymbols(tagSymbols);
           }
         }
         return [];
@@ -517,6 +526,20 @@ export function registerDocumentFeaturesProvider(
           }
         };
         collectFolds(rootNode as FoldCstNode);
+      }
+
+      // Generic GraalVM-style SemanticCstTag folding fallback for languages without custom fold rules
+      if (rangeMap.size === 0 && rootNode) {
+        const explicitTags = (plugin?.languageDef?.lsp as { semanticTags?: Record<string, number> } | undefined)
+          ?.semanticTags;
+        const tagTable = explicitTags ? buildSemanticTagTable([], explicitTags) : undefined;
+        for (const f of extractFoldingRangesByTags(rootNode, tagTable)) {
+          addRange({
+            startLine: f.startLine,
+            endLine: f.endLine,
+            kind: f.kind === "comment" || f.kind === "imports" || f.kind === "region" ? f.kind : undefined,
+          });
+        }
       }
 
       for (const commentRange of scanCommentFoldingRanges(document.getText())) {

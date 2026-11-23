@@ -10,7 +10,23 @@ import type { SourceLocation } from "../runtime.js";
 import type { FmuInstanceMetadata } from "../simulation/wasm_fmu_subsystem.js";
 import type { StringId } from "../workspace/wasm_string_pool.js";
 import { StringInterner, WasmStringPool } from "../workspace/wasm_string_pool.js";
+import {
+  BvpFacet,
+  DelayFacet,
+  JumpFacet,
+  OptimizationFacet,
+  StochasticFacet,
+  UncertaintyFacet,
+} from "./facets/index.js";
 import { ArenaEquation, ArenaExpr, ArenaVariable } from "./fluent/index.js";
+import { splitPath } from "./path_index.js";
+import { DaeObjectiveSense, FLAG_OBJ_LAGRANGE, FLAG_OBJ_MAYER } from "./problem_types.js";
+import { daeFinalizationRegistry, getDefaultWasmExports } from "./wasm_loader.js";
+
+export * from "./facets/index.js";
+export * from "./path_index.js";
+export * from "./problem_types.js";
+export * from "./wasm_loader.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Enums (stored as small integers in Uint8Array columns)
@@ -53,6 +69,7 @@ export enum EqKind {
   InitialSimple = 7,
   InitialFor = 8,
   InitialFunctionCall = 9,
+  Boundary = 10,
 }
 
 /** Variable attribute kind tag. */
@@ -240,6 +257,10 @@ export enum ExprKind {
   TensorReduce = 24,
   /** Tensor elementwise map: data1 = operator ID, left = operand ExprId, right = aux. */
   TensorMap = 25,
+  /** Boundary value reference y(t0) / y(tf): data1 = varId, left = boundaryPointIdx. */
+  AtBoundary = 26,
+  /** Delay expression delay(target, tau): data1 = delayChannelIdx, left = target ExprId, right = tau ExprId. */
+  Delay = 27,
 }
 
 /** Reduction operator kind stored in `EXPR_DATA1` when `EXPR_KIND == ExprKind.TensorReduce`. */
@@ -339,95 +360,7 @@ export const FLAG_EQ_OVERCONSTRAINED = 1 << 1;
 /** Bitmask flag indicating a synthesized stream connection equation. */
 export const FLAG_EQ_STREAM_CONNECT = 1 << 2;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// WASM Singleton Loader
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** Cached singleton WebAssembly runtime exports instance. */
-let cachedWasmExports: any = null;
-
-/**
- * Registers a pre-instantiated WebAssembly runtime exports object as the process-wide default.
- *
- * @param exports - WebAssembly instance exports object.
- */
-export function setCachedWasmExports(exports: any): void {
-  cachedWasmExports = exports;
-  if (typeof globalThis !== "undefined") {
-    (globalThis as any).__modelscript_wasm_exports__ = exports;
-  }
-}
-
-/**
- * Returns the cached WebAssembly runtime exports, lazily loading `build/release.wasm`
- * from disk when running in Node.js if not yet initialized.
- *
- * @returns WebAssembly instance exports, or `null` if unavailable.
- */
-export function getDefaultWasmExports(): any {
-  if (cachedWasmExports) return cachedWasmExports;
-  if (typeof globalThis !== "undefined" && (globalThis as any).__modelscript_wasm_exports__) {
-    cachedWasmExports = (globalThis as any).__modelscript_wasm_exports__;
-    return cachedWasmExports;
-  }
-  if (typeof process !== "undefined" && process.versions?.node != null) {
-    try {
-      let fsModule: { existsSync: (p: string) => boolean; readFileSync: (p: string) => Uint8Array } | undefined;
-      let pathModule: { join: (...p: string[]) => string } | undefined;
-      const proc = process as { getBuiltinModule?: (m: string) => unknown };
-      if (typeof proc.getBuiltinModule === "function") {
-        fsModule = proc.getBuiltinModule("node:fs") as typeof fsModule;
-        pathModule = proc.getBuiltinModule("node:path") as typeof pathModule;
-      }
-      if (!fsModule || !pathModule) {
-        try {
-          const req = typeof require !== "undefined" ? (require as (id: string) => unknown) : null;
-          if (req) {
-            fsModule = fsModule || (req("node:fs") as typeof fsModule);
-            pathModule = pathModule || (req("node:path") as typeof pathModule);
-          }
-        } catch {}
-      }
-      if (!fsModule || !pathModule) return null;
-
-      const dir = typeof import.meta.dirname === "string" ? import.meta.dirname : "";
-      const candidates = [
-        dir ? pathModule.join(dir, "..", "build", "release.wasm") : null,
-        dir ? pathModule.join(dir, "..", "..", "build", "release.wasm") : null,
-        pathModule.join(process.cwd(), "packages", "runtime", "build", "release.wasm"),
-        pathModule.join(process.cwd(), "build", "release.wasm"),
-      ].filter((p): p is string => Boolean(p));
-
-      let wasmPath: string | null = null;
-      for (const cand of candidates) {
-        if (fsModule.existsSync(cand)) {
-          wasmPath = cand;
-          break;
-        }
-      }
-
-      if (wasmPath) {
-        const bytes = fsModule.readFileSync(wasmPath);
-        const mod = new WebAssembly.Module(bytes as BufferSource);
-        const inst = new WebAssembly.Instance(mod, {
-          env: {
-            abort: () => {
-              console.error("[WASM:dae] abort invoked");
-            },
-          },
-        });
-        cachedWasmExports = inst.exports;
-        if (typeof globalThis !== "undefined") {
-          (globalThis as any).__modelscript_wasm_exports__ = cachedWasmExports;
-        }
-        return cachedWasmExports;
-      }
-    } catch {
-      // Fallback
-    }
-  }
-  return null;
-}
+// WASM singleton loader (`setCachedWasmExports`, `getDefaultWasmExports`) imported from `./wasm_loader.js`.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // IDaeBuilder
@@ -500,93 +433,7 @@ export interface IDaeBuilder {
 // WasmDaeBridge / DAEBuilder
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Splits a dotted component path into top-level segments while keeping dots inside
- * array subscript brackets (`[...]`) intact.
- *
- * @param path - Dotted component path (e.g., `a[1].b.c[2, 3]`).
- * @returns Array of path segments.
- */
-function splitPath(path: string): string[] {
-  const parts: string[] = [];
-  let bracketDepth = 0;
-  let last = 0;
-  for (let i = 0; i < path.length; i++) {
-    const ch = path[i];
-    if (ch === "[") bracketDepth++;
-    else if (ch === "]") bracketDepth--;
-    else if (ch === "." && bracketDepth === 0) {
-      parts.push(path.substring(last, i));
-      last = i + 1;
-    }
-  }
-  parts.push(path.substring(last));
-  return parts;
-}
-
-/**
- * Matches a potentially subscripted scalarized variable path `vn` (e.g., `a[1].b[2]`)
- * against an unsubscripted base path `baseName` (e.g., `a.b`), extracting the 1-based
- * subscript indices across all dimensions.
- *
- * @param vn - Candidate variable name from the arena.
- * @param baseName - Unsubscripted base variable path.
- * @param labelMaps - Optional per-dimension maps for non-numeric (e.g., enumeration) subscripts.
- * @returns Extracted 1-based subscript indices across all dimensions, or `null` if `vn` does not match `baseName`.
- */
-export function matchVarPath(vn: string, baseName: string, labelMaps?: Map<string, number>[]): number[] | null {
-  const baseParts = splitPath(baseName);
-  const vnParts = splitPath(vn);
-  if (vnParts.length !== baseParts.length) return null;
-  const indices: number[] = [];
-  for (let i = 0; i < baseParts.length; i++) {
-    const bp = baseParts[i]!;
-    const vp = vnParts[i]!;
-    if (bp === vp) continue;
-    const prefix = `${bp}[`;
-    if (vp.startsWith(prefix) && vp.endsWith("]")) {
-      const idxStrs = vp.slice(prefix.length, -1).split(",");
-      for (let subIdx = 0; subIdx < idxStrs.length; subIdx++) {
-        const s = idxStrs[subIdx]!.trim();
-        const dim = indices.length;
-        if (/^\d+$/.test(s)) {
-          indices.push(parseInt(s, 10));
-        } else if (labelMaps) {
-          if (!labelMaps[dim]) labelMaps[dim] = new Map<string, number>();
-          let mapped = labelMaps[dim]!.get(s);
-          if (mapped === undefined) {
-            mapped = labelMaps[dim]!.size + 1;
-            labelMaps[dim]!.set(s, mapped);
-          }
-          indices.push(mapped);
-        } else {
-          return null;
-        }
-      }
-    } else {
-      return null;
-    }
-  }
-  return indices;
-}
-
-interface DaeCleanupPayload {
-  exports: any;
-  ptr: number;
-}
-
-const daeFinalizationRegistry =
-  typeof FinalizationRegistry !== "undefined"
-    ? new FinalizationRegistry<DaeCleanupPayload>((heldValue) => {
-        if (heldValue.ptr && heldValue.exports?.dae_free) {
-          try {
-            heldValue.exports.dae_free(heldValue.ptr);
-          } catch {
-            // ignore
-          }
-        }
-      })
-    : null;
+// `splitPath`, `matchVarPath`, and `daeFinalizationRegistry` imported from `./path_index.js` and `./wasm_loader.js`.
 
 /**
  * Universal DAE Builder (`DAEBuilder`) backed directly by the WebAssembly `DaeBuilder`
@@ -664,19 +511,13 @@ export class WasmDaeBridge implements IDaeBuilder {
 
   /** Set of variable indices hidden from standard output printing (`HideResult` or internal helpers). */
   public hiddenVarIndices = new Set<number>();
-  /** Map from state variable index to stochastic diffusion expression ID (for SDE models). */
-  public diffusionExprIds = new Map<number, number>();
-  /** Domain-specific extension metadata (WebGPU, audio clock, SDE, BVP, surrogate, FEA, CFD, MBSE, etc.). */
+  /** Domain-specific extension metadata (WebGPU, audio clock, surrogate, FEA, CFD, MBSE, FMU). */
   public extensionMetadata: {
     webgpu?:
       | { workgroupSize?: number | undefined; precision?: string | undefined; parallelInstances?: number | undefined }
       | undefined;
     audioClock?:
       | { sampleRate?: number | undefined; targetHz?: number | undefined; realtimeFactor?: number | undefined }
-      | undefined;
-    sde?: { method?: string | undefined; ensemblePaths?: number | undefined; seed?: number | undefined } | undefined;
-    bvp?:
-      | { boundaryConditions?: string[] | undefined; method?: string | undefined; intervals?: number | undefined }
       | undefined;
     surrogate?:
       | Map<
@@ -2723,6 +2564,10 @@ export class WasmDaeBridge implements IDaeBuilder {
     for (let i = 1; i < args.length; i++) {
       this.addExpression(ExprKind.Tuple, 0, args[i]!, 0);
     }
+    const fnName = typeof funcNameOrId === "string" ? funcNameOrId : this.interner.resolve(nameId);
+    if (fnName === "delay" && args.length >= 2 && this.ptr && this.exports?.dae_delay_addChannel) {
+      this.delays.addChannel(args[0]!, args[1]!);
+    }
     return callId;
   }
 
@@ -3482,6 +3327,70 @@ export class WasmDaeBridge implements IDaeBuilder {
     if (this.exports?.dae_setOptimizationObjective) {
       this.exports.dae_setOptimizationObjective(this.ptr, objExpr, integrandExpr, startExpr, finalExpr);
     }
+    if (this.exports?.dae_opt_addObjective && this.optimization.objectiveCount === 0) {
+      const flags = (objExpr >= 0 ? FLAG_OBJ_MAYER : 0) | (integrandExpr >= 0 ? FLAG_OBJ_LAGRANGE : 0);
+      this.optimization.addObjective(objExpr, integrandExpr, DaeObjectiveSense.Minimize, flags);
+    }
+  }
+
+  // ── Multi-Problem Flags & Typed Facets ──
+
+  private _optFacet?: OptimizationFacet | undefined;
+  private _sdeFacet?: StochasticFacet | undefined;
+  private _bvpFacet?: BvpFacet | undefined;
+  private _delayFacet?: DelayFacet | undefined;
+  private _jumpFacet?: JumpFacet | undefined;
+  private _uncFacet?: UncertaintyFacet | undefined;
+
+  /** Returns the WASM problem-class bitmask (`PROBLEM_ODE`, `PROBLEM_OPTIMIZATION`, `PROBLEM_SDE`, etc.). */
+  get problemFlags(): number {
+    return this.exports?.dae_getProblemFlags ? this.exports.dae_getProblemFlags(this.ptr) >>> 0 : 0;
+  }
+
+  setProblemFlag(flag: number): void {
+    if (this.exports?.dae_setProblemFlag) {
+      this.exports.dae_setProblemFlag(this.ptr, flag >>> 0);
+    }
+  }
+
+  clearProblemFlag(flag: number): void {
+    if (this.exports?.dae_clearProblemFlag) {
+      this.exports.dae_clearProblemFlag(this.ptr, flag >>> 0);
+    }
+  }
+
+  hasProblemFlag(flag: number): boolean {
+    return (this.problemFlags & flag) !== 0;
+  }
+
+  /** First-class Optimization / Math Programming / OCP facet backed by WASM linear memory. */
+  get optimization(): OptimizationFacet {
+    return (this._optFacet ??= new OptimizationFacet(this));
+  }
+
+  /** First-class Stochastic Differential Equation (SDE) facet backed by WASM linear memory. */
+  get stochastic(): StochasticFacet {
+    return (this._sdeFacet ??= new StochasticFacet(this));
+  }
+
+  /** First-class Boundary Value Problem (BVP) facet backed by WASM linear memory. */
+  get bvp(): BvpFacet {
+    return (this._bvpFacet ??= new BvpFacet(this));
+  }
+
+  /** First-class Delay / Neutral Delay Differential Equation (DDE/NDDE) facet backed by WASM linear memory. */
+  get delays(): DelayFacet {
+    return (this._delayFacet ??= new DelayFacet(this));
+  }
+
+  /** First-class Jump Process / Stochastic Simulation Algorithm (SSA) facet backed by WASM linear memory. */
+  get jumps(): JumpFacet {
+    return (this._jumpFacet ??= new JumpFacet(this));
+  }
+
+  /** First-class Uncertainty, Reachability & STL Verification facet backed by WASM linear memory. */
+  get uncertainty(): UncertaintyFacet {
+    return (this._uncFacet ??= new UncertaintyFacet(this));
   }
 
   // ── Memory & Views ──
@@ -3582,6 +3491,31 @@ export class WasmDaeBridge implements IDaeBuilder {
    * Saves a checkpoint snapshot of the current WASM arena lengths and host-side maps
    * so speculative additions can be rolled back.
    */
+  private varOriginSymbols?: Map<number, number>;
+  private eqOriginSymbols?: Map<number, number>;
+
+  /** Attaches a partitioned 32-bit `SymbolId` provenance tag to variable `varId`. */
+  setVarOriginSymbol(varId: number, symbolId: number): void {
+    if (!this.varOriginSymbols) this.varOriginSymbols = new Map();
+    this.varOriginSymbols.set(varId, symbolId >>> 0);
+  }
+
+  /** Returns the partitioned 32-bit `SymbolId` provenance tag for `varId`, if recorded. */
+  getVarOriginSymbol(varId: number): number | undefined {
+    return this.varOriginSymbols?.get(varId);
+  }
+
+  /** Attaches a partitioned 32-bit `SymbolId` provenance tag to equation `eqId`. */
+  setEqOriginSymbol(eqId: number, symbolId: number): void {
+    if (!this.eqOriginSymbols) this.eqOriginSymbols = new Map();
+    this.eqOriginSymbols.set(eqId, symbolId >>> 0);
+  }
+
+  /** Returns the partitioned 32-bit `SymbolId` provenance tag for `eqId`, if recorded. */
+  getEqOriginSymbol(eqId: number): number | undefined {
+    return this.eqOriginSymbols?.get(eqId);
+  }
+
   snapshot(): number {
     if (this.exports?.dae_snapshot) this.exports.dae_snapshot(this.ptr);
     const snap = {
@@ -3703,7 +3637,8 @@ export class WasmDaeBridge implements IDaeBuilder {
    * and host-side metadata tables into a fresh WASM builder allocation.
    */
   clone(): WasmDaeBridge {
-    const copy = new WasmDaeBridge(this.exports, 0, this.description, this.interner);
+    const clonedPtr = this.ptr && this.exports?.dae_clone ? this.exports.dae_clone(this.ptr) >>> 0 : 0;
+    const copy = new WasmDaeBridge(this.exports, clonedPtr, this.description, this.interner);
     copy.nameId = this.nameId;
     copy.descriptionId = this.descriptionId;
     copy.classKind = this.classKind;
@@ -3727,20 +3662,10 @@ export class WasmDaeBridge implements IDaeBuilder {
     copy.hiddenVarIndices = new Set(this.hiddenVarIndices);
     copy.removedEquations = new Set(this.removedEquations);
     copy.boundaryNodes = [...this.boundaryNodes];
-    for (const [k, v] of this.diffusionExprIds) copy.diffusionExprIds.set(k, v);
     copy.extensionMetadata = {
       ...this.extensionMetadata,
       ...(this.extensionMetadata.webgpu && { webgpu: { ...this.extensionMetadata.webgpu } }),
       ...(this.extensionMetadata.audioClock && { audioClock: { ...this.extensionMetadata.audioClock } }),
-      ...(this.extensionMetadata.sde && { sde: { ...this.extensionMetadata.sde } }),
-      ...(this.extensionMetadata.bvp && {
-        bvp: {
-          ...this.extensionMetadata.bvp,
-          boundaryConditions: this.extensionMetadata.bvp.boundaryConditions
-            ? [...this.extensionMetadata.bvp.boundaryConditions]
-            : undefined,
-        },
-      }),
       ...(this.extensionMetadata.surrogate && { surrogate: new Map(this.extensionMetadata.surrogate) }),
       ...(this.extensionMetadata.feaMesh && { feaMesh: this.extensionMetadata.feaMesh.map((x) => ({ ...x })) }),
       ...(this.extensionMetadata.cfdFlow && {
@@ -3799,33 +3724,37 @@ export class WasmDaeBridge implements IDaeBuilder {
       copy._renamedVars = new Map(this._renamedVars);
       copy._renamedVarsReverse = new Map(this._renamedVarsReverse);
     }
-
-    for (let i = 0; i < this.varCount; i++) {
-      const varName = this.getVarName(i);
-      const nameId = copy.interner.intern(varName);
-      copy.addVariable(
-        nameId,
-        this.getVarType(i),
-        this.getVarVariability(i),
-        this.getVarCausality(i),
-        this.getVarStartValue(i),
-        this.getVarFlags(i),
-      );
-    }
-    for (let i = 0; i < this.exprCount; i++) {
-      copy.addExpression(this.getExprKind(i), this.getExprData1(i), this.getExprLeft(i), this.getExprRight(i));
-    }
-    for (let i = 0; i < this.eqCount; i++) {
-      copy.addEquation(this.getEqKind(i), this.getEqLhs(i), this.getEqRhs(i), this.getEqAux(i));
-    }
     for (const [k, v] of this.origEqRhs) {
       copy.origEqRhs.set(k, v);
     }
-    for (let i = 0; i < this.stmtCount; i++) {
-      copy.addStatement(this.getStmtKind(i), this.getStmtData1(i), this.getStmtLeft(i), this.getStmtRight(i));
-    }
-    for (const id of this.eventIndicatorExprIds) {
-      copy.addEventIndicator(id);
+    copy.eventIndicatorExprIds = [...this.eventIndicatorExprIds];
+    copy.nameExprIndices = [...this.nameExprIndices];
+
+    if (clonedPtr === 0) {
+      for (let i = 0; i < this.varCount; i++) {
+        const varName = this.getVarName(i);
+        const nameId = copy.interner.intern(varName);
+        copy.addVariable(
+          nameId,
+          this.getVarType(i),
+          this.getVarVariability(i),
+          this.getVarCausality(i),
+          this.getVarStartValue(i),
+          this.getVarFlags(i),
+        );
+      }
+      for (let i = 0; i < this.exprCount; i++) {
+        copy.addExpression(this.getExprKind(i), this.getExprData1(i), this.getExprLeft(i), this.getExprRight(i));
+      }
+      for (let i = 0; i < this.eqCount; i++) {
+        copy.addEquation(this.getEqKind(i), this.getEqLhs(i), this.getEqRhs(i), this.getEqAux(i));
+      }
+      for (let i = 0; i < this.stmtCount; i++) {
+        copy.addStatement(this.getStmtKind(i), this.getStmtData1(i), this.getStmtLeft(i), this.getStmtRight(i));
+      }
+      for (const id of this.eventIndicatorExprIds) {
+        copy.addEventIndicator(id);
+      }
     }
     if (this.cachedBlt) {
       copy.cachedBlt = {

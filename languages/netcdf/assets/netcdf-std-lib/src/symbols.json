@@ -1,0 +1,632 @@
+[
+  {
+    "name": "temperature",
+    "kind": "Class",
+    "namePath": "NetCDF.temperature",
+    "exports": [
+      "standard_name",
+      "units",
+      "scale_factor",
+      "add_offset",
+      "valid_min",
+      "valid_max"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Air Temperature (CF-1.x)",
+      "category": "CF-1.x Atmosphere",
+      "domain": "earth-science",
+      "description": "CF-1.x standard air temperature field (standard_name='air_temperature', canonical units='K').",
+      "provenance": "CF Conventions 1.8 / Unidata NetCDF Classic",
+      "aliases": [
+        "air_temperature",
+        "temp",
+        "tas",
+        "T"
+      ],
+      "parameters": [
+        {
+          "key": "standard_name",
+          "type": "string",
+          "defaultValue": "air_temperature",
+          "description": "CF canonical standard name"
+        },
+        {
+          "key": "units",
+          "type": "string",
+          "defaultValue": "K",
+          "unit": "K",
+          "description": "SI thermodynamic temperature unit"
+        },
+        {
+          "key": "scale_factor",
+          "type": "integer",
+          "defaultValue": 1,
+          "description": "Linear packing scale factor"
+        },
+        {
+          "key": "add_offset",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "K",
+          "description": "Linear packing additive offset"
+        },
+        {
+          "key": "valid_min",
+          "type": "integer",
+          "defaultValue": 150,
+          "unit": "K",
+          "description": "Lower physical validity bound"
+        },
+        {
+          "key": "valid_max",
+          "type": "integer",
+          "defaultValue": 350,
+          "unit": "K",
+          "description": "Upper physical validity bound"
+        }
+      ],
+      "wasmKernel": "ncEval",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "pressure",
+    "kind": "Class",
+    "namePath": "NetCDF.pressure",
+    "exports": [
+      "standard_name",
+      "units",
+      "scale_factor",
+      "add_offset",
+      "reference_pressure"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Air Pressure (CF-1.x)",
+      "category": "CF-1.x Atmosphere",
+      "domain": "earth-science",
+      "description": "CF-1.x standard atmospheric pressure field (standard_name='air_pressure', canonical units='Pa').",
+      "provenance": "CF Conventions 1.8 / Unidata NetCDF Classic",
+      "aliases": [
+        "air_pressure",
+        "psl",
+        "slp",
+        "P"
+      ],
+      "parameters": [
+        {
+          "key": "standard_name",
+          "type": "string",
+          "defaultValue": "air_pressure",
+          "description": "CF canonical standard name"
+        },
+        {
+          "key": "units",
+          "type": "string",
+          "defaultValue": "Pa",
+          "unit": "Pa",
+          "description": "SI pressure unit"
+        },
+        {
+          "key": "scale_factor",
+          "type": "integer",
+          "defaultValue": 1,
+          "description": "Linear packing scale factor"
+        },
+        {
+          "key": "add_offset",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "Pa",
+          "description": "Linear packing additive offset"
+        },
+        {
+          "key": "reference_pressure",
+          "type": "integer",
+          "defaultValue": 101325,
+          "unit": "Pa",
+          "description": "Standard sea-level reference pressure"
+        }
+      ],
+      "wasmKernel": "ncEval",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "u_wind",
+    "kind": "Class",
+    "namePath": "NetCDF.u_wind",
+    "exports": [
+      "standard_name",
+      "units",
+      "scale_factor",
+      "add_offset"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Eastward Wind (CF-1.x)",
+      "category": "CF-1.x Atmosphere",
+      "domain": "earth-science",
+      "description": "CF-1.x zonal (eastward) wind velocity component (standard_name='eastward_wind', units='m s-1').",
+      "provenance": "CF Conventions 1.8 / Unidata NetCDF Classic",
+      "aliases": [
+        "eastward_wind",
+        "uas",
+        "u"
+      ],
+      "parameters": [
+        {
+          "key": "standard_name",
+          "type": "string",
+          "defaultValue": "eastward_wind",
+          "description": "CF canonical standard name"
+        },
+        {
+          "key": "units",
+          "type": "string",
+          "defaultValue": "m s-1",
+          "unit": "m/s",
+          "description": "Zonal velocity unit"
+        },
+        {
+          "key": "scale_factor",
+          "type": "integer",
+          "defaultValue": 1,
+          "description": "Linear packing scale factor"
+        },
+        {
+          "key": "add_offset",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "m/s",
+          "description": "Linear packing additive offset"
+        }
+      ],
+      "wasmKernel": "ncEval",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "v_wind",
+    "kind": "Class",
+    "namePath": "NetCDF.v_wind",
+    "exports": [
+      "standard_name",
+      "units",
+      "scale_factor",
+      "add_offset"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Northward Wind (CF-1.x)",
+      "category": "CF-1.x Atmosphere",
+      "domain": "earth-science",
+      "description": "CF-1.x meridional (northward) wind velocity component (standard_name='northward_wind', units='m s-1').",
+      "provenance": "CF Conventions 1.8 / Unidata NetCDF Classic",
+      "aliases": [
+        "northward_wind",
+        "vas",
+        "v"
+      ],
+      "parameters": [
+        {
+          "key": "standard_name",
+          "type": "string",
+          "defaultValue": "northward_wind",
+          "description": "CF canonical standard name"
+        },
+        {
+          "key": "units",
+          "type": "string",
+          "defaultValue": "m s-1",
+          "unit": "m/s",
+          "description": "Meridional velocity unit"
+        },
+        {
+          "key": "scale_factor",
+          "type": "integer",
+          "defaultValue": 1,
+          "description": "Linear packing scale factor"
+        },
+        {
+          "key": "add_offset",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "m/s",
+          "description": "Linear packing additive offset"
+        }
+      ],
+      "wasmKernel": "ncEval",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "salinity",
+    "kind": "Class",
+    "namePath": "NetCDF.salinity",
+    "exports": [
+      "standard_name",
+      "units",
+      "scale_factor",
+      "add_offset"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Sea Water Salinity (CF-1.x)",
+      "category": "CF-1.x Ocean & Surface",
+      "domain": "earth-science",
+      "description": "CF-1.x practical sea water salinity field (standard_name='sea_water_salinity', units='0.001').",
+      "provenance": "CF Conventions 1.8 / Unidata NetCDF Classic",
+      "aliases": [
+        "sea_water_salinity",
+        "so",
+        "S"
+      ],
+      "parameters": [
+        {
+          "key": "standard_name",
+          "type": "string",
+          "defaultValue": "sea_water_salinity",
+          "description": "CF canonical standard name"
+        },
+        {
+          "key": "units",
+          "type": "string",
+          "defaultValue": "0.001",
+          "unit": "PSU",
+          "description": "Practical Salinity Units (g/kg)"
+        },
+        {
+          "key": "scale_factor",
+          "type": "integer",
+          "defaultValue": 1,
+          "description": "Linear packing scale factor"
+        },
+        {
+          "key": "add_offset",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "PSU",
+          "description": "Linear packing additive offset"
+        }
+      ],
+      "wasmKernel": "ncEval",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "elevation",
+    "kind": "Class",
+    "namePath": "NetCDF.elevation",
+    "exports": [
+      "standard_name",
+      "units",
+      "positive",
+      "scale_factor",
+      "add_offset"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Surface Elevation (CF-1.x)",
+      "category": "CF-1.x Ocean & Surface",
+      "domain": "earth-science",
+      "description": "CF-1.x terrain / bathymetric surface elevation above geoid (standard_name='surface_altitude', units='m').",
+      "provenance": "CF Conventions 1.8 / Unidata NetCDF Classic",
+      "aliases": [
+        "surface_altitude",
+        "orog",
+        "z",
+        "bathymetry"
+      ],
+      "parameters": [
+        {
+          "key": "standard_name",
+          "type": "string",
+          "defaultValue": "surface_altitude",
+          "description": "CF canonical standard name"
+        },
+        {
+          "key": "units",
+          "type": "string",
+          "defaultValue": "m",
+          "unit": "m",
+          "description": "Vertical height above datum"
+        },
+        {
+          "key": "positive",
+          "type": "string",
+          "defaultValue": "up",
+          "description": "Vertical positive direction"
+        },
+        {
+          "key": "scale_factor",
+          "type": "integer",
+          "defaultValue": 1,
+          "description": "Linear packing scale factor"
+        },
+        {
+          "key": "add_offset",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Linear packing additive offset"
+        }
+      ],
+      "wasmKernel": "ncEval",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "byte",
+    "kind": "Class",
+    "namePath": "NetCDF.byte",
+    "exports": [
+      "type_code",
+      "byte_size",
+      "default_fill"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NC_BYTE (8-bit Signed)",
+      "category": "NetCDF Classic Types",
+      "domain": "earth-science",
+      "description": "NetCDF Classic 8-bit signed two's-complement integer (type code 1, default fill -127).",
+      "provenance": "Unidata NetCDF Classic v1/v2 Specification (1988)",
+      "aliases": [
+        "NC_BYTE",
+        "int8"
+      ],
+      "parameters": [
+        {
+          "key": "type_code",
+          "type": "integer",
+          "defaultValue": 1,
+          "description": "XDR binary type tag"
+        },
+        {
+          "key": "byte_size",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "bytes",
+          "description": "Storage width per element"
+        },
+        {
+          "key": "default_fill",
+          "type": "integer",
+          "defaultValue": -127,
+          "description": "NC_FILL_BYTE"
+        }
+      ],
+      "wasmKernel": "ncEval",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "char",
+    "kind": "Class",
+    "namePath": "NetCDF.char",
+    "exports": [
+      "type_code",
+      "byte_size",
+      "default_fill"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NC_CHAR (8-bit ASCII)",
+      "category": "NetCDF Classic Types",
+      "domain": "earth-science",
+      "description": "NetCDF Classic 8-bit ISO/ASCII character array element (type code 2, default fill 0).",
+      "provenance": "Unidata NetCDF Classic v1/v2 Specification (1988)",
+      "aliases": [
+        "NC_CHAR",
+        "ascii"
+      ],
+      "parameters": [
+        {
+          "key": "type_code",
+          "type": "integer",
+          "defaultValue": 2,
+          "description": "XDR binary type tag"
+        },
+        {
+          "key": "byte_size",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "bytes",
+          "description": "Storage width per character"
+        },
+        {
+          "key": "default_fill",
+          "type": "integer",
+          "defaultValue": 0,
+          "description": "NC_FILL_CHAR"
+        }
+      ],
+      "wasmKernel": "ncEval",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "short",
+    "kind": "Class",
+    "namePath": "NetCDF.short",
+    "exports": [
+      "type_code",
+      "byte_size",
+      "default_fill"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NC_SHORT (16-bit Signed)",
+      "category": "NetCDF Classic Types",
+      "domain": "earth-science",
+      "description": "NetCDF Classic 16-bit big-endian signed integer (type code 3, default fill -32767).",
+      "provenance": "Unidata NetCDF Classic v1/v2 Specification (1988)",
+      "aliases": [
+        "NC_SHORT",
+        "int16"
+      ],
+      "parameters": [
+        {
+          "key": "type_code",
+          "type": "integer",
+          "defaultValue": 3,
+          "description": "XDR binary type tag"
+        },
+        {
+          "key": "byte_size",
+          "type": "integer",
+          "defaultValue": 2,
+          "unit": "bytes",
+          "description": "Storage width per element"
+        },
+        {
+          "key": "default_fill",
+          "type": "integer",
+          "defaultValue": -32767,
+          "description": "NC_FILL_SHORT"
+        }
+      ],
+      "wasmKernel": "ncEval",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "int",
+    "kind": "Class",
+    "namePath": "NetCDF.int",
+    "exports": [
+      "type_code",
+      "byte_size",
+      "default_fill"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NC_INT (32-bit Signed)",
+      "category": "NetCDF Classic Types",
+      "domain": "earth-science",
+      "description": "NetCDF Classic 32-bit big-endian signed integer (type code 4, CDL alias 'long', default fill -2147483647).",
+      "provenance": "Unidata NetCDF Classic v1/v2 Specification (1988)",
+      "aliases": [
+        "NC_INT",
+        "long",
+        "int32"
+      ],
+      "parameters": [
+        {
+          "key": "type_code",
+          "type": "integer",
+          "defaultValue": 4,
+          "description": "XDR binary type tag"
+        },
+        {
+          "key": "byte_size",
+          "type": "integer",
+          "defaultValue": 4,
+          "unit": "bytes",
+          "description": "Storage width per element"
+        },
+        {
+          "key": "default_fill",
+          "type": "integer",
+          "defaultValue": -2147483647,
+          "description": "NC_FILL_INT"
+        }
+      ],
+      "wasmKernel": "ncEval",
+      "archetypeId": 14
+    }
+  },
+  {
+    "name": "float",
+    "kind": "Class",
+    "namePath": "NetCDF.float",
+    "exports": [
+      "type_code",
+      "byte_size",
+      "default_fill"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NC_FLOAT (IEEE-754 32-bit)",
+      "category": "NetCDF Classic Types",
+      "domain": "earth-science",
+      "description": "NetCDF Classic 32-bit big-endian IEEE-754 single-precision float (type code 5).",
+      "provenance": "Unidata NetCDF Classic v1/v2 Specification (1988)",
+      "aliases": [
+        "NC_FLOAT",
+        "real",
+        "float32"
+      ],
+      "parameters": [
+        {
+          "key": "type_code",
+          "type": "integer",
+          "defaultValue": 5,
+          "description": "XDR binary type tag"
+        },
+        {
+          "key": "byte_size",
+          "type": "integer",
+          "defaultValue": 4,
+          "unit": "bytes",
+          "description": "Storage width per element"
+        },
+        {
+          "key": "default_fill",
+          "type": "integer",
+          "defaultValue": 9.969209968386869e+36,
+          "description": "NC_FILL_FLOAT"
+        }
+      ],
+      "wasmKernel": "ncEval",
+      "archetypeId": 15
+    }
+  },
+  {
+    "name": "double",
+    "kind": "Class",
+    "namePath": "NetCDF.double",
+    "exports": [
+      "type_code",
+      "byte_size",
+      "default_fill"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NC_DOUBLE (IEEE-754 64-bit)",
+      "category": "NetCDF Classic Types",
+      "domain": "earth-science",
+      "description": "NetCDF Classic 64-bit big-endian IEEE-754 double-precision float (type code 6).",
+      "provenance": "Unidata NetCDF Classic v1/v2 Specification (1988)",
+      "aliases": [
+        "NC_DOUBLE",
+        "float64"
+      ],
+      "parameters": [
+        {
+          "key": "type_code",
+          "type": "integer",
+          "defaultValue": 6,
+          "description": "XDR binary type tag"
+        },
+        {
+          "key": "byte_size",
+          "type": "integer",
+          "defaultValue": 8,
+          "unit": "bytes",
+          "description": "Storage width per element"
+        },
+        {
+          "key": "default_fill",
+          "type": "integer",
+          "defaultValue": 9.969209968386869e+36,
+          "description": "NC_FILL_DOUBLE"
+        }
+      ],
+      "wasmKernel": "ncEval",
+      "archetypeId": 16
+    }
+  }
+]

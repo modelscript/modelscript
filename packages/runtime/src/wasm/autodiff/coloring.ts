@@ -149,7 +149,7 @@ export function buildJacobianSparsity(
   varIndicesPtr: u32,
   nCols: u32
 ): CCSMatrix {
-  let ccsPtr = atomicChunkAlloc(sizeof<CCSMatrix>());
+  let ccsPtr = atomicChunkAlloc(offsetof<CCSMatrix>() as u32);
   let ccs = changetype<CCSMatrix>(ccsPtr);
   ccs.init(nRows, nCols);
 
@@ -189,7 +189,7 @@ export function buildJacobianSparsity(
  */
 export function colorJacobianColumns(ccs: CCSMatrix): ColoringResult {
   let nCols = ccs.nCols;
-  let resPtr = atomicChunkAlloc(sizeof<ColoringResult>());
+  let resPtr = atomicChunkAlloc(offsetof<ColoringResult>() as u32);
   let res = changetype<ColoringResult>(resPtr);
   res.init(nCols);
 
@@ -612,7 +612,7 @@ export function buildHessianSparsity(
   varIndicesPtr: u32,
   nVars: u32
 ): CCSMatrix {
-  let ccsPtr = atomicChunkAlloc(sizeof<CCSMatrix>());
+  let ccsPtr = atomicChunkAlloc(offsetof<CCSMatrix>() as u32);
   let ccs = changetype<CCSMatrix>(ccsPtr);
   ccs.init(nVars, nVars);
 
@@ -677,7 +677,7 @@ export function buildHessianSparsity(
  */
 export function computeStarColoring(hessianSparsity: CCSMatrix): ColoringResult {
   let n = hessianSparsity.nCols;
-  let resPtr = atomicChunkAlloc(sizeof<ColoringResult>());
+  let resPtr = atomicChunkAlloc(offsetof<ColoringResult>() as u32);
   let res = changetype<ColoringResult>(resPtr);
   res.init(n);
 
@@ -833,7 +833,7 @@ export function evalLagrangianHessian(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function dae_ccsCreate(nRows: u32, nCols: u32): u32 {
-  let ptr = atomicChunkAlloc(sizeof<CCSMatrix>());
+  let ptr = atomicChunkAlloc(offsetof<CCSMatrix>() as u32);
   let ccs = changetype<CCSMatrix>(ptr);
   ccs.init(nRows, nCols);
   return ptr as u32;

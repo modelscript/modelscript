@@ -7,6 +7,12 @@
  * (e.g., CAD mass vs. Modelica mass, unverified SysML requirements, or stale simulation caches).
  */
 
+import {
+  type LspRelatedInfoProjection,
+  type PolyglotDiagnostic,
+  projectTraceToLspRelatedInfo,
+} from "@modelscript/runtime";
+
 export interface ThreadDiagnostic {
   domain: string;
   elementName: string;
@@ -25,6 +31,8 @@ export interface ThreadDiagnostic {
   targetValue?: number | undefined;
   simplexConsensus?: number | undefined;
   unit?: string | undefined;
+  /** Cross-language causal trace frames projected into LSP Diagnostic.relatedInformation format. */
+  relatedInformation?: LspRelatedInfoProjection[] | undefined;
 }
 
 export interface AlignedDomainElement {
@@ -38,6 +46,35 @@ export interface AlignedDomainElement {
 }
 
 export class ThreadDiagnosticsProvider {
+  /**
+   * Projects a `@modelscript/runtime` `PolyglotDiagnostic` (from SMT conflict or DAE/BLT
+   * causal trace) directly into a `ThreadDiagnostic` carrying clickable cross-language
+   * `relatedInformation` frames.
+   */
+  static fromPolyglotDiagnostic(
+    diag: PolyglotDiagnostic,
+    offsetToPosition?: (uri: string, offset: number) => { line: number; character: number },
+  ): ThreadDiagnostic | null {
+    const primary = diag.frames[0];
+    if (!primary) return null;
+    const pos = offsetToPosition
+      ? offsetToPosition(primary.uri, primary.range.startOffset)
+      : { line: 0, character: primary.range.startOffset };
+    const related = projectTraceToLspRelatedInfo(diag, offsetToPosition);
+    return {
+      domain: primary.languageId,
+      elementName: primary.symbolName,
+      severity: diag.severity,
+      code: diag.code,
+      threadId: primary.threadId,
+      message: diag.summary,
+      line: pos.line + 1,
+      column: pos.character + 1,
+      source: "modelscript-digital-thread",
+      ...(related.length > 0 ? { relatedInformation: related } : {}),
+    };
+  }
+
   /**
    * Evaluates cross-domain consistency across aligned digital thread projections.
    *
@@ -69,6 +106,23 @@ export class ThreadDiagnosticsProvider {
         if (primary) targetElements = [primary];
       }
 
+      const relatedInformation: LspRelatedInfoProjection[] = domainElements
+        .filter((e) => typeof e.uri === "string" && e.uri.length > 0)
+        .map((e) => {
+          const line0 = Math.max(0, (e.line ?? 1) - 1);
+          const col0 = Math.max(0, (e.column ?? 1) - 1);
+          return {
+            location: {
+              uri: e.uri!,
+              range: {
+                start: { line: line0, character: col0 },
+                end: { line: line0, character: col0 + Math.max(1, e.name.length) },
+              },
+            },
+            message: `[${e.domain}] Aligned element '${e.name}' in digital thread #${threadId}`,
+          };
+        });
+
       for (const elem of targetElements) {
         const culprit =
           conflict.culpritEntities?.find(
@@ -92,6 +146,7 @@ export class ThreadDiagnosticsProvider {
           line: elem.line ?? 1,
           column: elem.column ?? 1,
           source: "modelscript-digital-thread",
+          ...(relatedInformation.length > 0 ? { relatedInformation } : {}),
         });
       }
     }

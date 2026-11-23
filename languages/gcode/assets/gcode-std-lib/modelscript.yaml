@@ -1,0 +1,11 @@
+name: "@modelscript/gcode-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom ISO 6983 / RS-274 G-code, canned cycles & cutting-tool preset standard library (23 schemas, SVG block icons, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: gcode
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

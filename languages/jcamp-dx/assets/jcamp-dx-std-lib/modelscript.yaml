@@ -1,0 +1,11 @@
+name: "@modelscript/jcamp-dx-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom IUPAC JCAMP-DX 4.24/5.01 analytical spectroscopy standard library (10 schemas, IR functional-group bands, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: jcamp-dx
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

@@ -1,0 +1,2049 @@
+[
+  {
+    "name": "H2",
+    "kind": "class",
+    "namePath": "Chemkin.Thermo.H2",
+    "exports": [
+      "molecularWeight",
+      "tLow",
+      "tMid",
+      "tHigh",
+      "high_a1",
+      "high_a2",
+      "high_a3",
+      "high_a4",
+      "high_a5",
+      "high_a6",
+      "high_a7",
+      "low_a1",
+      "low_a2",
+      "low_a3",
+      "low_a4",
+      "low_a5",
+      "low_a6",
+      "low_a7"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Molecular Hydrogen (H2)",
+      "category": "Fuel",
+      "domain": "chemistry",
+      "description": "Diatomic hydrogen fuel gas; NASA-7 14-coefficient ideal gas polynomial.",
+      "provenance": "NASA Glenn / McBride-Gordon-Reno SP-3027",
+      "aliases": [
+        "h2"
+      ],
+      "parameters": [
+        {
+          "key": "molecularWeight",
+          "type": "real",
+          "defaultValue": 2.01588,
+          "unit": "g/mol",
+          "description": "Molar mass"
+        },
+        {
+          "key": "tLow",
+          "type": "real",
+          "defaultValue": 200,
+          "unit": "K",
+          "description": "NASA-7 lower temperature bound"
+        },
+        {
+          "key": "tMid",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "K",
+          "description": "NASA-7 midpoint temperature"
+        },
+        {
+          "key": "tHigh",
+          "type": "real",
+          "defaultValue": 3500,
+          "unit": "K",
+          "description": "NASA-7 upper temperature bound"
+        },
+        {
+          "key": "high_a1",
+          "type": "real",
+          "defaultValue": 3.3372792,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a1"
+        },
+        {
+          "key": "high_a2",
+          "type": "real",
+          "defaultValue": -0.0000494024731,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a2"
+        },
+        {
+          "key": "high_a3",
+          "type": "real",
+          "defaultValue": 4.99456778e-7,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a3"
+        },
+        {
+          "key": "high_a4",
+          "type": "real",
+          "defaultValue": -1.79566394e-10,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a4"
+        },
+        {
+          "key": "high_a5",
+          "type": "real",
+          "defaultValue": 2.00255376e-14,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a5"
+        },
+        {
+          "key": "high_a6",
+          "type": "real",
+          "defaultValue": -950.158922,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a6"
+        },
+        {
+          "key": "high_a7",
+          "type": "real",
+          "defaultValue": -3.20502331,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a7"
+        },
+        {
+          "key": "low_a1",
+          "type": "real",
+          "defaultValue": 2.34433112,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a1"
+        },
+        {
+          "key": "low_a2",
+          "type": "real",
+          "defaultValue": 0.00798052075,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a2"
+        },
+        {
+          "key": "low_a3",
+          "type": "real",
+          "defaultValue": -0.000019478151,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a3"
+        },
+        {
+          "key": "low_a4",
+          "type": "real",
+          "defaultValue": 2.01572094e-8,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a4"
+        },
+        {
+          "key": "low_a5",
+          "type": "real",
+          "defaultValue": -7.37611761e-12,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a5"
+        },
+        {
+          "key": "low_a6",
+          "type": "real",
+          "defaultValue": -917.935173,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a6"
+        },
+        {
+          "key": "low_a7",
+          "type": "real",
+          "defaultValue": 0.683010238,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a7"
+        }
+      ],
+      "wasmKernel": "chemkinEvalNasa7",
+      "archetypeId": 1,
+      "composition": {
+        "H": 2
+      },
+      "phase": "G"
+    }
+  },
+  {
+    "name": "O2",
+    "kind": "class",
+    "namePath": "Chemkin.Thermo.O2",
+    "exports": [
+      "molecularWeight",
+      "tLow",
+      "tMid",
+      "tHigh",
+      "high_a1",
+      "high_a2",
+      "high_a3",
+      "high_a4",
+      "high_a5",
+      "high_a6",
+      "high_a7",
+      "low_a1",
+      "low_a2",
+      "low_a3",
+      "low_a4",
+      "low_a5",
+      "low_a6",
+      "low_a7"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Molecular Oxygen (O2)",
+      "category": "Oxidizer",
+      "domain": "chemistry",
+      "description": "Diatomic oxygen oxidizer gas; NASA-7 14-coefficient ideal gas polynomial.",
+      "provenance": "NASA Glenn / McBride-Gordon-Reno SP-3027",
+      "aliases": [
+        "o2"
+      ],
+      "parameters": [
+        {
+          "key": "molecularWeight",
+          "type": "real",
+          "defaultValue": 31.9988,
+          "unit": "g/mol",
+          "description": "Molar mass"
+        },
+        {
+          "key": "tLow",
+          "type": "real",
+          "defaultValue": 200,
+          "unit": "K",
+          "description": "NASA-7 lower temperature bound"
+        },
+        {
+          "key": "tMid",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "K",
+          "description": "NASA-7 midpoint temperature"
+        },
+        {
+          "key": "tHigh",
+          "type": "real",
+          "defaultValue": 3500,
+          "unit": "K",
+          "description": "NASA-7 upper temperature bound"
+        },
+        {
+          "key": "high_a1",
+          "type": "real",
+          "defaultValue": 3.28253784,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a1"
+        },
+        {
+          "key": "high_a2",
+          "type": "real",
+          "defaultValue": 0.00148308754,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a2"
+        },
+        {
+          "key": "high_a3",
+          "type": "real",
+          "defaultValue": -7.57966669e-7,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a3"
+        },
+        {
+          "key": "high_a4",
+          "type": "real",
+          "defaultValue": 2.09470555e-10,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a4"
+        },
+        {
+          "key": "high_a5",
+          "type": "real",
+          "defaultValue": -2.16717794e-14,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a5"
+        },
+        {
+          "key": "high_a6",
+          "type": "real",
+          "defaultValue": -1088.45772,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a6"
+        },
+        {
+          "key": "high_a7",
+          "type": "real",
+          "defaultValue": 5.45323129,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a7"
+        },
+        {
+          "key": "low_a1",
+          "type": "real",
+          "defaultValue": 3.78245636,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a1"
+        },
+        {
+          "key": "low_a2",
+          "type": "real",
+          "defaultValue": -0.00299673416,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a2"
+        },
+        {
+          "key": "low_a3",
+          "type": "real",
+          "defaultValue": 0.00000984730201,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a3"
+        },
+        {
+          "key": "low_a4",
+          "type": "real",
+          "defaultValue": -9.68129509e-9,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a4"
+        },
+        {
+          "key": "low_a5",
+          "type": "real",
+          "defaultValue": 3.24372837e-12,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a5"
+        },
+        {
+          "key": "low_a6",
+          "type": "real",
+          "defaultValue": -1063.94356,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a6"
+        },
+        {
+          "key": "low_a7",
+          "type": "real",
+          "defaultValue": 3.65767573,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a7"
+        }
+      ],
+      "wasmKernel": "chemkinEvalNasa7",
+      "archetypeId": 2,
+      "composition": {
+        "O": 2
+      },
+      "phase": "G"
+    }
+  },
+  {
+    "name": "H2O",
+    "kind": "class",
+    "namePath": "Chemkin.Thermo.H2O",
+    "exports": [
+      "molecularWeight",
+      "tLow",
+      "tMid",
+      "tHigh",
+      "high_a1",
+      "high_a2",
+      "high_a3",
+      "high_a4",
+      "high_a5",
+      "high_a6",
+      "high_a7",
+      "low_a1",
+      "low_a2",
+      "low_a3",
+      "low_a4",
+      "low_a5",
+      "low_a6",
+      "low_a7"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Water Vapor (H2O)",
+      "category": "Product",
+      "domain": "chemistry",
+      "description": "Steam / water vapor combustion product; NASA-7 14-coefficient ideal gas polynomial.",
+      "provenance": "NASA Glenn / McBride-Gordon-Reno SP-3027",
+      "aliases": [
+        "h2o"
+      ],
+      "parameters": [
+        {
+          "key": "molecularWeight",
+          "type": "real",
+          "defaultValue": 18.01528,
+          "unit": "g/mol",
+          "description": "Molar mass"
+        },
+        {
+          "key": "tLow",
+          "type": "real",
+          "defaultValue": 200,
+          "unit": "K",
+          "description": "NASA-7 lower temperature bound"
+        },
+        {
+          "key": "tMid",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "K",
+          "description": "NASA-7 midpoint temperature"
+        },
+        {
+          "key": "tHigh",
+          "type": "real",
+          "defaultValue": 3500,
+          "unit": "K",
+          "description": "NASA-7 upper temperature bound"
+        },
+        {
+          "key": "high_a1",
+          "type": "real",
+          "defaultValue": 3.03399249,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a1"
+        },
+        {
+          "key": "high_a2",
+          "type": "real",
+          "defaultValue": 0.00217691804,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a2"
+        },
+        {
+          "key": "high_a3",
+          "type": "real",
+          "defaultValue": -1.64072518e-7,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a3"
+        },
+        {
+          "key": "high_a4",
+          "type": "real",
+          "defaultValue": -9.7041987e-11,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a4"
+        },
+        {
+          "key": "high_a5",
+          "type": "real",
+          "defaultValue": 1.68200992e-14,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a5"
+        },
+        {
+          "key": "high_a6",
+          "type": "real",
+          "defaultValue": -30004.2971,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a6"
+        },
+        {
+          "key": "high_a7",
+          "type": "real",
+          "defaultValue": 4.9667701,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a7"
+        },
+        {
+          "key": "low_a1",
+          "type": "real",
+          "defaultValue": 4.19864056,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a1"
+        },
+        {
+          "key": "low_a2",
+          "type": "real",
+          "defaultValue": -0.0020364341,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a2"
+        },
+        {
+          "key": "low_a3",
+          "type": "real",
+          "defaultValue": 0.00000652040211,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a3"
+        },
+        {
+          "key": "low_a4",
+          "type": "real",
+          "defaultValue": -5.48797062e-9,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a4"
+        },
+        {
+          "key": "low_a5",
+          "type": "real",
+          "defaultValue": 1.77197817e-12,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a5"
+        },
+        {
+          "key": "low_a6",
+          "type": "real",
+          "defaultValue": -30293.7267,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a6"
+        },
+        {
+          "key": "low_a7",
+          "type": "real",
+          "defaultValue": -0.849032208,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a7"
+        }
+      ],
+      "wasmKernel": "chemkinEvalNasa7",
+      "archetypeId": 3,
+      "composition": {
+        "H": 2,
+        "O": 1
+      },
+      "phase": "G"
+    }
+  },
+  {
+    "name": "OH",
+    "kind": "class",
+    "namePath": "Chemkin.Thermo.OH",
+    "exports": [
+      "molecularWeight",
+      "tLow",
+      "tMid",
+      "tHigh",
+      "high_a1",
+      "high_a2",
+      "high_a3",
+      "high_a4",
+      "high_a5",
+      "high_a6",
+      "high_a7",
+      "low_a1",
+      "low_a2",
+      "low_a3",
+      "low_a4",
+      "low_a5",
+      "low_a6",
+      "low_a7"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Hydroxyl Radical (OH)",
+      "category": "Radical",
+      "domain": "chemistry",
+      "description": "Hydroxyl chain-branching radical; NASA-7 14-coefficient ideal gas polynomial.",
+      "provenance": "NASA Glenn / McBride-Gordon-Reno SP-3027",
+      "aliases": [
+        "oh"
+      ],
+      "parameters": [
+        {
+          "key": "molecularWeight",
+          "type": "real",
+          "defaultValue": 17.00734,
+          "unit": "g/mol",
+          "description": "Molar mass"
+        },
+        {
+          "key": "tLow",
+          "type": "real",
+          "defaultValue": 200,
+          "unit": "K",
+          "description": "NASA-7 lower temperature bound"
+        },
+        {
+          "key": "tMid",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "K",
+          "description": "NASA-7 midpoint temperature"
+        },
+        {
+          "key": "tHigh",
+          "type": "real",
+          "defaultValue": 3500,
+          "unit": "K",
+          "description": "NASA-7 upper temperature bound"
+        },
+        {
+          "key": "high_a1",
+          "type": "real",
+          "defaultValue": 3.09288767,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a1"
+        },
+        {
+          "key": "high_a2",
+          "type": "real",
+          "defaultValue": 0.000548429716,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a2"
+        },
+        {
+          "key": "high_a3",
+          "type": "real",
+          "defaultValue": 1.26505228e-7,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a3"
+        },
+        {
+          "key": "high_a4",
+          "type": "real",
+          "defaultValue": -8.79461556e-11,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a4"
+        },
+        {
+          "key": "high_a5",
+          "type": "real",
+          "defaultValue": 1.17412376e-14,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a5"
+        },
+        {
+          "key": "high_a6",
+          "type": "real",
+          "defaultValue": 3858.657,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a6"
+        },
+        {
+          "key": "high_a7",
+          "type": "real",
+          "defaultValue": 4.4766961,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a7"
+        },
+        {
+          "key": "low_a1",
+          "type": "real",
+          "defaultValue": 3.99201543,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a1"
+        },
+        {
+          "key": "low_a2",
+          "type": "real",
+          "defaultValue": -0.00240131752,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a2"
+        },
+        {
+          "key": "low_a3",
+          "type": "real",
+          "defaultValue": 0.00000461793841,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a3"
+        },
+        {
+          "key": "low_a4",
+          "type": "real",
+          "defaultValue": -3.88113333e-9,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a4"
+        },
+        {
+          "key": "low_a5",
+          "type": "real",
+          "defaultValue": 1.3641147e-12,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a5"
+        },
+        {
+          "key": "low_a6",
+          "type": "real",
+          "defaultValue": 3615.08056,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a6"
+        },
+        {
+          "key": "low_a7",
+          "type": "real",
+          "defaultValue": -0.103925458,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a7"
+        }
+      ],
+      "wasmKernel": "chemkinEvalNasa7",
+      "archetypeId": 4,
+      "composition": {
+        "O": 1,
+        "H": 1
+      },
+      "phase": "G"
+    }
+  },
+  {
+    "name": "H",
+    "kind": "class",
+    "namePath": "Chemkin.Thermo.H",
+    "exports": [
+      "molecularWeight",
+      "tLow",
+      "tMid",
+      "tHigh",
+      "high_a1",
+      "high_a2",
+      "high_a3",
+      "high_a4",
+      "high_a5",
+      "high_a6",
+      "high_a7",
+      "low_a1",
+      "low_a2",
+      "low_a3",
+      "low_a4",
+      "low_a5",
+      "low_a6",
+      "low_a7"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Atomic Hydrogen (H)",
+      "category": "Radical",
+      "domain": "chemistry",
+      "description": "Monatomic hydrogen radical; NASA-7 14-coefficient ideal gas polynomial.",
+      "provenance": "NASA Glenn / McBride-Gordon-Reno SP-3027",
+      "aliases": [
+        "h"
+      ],
+      "parameters": [
+        {
+          "key": "molecularWeight",
+          "type": "real",
+          "defaultValue": 1.00794,
+          "unit": "g/mol",
+          "description": "Molar mass"
+        },
+        {
+          "key": "tLow",
+          "type": "real",
+          "defaultValue": 200,
+          "unit": "K",
+          "description": "NASA-7 lower temperature bound"
+        },
+        {
+          "key": "tMid",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "K",
+          "description": "NASA-7 midpoint temperature"
+        },
+        {
+          "key": "tHigh",
+          "type": "real",
+          "defaultValue": 3500,
+          "unit": "K",
+          "description": "NASA-7 upper temperature bound"
+        },
+        {
+          "key": "high_a1",
+          "type": "real",
+          "defaultValue": 2.5,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a1"
+        },
+        {
+          "key": "high_a2",
+          "type": "real",
+          "defaultValue": 7.05332819e-13,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a2"
+        },
+        {
+          "key": "high_a3",
+          "type": "real",
+          "defaultValue": -1.99591964e-15,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a3"
+        },
+        {
+          "key": "high_a4",
+          "type": "real",
+          "defaultValue": 2.30081632e-18,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a4"
+        },
+        {
+          "key": "high_a5",
+          "type": "real",
+          "defaultValue": -9.27732332e-22,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a5"
+        },
+        {
+          "key": "high_a6",
+          "type": "real",
+          "defaultValue": 25473.6599,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a6"
+        },
+        {
+          "key": "high_a7",
+          "type": "real",
+          "defaultValue": -0.446682853,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a7"
+        },
+        {
+          "key": "low_a1",
+          "type": "real",
+          "defaultValue": 2.5,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a1"
+        },
+        {
+          "key": "low_a2",
+          "type": "real",
+          "defaultValue": 7.05332819e-13,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a2"
+        },
+        {
+          "key": "low_a3",
+          "type": "real",
+          "defaultValue": -1.99591964e-15,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a3"
+        },
+        {
+          "key": "low_a4",
+          "type": "real",
+          "defaultValue": 2.30081632e-18,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a4"
+        },
+        {
+          "key": "low_a5",
+          "type": "real",
+          "defaultValue": -9.27732332e-22,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a5"
+        },
+        {
+          "key": "low_a6",
+          "type": "real",
+          "defaultValue": 25473.6599,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a6"
+        },
+        {
+          "key": "low_a7",
+          "type": "real",
+          "defaultValue": -0.446682853,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a7"
+        }
+      ],
+      "wasmKernel": "chemkinEvalNasa7",
+      "archetypeId": 5,
+      "composition": {
+        "H": 1
+      },
+      "phase": "G"
+    }
+  },
+  {
+    "name": "O",
+    "kind": "class",
+    "namePath": "Chemkin.Thermo.O",
+    "exports": [
+      "molecularWeight",
+      "tLow",
+      "tMid",
+      "tHigh",
+      "high_a1",
+      "high_a2",
+      "high_a3",
+      "high_a4",
+      "high_a5",
+      "high_a6",
+      "high_a7",
+      "low_a1",
+      "low_a2",
+      "low_a3",
+      "low_a4",
+      "low_a5",
+      "low_a6",
+      "low_a7"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Atomic Oxygen (O)",
+      "category": "Radical",
+      "domain": "chemistry",
+      "description": "Monatomic oxygen radical; NASA-7 14-coefficient ideal gas polynomial.",
+      "provenance": "NASA Glenn / McBride-Gordon-Reno SP-3027",
+      "aliases": [
+        "o"
+      ],
+      "parameters": [
+        {
+          "key": "molecularWeight",
+          "type": "real",
+          "defaultValue": 15.9994,
+          "unit": "g/mol",
+          "description": "Molar mass"
+        },
+        {
+          "key": "tLow",
+          "type": "real",
+          "defaultValue": 200,
+          "unit": "K",
+          "description": "NASA-7 lower temperature bound"
+        },
+        {
+          "key": "tMid",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "K",
+          "description": "NASA-7 midpoint temperature"
+        },
+        {
+          "key": "tHigh",
+          "type": "real",
+          "defaultValue": 3500,
+          "unit": "K",
+          "description": "NASA-7 upper temperature bound"
+        },
+        {
+          "key": "high_a1",
+          "type": "real",
+          "defaultValue": 2.56942078,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a1"
+        },
+        {
+          "key": "high_a2",
+          "type": "real",
+          "defaultValue": -0.0000859741137,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a2"
+        },
+        {
+          "key": "high_a3",
+          "type": "real",
+          "defaultValue": 4.19484589e-8,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a3"
+        },
+        {
+          "key": "high_a4",
+          "type": "real",
+          "defaultValue": -1.00177799e-11,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a4"
+        },
+        {
+          "key": "high_a5",
+          "type": "real",
+          "defaultValue": 1.22833691e-15,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a5"
+        },
+        {
+          "key": "high_a6",
+          "type": "real",
+          "defaultValue": 29217.5791,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a6"
+        },
+        {
+          "key": "high_a7",
+          "type": "real",
+          "defaultValue": 4.78433864,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a7"
+        },
+        {
+          "key": "low_a1",
+          "type": "real",
+          "defaultValue": 3.1682671,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a1"
+        },
+        {
+          "key": "low_a2",
+          "type": "real",
+          "defaultValue": -0.00327931884,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a2"
+        },
+        {
+          "key": "low_a3",
+          "type": "real",
+          "defaultValue": 0.00000664306396,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a3"
+        },
+        {
+          "key": "low_a4",
+          "type": "real",
+          "defaultValue": -6.12806624e-9,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a4"
+        },
+        {
+          "key": "low_a5",
+          "type": "real",
+          "defaultValue": 2.11265971e-12,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a5"
+        },
+        {
+          "key": "low_a6",
+          "type": "real",
+          "defaultValue": 29122.2592,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a6"
+        },
+        {
+          "key": "low_a7",
+          "type": "real",
+          "defaultValue": 2.05193346,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a7"
+        }
+      ],
+      "wasmKernel": "chemkinEvalNasa7",
+      "archetypeId": 6,
+      "composition": {
+        "O": 1
+      },
+      "phase": "G"
+    }
+  },
+  {
+    "name": "HO2",
+    "kind": "class",
+    "namePath": "Chemkin.Thermo.HO2",
+    "exports": [
+      "molecularWeight",
+      "tLow",
+      "tMid",
+      "tHigh",
+      "high_a1",
+      "high_a2",
+      "high_a3",
+      "high_a4",
+      "high_a5",
+      "high_a6",
+      "high_a7",
+      "low_a1",
+      "low_a2",
+      "low_a3",
+      "low_a4",
+      "low_a5",
+      "low_a6",
+      "low_a7"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Hydroperoxyl Radical (HO2)",
+      "category": "Radical",
+      "domain": "chemistry",
+      "description": "Hydroperoxyl intermediate radical; NASA-7 14-coefficient ideal gas polynomial.",
+      "provenance": "NASA Glenn / McBride-Gordon-Reno SP-3027",
+      "aliases": [
+        "ho2"
+      ],
+      "parameters": [
+        {
+          "key": "molecularWeight",
+          "type": "real",
+          "defaultValue": 33.00674,
+          "unit": "g/mol",
+          "description": "Molar mass"
+        },
+        {
+          "key": "tLow",
+          "type": "real",
+          "defaultValue": 200,
+          "unit": "K",
+          "description": "NASA-7 lower temperature bound"
+        },
+        {
+          "key": "tMid",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "K",
+          "description": "NASA-7 midpoint temperature"
+        },
+        {
+          "key": "tHigh",
+          "type": "real",
+          "defaultValue": 3500,
+          "unit": "K",
+          "description": "NASA-7 upper temperature bound"
+        },
+        {
+          "key": "high_a1",
+          "type": "real",
+          "defaultValue": 4.0172109,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a1"
+        },
+        {
+          "key": "high_a2",
+          "type": "real",
+          "defaultValue": 0.00221982017,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a2"
+        },
+        {
+          "key": "high_a3",
+          "type": "real",
+          "defaultValue": -5.77501838e-7,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a3"
+        },
+        {
+          "key": "high_a4",
+          "type": "real",
+          "defaultValue": 7.13771705e-11,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a4"
+        },
+        {
+          "key": "high_a5",
+          "type": "real",
+          "defaultValue": -3.68688512e-15,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a5"
+        },
+        {
+          "key": "high_a6",
+          "type": "real",
+          "defaultValue": 111.856713,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a6"
+        },
+        {
+          "key": "high_a7",
+          "type": "real",
+          "defaultValue": 3.78510215,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a7"
+        },
+        {
+          "key": "low_a1",
+          "type": "real",
+          "defaultValue": 4.30179801,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a1"
+        },
+        {
+          "key": "low_a2",
+          "type": "real",
+          "defaultValue": -0.00474912051,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a2"
+        },
+        {
+          "key": "low_a3",
+          "type": "real",
+          "defaultValue": 0.0000211582891,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a3"
+        },
+        {
+          "key": "low_a4",
+          "type": "real",
+          "defaultValue": -2.42763894e-8,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a4"
+        },
+        {
+          "key": "low_a5",
+          "type": "real",
+          "defaultValue": 9.29225124e-12,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a5"
+        },
+        {
+          "key": "low_a6",
+          "type": "real",
+          "defaultValue": 294.80804,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a6"
+        },
+        {
+          "key": "low_a7",
+          "type": "real",
+          "defaultValue": 3.71666245,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a7"
+        }
+      ],
+      "wasmKernel": "chemkinEvalNasa7",
+      "archetypeId": 7,
+      "composition": {
+        "H": 1,
+        "O": 2
+      },
+      "phase": "G"
+    }
+  },
+  {
+    "name": "H2O2",
+    "kind": "class",
+    "namePath": "Chemkin.Thermo.H2O2",
+    "exports": [
+      "molecularWeight",
+      "tLow",
+      "tMid",
+      "tHigh",
+      "high_a1",
+      "high_a2",
+      "high_a3",
+      "high_a4",
+      "high_a5",
+      "high_a6",
+      "high_a7",
+      "low_a1",
+      "low_a2",
+      "low_a3",
+      "low_a4",
+      "low_a5",
+      "low_a6",
+      "low_a7"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Hydrogen Peroxide (H2O2)",
+      "category": "Radical",
+      "domain": "chemistry",
+      "description": "Hydrogen peroxide ignition intermediate; NASA-7 14-coefficient ideal gas polynomial.",
+      "provenance": "NASA Glenn / McBride-Gordon-Reno SP-3027",
+      "aliases": [
+        "h2o2"
+      ],
+      "parameters": [
+        {
+          "key": "molecularWeight",
+          "type": "real",
+          "defaultValue": 34.01468,
+          "unit": "g/mol",
+          "description": "Molar mass"
+        },
+        {
+          "key": "tLow",
+          "type": "real",
+          "defaultValue": 200,
+          "unit": "K",
+          "description": "NASA-7 lower temperature bound"
+        },
+        {
+          "key": "tMid",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "K",
+          "description": "NASA-7 midpoint temperature"
+        },
+        {
+          "key": "tHigh",
+          "type": "real",
+          "defaultValue": 3500,
+          "unit": "K",
+          "description": "NASA-7 upper temperature bound"
+        },
+        {
+          "key": "high_a1",
+          "type": "real",
+          "defaultValue": 4.16500285,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a1"
+        },
+        {
+          "key": "high_a2",
+          "type": "real",
+          "defaultValue": 0.00490831694,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a2"
+        },
+        {
+          "key": "high_a3",
+          "type": "real",
+          "defaultValue": -0.00000190139225,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a3"
+        },
+        {
+          "key": "high_a4",
+          "type": "real",
+          "defaultValue": 3.71185986e-10,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a4"
+        },
+        {
+          "key": "high_a5",
+          "type": "real",
+          "defaultValue": -2.87908305e-14,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a5"
+        },
+        {
+          "key": "high_a6",
+          "type": "real",
+          "defaultValue": -17861.7877,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a6"
+        },
+        {
+          "key": "high_a7",
+          "type": "real",
+          "defaultValue": 2.91615662,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a7"
+        },
+        {
+          "key": "low_a1",
+          "type": "real",
+          "defaultValue": 4.27611269,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a1"
+        },
+        {
+          "key": "low_a2",
+          "type": "real",
+          "defaultValue": -0.000542822417,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a2"
+        },
+        {
+          "key": "low_a3",
+          "type": "real",
+          "defaultValue": 0.0000167335701,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a3"
+        },
+        {
+          "key": "low_a4",
+          "type": "real",
+          "defaultValue": -2.15770813e-8,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a4"
+        },
+        {
+          "key": "low_a5",
+          "type": "real",
+          "defaultValue": 8.62454363e-12,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a5"
+        },
+        {
+          "key": "low_a6",
+          "type": "real",
+          "defaultValue": -17702.5821,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a6"
+        },
+        {
+          "key": "low_a7",
+          "type": "real",
+          "defaultValue": 3.43505074,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a7"
+        }
+      ],
+      "wasmKernel": "chemkinEvalNasa7",
+      "archetypeId": 8,
+      "composition": {
+        "H": 2,
+        "O": 2
+      },
+      "phase": "G"
+    }
+  },
+  {
+    "name": "CH4",
+    "kind": "class",
+    "namePath": "Chemkin.Thermo.CH4",
+    "exports": [
+      "molecularWeight",
+      "tLow",
+      "tMid",
+      "tHigh",
+      "high_a1",
+      "high_a2",
+      "high_a3",
+      "high_a4",
+      "high_a5",
+      "high_a6",
+      "high_a7",
+      "low_a1",
+      "low_a2",
+      "low_a3",
+      "low_a4",
+      "low_a5",
+      "low_a6",
+      "low_a7"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Methane (CH4)",
+      "category": "Fuel",
+      "domain": "chemistry",
+      "description": "Methane hydrocarbon fuel gas; NASA-7 14-coefficient ideal gas polynomial.",
+      "provenance": "NASA Glenn / McBride-Gordon-Reno SP-3027",
+      "aliases": [
+        "ch4"
+      ],
+      "parameters": [
+        {
+          "key": "molecularWeight",
+          "type": "real",
+          "defaultValue": 16.04246,
+          "unit": "g/mol",
+          "description": "Molar mass"
+        },
+        {
+          "key": "tLow",
+          "type": "real",
+          "defaultValue": 200,
+          "unit": "K",
+          "description": "NASA-7 lower temperature bound"
+        },
+        {
+          "key": "tMid",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "K",
+          "description": "NASA-7 midpoint temperature"
+        },
+        {
+          "key": "tHigh",
+          "type": "real",
+          "defaultValue": 3500,
+          "unit": "K",
+          "description": "NASA-7 upper temperature bound"
+        },
+        {
+          "key": "high_a1",
+          "type": "real",
+          "defaultValue": 0.074851495,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a1"
+        },
+        {
+          "key": "high_a2",
+          "type": "real",
+          "defaultValue": 0.0133909467,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a2"
+        },
+        {
+          "key": "high_a3",
+          "type": "real",
+          "defaultValue": -0.00000573285809,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a3"
+        },
+        {
+          "key": "high_a4",
+          "type": "real",
+          "defaultValue": 1.22292535e-9,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a4"
+        },
+        {
+          "key": "high_a5",
+          "type": "real",
+          "defaultValue": -1.0181523e-13,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a5"
+        },
+        {
+          "key": "high_a6",
+          "type": "real",
+          "defaultValue": -9468.34459,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a6"
+        },
+        {
+          "key": "high_a7",
+          "type": "real",
+          "defaultValue": 18.437318,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a7"
+        },
+        {
+          "key": "low_a1",
+          "type": "real",
+          "defaultValue": 5.14987613,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a1"
+        },
+        {
+          "key": "low_a2",
+          "type": "real",
+          "defaultValue": -0.0136709788,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a2"
+        },
+        {
+          "key": "low_a3",
+          "type": "real",
+          "defaultValue": 0.0000491800599,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a3"
+        },
+        {
+          "key": "low_a4",
+          "type": "real",
+          "defaultValue": -4.84743026e-8,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a4"
+        },
+        {
+          "key": "low_a5",
+          "type": "real",
+          "defaultValue": 1.66693956e-11,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a5"
+        },
+        {
+          "key": "low_a6",
+          "type": "real",
+          "defaultValue": -10246.6476,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a6"
+        },
+        {
+          "key": "low_a7",
+          "type": "real",
+          "defaultValue": -4.64130376,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a7"
+        }
+      ],
+      "wasmKernel": "chemkinEvalNasa7",
+      "archetypeId": 9,
+      "composition": {
+        "C": 1,
+        "H": 4
+      },
+      "phase": "G"
+    }
+  },
+  {
+    "name": "CO",
+    "kind": "class",
+    "namePath": "Chemkin.Thermo.CO",
+    "exports": [
+      "molecularWeight",
+      "tLow",
+      "tMid",
+      "tHigh",
+      "high_a1",
+      "high_a2",
+      "high_a3",
+      "high_a4",
+      "high_a5",
+      "high_a6",
+      "high_a7",
+      "low_a1",
+      "low_a2",
+      "low_a3",
+      "low_a4",
+      "low_a5",
+      "low_a6",
+      "low_a7"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Carbon Monoxide (CO)",
+      "category": "Product",
+      "domain": "chemistry",
+      "description": "Carbon monoxide intermediate / product; NASA-7 14-coefficient ideal gas polynomial.",
+      "provenance": "NASA Glenn / McBride-Gordon-Reno SP-3027",
+      "aliases": [
+        "co"
+      ],
+      "parameters": [
+        {
+          "key": "molecularWeight",
+          "type": "real",
+          "defaultValue": 28.0101,
+          "unit": "g/mol",
+          "description": "Molar mass"
+        },
+        {
+          "key": "tLow",
+          "type": "real",
+          "defaultValue": 200,
+          "unit": "K",
+          "description": "NASA-7 lower temperature bound"
+        },
+        {
+          "key": "tMid",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "K",
+          "description": "NASA-7 midpoint temperature"
+        },
+        {
+          "key": "tHigh",
+          "type": "real",
+          "defaultValue": 3500,
+          "unit": "K",
+          "description": "NASA-7 upper temperature bound"
+        },
+        {
+          "key": "high_a1",
+          "type": "real",
+          "defaultValue": 2.71518561,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a1"
+        },
+        {
+          "key": "high_a2",
+          "type": "real",
+          "defaultValue": 0.00206252743,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a2"
+        },
+        {
+          "key": "high_a3",
+          "type": "real",
+          "defaultValue": -9.98825771e-7,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a3"
+        },
+        {
+          "key": "high_a4",
+          "type": "real",
+          "defaultValue": 2.30053008e-10,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a4"
+        },
+        {
+          "key": "high_a5",
+          "type": "real",
+          "defaultValue": -2.03647716e-14,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a5"
+        },
+        {
+          "key": "high_a6",
+          "type": "real",
+          "defaultValue": -14151.8724,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a6"
+        },
+        {
+          "key": "high_a7",
+          "type": "real",
+          "defaultValue": 7.81868772,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a7"
+        },
+        {
+          "key": "low_a1",
+          "type": "real",
+          "defaultValue": 3.57953347,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a1"
+        },
+        {
+          "key": "low_a2",
+          "type": "real",
+          "defaultValue": -0.00061035368,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a2"
+        },
+        {
+          "key": "low_a3",
+          "type": "real",
+          "defaultValue": 0.00000101681433,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a3"
+        },
+        {
+          "key": "low_a4",
+          "type": "real",
+          "defaultValue": 9.07005884e-10,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a4"
+        },
+        {
+          "key": "low_a5",
+          "type": "real",
+          "defaultValue": -9.04424499e-13,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a5"
+        },
+        {
+          "key": "low_a6",
+          "type": "real",
+          "defaultValue": -14344.086,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a6"
+        },
+        {
+          "key": "low_a7",
+          "type": "real",
+          "defaultValue": 3.50840928,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a7"
+        }
+      ],
+      "wasmKernel": "chemkinEvalNasa7",
+      "archetypeId": 10,
+      "composition": {
+        "C": 1,
+        "O": 1
+      },
+      "phase": "G"
+    }
+  },
+  {
+    "name": "CO2",
+    "kind": "class",
+    "namePath": "Chemkin.Thermo.CO2",
+    "exports": [
+      "molecularWeight",
+      "tLow",
+      "tMid",
+      "tHigh",
+      "high_a1",
+      "high_a2",
+      "high_a3",
+      "high_a4",
+      "high_a5",
+      "high_a6",
+      "high_a7",
+      "low_a1",
+      "low_a2",
+      "low_a3",
+      "low_a4",
+      "low_a5",
+      "low_a6",
+      "low_a7"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Carbon Dioxide (CO2)",
+      "category": "Product",
+      "domain": "chemistry",
+      "description": "Carbon dioxide complete combustion product; NASA-7 14-coefficient ideal gas polynomial.",
+      "provenance": "NASA Glenn / McBride-Gordon-Reno SP-3027",
+      "aliases": [
+        "co2"
+      ],
+      "parameters": [
+        {
+          "key": "molecularWeight",
+          "type": "real",
+          "defaultValue": 44.0095,
+          "unit": "g/mol",
+          "description": "Molar mass"
+        },
+        {
+          "key": "tLow",
+          "type": "real",
+          "defaultValue": 200,
+          "unit": "K",
+          "description": "NASA-7 lower temperature bound"
+        },
+        {
+          "key": "tMid",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "K",
+          "description": "NASA-7 midpoint temperature"
+        },
+        {
+          "key": "tHigh",
+          "type": "real",
+          "defaultValue": 3500,
+          "unit": "K",
+          "description": "NASA-7 upper temperature bound"
+        },
+        {
+          "key": "high_a1",
+          "type": "real",
+          "defaultValue": 3.85746029,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a1"
+        },
+        {
+          "key": "high_a2",
+          "type": "real",
+          "defaultValue": 0.00441437026,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a2"
+        },
+        {
+          "key": "high_a3",
+          "type": "real",
+          "defaultValue": -0.00000221481404,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a3"
+        },
+        {
+          "key": "high_a4",
+          "type": "real",
+          "defaultValue": 5.23490188e-10,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a4"
+        },
+        {
+          "key": "high_a5",
+          "type": "real",
+          "defaultValue": -4.72084164e-14,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a5"
+        },
+        {
+          "key": "high_a6",
+          "type": "real",
+          "defaultValue": -48759.166,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a6"
+        },
+        {
+          "key": "high_a7",
+          "type": "real",
+          "defaultValue": 2.27163806,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a7"
+        },
+        {
+          "key": "low_a1",
+          "type": "real",
+          "defaultValue": 2.35677352,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a1"
+        },
+        {
+          "key": "low_a2",
+          "type": "real",
+          "defaultValue": 0.00898459677,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a2"
+        },
+        {
+          "key": "low_a3",
+          "type": "real",
+          "defaultValue": -0.00000712356269,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a3"
+        },
+        {
+          "key": "low_a4",
+          "type": "real",
+          "defaultValue": 2.45919022e-9,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a4"
+        },
+        {
+          "key": "low_a5",
+          "type": "real",
+          "defaultValue": -1.43699548e-13,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a5"
+        },
+        {
+          "key": "low_a6",
+          "type": "real",
+          "defaultValue": -48371.9697,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a6"
+        },
+        {
+          "key": "low_a7",
+          "type": "real",
+          "defaultValue": 9.90105222,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a7"
+        }
+      ],
+      "wasmKernel": "chemkinEvalNasa7",
+      "archetypeId": 11,
+      "composition": {
+        "C": 1,
+        "O": 2
+      },
+      "phase": "G"
+    }
+  },
+  {
+    "name": "N2",
+    "kind": "class",
+    "namePath": "Chemkin.Thermo.N2",
+    "exports": [
+      "molecularWeight",
+      "tLow",
+      "tMid",
+      "tHigh",
+      "high_a1",
+      "high_a2",
+      "high_a3",
+      "high_a4",
+      "high_a5",
+      "high_a6",
+      "high_a7",
+      "low_a1",
+      "low_a2",
+      "low_a3",
+      "low_a4",
+      "low_a5",
+      "low_a6",
+      "low_a7"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Molecular Nitrogen (N2)",
+      "category": "Inert",
+      "domain": "chemistry",
+      "description": "Diatomic nitrogen bath/diluent gas; NASA-7 14-coefficient ideal gas polynomial.",
+      "provenance": "NASA Glenn / McBride-Gordon-Reno SP-3027",
+      "aliases": [
+        "n2"
+      ],
+      "parameters": [
+        {
+          "key": "molecularWeight",
+          "type": "real",
+          "defaultValue": 28.0134,
+          "unit": "g/mol",
+          "description": "Molar mass"
+        },
+        {
+          "key": "tLow",
+          "type": "real",
+          "defaultValue": 200,
+          "unit": "K",
+          "description": "NASA-7 lower temperature bound"
+        },
+        {
+          "key": "tMid",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "K",
+          "description": "NASA-7 midpoint temperature"
+        },
+        {
+          "key": "tHigh",
+          "type": "real",
+          "defaultValue": 3500,
+          "unit": "K",
+          "description": "NASA-7 upper temperature bound"
+        },
+        {
+          "key": "high_a1",
+          "type": "real",
+          "defaultValue": 2.92664,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a1"
+        },
+        {
+          "key": "high_a2",
+          "type": "real",
+          "defaultValue": 0.0014879768,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a2"
+        },
+        {
+          "key": "high_a3",
+          "type": "real",
+          "defaultValue": -5.6847608e-7,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a3"
+        },
+        {
+          "key": "high_a4",
+          "type": "real",
+          "defaultValue": 1.0097038e-10,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a4"
+        },
+        {
+          "key": "high_a5",
+          "type": "real",
+          "defaultValue": -6.753351e-15,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a5"
+        },
+        {
+          "key": "high_a6",
+          "type": "real",
+          "defaultValue": -922.7977,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a6"
+        },
+        {
+          "key": "high_a7",
+          "type": "real",
+          "defaultValue": 5.980528,
+          "unit": "1",
+          "description": "NASA-7 high-temperature coefficient a7"
+        },
+        {
+          "key": "low_a1",
+          "type": "real",
+          "defaultValue": 3.298677,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a1"
+        },
+        {
+          "key": "low_a2",
+          "type": "real",
+          "defaultValue": 0.0014082404,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a2"
+        },
+        {
+          "key": "low_a3",
+          "type": "real",
+          "defaultValue": -0.000003963222,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a3"
+        },
+        {
+          "key": "low_a4",
+          "type": "real",
+          "defaultValue": 5.641515e-9,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a4"
+        },
+        {
+          "key": "low_a5",
+          "type": "real",
+          "defaultValue": -2.444854e-12,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a5"
+        },
+        {
+          "key": "low_a6",
+          "type": "real",
+          "defaultValue": -1020.8999,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a6"
+        },
+        {
+          "key": "low_a7",
+          "type": "real",
+          "defaultValue": 3.950372,
+          "unit": "1",
+          "description": "NASA-7 low-temperature coefficient a7"
+        }
+      ],
+      "wasmKernel": "chemkinEvalNasa7",
+      "archetypeId": 12,
+      "composition": {
+        "N": 2
+      },
+      "phase": "G"
+    }
+  }
+]

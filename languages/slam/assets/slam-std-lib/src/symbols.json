@@ -1,0 +1,559 @@
+[
+  {
+    "name": "CREATE",
+    "kind": "block",
+    "namePath": "SLAM.CREATE",
+    "exports": [
+      "TBC",
+      "TF",
+      "MA",
+      "MC"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "CREATE — Entity Arrival Generator",
+      "category": "Entity Flow",
+      "domain": "systems",
+      "description": "Generates entities into a SLAM II network according to interarrival time TBC and first creation TF.",
+      "provenance": "Pritsker & Pegden (1979), Introduction to Simulation and SLAM, Ch. 3",
+      "aliases": [
+        "ARRIVAL",
+        "SOURCE"
+      ],
+      "parameters": [
+        {
+          "key": "TBC",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "time",
+          "description": "Time between entity creations"
+        },
+        {
+          "key": "TF",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "time",
+          "description": "Time of first entity creation"
+        },
+        {
+          "key": "MA",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "index",
+          "description": "Mark attribute index for creation timestamp"
+        },
+        {
+          "key": "MC",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "count",
+          "description": "Maximum creations (0 = unlimited)"
+        }
+      ],
+      "wasmKernel": "slamBlockStep",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "QUEUE",
+    "kind": "block",
+    "namePath": "SLAM.QUEUE",
+    "exports": [
+      "IFL",
+      "IQ",
+      "QC"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "QUEUE — Entity Waiting File",
+      "category": "Entity Flow",
+      "domain": "systems",
+      "description": "Holds arriving entities in file IFL until a downstream service ACTIVITY becomes available.",
+      "provenance": "Pritsker & Pegden (1979), Introduction to Simulation and SLAM, Ch. 3",
+      "aliases": [
+        "QNODE",
+        "BUFFER"
+      ],
+      "parameters": [
+        {
+          "key": "IFL",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "index",
+          "description": "File number"
+        },
+        {
+          "key": "IQ",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "count",
+          "description": "Initial number of entities in queue"
+        },
+        {
+          "key": "QC",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "count",
+          "description": "Maximum queue capacity"
+        }
+      ],
+      "wasmKernel": "slamBlockStep",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "ACTIVITY",
+    "kind": "block",
+    "namePath": "SLAM.ACTIVITY",
+    "exports": [
+      "DUR",
+      "PROB",
+      "N"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "ACTIVITY — Timed Branch / Server",
+      "category": "Entity Flow",
+      "domain": "systems",
+      "description": "Delays entities for duration DUR and routes them probabilistically or conditionally to target node NLBL.",
+      "provenance": "Pritsker & Pegden (1979), Introduction to Simulation and SLAM, Ch. 3",
+      "aliases": [
+        "ACT",
+        "BRANCH",
+        "SERVICE"
+      ],
+      "parameters": [
+        {
+          "key": "DUR",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "time",
+          "description": "Activity service or transit duration"
+        },
+        {
+          "key": "PROB",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Branch selection probability"
+        },
+        {
+          "key": "N",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "count",
+          "description": "Number of parallel servers"
+        }
+      ],
+      "wasmKernel": "slamBlockStep",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "ASSIGN",
+    "kind": "block",
+    "namePath": "SLAM.ASSIGN",
+    "exports": [
+      "M"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "ASSIGN — State & Attribute Assignment",
+      "category": "Statistics & Control",
+      "domain": "systems",
+      "description": "Assigns values to global variables XX(i), continuous states SS(i), or entity attributes ATRIB(i).",
+      "provenance": "Pritsker & Pegden (1979), Introduction to Simulation and SLAM, Ch. 3",
+      "aliases": [
+        "SET"
+      ],
+      "parameters": [
+        {
+          "key": "M",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "count",
+          "description": "Maximum number of outgoing branches"
+        }
+      ],
+      "wasmKernel": "slamBlockStep",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "AWAIT",
+    "kind": "block",
+    "namePath": "SLAM.AWAIT",
+    "exports": [
+      "IFL",
+      "UR"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "AWAIT — Resource / Gate Acquisition",
+      "category": "Resources & Gates",
+      "domain": "systems",
+      "description": "Delays entities in file IFL until UR units of resource RLBL are available or gate GLBL is open.",
+      "provenance": "Pritsker & Pegden (1979), Introduction to Simulation and SLAM, Ch. 5",
+      "aliases": [
+        "SEIZE",
+        "WAIT"
+      ],
+      "parameters": [
+        {
+          "key": "IFL",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "index",
+          "description": "Wait file number"
+        },
+        {
+          "key": "UR",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "units",
+          "description": "Resource units requested"
+        }
+      ],
+      "wasmKernel": "slamBlockStep",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "FREE",
+    "kind": "block",
+    "namePath": "SLAM.FREE",
+    "exports": [
+      "UF"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "FREE — Resource Release",
+      "category": "Resources & Gates",
+      "domain": "systems",
+      "description": "Releases UF units of resource RLBL and dispatches waiting entities from associated AWAIT files.",
+      "provenance": "Pritsker & Pegden (1979), Introduction to Simulation and SLAM, Ch. 5",
+      "aliases": [
+        "RELEASE"
+      ],
+      "parameters": [
+        {
+          "key": "UF",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "units",
+          "description": "Resource units freed"
+        }
+      ],
+      "wasmKernel": "slamBlockStep",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "RESOURCE",
+    "kind": "block",
+    "namePath": "SLAM.RESOURCE",
+    "exports": [
+      "CAP",
+      "IFL"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "RESOURCE — Shared Capacity Pool",
+      "category": "Resources & Gates",
+      "domain": "systems",
+      "description": "Declares a shared resource block RLBL with initial capacity CAP serving listed AWAIT files.",
+      "provenance": "Pritsker & Pegden (1979), Introduction to Simulation and SLAM, Ch. 5",
+      "aliases": [
+        "RES"
+      ],
+      "parameters": [
+        {
+          "key": "CAP",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "units",
+          "description": "Initial resource capacity"
+        },
+        {
+          "key": "IFL",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "index",
+          "description": "Primary file number"
+        }
+      ],
+      "wasmKernel": "slamBlockStep",
+      "archetypeId": 7
+    }
+  },
+  {
+    "name": "GATE",
+    "kind": "block",
+    "namePath": "SLAM.GATE",
+    "exports": [
+      "INITIAL_OPEN",
+      "IFL"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "GATE — Binary Flow Gate",
+      "category": "Resources & Gates",
+      "domain": "systems",
+      "description": "Declares a binary gate GLBL (OPEN or CLOSED) controlling entity passage at AWAIT nodes.",
+      "provenance": "Pritsker & Pegden (1979), Introduction to Simulation and SLAM, Ch. 5",
+      "aliases": [
+        "VALVE_GATE"
+      ],
+      "parameters": [
+        {
+          "key": "INITIAL_OPEN",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "bool",
+          "description": "1 = OPEN, 0 = CLOSED"
+        },
+        {
+          "key": "IFL",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "index",
+          "description": "Associated wait file number"
+        }
+      ],
+      "wasmKernel": "slamBlockStep",
+      "archetypeId": 8
+    }
+  },
+  {
+    "name": "OPEN",
+    "kind": "block",
+    "namePath": "SLAM.OPEN",
+    "exports": [
+      "M"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "OPEN — Open Gate Control",
+      "category": "Resources & Gates",
+      "domain": "systems",
+      "description": "Opens gate GLBL and releases all entities queued in files awaiting that gate.",
+      "provenance": "Pritsker & Pegden (1979), Introduction to Simulation and SLAM, Ch. 5",
+      "aliases": [
+        "GATE_OPEN"
+      ],
+      "parameters": [
+        {
+          "key": "M",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "count",
+          "description": "Maximum outgoing branches"
+        }
+      ],
+      "wasmKernel": "slamBlockStep",
+      "archetypeId": 9
+    }
+  },
+  {
+    "name": "CLOSE",
+    "kind": "block",
+    "namePath": "SLAM.CLOSE",
+    "exports": [
+      "M"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "CLOSE — Close Gate Control",
+      "category": "Resources & Gates",
+      "domain": "systems",
+      "description": "Closes gate GLBL so subsequent arriving entities queue at AWAIT nodes referencing GLBL.",
+      "provenance": "Pritsker & Pegden (1979), Introduction to Simulation and SLAM, Ch. 5",
+      "aliases": [
+        "GATE_CLOSE"
+      ],
+      "parameters": [
+        {
+          "key": "M",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "count",
+          "description": "Maximum outgoing branches"
+        }
+      ],
+      "wasmKernel": "slamBlockStep",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "COLCT",
+    "kind": "block",
+    "namePath": "SLAM.COLCT",
+    "exports": [
+      "M"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "COLCT — Observation Statistics Collector",
+      "category": "Statistics & Control",
+      "domain": "systems",
+      "description": "Collects sample mean, min, max, and standard deviation for INT(i), BET, or continuous state variables.",
+      "provenance": "Pritsker & Pegden (1979), Introduction to Simulation and SLAM, Ch. 3",
+      "aliases": [
+        "COLLECT",
+        "TALLY"
+      ],
+      "parameters": [
+        {
+          "key": "M",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "count",
+          "description": "Maximum outgoing branches"
+        }
+      ],
+      "wasmKernel": "slamBlockStep",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "DETECT",
+    "kind": "block",
+    "namePath": "SLAM.DETECT",
+    "exports": [
+      "VALUE",
+      "TOL",
+      "DIR"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "DETECT — Continuous State Threshold Event",
+      "category": "Continuous & Threshold",
+      "domain": "systems",
+      "description": "Monitors SS(i) or DD(i) and generates a discrete network entity when crossing VALUE in direction XDIR within TOL.",
+      "provenance": "Pritsker & Pegden (1979), Introduction to Simulation and SLAM, Ch. 9 (Combined Modeling)",
+      "aliases": [
+        "THRESHOLD",
+        "STATE_EVENT"
+      ],
+      "parameters": [
+        {
+          "key": "VALUE",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Threshold value"
+        },
+        {
+          "key": "TOL",
+          "type": "real",
+          "defaultValue": 0.001,
+          "unit": "1",
+          "description": "Crossing tolerance"
+        },
+        {
+          "key": "DIR",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "enum",
+          "description": "1 = XP (+), -1 = XN (-), 0 = X (either)"
+        }
+      ],
+      "wasmKernel": "slamBlockStep",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "TERMINATE",
+    "kind": "block",
+    "namePath": "SLAM.TERMINATE",
+    "exports": [
+      "TC"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TERMINATE — Entity Sink & Run Stop",
+      "category": "Entity Flow",
+      "domain": "systems",
+      "description": "Destroys arriving entities and terminates the simulation run when TC entities have been terminated.",
+      "provenance": "Pritsker & Pegden (1979), Introduction to Simulation and SLAM, Ch. 3",
+      "aliases": [
+        "TERM",
+        "SINK"
+      ],
+      "parameters": [
+        {
+          "key": "TC",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "count",
+          "description": "Termination count (0 = unlimited)"
+        }
+      ],
+      "wasmKernel": "slamBlockStep",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "CONTINUOUS",
+    "kind": "block",
+    "namePath": "SLAM.CONTINUOUS",
+    "exports": [
+      "NNEQD",
+      "NNEQS",
+      "DTMIN",
+      "DTMAX",
+      "DTSAV"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "CONTINUOUS — RK4 ODE State Integrator",
+      "category": "Continuous & Threshold",
+      "domain": "systems",
+      "description": "Integrates NNEQD differential equations DD(i) and evaluates NNEQS algebraic equations SS(i) over [DTMIN, DTMAX].",
+      "provenance": "Pritsker & Pegden (1979), Introduction to Simulation and SLAM, Ch. 8–9",
+      "aliases": [
+        "ODE",
+        "STATE_BLOCK"
+      ],
+      "parameters": [
+        {
+          "key": "NNEQD",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "count",
+          "description": "Number of differential equations DD(i)"
+        },
+        {
+          "key": "NNEQS",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "count",
+          "description": "Number of algebraic state equations SS(i)"
+        },
+        {
+          "key": "DTMIN",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "time",
+          "description": "Minimum integration step size"
+        },
+        {
+          "key": "DTMAX",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "time",
+          "description": "Maximum integration step size"
+        },
+        {
+          "key": "DTSAV",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "time",
+          "description": "Trajectory recording interval"
+        }
+      ],
+      "wasmKernel": "slamBlockStep",
+      "archetypeId": 14
+    }
+  }
+]

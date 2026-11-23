@@ -2321,8 +2321,84 @@ function collectCstFunctionRefs(rootCst: CstNodeLike | null | undefined): {
   return { calledNames, shortFuncTargets, referencedPaths };
 }
 
-export function generateExternalObjectFunctions(flattener: any, dae: DAEBuilder): void {
+export function generateExternalObjectFunctions(flattener: any, dae: DAEBuilder, rootClassId?: SymbolId): void {
   const db: QueryDB = flattener.db;
+  // In WASM mode, ExternalObject components are lowered as Integer without customType;
+  // discover them from the class hierarchy, restore customType, and register usedExternalObjects.
+  const rootId = (rootClassId ?? flattener.state?.rootClassId ?? (dae as any).rootClassId) as SymbolId | undefined;
+  const isExtObjClass = (sym: SymbolEntry): boolean =>
+    db.childrenOf(sym.id).some((c) => c.kind === "Extends" && c.name === "ExternalObject");
+  if (rootId) {
+    const visited = new Set<string>();
+    const walkExtObjComps = (clsId: SymbolId, prefix: string, depth: number): void => {
+      const key = `${clsId}:${prefix}`;
+      if (depth > 6 || visited.has(key)) return;
+      visited.add(key);
+      const elems = db.query<SymbolId[]>("instantiate", clsId) ?? [];
+      const comps =
+        elems.length > 0
+          ? elems.map((id) => db.symbol(id)).filter((s): s is SymbolEntry => Boolean(s && s.kind === "Component"))
+          : (db.childrenOf(clsId) || []).filter((s) => s && s.kind === "Component");
+      for (const comp of comps) {
+        const cInst = db.query<ComponentInstanceData>("componentInstance", comp.id);
+        const typeSpec = cInst?.typeSpecifier ?? (comp.metadata as any)?.typeSpecifier;
+        if (!typeSpec) continue;
+        const cleanType = typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec;
+        const rawTarget = db.query<any>("classInstance", comp.id);
+        let target: SymbolEntry | null =
+          typeof rawTarget === "number" ? (db.symbol(rawTarget) ?? null) : (rawTarget ?? null);
+        if (!target) {
+          const res =
+            (comp.parentId ? db.query<any>("resolveName", comp.parentId) : null) ?? db.query<any>("resolveName", clsId);
+          target = res?.(typeSpec) ?? res?.(cleanType) ?? db.byName(cleanType).find((e) => e.kind === "Class") ?? null;
+        }
+        if (!target || target.kind !== "Class") continue;
+        const fullVar = prefix ? `${prefix}.${comp.name}` : comp.name;
+        if (isExtObjClass(target)) {
+          const qual = getSymbolQualifiedName(db, target.id) || target.name;
+          flattener.usedExternalObjects.add(target.id);
+          let vi = dae.lookupVariable(fullVar);
+          if (vi < 0) {
+            for (let k = 0; k < dae.varCount; k++) {
+              if (dae.getVarName(k) === fullVar) {
+                vi = k;
+                break;
+              }
+            }
+          }
+          if (vi >= 0) {
+            dae.setVarCustomType(vi, qual);
+            const bindId = dae.getVarBindingExpr(vi) ?? -1;
+            if (bindId >= 0 && dae.getExprKind(bindId) === ExprKind.Call) {
+              const callee = dae.interner.resolve(dae.getExprData1(bindId));
+              if (callee === qual || callee === target.name) {
+                const setData1 = (dae.exports as any)?.dae_setExprData1;
+                if (typeof setData1 === "function") {
+                  setData1(dae.ptr, bindId, dae.interner.intern(`${qual}.constructor`));
+                }
+              }
+            }
+          }
+        } else {
+          walkExtObjComps(target.id, fullVar, depth + 1);
+        }
+      }
+    };
+    walkExtObjComps(rootId, "", 0);
+  }
+  for (let i = 0; i < dae.varCount; i++) {
+    const ct = dae.getVarCustomType(i);
+    if (!ct) continue;
+    const baseName = ct.includes(".") ? ct.split(".").pop()! : ct;
+    for (const cand of db.byName(baseName)) {
+      if (cand.kind !== "Class") continue;
+      const qual = getSymbolQualifiedName(db, cand.id);
+      if (qual !== ct && cand.name !== ct) continue;
+      if (isExtObjClass(cand)) {
+        flattener.usedExternalObjects.add(cand.id);
+      }
+    }
+  }
   for (const extObjSymId of flattener.usedExternalObjects) {
     const extObjQualName = getSymbolQualifiedName(db, extObjSymId);
     const children = db.childrenOf(extObjSymId);

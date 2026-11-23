@@ -1,6 +1,6 @@
 # ModelScript
 
-> Open-core computable digital thread for polyglot engineering and simulation. Imports 105 simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.
+> Open-core computable digital thread for polyglot engineering and simulation. Imports 168 simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.
 
 ## Quick Links
 - [Official Website](https://modelscript.org/)
@@ -59,8 +59,8 @@
 - [CLI Overview](https://modelscript.org/cli/overview): Overview of the `msx` binary, global flags, and architecture.
 - [Commands Reference](https://modelscript.org/cli/commands): Comprehensive reference for all 146 CLI commands and subcommands.
 
-## Polyglot Languages (105 Formats)
-- [Polyglot Overview & Capability Matrix](https://modelscript.org/languages/overview): Cross-language capability matrix across all 105 formats.
+## Polyglot Languages (168 Formats)
+- [Polyglot Overview & Capability Matrix](https://modelscript.org/languages/overview): Cross-language capability matrix across all 168 formats.
 - [Modelica (.mo) [beta]](https://modelscript.org/languages/modelica): Acausal multi-domain physics.
 - [AMPL (.mod, .dat, .run, .nl, .mps) [beta]](https://modelscript.org/languages/ampl): Mathematical programming & optimization (LP, MILP, NLP).
 - [SysML v2 / KerML (.sysml) [beta]](https://modelscript.org/languages/sysml2): Systems architecture & requirements.
@@ -166,6 +166,69 @@
 - [NIfTI / NRRD (.nii) [alpha]](https://modelscript.org/languages/nifti): Volumetric medical imaging, RAS affines & iso-surfacing.
 - [3MF Medical (.3mf) [alpha]](https://modelscript.org/languages/three-mf): Patient-specific 3D-printed cutting guides & implants.
 - [OpenIGTLink / PLUS (.igtl) [alpha]](https://modelscript.org/languages/igtl): Image-guided surgical tracking, pivot calibration & TRE.
+- [ACSL (.csl) [beta]](https://modelscript.org/languages/acsl): Advanced Continuous Simulation Language (1975) ODE/hybrid solver.
+- [CSMP / CSSL-67 (.csmp) [beta]](https://modelscript.org/languages/csmp): IBM System/360 continuous ODE modeling & topological sorting.
+- [DYNAMO (.dyn) [beta]](https://modelscript.org/languages/dynamo): MIT System Dynamics stock-flow & feedback modeling.
+- [ESL (.esl) [beta]](https://modelscript.org/languages/esl): European Space Agency hybrid continuous/discrete simulation.
+- [GPSS (.gps) [beta]](https://modelscript.org/languages/gpss): IBM General Purpose Simulation System transaction-flow DES.
+- [SIMSCRIPT II.5 (.sim) [beta]](https://modelscript.org/languages/simscript): RAND process/entity/resource discrete-event simulation.
+- [SLAM II (.slam) [beta]](https://modelscript.org/languages/slam): Combined discrete-event network & continuous ODE simulation.
+- [VHDL (IEEE 1076) (.vhd) [beta]](https://modelscript.org/languages/vhdl): IEEE 1076-1987 9-value std_logic delta-cycle RTL simulation.
+- [Verilog (IEEE 1364) (.v) [beta]](https://modelscript.org/languages/verilog): IEEE 1364 4-state event-driven RTL & gate-level simulation.
+- [Lustre (.lus) [beta]](https://modelscript.org/languages/lustre): Synchronous dataflow, clock calculus & formal observers.
+- [Esterel (.strl) [beta]](https://modelscript.org/languages/esterel): Synchronous imperative reactive systems & constructive semantics.
+- [SDL-88 (.sdl) [beta]](https://modelscript.org/languages/sdl): ITU-T Z.100 communicating Extended Finite State Machines.
+- [EDIF 2.0.0 (.edf) [beta]](https://modelscript.org/languages/edif): Electronic Design Interchange Format hierarchical netlists.
+- [GDSII (.gds) [beta]](https://modelscript.org/languages/gdsii): Calma GDSII binary stream & GDT IC mask layout & DRC.
+- [CIF 2.0 (.cif) [beta]](https://modelscript.org/languages/cif): Caltech Intermediate Form IC mask layout & MOSIS SCMOS DRC.
+- [Gerber RS-274-D/X (.gbr) [beta]](https://modelscript.org/languages/gerber): PCB photoplotter aperture/arc/region geometry & IPC-2221 DFM.
+- [MCNP (.mcnp) [beta]](https://modelscript.org/languages/mcnp): Los Alamos Monte Carlo N-Particle CSG & k_eff transport.
+- [MELCOR (.mel) [beta]](https://modelscript.org/languages/melcor): Sandia severe accident thermal-hydraulics & core degradation.
+- [SCALE / KENO / ORIGEN (.scale) [beta]](https://modelscript.org/languages/scale): ORNL Bateman isotope depletion & KENO criticality geometry.
+- [SINDA / FLUINT (.sin) [beta]](https://modelscript.org/languages/sinda): NASA lumped-parameter thermal RC & radiation network solver.
+- [TRASYS (.tra) [beta]](https://modelscript.org/languages/trasys): NASA radiative view-factor & orbital solar/albedo/IR flux.
+- [NEC-2 (.nec) [beta]](https://modelscript.org/languages/nec2): LLNL thin-wire Method-of-Moments antenna impedance & gain.
+- [USAF Digital DATCOM (.dcm) [beta]](https://modelscript.org/languages/datcom): Semi-empirical aircraft stability & control derivatives.
+- [NASA CEA (.cea) [beta]](https://modelscript.org/languages/cea): Gibbs free-energy chemical equilibrium & rocket Isp solver.
+- [GAMS (.gms) [beta]](https://modelscript.org/languages/gams): General Algebraic Modeling System LP/MILP/NLP optimization.
+- [IBM MPS (.mps) [beta]](https://modelscript.org/languages/mps): Fixed & free Mathematical Programming System LP/MILP/QP.
+- [CPLEX LP / LINDO (.lp) [beta]](https://modelscript.org/languages/cplex-lp): Algebraic LP/MILP/QP optimization & simplex/B&B solver.
+- [IGES 5.3 (.igs) [beta]](https://modelscript.org/languages/iges): Initial Graphics Exchange Specification NURBS & B-Rep CAD.
+- [AutoCAD DXF (.dxf) [beta]](https://modelscript.org/languages/dxf): Drawing Exchange Format 2D/3D CAD entities & INSERT blocks.
+- [G-code / RS-274 (.gcode) [beta]](https://modelscript.org/languages/gcode): ISO 6983 CNC toolpath kinematics, canned cycles & cycle time.
+- [APT (ISO 4342) (.apt) [beta]](https://modelscript.org/languages/apt): Automatically Programmed Tools analytic CLDATA toolpath solver.
+- [LS-DYNA / DYNA3D (.k) [beta]](https://modelscript.org/languages/lsdyna): Explicit dynamics finite-element keyword deck & CFL solver.
+- [ANSYS APDL (.apdl) [beta]](https://modelscript.org/languages/apdl): Parametric Design Language macro expander & static/modal FEA.
+- [NASA PLOT3D (.xyz) [beta]](https://modelscript.org/languages/plot3d): Multi-block structured CFD grid & conservative solution format.
+- [TRNSYS (.dck) [beta]](https://modelscript.org/languages/trnsys): Transient solar, thermal storage & building component decks.
+- [DOE-2 BDL (.bdl) [beta]](https://modelscript.org/languages/doe2): LBNL Building Description Language envelope & HVAC load solver.
+- [CHEMKIN (.ck) [beta]](https://modelscript.org/languages/chemkin): Sandia gas-phase chemical kinetics & NASA-7 combustion solver.
+- [MDL Molfile / SDF (.mol) [beta]](https://modelscript.org/languages/molfile): V2000/V3000/SDF molecular graphs, SSSR rings & UFF energy.
+- [Gaussian Input (.gjf) [beta]](https://modelscript.org/languages/gaussian): Quantum chemistry input, NeRF Z-matrix & vibrational modes.
+- [IEEE CDF & BPA IPF (.cdf) [beta]](https://modelscript.org/languages/ieee-cdf): IEEE Common Data Format AC Newton-Raphson power flow.
+- [USACE HEC-1 (.hc1) [beta]](https://modelscript.org/languages/hec1): Flood hydrograph SCS CN, unit hydrograph & Muskingum routing.
+- [USACE HEC-2 (.hc2) [beta]](https://modelscript.org/languages/hec2): 1D Standard Step open-channel water surface profile solver.
+- [SEG-Y (.sgy) [beta]](https://modelscript.org/languages/segy): Geophysical seismic EBCDIC/IBM-float codec, NMO & FFT solver.
+- [FITS 4.0 (.fits) [beta]](https://modelscript.org/languages/fits): NASA/IAU Flexible Image Transport System HDU & WCS astrometry.
+- [NetCDF Classic / CDL (.cdl) [beta]](https://modelscript.org/languages/netcdf): Unidata self-describing scientific arrays, CF linting & heatmap viewer.
+- [NASA CDF (.skt) [beta]](https://modelscript.org/languages/nasa-cdf): Space-physics binary/skeleton telemetry, ISTP EPOCH & strip-chart viewer.
+- [WMO GRIB Ed. 1 (.grb) [beta]](https://modelscript.org/languages/grib): Gridded binary meteorology, geostrophic wind & geographic heatmap viewer.
+- [WMO BUFR (.bufr) [beta]](https://modelscript.org/languages/bufr): Table-driven synoptic weather bit-streams & upper-air sounding viewer.
+- [USGS DEM (.dem) [beta]](https://modelscript.org/languages/usgs-dem): Digital Elevation Model slope/aspect, D8 flow & topographic map viewer.
+- [NCSA HDF4 (.hdf) [beta]](https://modelscript.org/languages/hdf4): Hierarchical Data Format v4 Vgroup/SDS binary codec & heatmap viewer.
+- [ARINC 429 (.a429) [beta]](https://modelscript.org/languages/arinc429): Commercial avionics 32-bit BNR/BCD bus codec & PFD instrument viewer.
+- [NMEA 0183 (.nmea) [beta]](https://modelscript.org/languages/nmea0183): Marine/GPS ASCII telemetry, WGS-84 geodesy & track/skyplot viewer.
+- [RINEX v2 (.obs) [beta]](https://modelscript.org/languages/rinex): GNSS OBS/NAV Keplerian ephemeris, 3D pseudorange fix & skyplot viewer.
+- [IRIG 106 / TMATS (.tmats) [beta]](https://modelscript.org/languages/irig106): Flight-test PCM telemetry commutator & major/minor frame grid viewer.
+- [ENDF-6 (.endf) [beta]](https://modelscript.org/languages/endf6): Evaluated nuclear cross-sections, Breit-Wigner resonances & log-log plot.
+- [JCAMP-DX (.jdx) [beta]](https://modelscript.org/languages/jcamp-dx): IUPAC IR/NMR/MS ASDF/DIFDUP spectroscopy & interactive spectrum viewer.
+- [IUCr Crystallographic CIF (.mcif) [beta]](https://modelscript.org/languages/iucr-cif): STAR/CIF crystal structures, powder XRD simulator & 3D lattice viewer.
+- [3D Systems STL (.stl) [beta]](https://modelscript.org/languages/stl): ASCII/Binary STL meshes, mass/inertia, manifold lints & 3D shaded viewer.
+- [Wavefront OBJ / MTL (.obj) [beta]](https://modelscript.org/languages/obj): 3D polygon meshes, MTL materials, CAD lowering & 3D shaded mesh viewer.
+- [Intel HEX (.hex) [beta]](https://modelscript.org/languages/ihex): I8/I16/I32HEX ROM images, CRC-32, memory-map & hex/ASCII dump viewer.
+- [Motorola S-Record (.srec) [beta]](https://modelscript.org/languages/srec): Motorola S0–S9 firmware images, memory-region & hex/ASCII dump viewer.
+- [JEDEC JESD3 (.jed) [beta]](https://modelscript.org/languages/jedec): PAL/GAL fuse-maps, Boolean SOP extractor & fuse-matrix grid viewer.
+- [ASN.1 (X.208 / X.680) (.asn1) [beta]](https://modelscript.org/languages/asn1): ASN.1 schemas, canonical BER/DER TLV codec & type-graph/TLV viewer.
 
 ## Engineering Industries (12 Sectors)
 - [Industries Overview](https://modelscript.org/industries): Multi-domain solutions across 12 engineering sectors.
@@ -183,7 +246,7 @@
 - [Life Sciences, Healthcare & Medical](https://modelscript.org/industries/life-sciences): Systems biology, pharmacometrics, radiotherapy & surgical CAS (SBML L2/L3 & SED-ML, SBOL3 & GenBank, NONMEM NMTRAN & Monolix MLXTRAN).
 
 ## Reference & Tooling
-- [Linter Rules Catalog](https://modelscript.org/reference/linter-rules): Directory of 1432 diagnostics across 85 engineering languages.
+- [Linter Rules Catalog](https://modelscript.org/reference/linter-rules): Directory of 2384 diagnostics across 148 engineering languages.
 - [Export Formats](https://modelscript.org/reference/export-formats): Exporting to FMI 2.0/3.0 FMUs, SSP, STEP, CSV, and C code.
 - [MCP & IDE Integration](https://modelscript.org/reference/mcp-and-ide): Model Context Protocol server for AI coding agents and VS Code integration.
 - [Radiology & Surgical CAS](https://modelscript.org/reference/radiology-and-surgery): Radiation oncology, medical imaging, and computer-assisted surgery suite.

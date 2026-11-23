@@ -597,6 +597,51 @@ export function SimulationResults({
     window.dispatchEvent(new CustomEvent("morsel:time-scrub", { detail: { time: t, values: getValuesAtTime(t) } }));
   };
 
+  // Publish full Float64Array simulation trajectories so Diagram.tsx & UnifiedGraph can drive
+  // 60 FPS lockstep playback across 2D schematics, pinned Canvas2D plots, and embedded 3D CAD rotors.
+  useEffect(() => {
+    if (typeof window === "undefined" || data.length < 2) return;
+    const n = data.length;
+    const firstRow = data[0];
+    if (!firstRow) return;
+    const headers = Object.keys(firstRow);
+    const timeKey = headers.find((h) => h.toLowerCase() === "time") ?? headers[0];
+    if (!timeKey) return;
+
+    const time = new Float64Array(n);
+    const signalKeys = headers.filter((h) => h !== timeKey);
+    const signals: Record<string, Float64Array> = {};
+    for (const key of signalKeys) {
+      signals[key] = new Float64Array(n);
+    }
+
+    let validTimeCount = 0;
+    for (let i = 0; i < n; i++) {
+      const row = data[i];
+      if (!row) continue;
+      const tv = Number(row[timeKey]);
+      if (Number.isFinite(tv)) {
+        time[i] = tv;
+        validTimeCount++;
+      } else {
+        time[i] = i;
+      }
+      for (const key of signalKeys) {
+        const arr = signals[key];
+        if (!arr) continue;
+        const v = Number(row[key]);
+        arr[i] = Number.isFinite(v) ? v : 0;
+      }
+    }
+    if (validTimeCount < 2) return;
+
+    window.dispatchEvent(
+      new CustomEvent("morsel:simulation-result", {
+        detail: { time, signals },
+      }),
+    );
+  }, [data]);
+
   useEffect(() => {
     if (!rtpPlaying || data.length < 2) return;
     const stride = Math.max(1, Math.floor(data.length / 120));

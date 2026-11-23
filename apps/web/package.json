@@ -17,9 +17,9 @@
   },
   "dependencies": {
     "@antv/layout": "^0.3.25",
-    "@antv/x6": "^3.1.7",
     "@mlc-ai/web-llm": "^0.2.85",
     "@modelscript/cad": "workspace:*",
+    "@modelscript/canvas": "workspace:*",
     "@modelscript/design-tokens": "workspace:*",
     "@modelscript/diagram": "workspace:*",
     "@modelscript/dicom-rt": "workspace:*",

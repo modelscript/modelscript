@@ -58,8 +58,7 @@ export interface PluginCustomHandlers {
   symbols?: ((tree: any, text?: string, uri?: string) => DocumentSymbol[] | any[]) | undefined;
   folding?: ((tree: any, text?: string, uri?: string) => any[]) | undefined;
   codeActions?:
-    | ((doc: any, range: any, diagnostics: any[]) => Promise<CodeAction[] | any[]> | CodeAction[] | any[])
-    | undefined;
+    ((doc: any, range: any, diagnostics: any[]) => Promise<CodeAction[] | any[]> | CodeAction[] | any[]) | undefined;
   inlayHints?: ((doc: any, range?: any) => Promise<InlayHint[] | any[]> | InlayHint[] | any[]) | undefined;
   codeLens?:
     | ((
@@ -92,8 +91,7 @@ export interface PluginCustomHandlers {
     | undefined;
   buildDiagram?: ((text: string, params: any) => Promise<unknown> | unknown) | undefined;
   signatureHelp?:
-    | ((doc: any, position: any) => Promise<SignatureHelp | any | null> | SignatureHelp | any | null)
-    | undefined;
+    ((doc: any, position: any) => Promise<SignatureHelp | any | null> | SignatureHelp | any | null) | undefined;
   analyzeBlt?: ((doc: any) => Promise<any | null> | any | null) | undefined;
   getDiagramData?: ((doc: any, params?: any) => Promise<any | null> | any | null) | undefined;
   applyDiagramEdits?: ((doc: any, params?: any) => Promise<any | null> | any | null) | undefined;
@@ -245,6 +243,69 @@ export const DEFAULT_LANGUAGE_MATURITY: Record<string, "stable" | "beta" | "expe
   "verilog-a": "beta",
   verilogams: "beta",
   vhdlams: "beta",
+  acsl: "beta",
+  apdl: "beta",
+  apt: "beta",
+  cea: "beta",
+  chemkin: "beta",
+  cif: "beta",
+  "cplex-lp": "beta",
+  csmp: "beta",
+  datcom: "beta",
+  doe2: "beta",
+  dxf: "beta",
+  dynamo: "beta",
+  edif: "beta",
+  esl: "beta",
+  esterel: "beta",
+  fits: "beta",
+  gams: "beta",
+  gaussian: "beta",
+  gcode: "beta",
+  gdsii: "beta",
+  gerber: "beta",
+  gpss: "beta",
+  hec1: "beta",
+  hec2: "beta",
+  "ieee-cdf": "beta",
+  iges: "beta",
+  lsdyna: "beta",
+  lustre: "beta",
+  mcnp: "beta",
+  melcor: "beta",
+  molfile: "beta",
+  mps: "beta",
+  nec2: "beta",
+  plot3d: "beta",
+  scale: "beta",
+  sdl: "beta",
+  segy: "beta",
+  simscript: "beta",
+  sinda: "beta",
+  slam: "beta",
+  trasys: "beta",
+  trnsys: "beta",
+  verilog: "beta",
+  vhdl: "beta",
+  arinc429: "beta",
+  asn1: "beta",
+  bufr: "beta",
+  endf6: "beta",
+  grib: "beta",
+  hdf4: "beta",
+  ihex: "beta",
+  irig106: "beta",
+  "iucr-cif": "beta",
+  "jcamp-dx": "beta",
+  jedec: "beta",
+  "nasa-cdf": "beta",
+  netcdf: "beta",
+  nmea0183: "beta",
+  obj: "beta",
+  rinex: "beta",
+  srec: "beta",
+  stl: "beta",
+  "usgs-dem": "beta",
 
   // Experimental (External / Research formats)
   aacl: "experimental",
@@ -279,7 +340,6 @@ export const DEFAULT_LANGUAGE_MATURITY: Record<string, "stable" | "beta" | "expe
   structural: "experimental",
   thermoflow: "experimental",
   trace32: "experimental",
-  trnsys: "experimental",
   urbansim: "experimental",
   yys: "experimental",
 };

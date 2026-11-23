@@ -983,7 +983,6 @@ export async function startLanguagePlayground(argv: string[] = process.argv.slic
         "@primer/react",
         "@primer/octicons-react",
         "@antv/layout",
-        "@antv/x6",
         "@react-three/drei",
         "@react-three/fiber",
         "three",

@@ -1,0 +1,470 @@
+[
+  {
+    "namePath": "DOE2.MAT-CONCRETE",
+    "aliases": [
+      "CC03",
+      "CONCRETE-8IN",
+      "HW-CONCRETE"
+    ],
+    "label": "Heavyweight Concrete (200 mm)",
+    "category": "Envelope Material",
+    "domain": "building-energy",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#2c241b\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f59e0b\">MAT</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.6\" font-weight=\"bold\" fill=\"#f8fafc\">MAT-CONCRETE</text></svg>",
+    "ports": [
+      {
+        "name": "outside",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "inside",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "DOE2.MAT-INSUL-R19",
+    "aliases": [
+      "IN05",
+      "FIBERGLASS-R19",
+      "BATT-R19"
+    ],
+    "label": "Fiberglass Batt Insulation (R-19)",
+    "category": "Envelope Material",
+    "domain": "building-energy",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#2c241b\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f59e0b\">MAT</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.6\" font-weight=\"bold\" fill=\"#f8fafc\">MAT-INSUL-R1</text></svg>",
+    "ports": [
+      {
+        "name": "outside",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "inside",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "DOE2.MAT-GYPSUM",
+    "aliases": [
+      "GP01",
+      "GYPSUM-BOARD",
+      "DRYWALL"
+    ],
+    "label": "Gypsum Board (12.7 mm)",
+    "category": "Envelope Material",
+    "domain": "building-energy",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#2c241b\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f59e0b\">MAT</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.6\" font-weight=\"bold\" fill=\"#f8fafc\">MAT-GYPSUM</text></svg>",
+    "ports": [
+      {
+        "name": "outside",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "inside",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "DOE2.MAT-BRICK",
+    "aliases": [
+      "BK01",
+      "FACE-BRICK",
+      "MASONRY-BRICK"
+    ],
+    "label": "Face Brick Veneer (100 mm)",
+    "category": "Envelope Material",
+    "domain": "building-energy",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#2c241b\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f59e0b\">MAT</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">MAT-BRICK</text></svg>",
+    "ports": [
+      {
+        "name": "outside",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "inside",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "DOE2.MAT-WOOD-FRAME",
+    "aliases": [
+      "WD01",
+      "SOFTWOOD",
+      "PLYWOOD"
+    ],
+    "label": "Softwood Sheathing (19 mm)",
+    "category": "Envelope Material",
+    "domain": "building-energy",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#2c241b\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f59e0b\">MAT</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.6\" font-weight=\"bold\" fill=\"#f8fafc\">MAT-WOOD-FRA</text></svg>",
+    "ports": [
+      {
+        "name": "outside",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "inside",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "DOE2.MAT-ROOF-MEMBRANE",
+    "aliases": [
+      "BR01",
+      "BUILT-UP-ROOF",
+      "EPDM"
+    ],
+    "label": "Built-Up Roof Membrane (9.5 mm)",
+    "category": "Envelope Material",
+    "domain": "building-energy",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#2c241b\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f59e0b\">MAT</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.6\" font-weight=\"bold\" fill=\"#f8fafc\">MAT-ROOF-MEM</text></svg>",
+    "ports": [
+      {
+        "name": "outside",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "inside",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "DOE2.GLZ-DOUBLE-LOWE",
+    "aliases": [
+      "DOUBLE-LOWE",
+      "LOWE-ARGON",
+      "2600"
+    ],
+    "label": "Double Pane Low-E Argon Glazing",
+    "category": "Glazing System",
+    "domain": "building-energy",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#173042\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">GLZ</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.6\" font-weight=\"bold\" fill=\"#f8fafc\">GLZ-DOUBLE-L</text></svg>",
+    "ports": [
+      {
+        "name": "exterior",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "solar_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "interior",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "DOE2.GLZ-SINGLE-CLEAR",
+    "aliases": [
+      "SINGLE-CLEAR",
+      "1000"
+    ],
+    "label": "Single Pane Clear Glass (6 mm)",
+    "category": "Glazing System",
+    "domain": "building-energy",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#173042\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">GLZ</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.6\" font-weight=\"bold\" fill=\"#f8fafc\">GLZ-SINGLE-C</text></svg>",
+    "ports": [
+      {
+        "name": "exterior",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "solar_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "interior",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "DOE2.GLZ-DOUBLE-CLEAR",
+    "aliases": [
+      "DOUBLE-CLEAR",
+      "2000"
+    ],
+    "label": "Double Pane Clear Air Glazing",
+    "category": "Glazing System",
+    "domain": "building-energy",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#173042\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">GLZ</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.6\" font-weight=\"bold\" fill=\"#f8fafc\">GLZ-DOUBLE-C</text></svg>",
+    "ports": [
+      {
+        "name": "exterior",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "solar_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "interior",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "DOE2.PSZ",
+    "aliases": [
+      "PACKAGED-SINGLE-ZONE",
+      "RTU"
+    ],
+    "label": "Packaged Single Zone (PSZ)",
+    "category": "HVAC System",
+    "domain": "building-energy",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1a382e\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">HVAC</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">PSZ</text></svg>",
+    "ports": [
+      {
+        "name": "return_air",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "supply_air",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      },
+      {
+        "name": "electric_in",
+        "kind": "electrical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "DOE2.VAVS",
+    "aliases": [
+      "VAV",
+      "VAV-REHEAT"
+    ],
+    "label": "Variable Air Volume w/ Reheat (VAVS)",
+    "category": "HVAC System",
+    "domain": "building-energy",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1a382e\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">HVAC</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">VAVS</text></svg>",
+    "ports": [
+      {
+        "name": "return_air",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "supply_air",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      },
+      {
+        "name": "electric_in",
+        "kind": "electrical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "DOE2.PIU",
+    "aliases": [
+      "POWERED-INDUCTION-UNIT",
+      "FAN-POWERED-VAV"
+    ],
+    "label": "Powered Induction Unit (PIU)",
+    "category": "HVAC System",
+    "domain": "building-energy",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1a382e\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">HVAC</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">PIU</text></svg>",
+    "ports": [
+      {
+        "name": "return_air",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "supply_air",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      },
+      {
+        "name": "electric_in",
+        "kind": "electrical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "DOE2.FC",
+    "aliases": [
+      "FAN-COIL",
+      "FOUR-PIPE-FCU"
+    ],
+    "label": "Four-Pipe Fan Coil (FC)",
+    "category": "HVAC System",
+    "domain": "building-energy",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1a382e\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">HVAC</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">FC</text></svg>",
+    "ports": [
+      {
+        "name": "return_air",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "supply_air",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      },
+      {
+        "name": "electric_in",
+        "kind": "electrical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "DOE2.PTAC",
+    "aliases": [
+      "PACKAGED-TERMINAL-AC"
+    ],
+    "label": "Packaged Terminal Air Conditioner (PTAC)",
+    "category": "HVAC System",
+    "domain": "building-energy",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1a382e\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">HVAC</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">PTAC</text></svg>",
+    "ports": [
+      {
+        "name": "return_air",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "supply_air",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      },
+      {
+        "name": "electric_in",
+        "kind": "electrical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 52
+      }
+    ]
+  }
+]

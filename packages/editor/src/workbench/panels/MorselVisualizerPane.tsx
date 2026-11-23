@@ -16,7 +16,7 @@ import {
 } from "@primer/octicons-react";
 import { Breadcrumbs, Button, IconButton, SegmentedControl, UnderlineNav } from "@primer/react";
 import type { editor } from "monaco-editor";
-import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useEditorCapabilities as useCapabilities,
   useEditorHost,
@@ -60,6 +60,39 @@ function getStencilsForDialect(dialect: string): StencilItem[] {
     { label: "Parameter", snippet: "parameter Real k_new = 1.0;\n" },
     { label: "Component", snippet: "// Added element\n" },
   ];
+}
+
+function lookupProjectFileContent(files: Record<string, string> | undefined, artifactUri: string): string | null {
+  if (!files) return null;
+  const trimmed = artifactUri.trim();
+  if (!trimmed) return null;
+  const cleanPath = trimmed.split(/[?#]/)[0] ?? trimmed;
+  if (Object.prototype.hasOwnProperty.call(files, trimmed)) {
+    const val = files[trimmed];
+    if (typeof val === "string") return val;
+  }
+  if (Object.prototype.hasOwnProperty.call(files, cleanPath)) {
+    const val = files[cleanPath];
+    if (typeof val === "string") return val;
+  }
+  const normalized = cleanPath.replace(/^(?:inmemory|file|workspace|modelica):\/\//i, "").replace(/^\.?\//, "");
+  if (!normalized) return null;
+  if (Object.prototype.hasOwnProperty.call(files, normalized)) {
+    const val = files[normalized];
+    if (typeof val === "string") return val;
+  }
+  for (const [key, content] of Object.entries(files)) {
+    if (typeof content !== "string") continue;
+    const normKey = key.replace(/^\.?\//, "");
+    if (normKey === normalized || normKey.endsWith(`/${normalized}`) || normalized.endsWith(`/${normKey}`)) {
+      return content;
+    }
+  }
+  return null;
+}
+
+function isFetchableArtifactUri(uri: string): boolean {
+  return uri.startsWith("/") || uri.startsWith("http://") || uri.startsWith("https://") || uri.startsWith("blob:");
 }
 
 export interface MorselVisualizerPaneProps {
@@ -422,6 +455,152 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
       setIsDiagramLoading(true);
     }
   };
+
+  const tessellatedBlobUrlsRef = useRef<string[]>([]);
+  useEffect(() => {
+    const urls = tessellatedBlobUrlsRef.current;
+    return () => {
+      if (typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
+        for (const url of urls) {
+          URL.revokeObjectURL(url);
+        }
+      }
+      urls.length = 0;
+    };
+  }, []);
+
+  const handleFetchArtifactBytes = useCallback(
+    async (artifactUri: string): Promise<Uint8Array | null> => {
+      const trimmed = artifactUri.trim();
+      if (!trimmed) return null;
+
+      const workspaceContent = lookupProjectFileContent(projectFiles, trimmed);
+      if (workspaceContent !== null) {
+        const encoded = new TextEncoder().encode(workspaceContent);
+        return encoded.byteLength > 0 ? encoded : null;
+      }
+
+      if (
+        vtkBuffer &&
+        vtkBuffer.byteLength > 0 &&
+        ((documentUri && trimmed === documentUri) ||
+          (activeFileName && (trimmed === activeFileName || trimmed.endsWith(`/${activeFileName}`))))
+      ) {
+        return vtkBuffer;
+      }
+
+      if (typeof fetch !== "function" || !isFetchableArtifactUri(trimmed)) {
+        return null;
+      }
+
+      try {
+        const res = await fetch(trimmed);
+        if (!res.ok) return null;
+        const buf = await res.arrayBuffer();
+        return buf.byteLength > 0 ? new Uint8Array(buf) : null;
+      } catch {
+        return null;
+      }
+    },
+    [projectFiles, vtkBuffer, documentUri, activeFileName],
+  );
+
+  const handleTessellateStep = useCallback(
+    async (artifactUri: string): Promise<string | Uint8Array | null> => {
+      const trimmed = artifactUri.trim();
+      if (!trimmed) return null;
+
+      const qIdx = trimmed.search(/[?#]/);
+      const basePath = qIdx >= 0 ? trimmed.slice(0, qIdx) : trimmed;
+      const suffix = qIdx >= 0 ? trimmed.slice(qIdx) : "";
+      const lowerPath = basePath.toLowerCase();
+
+      if (lowerPath.endsWith(".glb") || lowerPath.endsWith(".gltf")) {
+        return trimmed;
+      }
+
+      if (!lowerPath.endsWith(".step") && !lowerPath.endsWith(".stp")) {
+        return null;
+      }
+
+      const stem = basePath.replace(/\.(step|stp)$/i, "");
+
+      const siblingWorkspaceVtk =
+        lookupProjectFileContent(projectFiles, `${stem}.vtu`) ?? lookupProjectFileContent(projectFiles, `${stem}.vtk`);
+      if (siblingWorkspaceVtk !== null) {
+        const encoded = new TextEncoder().encode(siblingWorkspaceVtk);
+        if (encoded.byteLength > 0) return encoded;
+      }
+
+      if (typeof fetch !== "function") {
+        return null;
+      }
+
+      if (basePath.startsWith("/") || basePath.startsWith("http://") || basePath.startsWith("https://")) {
+        const siblingGlb = `${stem}.glb${suffix}`;
+        try {
+          const glbRes = await fetch(siblingGlb, { method: "HEAD" });
+          const glbType = glbRes.headers?.get?.("content-type")?.toLowerCase() ?? "";
+          if (glbRes.ok && !glbType.includes("text/html")) {
+            return siblingGlb;
+          }
+        } catch {
+          // Safe fallback to next candidate
+        }
+
+        const siblingVtu = `${stem}.vtu${suffix}`;
+        try {
+          const vtuRes = await fetch(siblingVtu);
+          const vtuType = vtuRes.headers?.get?.("content-type")?.toLowerCase() ?? "";
+          if (vtuRes.ok && !vtuType.includes("text/html")) {
+            const buf = await vtuRes.arrayBuffer();
+            if (buf.byteLength > 0) return new Uint8Array(buf);
+          }
+        } catch {
+          // Safe fallback to tessellation API endpoint
+        }
+      }
+
+      try {
+        const endpoint = `/api/v1/cad/tessellate?uri=${encodeURIComponent(trimmed)}`;
+        const apiRes = await fetch(endpoint);
+        if (!apiRes.ok) return null;
+        const contentType = apiRes.headers?.get?.("content-type")?.toLowerCase() ?? "";
+        if (contentType.includes("text/html")) return null;
+
+        if (contentType.includes("application/json")) {
+          const payload = (await apiRes.json()) as Record<string, unknown> | null;
+          if (payload && typeof payload === "object") {
+            const meshUrl = payload["glbUrl"] ?? payload["meshUrl"] ?? payload["url"];
+            if (typeof meshUrl === "string" && meshUrl.trim().length > 0) {
+              return meshUrl.trim();
+            }
+          }
+          return null;
+        }
+
+        if (
+          contentType.includes("model/gltf") &&
+          typeof URL !== "undefined" &&
+          typeof URL.createObjectURL === "function"
+        ) {
+          const blob = await apiRes.blob();
+          if (blob.size > 0) {
+            const objectUrl = URL.createObjectURL(blob);
+            tessellatedBlobUrlsRef.current.push(objectUrl);
+            return objectUrl;
+          }
+          return null;
+        }
+
+        const buf = await apiRes.arrayBuffer();
+        return buf.byteLength > 0 ? new Uint8Array(buf) : null;
+      } catch {
+        return null;
+      }
+    },
+    [projectFiles],
+  );
 
   useEffect(() => {
     if (!showZoomMenu && !showGridMenu) return;
@@ -1644,6 +1823,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   onRedo={handleRedo}
                   onZoomChange={setCurrentZoom}
                   onAutoLayout={onAutoLayout}
+                  onFetchArtifactBytes={handleFetchArtifactBytes}
+                  onTessellateStep={handleTessellateStep}
                 />
               </Suspense>
 

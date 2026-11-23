@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist"
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["dist", "node_modules", "tests", "assets"],
+  "references": [
+    {
+      "path": "../../packages/dsl"
+    },
+    {
+      "path": "../../packages/runtime"
+    }
+  ]
+}

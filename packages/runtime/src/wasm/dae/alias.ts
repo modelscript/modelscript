@@ -16,6 +16,14 @@ import {
   VAR_VARIABILITY,
   Variability,
   VarAttrKind,
+  DIFF_STRIDE,
+  DIFF_STATE_VAR,
+  AFFECT_STRIDE,
+  AFFECT_VAR,
+  UNC_STRIDE,
+  UNC_VAR,
+  INV_STRIDE,
+  INV_VAR,
 } from "./builder";
 import { ChunkedInt32Array, createChunkedInt32Array } from "../core/array";
 import { UnmanagedMap64, createMap64 } from "../core/hashmap";
@@ -269,6 +277,61 @@ export function eliminateAliases(dae: DaeBuilder): u32 {
           }
           rewrittenCount++;
         }
+      }
+    } else if (kind == ExprKind.AtBoundary) {
+      let varIdx = dae.getExprData().get(exprOffset + EXPR_DATA1) as u32;
+      if (varIdx < dae.varCount) {
+        let rootIdx = uf.find(varIdx);
+        if (rootIdx != varIdx) {
+          dae.getExprData().set(exprOffset + EXPR_DATA1, rootIdx as i32);
+          rewrittenCount++;
+        }
+      }
+    }
+  }
+
+  // 2b. Canonicalize varId references in multi-problem side-tables
+  if (dae.diffusionCount > 0) {
+    let tbl = dae.getDiffusionData();
+    for (let i: u32 = 0; i < dae.diffusionCount; i++) {
+      let off = i * DIFF_STRIDE + DIFF_STATE_VAR;
+      let v = tbl.get(off) as u32;
+      if (v < dae.varCount) {
+        let r = uf.find(v);
+        if (r != v) { tbl.set(off, r as i32); rewrittenCount++; }
+      }
+    }
+  }
+  if (dae.jumpAffectCount > 0) {
+    let tbl = dae.getJumpAffects();
+    for (let i: u32 = 0; i < dae.jumpAffectCount; i++) {
+      let off = i * AFFECT_STRIDE + AFFECT_VAR;
+      let v = tbl.get(off) as u32;
+      if (v < dae.varCount) {
+        let r = uf.find(v);
+        if (r != v) { tbl.set(off, r as i32); rewrittenCount++; }
+      }
+    }
+  }
+  if (dae.uncertaintyCount > 0) {
+    let tbl = dae.getUncertaintyData();
+    for (let i: u32 = 0; i < dae.uncertaintyCount; i++) {
+      let off = i * UNC_STRIDE + UNC_VAR;
+      let v = tbl.get(off) as u32;
+      if (v < dae.varCount) {
+        let r = uf.find(v);
+        if (r != v) { tbl.set(off, r as i32); rewrittenCount++; }
+      }
+    }
+  }
+  if (dae.stateInvariantCount > 0) {
+    let tbl = dae.getStateInvariants();
+    for (let i: u32 = 0; i < dae.stateInvariantCount; i++) {
+      let off = i * INV_STRIDE + INV_VAR;
+      let v = tbl.get(off) as u32;
+      if (v < dae.varCount) {
+        let r = uf.find(v);
+        if (r != v) { tbl.set(off, r as i32); rewrittenCount++; }
       }
     }
   }

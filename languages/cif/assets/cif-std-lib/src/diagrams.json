@@ -1,0 +1,408 @@
+[
+  {
+    "namePath": "CIF.Layers.CWN",
+    "aliases": [
+      "cwn",
+      "L_CWN"
+    ],
+    "label": "N-Well (CWN)",
+    "category": "MOSIS SCMOS",
+    "domain": "ic-layout",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#d97706\" fill-opacity=\"0.35\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f59e0b\">SCMOS</text><rect x=\"68\" y=\"8\" width=\"12\" height=\"12\" rx=\"2\" fill=\"#d97706\" stroke=\"#f59e0b\" stroke-width=\"1\"/><text x=\"44\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.0\" font-weight=\"bold\" fill=\"#f8fafc\">CWN</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CIF.Layers.CAA",
+    "aliases": [
+      "caa",
+      "L_CAA"
+    ],
+    "label": "Active Area (CAA)",
+    "category": "MOSIS SCMOS",
+    "domain": "ic-layout",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#22c55e\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#16a34a\" fill-opacity=\"0.35\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#22c55e\">SCMOS</text><rect x=\"68\" y=\"8\" width=\"12\" height=\"12\" rx=\"2\" fill=\"#16a34a\" stroke=\"#22c55e\" stroke-width=\"1\"/><text x=\"44\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.0\" font-weight=\"bold\" fill=\"#f8fafc\">CAA</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CIF.Layers.CPG",
+    "aliases": [
+      "cpg",
+      "L_CPG"
+    ],
+    "label": "Polysilicon Gate (CPG)",
+    "category": "MOSIS SCMOS",
+    "domain": "ic-layout",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#ef4444\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#dc2626\" fill-opacity=\"0.35\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#ef4444\">SCMOS</text><rect x=\"68\" y=\"8\" width=\"12\" height=\"12\" rx=\"2\" fill=\"#dc2626\" stroke=\"#ef4444\" stroke-width=\"1\"/><text x=\"44\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.0\" font-weight=\"bold\" fill=\"#f8fafc\">CPG</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CIF.Layers.CCA",
+    "aliases": [
+      "cca",
+      "L_CCA"
+    ],
+    "label": "Contact Cut (CCA)",
+    "category": "MOSIS SCMOS",
+    "domain": "ic-layout",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#f8fafc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#111827\" fill-opacity=\"0.35\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f8fafc\">SCMOS</text><rect x=\"68\" y=\"8\" width=\"12\" height=\"12\" rx=\"2\" fill=\"#111827\" stroke=\"#f8fafc\" stroke-width=\"1\"/><text x=\"44\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.0\" font-weight=\"bold\" fill=\"#f8fafc\">CCA</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CIF.Layers.CMF",
+    "aliases": [
+      "cmf",
+      "L_CMF"
+    ],
+    "label": "Metal 1 (CMF)",
+    "category": "MOSIS SCMOS",
+    "domain": "ic-layout",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#2563eb\" fill-opacity=\"0.35\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">SCMOS</text><rect x=\"68\" y=\"8\" width=\"12\" height=\"12\" rx=\"2\" fill=\"#2563eb\" stroke=\"#60a5fa\" stroke-width=\"1\"/><text x=\"44\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.0\" font-weight=\"bold\" fill=\"#f8fafc\">CMF</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CIF.Layers.CVA",
+    "aliases": [
+      "cva",
+      "L_CVA"
+    ],
+    "label": "Via 1-2 (CVA)",
+    "category": "MOSIS SCMOS",
+    "domain": "ic-layout",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#c4b5fd\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#7c3aed\" fill-opacity=\"0.35\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c4b5fd\">SCMOS</text><rect x=\"68\" y=\"8\" width=\"12\" height=\"12\" rx=\"2\" fill=\"#7c3aed\" stroke=\"#c4b5fd\" stroke-width=\"1\"/><text x=\"44\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.0\" font-weight=\"bold\" fill=\"#f8fafc\">CVA</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CIF.Layers.CMS",
+    "aliases": [
+      "cms",
+      "L_CMS"
+    ],
+    "label": "Metal 2 (CMS)",
+    "category": "MOSIS SCMOS",
+    "domain": "ic-layout",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#22d3ee\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#0891b2\" fill-opacity=\"0.35\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#22d3ee\">SCMOS</text><rect x=\"68\" y=\"8\" width=\"12\" height=\"12\" rx=\"2\" fill=\"#0891b2\" stroke=\"#22d3ee\" stroke-width=\"1\"/><text x=\"44\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.0\" font-weight=\"bold\" fill=\"#f8fafc\">CMS</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CIF.Layers.ND",
+    "aliases": [
+      "nd",
+      "L_ND"
+    ],
+    "label": "NMOS Diffusion (ND)",
+    "category": "Mead-Conway NMOS",
+    "domain": "ic-layout",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#4ade80\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#15803d\" fill-opacity=\"0.35\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#4ade80\">NMOS</text><rect x=\"68\" y=\"8\" width=\"12\" height=\"12\" rx=\"2\" fill=\"#15803d\" stroke=\"#4ade80\" stroke-width=\"1\"/><text x=\"44\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.0\" font-weight=\"bold\" fill=\"#f8fafc\">ND</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CIF.Layers.NP",
+    "aliases": [
+      "np",
+      "L_NP"
+    ],
+    "label": "NMOS Polysilicon (NP)",
+    "category": "Mead-Conway NMOS",
+    "domain": "ic-layout",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#b91c1c\" fill-opacity=\"0.35\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f87171\">NMOS</text><rect x=\"68\" y=\"8\" width=\"12\" height=\"12\" rx=\"2\" fill=\"#b91c1c\" stroke=\"#f87171\" stroke-width=\"1\"/><text x=\"44\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.0\" font-weight=\"bold\" fill=\"#f8fafc\">NP</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CIF.Layers.NM",
+    "aliases": [
+      "nm",
+      "L_NM"
+    ],
+    "label": "NMOS Metal (NM)",
+    "category": "Mead-Conway NMOS",
+    "domain": "ic-layout",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#93c5fd\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#1d4ed8\" fill-opacity=\"0.35\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#93c5fd\">NMOS</text><rect x=\"68\" y=\"8\" width=\"12\" height=\"12\" rx=\"2\" fill=\"#1d4ed8\" stroke=\"#93c5fd\" stroke-width=\"1\"/><text x=\"44\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.0\" font-weight=\"bold\" fill=\"#f8fafc\">NM</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CIF.Layers.NC",
+    "aliases": [
+      "nc",
+      "L_NC"
+    ],
+    "label": "NMOS Contact Cut (NC)",
+    "category": "Mead-Conway NMOS",
+    "domain": "ic-layout",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#e2e8f0\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#0f172a\" fill-opacity=\"0.35\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#e2e8f0\">NMOS</text><rect x=\"68\" y=\"8\" width=\"12\" height=\"12\" rx=\"2\" fill=\"#0f172a\" stroke=\"#e2e8f0\" stroke-width=\"1\"/><text x=\"44\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.0\" font-weight=\"bold\" fill=\"#f8fafc\">NC</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CIF.Layers.NI",
+    "aliases": [
+      "ni",
+      "L_NI"
+    ],
+    "label": "NMOS Implant (NI)",
+    "category": "Mead-Conway NMOS",
+    "domain": "ic-layout",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#facc15\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#ca8a04\" fill-opacity=\"0.35\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#facc15\">NMOS</text><rect x=\"68\" y=\"8\" width=\"12\" height=\"12\" rx=\"2\" fill=\"#ca8a04\" stroke=\"#facc15\" stroke-width=\"1\"/><text x=\"44\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.0\" font-weight=\"bold\" fill=\"#f8fafc\">NI</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CIF.Cells.NMOS_INVERTER",
+    "aliases": [
+      "nmos_inv",
+      "INV_NMOS"
+    ],
+    "label": "Mead-Conway NMOS Inverter",
+    "category": "Standard Cells",
+    "domain": "ic-layout",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#4ade80\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#15803d\" fill-opacity=\"0.35\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#4ade80\">CELL</text><rect x=\"68\" y=\"8\" width=\"12\" height=\"12\" rx=\"2\" fill=\"#15803d\" stroke=\"#4ade80\" stroke-width=\"1\"/><text x=\"44\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">NMOS_INV</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CIF.Cells.CMOS_INVERTER",
+    "aliases": [
+      "cmos_inv",
+      "INV_CMOS"
+    ],
+    "label": "MOSIS SCMOS Inverter",
+    "category": "Standard Cells",
+    "domain": "ic-layout",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#2563eb\" fill-opacity=\"0.35\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">CELL</text><rect x=\"68\" y=\"8\" width=\"12\" height=\"12\" rx=\"2\" fill=\"#2563eb\" stroke=\"#60a5fa\" stroke-width=\"1\"/><text x=\"44\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">CMOS_INV</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  }
+]

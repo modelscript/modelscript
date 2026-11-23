@@ -209,6 +209,73 @@ export function generateLpMainC(problem: LpProblemDef, options: CoinorCodegenOpt
 // ── NLP codegen ──
 
 /**
+ * Extracts a `NlpProblemDef` directly from a `DAEBuilder` populated via `dae.optimization`
+ * (e.g., from AMPL or Optimica lowering), preserving min/max sense, binary `[0, 1]` bounds,
+ * variable `min`/`max` attributes, and bounded constraints.
+ */
+export function extractNlpProblemFromDae(dae: DAEBuilder): NlpProblemDef {
+  const vc = dae.getVarCount();
+  const variables: string[] = [];
+  const variableLB: number[] = [];
+  const variableUB: number[] = [];
+  const x0: number[] = [];
+
+  for (let i = 0; i < vc; i++) {
+    if (dae.isVarRemoved(i)) continue;
+    if (dae.getVarVariability(i) > 1) continue;
+    variables.push(dae.getVarName(i));
+    x0.push(dae.getVarStartValue(i));
+    const isBinary = (dae.getVarFlags(i) & (1 << 12)) !== 0;
+    const minExpr = dae.getVarAttr(i, "min");
+    const maxExpr = dae.getVarAttr(i, "max");
+    const lb =
+      minExpr !== undefined && minExpr >= 0 && dae.exports?.dae_evalExpressionAsReal
+        ? (dae.exports.dae_evalExpressionAsReal(dae.ptr, minExpr >>> 0) as number)
+        : isBinary
+          ? 0.0
+          : -1e19;
+    const ub =
+      maxExpr !== undefined && maxExpr >= 0 && dae.exports?.dae_evalExpressionAsReal
+        ? (dae.exports.dae_evalExpressionAsReal(dae.ptr, maxExpr >>> 0) as number)
+        : isBinary
+          ? 1.0
+          : 1e19;
+    variableLB.push(lb);
+    variableUB.push(ub);
+  }
+
+  const objs = dae.optimization.getObjectives();
+  let objectiveExpr = objs[0]?.mayerExprId ?? dae.objectiveExprId;
+  if (objs[0] && objs[0].sense === 1 && objectiveExpr >= 0) {
+    objectiveExpr = dae.addUnaryExpr(0, objectiveExpr);
+  }
+
+  const cons = dae.optimization.getConstraints();
+  const constraintExprs: number[] = [];
+  const constraintLB: number[] = [];
+  const constraintUB: number[] = [];
+  for (const con of cons) {
+    if (con.exprId >= 0) {
+      constraintExprs.push(con.exprId);
+      constraintLB.push(Number.isFinite(con.lb) ? con.lb : -1e19);
+      constraintUB.push(Number.isFinite(con.ub) ? con.ub : 1e19);
+    }
+  }
+
+  return {
+    variables,
+    variableLB,
+    variableUB,
+    x0,
+    dae,
+    objectiveExpr,
+    constraintExprs,
+    constraintLB,
+    constraintUB,
+  };
+}
+
+/**
  * Generate an IPOPT optimization driver from a NLP problem definition.
  * Uses StaticTapeBuilder to emit AD-based objective/gradient/Hessian C code.
  */

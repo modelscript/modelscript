@@ -1,0 +1,11 @@
+name: "@modelscript/hec1-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom USACE HEC-1 / USDA TR-55 hydrologic standard library (15 schemas, cleanroom SVG block icons, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: hec1
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

@@ -103,6 +103,7 @@ const ScriptDetailPage = lazyWithRetry(() => import("./pages/ScriptDetailPage"))
 const ScriptsListPage = lazyWithRetry(() => import("./pages/ScriptsListPage"));
 const SolutionPage = lazyWithRetry(() => import("./pages/SolutionPage"));
 const SourceDetailPage = lazyWithRetry(() => import("./pages/SourceDetailPage"));
+const SpatialCanvasPage = lazyWithRetry(() => import("./pages/SpatialCanvasPage"));
 const PrivacyPage = lazyWithRetry(() => import("./pages/PrivacyPage"));
 const CookiesPage = lazyWithRetry(() => import("./pages/CookiesPage"));
 const ResetPasswordPage = lazyWithRetry(() => import("./pages/ResetPasswordPage"));
@@ -638,6 +639,8 @@ function App() {
                     <Route path="/morsel" element={<PreserveParamsNavigate to="/editor" />} />
                     <Route path="/sketch" element={<PreserveParamsNavigate to="/editor" />} />
                     <Route path="/playground" element={<PreserveParamsNavigate to="/editor" />} />
+                    <Route path="/canvas" element={<SpatialCanvasPage />} />
+                    <Route path="/canvas/:boardId" element={<SpatialCanvasPage />} />
                     <Route path="/solutions/:username/:slug" element={<SolutionPage />} />
 
                     {/* Social shell routes */}

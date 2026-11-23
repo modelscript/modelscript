@@ -56,7 +56,22 @@ export interface LanguageAuditResult {
 }
 
 const CORE_FOUNDATIONAL_LANGUAGES = new Set(["ssp", "csv", "modelscript", "modelica", "sysml2"]);
-const CAD_LANGUAGES = new Set(["step", "scad", "three-mf", "qif"]);
+const CAD_LANGUAGES = new Set([
+  "step",
+  "scad",
+  "three-mf",
+  "qif",
+  "gdsii",
+  "cif",
+  "gerber",
+  "iges",
+  "dxf",
+  "gcode",
+  "apt",
+  "stl",
+  "obj",
+  "usgs-dem",
+]);
 const SEMANTIC_LANGUAGES = new Set(["owl2", "reqif", "oscal"]);
 const CONTAINER_LANGUAGES = new Set(["ssp", "csv"]);
 

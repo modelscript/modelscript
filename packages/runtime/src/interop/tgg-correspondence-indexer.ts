@@ -22,14 +22,16 @@ import type {
   TGGRuleOptions,
   TGGThreadRuleOptions,
 } from "@modelscript/dsl";
-import type { SymbolEntry, SymbolId, SymbolIndex } from "../runtime.js";
+import { registerLanguageDomain, type SymbolEntry, type SymbolId, type SymbolIndex } from "../runtime.js";
 import {
   isMemberLikeSymbol,
   isPortLikeSymbol,
   isRelationshipOrImportSymbol,
   isTypeLikeSymbol,
 } from "../util/symbol_roles.js";
+import { defaultSymbolInteropRegistry, InteropTrait, type SymbolInteropRegistry } from "./symbol_interop.js";
 import { evaluateRuleDescriptor } from "./tgg-pattern-interpreter.js";
+import { type PicStats, TggPicDispatcher } from "./tgg_pic_dispatch.js";
 import { DigitalThreadHypergraph, ThreadDomain, ThreadRelation } from "./thread_hypergraph.js";
 import { type WasmCorrespondenceBridge, WasmPolyglotKernelBridge } from "./wasm-polyglot-bridge.js";
 
@@ -280,6 +282,21 @@ export class TggSymbolProjectionTable {
   private rules: EvaluatedCorrespondenceRule[] = [];
   private ruleDedup = new Set<string>();
   private typeMaps = new Map<string, Map<string, Record<string, string>>>();
+  private readonly picDispatcher: TggPicDispatcher<EvaluatedCorrespondenceRule>;
+  private readonly interopRegistry: SymbolInteropRegistry;
+
+  constructor(options?: {
+    picDispatcher?: TggPicDispatcher<EvaluatedCorrespondenceRule>;
+    interopRegistry?: SymbolInteropRegistry;
+  }) {
+    this.picDispatcher = options?.picDispatcher ?? new TggPicDispatcher<EvaluatedCorrespondenceRule>();
+    this.interopRegistry = options?.interopRegistry ?? defaultSymbolInteropRegistry;
+  }
+
+  /** Returns Polymorphic Inline Cache hit/miss telemetry for TGG rule dispatch. */
+  getPicStats(): PicStats {
+    return this.picDispatcher.getStats();
+  }
 
   /** Registers all TGG rules and primitive `typeMaps` from a language's `PolyglotConfig`. */
   registerPolyglotConfig(defaultSourceLang: string, config: PolyglotConfig | undefined): void {
@@ -364,7 +381,7 @@ export class TggSymbolProjectionTable {
       fieldAliases.push({ sourceField: String(srcGuards["name"]), targetField: String(tgtGuards["declaredName"]) });
     }
 
-    this.rules.push({
+    const evaluated: EvaluatedCorrespondenceRule = {
       ruleName: rule.name,
       sourceLang,
       targetLang,
@@ -380,8 +397,21 @@ export class TggSymbolProjectionTable {
       allowCrossLanguageRef: rule.allowCrossLanguageRef ?? true,
       relation: rule.relation ?? rule.foreignKey?.relation ?? "aligned",
       priority: rule.priority ?? 0,
-    });
+    };
+    this.rules.push(evaluated);
     this.rules.sort((a, b) => b.priority - a.priority);
+
+    // Populate O(1) Polymorphic Inline Cache for unguarded cross-language rules
+    if (evaluated.allowCrossLanguageRef) {
+      const srcDom = registerLanguageDomain(sourceLang);
+      const tgtDom = registerLanguageDomain(targetLang);
+      if (Object.keys(srcGuards).length === 0) {
+        this.picDispatcher.register(srcDom, evaluated.sourceNodeType, tgtDom, evaluated);
+      }
+      if (Object.keys(tgtGuards).length === 0) {
+        this.picDispatcher.register(tgtDom, evaluated.targetNodeType, srcDom, evaluated);
+      }
+    }
   }
 
   /** Registers an N-ary `TGGThreadRuleOptions` by expanding pairwise bidirectional projections. */
@@ -422,6 +452,27 @@ export class TggSymbolProjectionTable {
     const reqLang = normalizeTggLanguageId(referencingLang);
     const candLang = normalizeTggLanguageId(candidate.language);
     if (!reqLang || !candLang || reqLang === candLang) return null;
+
+    // O(1) Polymorphic Inline Cache fast path for unguarded rules
+    if (!expectedKindsOrRules || expectedKindsOrRules.length === 0) {
+      const candDom = registerLanguageDomain(candLang);
+      const reqDom = registerLanguageDomain(reqLang);
+      const picHit =
+        (candidate.ruleName ? this.picDispatcher.lookup(candDom, candidate.ruleName, reqDom) : undefined) ??
+        this.picDispatcher.lookup(candDom, candidate.kind, reqDom);
+      if (picHit && picHit.allowCrossLanguageRef) {
+        if (
+          (picHit.sourceLang === candLang &&
+            picHit.targetLang === reqLang &&
+            matchesEntryNodeType(candidate, picHit.sourceNodeType, picHit.sourceLiteralGuards)) ||
+          (picHit.sourceLang === reqLang &&
+            picHit.targetLang === candLang &&
+            matchesEntryNodeType(candidate, picHit.targetNodeType, picHit.targetLiteralGuards))
+        ) {
+          return picHit;
+        }
+      }
+    }
 
     for (const r of this.rules) {
       if (!r.allowCrossLanguageRef) continue;
@@ -475,6 +526,47 @@ export class TggSymbolProjectionTable {
     const matchedRule = this.canResolveAs(normTgt, candidate);
     const childIds = index.childrenOf.get(candidate.id) ?? [];
     const members: ProjectedForeignMember[] = [];
+
+    if (childIds.length === 0) {
+      // Trait-based zero-allocation streaming via SymbolInteropLibrary when child symbols are not materialized
+      const interopLib = this.interopRegistry.getForSymbol(candidate.id);
+      if (interopLib) {
+        const traits = interopLib.getTraits(candidate.id, index);
+        if ((traits & InteropTrait.HasPorts) !== 0 && interopLib.readPorts) {
+          interopLib.readPorts(
+            candidate.id,
+            (name, portType, direction) => {
+              const projectedType = this.mapType(candLang, normTgt, portType);
+              members.push({
+                symbolId: candidate.id,
+                name,
+                projectedType,
+                role: "port",
+                ...(direction === "in" || direction === "out" || direction === "inout" ? { direction } : {}),
+              });
+            },
+            index,
+          );
+        }
+        if ((traits & InteropTrait.HasParameters) !== 0 && interopLib.readParameters) {
+          interopLib.readParameters(
+            candidate.id,
+            (name, paramType, defaultValue, unit) => {
+              const projectedType = this.mapType(candLang, normTgt, paramType);
+              members.push({
+                symbolId: candidate.id,
+                name,
+                projectedType,
+                role: "parameter",
+                ...(defaultValue !== undefined ? { defaultValue } : {}),
+                ...(unit !== undefined ? { unit } : {}),
+              });
+            },
+            index,
+          );
+        }
+      }
+    }
 
     for (const cid of childIds) {
       const ch = index.symbols.get(cid);

@@ -1,0 +1,11 @@
+name: "@modelscript/hec2-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom USACE HEC-2 / Chow Manning roughness & bridge/culvert loss standard library (21 schemas, cleanroom SVG icons, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: hec2
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

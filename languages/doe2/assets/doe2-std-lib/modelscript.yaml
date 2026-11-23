@@ -1,0 +1,11 @@
+name: "@modelscript/doe2-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom ASHRAE / LBNL DOE-2 building materials, glazing, and HVAC systems standard library (14 schemas, SVG block icons, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: doe2
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

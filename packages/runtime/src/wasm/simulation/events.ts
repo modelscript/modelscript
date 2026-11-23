@@ -281,7 +281,7 @@ export class EventDetector {
  * Creates and initializes an EventDetector in WASM linear memory.
  */
 export function event_createDetector(daePtr: u32): u32 {
-  let ptr = atomicChunkAlloc(sizeof<EventDetector>());
+  let ptr = atomicChunkAlloc(offsetof<EventDetector>() as u32);
   let detector = changetype<EventDetector>(ptr);
   detector.init(changetype<DaeBuilder>(daePtr));
   return ptr as u32;

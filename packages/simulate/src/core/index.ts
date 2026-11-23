@@ -2,6 +2,7 @@
 
 export * from "./ad-transforms.js";
 export * from "./adjoint-integrator.js";
+export * from "./arena-solve-dispatch.js";
 export * from "./callbacks.js";
 export * from "./compile-arena-function.js";
 export * from "./continuum-participant.js";

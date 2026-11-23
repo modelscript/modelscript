@@ -524,7 +524,7 @@ export class CorrespondenceIndex {
  * Creates and initializes a new CorrespondenceIndex in WASM linear memory.
  */
 export function createCorrespondenceIndex(initialCapacity: u32): usize {
-  let ptr = atomicChunkAlloc(sizeof<CorrespondenceIndex>());
+  let ptr = atomicChunkAlloc(offsetof<CorrespondenceIndex>() as u32);
   let idx = changetype<CorrespondenceIndex>(ptr);
   idx.init(initialCapacity != 0 ? initialCapacity : 1024);
   return ptr;

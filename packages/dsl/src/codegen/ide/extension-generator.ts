@@ -426,6 +426,14 @@ export function generatePackageJson(
     }
   }
 
+  // Polyglot Infinite Spatial Canvas Custom Editor (.mscanvas)
+  customEditors.push({
+    viewType: "modelscript.spatialCanvas",
+    displayName: "Polyglot Spatial Canvas",
+    selector: [{ filenamePattern: "*.mscanvas" }],
+    priority: "default",
+  });
+
   // If STEP / 3D CAD viewer is enabled
   if (options?.features?.cad3dViewer || languages.some((l) => l.id === "step")) {
     customEditors.push({

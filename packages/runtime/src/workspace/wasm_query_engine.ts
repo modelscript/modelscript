@@ -35,6 +35,11 @@
 
 import { TaxonomyIndex } from "@modelscript/dsl";
 import {
+  defaultSymbolInteropRegistry,
+  type SymbolInteropLibrary,
+  type SymbolInteropRegistry,
+} from "../interop/symbol_interop.js";
+import {
   type CSTTree,
   type DependencyKey,
   Durability,
@@ -476,6 +481,18 @@ export class WasmQueryEngine {
   private cacheStore?: QueryCacheStore | undefined;
   /** Maximum number of memoized query entries retained before eviction triggers. */
   private maxMemos: number;
+  /** Trait-based interop registry for O(1) zero-allocation foreign symbol capability queries. */
+  public interopRegistry: SymbolInteropRegistry = defaultSymbolInteropRegistry;
+
+  /** Returns the registered `SymbolInteropLibrary` for `symbolId`'s 8-bit language domain, if any. */
+  public getForeignSymbolInterop(symbolId: SymbolId): SymbolInteropLibrary | undefined {
+    return this.interopRegistry.getForSymbol(symbolId);
+  }
+
+  /** Returns the `InteropTrait` bitmask for a foreign `symbolId` in O(1) without DTO allocation. */
+  public getForeignSymbolTraits(symbolId: SymbolId, index?: SymbolIndex): number {
+    return this.interopRegistry.getTraits(symbolId, index);
+  }
 
   /**
    * 3-tier Salsa durability last-changed revision table (`[Low, Medium, High]`).

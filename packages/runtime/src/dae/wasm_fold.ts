@@ -6234,20 +6234,10 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
   out.algorithmAnnotations = [...dae.algorithmAnnotations];
   out.experiment = { ...dae.experiment };
   out.hiddenVarIndices = new Set(dae.hiddenVarIndices);
-  for (const [k, v] of dae.diffusionExprIds) out.diffusionExprIds.set(k, v);
   out.extensionMetadata = {
     ...dae.extensionMetadata,
     ...(dae.extensionMetadata.webgpu && { webgpu: { ...dae.extensionMetadata.webgpu } }),
     ...(dae.extensionMetadata.audioClock && { audioClock: { ...dae.extensionMetadata.audioClock } }),
-    ...(dae.extensionMetadata.sde && { sde: { ...dae.extensionMetadata.sde } }),
-    ...(dae.extensionMetadata.bvp && {
-      bvp: {
-        ...dae.extensionMetadata.bvp,
-        boundaryConditions: dae.extensionMetadata.bvp.boundaryConditions
-          ? [...dae.extensionMetadata.bvp.boundaryConditions]
-          : undefined,
-      },
-    }),
     ...(dae.extensionMetadata.surrogate && { surrogate: new Map(dae.extensionMetadata.surrogate) }),
     ...(dae.extensionMetadata.feaMesh && { feaMesh: dae.extensionMetadata.feaMesh.map((x) => ({ ...x })) }),
     ...(dae.extensionMetadata.cfdFlow && {

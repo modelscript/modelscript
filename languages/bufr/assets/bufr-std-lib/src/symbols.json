@@ -1,0 +1,530 @@
+[
+  {
+    "name": "WmoBlockStation",
+    "kind": "Class",
+    "namePath": "BUFR.WmoBlockStation",
+    "exports": [
+      "block",
+      "station",
+      "bitWidth"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "WMO Station ID",
+      "category": "Identification & Location",
+      "domain": "meteorology",
+      "description": "WMO block number (0-01-001, 7 bits) and station number (0-01-002, 10 bits).",
+      "provenance": "WMO-No. 306 FM 94 BUFR Table B Class 01",
+      "aliases": [
+        "0-01-001",
+        "0-01-002",
+        "WMO_STATION_ID",
+        "STATION"
+      ],
+      "parameters": [
+        {
+          "key": "block",
+          "type": "real",
+          "defaultValue": 72,
+          "unit": "Numeric",
+          "description": "WMO block number (0..99)"
+        },
+        {
+          "key": "station",
+          "type": "real",
+          "defaultValue": 493,
+          "unit": "Numeric",
+          "description": "WMO station number (0..999)"
+        },
+        {
+          "key": "bitWidth",
+          "type": "real",
+          "defaultValue": 17,
+          "unit": "bits",
+          "description": "Combined block+station bit width"
+        }
+      ],
+      "wasmKernel": "bufr_eval",
+      "archetypeId": 1,
+      "descriptor": "0-01-001"
+    }
+  },
+  {
+    "name": "GeoCoordinates",
+    "kind": "Class",
+    "namePath": "BUFR.GeoCoordinates",
+    "exports": [
+      "latitude",
+      "longitude",
+      "scale"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Lat / Lon (High Acc)",
+      "category": "Identification & Location",
+      "domain": "meteorology",
+      "description": "High-accuracy latitude (0-05-001, scale 5, ref -9e6, 25 bits) and longitude (0-06-001, scale 5, ref -18e6, 26 bits).",
+      "provenance": "WMO-No. 306 FM 94 BUFR Table B Classes 05 & 06",
+      "aliases": [
+        "0-05-001",
+        "0-06-001",
+        "LATLON",
+        "3-01-021"
+      ],
+      "parameters": [
+        {
+          "key": "latitude",
+          "type": "real",
+          "defaultValue": 37.75,
+          "unit": "deg",
+          "description": "WGS-84 latitude (-90..90 deg)"
+        },
+        {
+          "key": "longitude",
+          "type": "real",
+          "defaultValue": -122.22,
+          "unit": "deg",
+          "description": "WGS-84 longitude (-180..180 deg)"
+        },
+        {
+          "key": "scale",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "10^scale",
+          "description": "Decimal scale factor"
+        }
+      ],
+      "wasmKernel": "bufr_eval",
+      "archetypeId": 2,
+      "descriptor": "0-05-001"
+    }
+  },
+  {
+    "name": "AtmosphericPressure",
+    "kind": "Class",
+    "namePath": "BUFR.AtmosphericPressure",
+    "exports": [
+      "pressurePa",
+      "scale",
+      "bitWidth"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Pressure (Pa)",
+      "category": "Pressure & Vertical",
+      "domain": "meteorology",
+      "description": "Atmospheric pressure (0-07-004 / 0-10-004, scale -1, ref 0, 14 bits, 10 Pa resolution).",
+      "provenance": "WMO-No. 306 FM 94 BUFR Table B Classes 07 & 10",
+      "aliases": [
+        "0-07-004",
+        "0-10-004",
+        "0-10-051",
+        "PRESSURE"
+      ],
+      "parameters": [
+        {
+          "key": "pressurePa",
+          "type": "real",
+          "defaultValue": 101325,
+          "unit": "Pa",
+          "description": "Atmospheric pressure in Pascals"
+        },
+        {
+          "key": "scale",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "10^scale",
+          "description": "BUFR Table B scale (-1 => 10 Pa step)"
+        },
+        {
+          "key": "bitWidth",
+          "type": "real",
+          "defaultValue": 14,
+          "unit": "bits",
+          "description": "BUFR bit width"
+        }
+      ],
+      "wasmKernel": "bufr_eval",
+      "archetypeId": 10,
+      "descriptor": "0-07-004"
+    }
+  },
+  {
+    "name": "GeopotentialHeight",
+    "kind": "Class",
+    "namePath": "BUFR.GeopotentialHeight",
+    "exports": [
+      "heightGpm",
+      "referenceValue",
+      "bitWidth"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Geopotential Height",
+      "category": "Pressure & Vertical",
+      "domain": "meteorology",
+      "description": "Geopotential height (0-10-009, scale 0, ref -1000, 17 bits, gpm).",
+      "provenance": "WMO-No. 306 FM 94 BUFR Table B Class 10",
+      "aliases": [
+        "0-10-009",
+        "GEOPOTENTIAL",
+        "ALTITUDE"
+      ],
+      "parameters": [
+        {
+          "key": "heightGpm",
+          "type": "real",
+          "defaultValue": 1500,
+          "unit": "gpm",
+          "description": "Geopotential height in geopotential meters"
+        },
+        {
+          "key": "referenceValue",
+          "type": "real",
+          "defaultValue": -1000,
+          "unit": "gpm",
+          "description": "Table B reference offset"
+        },
+        {
+          "key": "bitWidth",
+          "type": "real",
+          "defaultValue": 17,
+          "unit": "bits",
+          "description": "BUFR bit width"
+        }
+      ],
+      "wasmKernel": "bufr_eval",
+      "archetypeId": 16,
+      "descriptor": "0-10-009"
+    }
+  },
+  {
+    "name": "DryBulbTemperature",
+    "kind": "Class",
+    "namePath": "BUFR.DryBulbTemperature",
+    "exports": [
+      "temperatureK",
+      "scale",
+      "bitWidth"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Dry-Bulb Temp (K)",
+      "category": "Thermodynamics & Moisture",
+      "domain": "meteorology",
+      "description": "High-accuracy air temperature (0-12-101, scale 2, ref 0, 16 bits, 0.01 K resolution).",
+      "provenance": "WMO-No. 306 FM 94 BUFR Table B Class 12",
+      "aliases": [
+        "0-12-101",
+        "0-12-001",
+        "TEMPERATURE",
+        "T"
+      ],
+      "parameters": [
+        {
+          "key": "temperatureK",
+          "type": "real",
+          "defaultValue": 288.15,
+          "unit": "K",
+          "description": "Dry-bulb air temperature in Kelvin"
+        },
+        {
+          "key": "scale",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "10^scale",
+          "description": "BUFR Table B scale (0.01 K)"
+        },
+        {
+          "key": "bitWidth",
+          "type": "real",
+          "defaultValue": 16,
+          "unit": "bits",
+          "description": "BUFR bit width"
+        }
+      ],
+      "wasmKernel": "bufr_eval",
+      "archetypeId": 11,
+      "descriptor": "0-12-101"
+    }
+  },
+  {
+    "name": "DewpointTemperature",
+    "kind": "Class",
+    "namePath": "BUFR.DewpointTemperature",
+    "exports": [
+      "dewpointK",
+      "scale",
+      "bitWidth"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Dewpoint Temp (K)",
+      "category": "Thermodynamics & Moisture",
+      "domain": "meteorology",
+      "description": "High-accuracy dewpoint temperature (0-12-103, scale 2, ref 0, 16 bits, 0.01 K resolution).",
+      "provenance": "WMO-No. 306 FM 94 BUFR Table B Class 12",
+      "aliases": [
+        "0-12-103",
+        "0-12-003",
+        "DEWPOINT",
+        "TD"
+      ],
+      "parameters": [
+        {
+          "key": "dewpointK",
+          "type": "real",
+          "defaultValue": 281.15,
+          "unit": "K",
+          "description": "Dewpoint temperature in Kelvin"
+        },
+        {
+          "key": "scale",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "10^scale",
+          "description": "BUFR Table B scale (0.01 K)"
+        },
+        {
+          "key": "bitWidth",
+          "type": "real",
+          "defaultValue": 16,
+          "unit": "bits",
+          "description": "BUFR bit width"
+        }
+      ],
+      "wasmKernel": "bufr_eval",
+      "archetypeId": 12,
+      "descriptor": "0-12-103"
+    }
+  },
+  {
+    "name": "RelativeHumidity",
+    "kind": "Class",
+    "namePath": "BUFR.RelativeHumidity",
+    "exports": [
+      "rhPct",
+      "bitWidth"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Relative Humidity",
+      "category": "Thermodynamics & Moisture",
+      "domain": "meteorology",
+      "description": "Relative humidity (0-13-003, scale 0, ref 0, 7 bits, 0..100%).",
+      "provenance": "WMO-No. 306 FM 94 BUFR Table B Class 13",
+      "aliases": [
+        "0-13-003",
+        "RH",
+        "HUMIDITY"
+      ],
+      "parameters": [
+        {
+          "key": "rhPct",
+          "type": "real",
+          "defaultValue": 65,
+          "unit": "%",
+          "description": "Relative humidity in percent"
+        },
+        {
+          "key": "bitWidth",
+          "type": "real",
+          "defaultValue": 7,
+          "unit": "bits",
+          "description": "BUFR bit width"
+        }
+      ],
+      "wasmKernel": "bufr_eval",
+      "archetypeId": 13,
+      "descriptor": "0-13-003"
+    }
+  },
+  {
+    "name": "WindVector",
+    "kind": "Class",
+    "namePath": "BUFR.WindVector",
+    "exports": [
+      "directionDeg",
+      "speedMs"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Wind Speed / Dir",
+      "category": "Wind & Precipitation",
+      "domain": "meteorology",
+      "description": "Wind direction (0-11-001, 9 bits, deg true) and wind speed (0-11-002, scale 1, 12 bits, m/s).",
+      "provenance": "WMO-No. 306 FM 94 BUFR Table B Class 11",
+      "aliases": [
+        "0-11-001",
+        "0-11-002",
+        "WIND"
+      ],
+      "parameters": [
+        {
+          "key": "directionDeg",
+          "type": "real",
+          "defaultValue": 270,
+          "unit": "deg",
+          "description": "Wind direction (meteorological degrees true)"
+        },
+        {
+          "key": "speedMs",
+          "type": "real",
+          "defaultValue": 8.5,
+          "unit": "m/s",
+          "description": "Wind speed in m/s"
+        }
+      ],
+      "wasmKernel": "bufr_eval",
+      "archetypeId": 14,
+      "descriptor": "0-11-002"
+    }
+  },
+  {
+    "name": "TotalPrecipitation",
+    "kind": "Class",
+    "namePath": "BUFR.TotalPrecipitation",
+    "exports": [
+      "precipMm",
+      "scale",
+      "bitWidth"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Precipitation",
+      "category": "Wind & Precipitation",
+      "domain": "meteorology",
+      "description": "Total precipitation / liquid water equivalent (0-13-011, scale 1, ref -1, 14 bits, kg/m^2).",
+      "provenance": "WMO-No. 306 FM 94 BUFR Table B Class 13",
+      "aliases": [
+        "0-13-011",
+        "0-13-019",
+        "PRECIP"
+      ],
+      "parameters": [
+        {
+          "key": "precipMm",
+          "type": "real",
+          "defaultValue": 2.4,
+          "unit": "kg/m^2",
+          "description": "Accumulated precipitation (mm water equivalent)"
+        },
+        {
+          "key": "scale",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "10^scale",
+          "description": "BUFR Table B scale"
+        },
+        {
+          "key": "bitWidth",
+          "type": "real",
+          "defaultValue": 14,
+          "unit": "bits",
+          "description": "BUFR bit width"
+        }
+      ],
+      "wasmKernel": "bufr_eval",
+      "archetypeId": 15,
+      "descriptor": "0-13-011"
+    }
+  },
+  {
+    "name": "SynopSurfaceSequence",
+    "kind": "Class",
+    "namePath": "BUFR.SynopSurfaceSequence",
+    "exports": [
+      "pressurePa",
+      "temperatureK",
+      "dewpointK"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SYNOP Surface Seq",
+      "category": "WMO Table D Sequences",
+      "domain": "meteorology",
+      "description": "WMO Table D SYNOP surface meteorological report sequence (station, date/time, lat/lon/elev, P, T, Td, RH, wind, precip).",
+      "provenance": "WMO-No. 306 FM 94 BUFR Table D 3-07-080",
+      "aliases": [
+        "3-07-080",
+        "SYNOP"
+      ],
+      "parameters": [
+        {
+          "key": "pressurePa",
+          "type": "real",
+          "defaultValue": 101325,
+          "unit": "Pa",
+          "description": "Surface pressure"
+        },
+        {
+          "key": "temperatureK",
+          "type": "real",
+          "defaultValue": 288.15,
+          "unit": "K",
+          "description": "Dry-bulb temperature"
+        },
+        {
+          "key": "dewpointK",
+          "type": "real",
+          "defaultValue": 281.15,
+          "unit": "K",
+          "description": "Dewpoint temperature"
+        }
+      ],
+      "wasmKernel": "bufr_eval",
+      "archetypeId": 30,
+      "descriptor": "3-07-080"
+    }
+  },
+  {
+    "name": "RadiosondeSoundingSequence",
+    "kind": "Class",
+    "namePath": "BUFR.RadiosondeSoundingSequence",
+    "exports": [
+      "levels",
+      "surfacePressurePa",
+      "surfaceTempK"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Radiosonde 3-09-052",
+      "category": "WMO Table D Sequences",
+      "domain": "meteorology",
+      "description": "WMO Table D radiosonde upper-air sounding sequence (3-09-052) with delayed replication (1-01-000, 0-31-002) of pressure/geopotential/T/Td/wind levels.",
+      "provenance": "WMO-No. 306 FM 94 BUFR Table D 3-09-052",
+      "aliases": [
+        "3-09-052",
+        "RADIOSONDE",
+        "TEMP",
+        "SOUNDING"
+      ],
+      "parameters": [
+        {
+          "key": "levels",
+          "type": "real",
+          "defaultValue": 8,
+          "unit": "Numeric",
+          "description": "Number of vertical pressure levels"
+        },
+        {
+          "key": "surfacePressurePa",
+          "type": "real",
+          "defaultValue": 101325,
+          "unit": "Pa",
+          "description": "Surface launch pressure"
+        },
+        {
+          "key": "surfaceTempK",
+          "type": "real",
+          "defaultValue": 288.15,
+          "unit": "K",
+          "description": "Surface dry-bulb temperature"
+        }
+      ],
+      "wasmKernel": "bufr_eval",
+      "archetypeId": 31,
+      "descriptor": "3-09-052"
+    }
+  }
+]

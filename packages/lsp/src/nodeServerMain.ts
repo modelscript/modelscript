@@ -32,7 +32,7 @@ import {
   TextDocuments,
   TextDocumentSyncKind,
 } from "vscode-languageserver/node.js";
-import { LspContext } from "./lsp-context.js";
+import { getSharedLspPolyglotEngine, LspContext } from "./lsp-context.js";
 import { legend } from "./providers/semanticTokensProvider.js";
 import { registerBuiltinLanguagePlugins } from "./registry/builtin-plugins.js";
 import { globalLanguageRegistry } from "./registry/LanguageRegistry.js";
@@ -773,6 +773,11 @@ export function startNodeServer(input?: any, output?: any) {
   });
 
   // Construct complete LspContext
+  const polyglotEngine = getSharedLspPolyglotEngine();
+  const polyglotContext = polyglotEngine.createContext({
+    contextId: `lsp-node-${process.pid}`,
+  });
+
   const lspContext: LspContext = {
     connection,
     documents,
@@ -782,6 +787,8 @@ export function startNodeServer(input?: any, output?: any) {
     parserService,
     diagramService,
     cadMetricsService,
+    polyglotEngine,
+    polyglotContext,
     state: {
       activeValidationPromises: validationService.activeValidationPromises,
       get sharedContext() {

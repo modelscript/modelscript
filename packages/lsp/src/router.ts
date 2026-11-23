@@ -2,6 +2,7 @@
 
 import { registerActionRouter } from "./handlers/actionRouter.js";
 import { registerAnalysisEndpoints } from "./handlers/analysisEndpoints.js";
+import { registerCanvasEndpoints } from "./handlers/canvasEndpoints.js";
 import { registerClassQueryEndpoints } from "./handlers/classqueryEndpoints.js";
 import { registerDiagramHandlers } from "./handlers/diagramHandler.js";
 import { registerInteropEndpoints } from "./handlers/interopEndpoints.js";
@@ -128,6 +129,7 @@ export function registerAllLspEndpoints(context: LspContext): void {
   registerAnalysisEndpoints(context);
   registerRtmEndpoints(context);
   registerInteropEndpoints(context);
+  registerCanvasEndpoints(context);
   registerClassQueryEndpoints(context);
   registerOwl2Endpoints(context);
   registerMiscEndpoints(context);

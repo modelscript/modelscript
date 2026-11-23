@@ -60,7 +60,31 @@ export type ProblemKind =
   | "barrier"
   | "optimization"
   | "abstract-interpretation"
-  | "ensemble";
+  | "ensemble"
+  | "spectral"
+  | "sysid"
+  | "mor"
+  | "identifiability"
+  | "probabilistic-inference"
+  | "causal"
+  | "reliability"
+  | "motion-planning"
+  | "trajectory-opt"
+  | "multibody"
+  | "synthesis"
+  | "game-equilibrium"
+  | "scheduling"
+  | "graph-flow"
+  | "graph-partition"
+  | "des"
+  | "topology-opt"
+  | "eda-layout"
+  | "geometry"
+  | "stochastic-kinetics"
+  | "fba"
+  | "chemical-eq"
+  | "electromagnetics"
+  | "dose-transport";
 
 export interface AbstractProblem<K extends ProblemKind = ProblemKind, P = unknown> {
   readonly kind: K;
@@ -143,6 +167,183 @@ export interface UnifiedEnsembleProblem<
   readonly probFunc: (prob: TProb, index: number) => TProb;
 }
 
+export interface UnifiedSpectralProblem<P = unknown> extends AbstractProblem<"spectral", P> {
+  readonly signal: Readonly<Float64Array | number[]>;
+  readonly sampleRateHz: number;
+}
+
+export interface UnifiedSysIdProblem<P = unknown> extends AbstractProblem<"sysid", P> {
+  readonly mode: "frequency" | "time";
+  readonly frequenciesHz?: readonly number[] | undefined;
+  readonly responseReal?: readonly number[] | undefined;
+  readonly responseImag?: readonly number[] | undefined;
+  readonly inputs?: readonly (readonly number[])[] | undefined;
+  readonly outputs?: readonly (readonly number[])[] | undefined;
+  readonly dt?: number | undefined;
+  readonly order: number;
+}
+
+export interface UnifiedMorProblem<P = unknown> extends AbstractProblem<"mor", P> {
+  readonly A: readonly (readonly number[])[];
+  readonly B: readonly (readonly number[])[];
+  readonly C: readonly (readonly number[])[];
+  readonly D?: readonly (readonly number[])[] | undefined;
+  readonly E?: readonly (readonly number[])[] | undefined;
+  readonly targetOrder: number;
+}
+
+export interface UnifiedIdentifiabilityProblem<P = unknown> extends AbstractProblem<"identifiability", P> {
+  readonly fn: ModelFunction<P>;
+  readonly outputFn: (u: readonly number[], p: readonly number[]) => number[];
+  readonly u0: readonly number[];
+  readonly p0: readonly number[];
+  readonly paramNames?: readonly string[] | undefined;
+}
+
+export interface UnifiedProbabilisticInferenceProblem<P = unknown> extends AbstractProblem<
+  "probabilistic-inference",
+  P
+> {
+  readonly logDensity: (theta: readonly number[]) => number;
+  readonly gradLogDensity?: ((theta: readonly number[]) => number[]) | undefined;
+  readonly initialTheta: readonly number[];
+  readonly numSamples?: number | undefined;
+  readonly warmup?: number | undefined;
+  readonly seed?: number | undefined;
+}
+
+export interface UnifiedCausalProblem<P = unknown> extends AbstractProblem<"causal", P> {
+  readonly variables: readonly string[];
+  readonly edges: readonly (readonly [string, string])[];
+  readonly intervention?: Readonly<Record<string, number>> | undefined;
+  readonly target: string;
+}
+
+export interface UnifiedReliabilityProblem<P = unknown> extends AbstractProblem<"reliability", P> {
+  readonly missionTime: number;
+  readonly model: unknown;
+}
+
+export interface UnifiedMotionPlanningProblem<P = unknown> extends AbstractProblem<"motion-planning", P> {
+  readonly start: readonly number[];
+  readonly goal: readonly number[];
+  readonly boundsMin: readonly number[];
+  readonly boundsMax: readonly number[];
+  readonly isCollisionFree: (q: readonly number[]) => boolean;
+}
+
+export interface UnifiedTrajectoryOptProblem<P = unknown> extends AbstractProblem<"trajectory-opt", P> {
+  readonly dynamics: (x: readonly number[], u: readonly number[], t: number) => number[];
+  readonly stageCost: (x: readonly number[], u: readonly number[], t: number) => number;
+  readonly terminalCost: (x: readonly number[]) => number;
+  readonly x0: readonly number[];
+  readonly horizon: number;
+  readonly steps: number;
+  readonly uDim: number;
+}
+
+export interface UnifiedMultibodyProblem<P = unknown> extends AbstractProblem<"multibody", P> {
+  readonly bodies: unknown;
+  readonly q: readonly number[];
+  readonly qd: readonly number[];
+  readonly tau?: readonly number[] | undefined;
+}
+
+export interface UnifiedSynthesisProblem<P = unknown> extends AbstractProblem<"synthesis", P> {
+  readonly mode: "cbf-clf-qp" | "gr1" | "cegis";
+  readonly spec: unknown;
+}
+
+export interface UnifiedGameEquilibriumProblem<P = unknown> extends AbstractProblem<"game-equilibrium", P> {
+  readonly payoffA: readonly (readonly number[])[];
+  readonly payoffB: readonly (readonly number[])[];
+}
+
+export interface UnifiedSchedulingProblem<P = unknown> extends AbstractProblem<"scheduling", P> {
+  readonly tasks: readonly {
+    readonly id: string;
+    readonly duration: number;
+    readonly predecessors?: readonly string[] | undefined;
+    readonly resourceDemand?: readonly number[] | undefined;
+  }[];
+  readonly resourceCapacities?: readonly number[] | undefined;
+}
+
+export interface UnifiedGraphFlowProblem<P = unknown> extends AbstractProblem<"graph-flow", P> {
+  readonly numNodes: number;
+  readonly edges: readonly {
+    readonly from: number;
+    readonly to: number;
+    readonly capacity: number;
+    readonly cost?: number | undefined;
+  }[];
+  readonly source: number;
+  readonly sink: number;
+}
+
+export interface UnifiedGraphPartitionProblem<P = unknown> extends AbstractProblem<"graph-partition", P> {
+  readonly numNodes: number;
+  readonly edges: readonly (readonly [number, number, number?])[];
+  readonly numPartitions: number;
+}
+
+export interface UnifiedDesProblem<P = unknown> extends AbstractProblem<"des", P> {
+  readonly horizon: number;
+  readonly initialEvents: readonly { readonly time: number; readonly type: string; readonly payload?: unknown }[];
+}
+
+export interface UnifiedTopologyOptProblem<P = unknown> extends AbstractProblem<"topology-opt", P> {
+  readonly nelx: number;
+  readonly nely: number;
+  readonly volumeFraction: number;
+  readonly penalization?: number | undefined;
+  readonly rmin?: number | undefined;
+}
+
+export interface UnifiedEdaLayoutProblem<P = unknown> extends AbstractProblem<"eda-layout", P> {
+  readonly components: unknown;
+  readonly nets: unknown;
+  readonly boardWidth: number;
+  readonly boardHeight: number;
+}
+
+export interface UnifiedGeometryProblem<P = unknown> extends AbstractProblem<"geometry", P> {
+  readonly operation: "delaunay" | "sdf" | "marching-cubes" | "nurbs";
+  readonly payload: unknown;
+}
+
+export interface UnifiedStochasticKineticsProblem<P = unknown> extends AbstractProblem<"stochastic-kinetics", P> {
+  readonly initialCounts: readonly number[];
+  readonly stoichiometry: readonly (readonly number[])[];
+  readonly propensities: (counts: readonly number[]) => number[];
+  readonly tEnd: number;
+  readonly seed?: number | undefined;
+}
+
+export interface UnifiedFbaProblem<P = unknown> extends AbstractProblem<"fba", P> {
+  readonly stoichiometry: readonly (readonly number[])[];
+  readonly lowerBounds: readonly number[];
+  readonly upperBounds: readonly number[];
+  readonly objective: readonly number[];
+}
+
+export interface UnifiedChemicalEqProblem<P = unknown> extends AbstractProblem<"chemical-eq", P> {
+  readonly elementMatrix: readonly (readonly number[])[];
+  readonly elementTotals: readonly number[];
+  readonly standardGibbsRT: readonly number[];
+}
+
+export interface UnifiedElectromagneticsProblem<P = unknown> extends AbstractProblem<"electromagnetics", P> {
+  readonly mode: "fdtd" | "ray-optics";
+  readonly config: unknown;
+}
+
+export interface UnifiedDoseTransportProblem<P = unknown> extends AbstractProblem<"dose-transport", P> {
+  readonly gridShape: readonly [number, number, number];
+  readonly voxelSpacingMm: readonly [number, number, number];
+  readonly beams: unknown;
+}
+
 export type AnyProblem =
   | UnifiedODEProblem
   | UnifiedDAEProblem
@@ -152,7 +353,31 @@ export type AnyProblem =
   | UnifiedReachabilityProblem
   | UnifiedBarrierProblem
   | UnifiedOptimizationProblem
-  | UnifiedEnsembleProblem;
+  | UnifiedEnsembleProblem
+  | UnifiedSpectralProblem
+  | UnifiedSysIdProblem
+  | UnifiedMorProblem
+  | UnifiedIdentifiabilityProblem
+  | UnifiedProbabilisticInferenceProblem
+  | UnifiedCausalProblem
+  | UnifiedReliabilityProblem
+  | UnifiedMotionPlanningProblem
+  | UnifiedTrajectoryOptProblem
+  | UnifiedMultibodyProblem
+  | UnifiedSynthesisProblem
+  | UnifiedGameEquilibriumProblem
+  | UnifiedSchedulingProblem
+  | UnifiedGraphFlowProblem
+  | UnifiedGraphPartitionProblem
+  | UnifiedDesProblem
+  | UnifiedTopologyOptProblem
+  | UnifiedEdaLayoutProblem
+  | UnifiedGeometryProblem
+  | UnifiedStochasticKineticsProblem
+  | UnifiedFbaProblem
+  | UnifiedChemicalEqProblem
+  | UnifiedElectromagneticsProblem
+  | UnifiedDoseTransportProblem;
 
 /** Helper constructors (SciML style). */
 export function ODEProblem<P = unknown>(

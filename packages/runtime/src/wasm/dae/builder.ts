@@ -11,18 +11,37 @@ export {
   VAR_STRIDE, VAR_NAME, VAR_TYPE, VAR_VARIABILITY, VAR_CAUSALITY,
   VAR_START_HI, VAR_START_LO, VAR_SHAPE_DIM, VAR_FLAGS,
   FLAG_TEARING_VAR, FLAG_VAR_FLOW, FLAG_VAR_STREAM,
-  FLAG_VAR_STATE, FLAG_VAR_STATE_DER, FLAG_VAR_FIXED, FLAG_VAR_REMOVED, FLAG_VAR_VIRTUAL,
-  FLAG_EQ_INITIAL, FLAG_EQ_OVERCONSTRAINED, FLAG_EQ_STREAM_CONNECT, FLAG_HIGH_INDEX_EQ, FLAG_EQ_REMOVED,
+  FLAG_VAR_STATE, FLAG_VAR_STATE_DER, FLAG_VAR_FIXED, FLAG_VAR_REMOVED,
+  FLAG_VAR_PROTECTED, FLAG_VAR_FINAL, FLAG_VAR_VIRTUAL, FLAG_VAR_EVALUATE,
+  FLAG_VAR_HIDDEN, FLAG_VAR_BINARY,
+  FLAG_EQ_INITIAL, FLAG_EQ_OVERCONSTRAINED, FLAG_EQ_STREAM_CONNECT, FLAG_HIGH_INDEX_EQ,
+  FLAG_EQ_REMOVED, FLAG_EQ_BOUNDARY,
+  PROBLEM_ODE, PROBLEM_DAE, PROBLEM_OPTIMIZATION, PROBLEM_SDE, PROBLEM_DDE,
+  PROBLEM_BVP, PROBLEM_JUMP, PROBLEM_UNCERTAIN, PROBLEM_REACHABILITY, PROBLEM_HYBRID,
   EQ_STRIDE, EQ_KIND, EQ_LHS, EQ_RHS, EQ_AUX,
   EXPR_STRIDE, EXPR_KIND, EXPR_DATA1, EXPR_LEFT, EXPR_RIGHT,
   STMT_STRIDE, STMT_KIND, STMT_DATA1, STMT_LEFT, STMT_RIGHT,
   VAR_ATTR_STRIDE, CLOCK_STRIDE, WHEN_STRIDE, FOR_STRIDE, IF_STRIDE,
   SM_STRIDE, STATE_STRIDE, TRANSITION_STRIDE,
   FLAG_TRANSITION_IMMEDIATE, FLAG_TRANSITION_RESET, FLAG_TRANSITION_SYNCHRONIZE,
+  OBJ_STRIDE, OBJ_MAYER_EXPR, OBJ_LAGRANGE_EXPR, OBJ_SENSE, OBJ_FLAGS,
+  FLAG_OBJ_MAYER, FLAG_OBJ_LAGRANGE,
+  CON_STRIDE, CON_EXPR, CON_LB_HI, CON_LB_LO, CON_UB_HI, CON_UB_LO, CON_KIND_FLAGS,
+  CONE_STRIDE, CONE_KIND, CONE_MEMBER_START, CONE_MEMBER_COUNT, CONE_DIM,
+  DIFF_STRIDE, DIFF_STATE_VAR, DIFF_NOISE_CH, DIFF_EXPR, DIFF_FLAGS,
+  DELAY_STRIDE, DELAY_TARGET_EXPR, DELAY_TAU_EXPR, DELAY_HISTORY_EXPR, DELAY_HISTORY_DERIV_EXPR, DELAY_FLAGS,
+  FLAG_DELAY_CONSTANT, FLAG_DELAY_TIME_DEP, FLAG_DELAY_STATE_DEP, FLAG_DELAY_NEUTRAL,
+  JUMP_STRIDE, JUMP_PROPENSITY_EXPR, JUMP_AFFECT_START, JUMP_AFFECT_COUNT, JUMP_FLAGS,
+  AFFECT_STRIDE, AFFECT_VAR, AFFECT_EXPR, AFFECT_MODE,
+  UNC_STRIDE, UNC_VAR, UNC_DIST_KIND, UNC_P1_HI, UNC_P1_LO, UNC_P2_HI, UNC_P2_LO,
+  STL_STRIDE, STL_OP, STL_LEFT, STL_RIGHT, STL_TLO_HI, STL_TLO_LO, STL_THI_HI, STL_THI_LO, STL_FLAGS,
+  INV_STRIDE, INV_STATE, INV_VAR, INV_LO_HI, INV_LO_LO, INV_HI_HI, INV_HI_LO,
   NULL_ID,
   // Enums
   VarType, Variability, Causality,
   EqKind, ExprKind, BinOp, UnaryOp, StmtKind, VarAttrKind, BuiltinMathFunc,
+  ObjectiveSense, ConstraintKind, SdeNoiseType, SdeCalculus, BvpMethod,
+  JumpRateKind, JumpAffectMode, UncertaintyDistKind, StlOp,
 } from "./types";
 
 // Local imports for use within this file
@@ -30,13 +49,27 @@ import {
   VAR_STRIDE, VAR_NAME, VAR_TYPE, VAR_VARIABILITY, VAR_CAUSALITY,
   VAR_START_HI, VAR_START_LO, VAR_SHAPE_DIM, VAR_FLAGS,
   FLAG_TEARING_VAR, FLAG_VAR_FLOW, FLAG_VAR_STREAM, FLAG_VAR_FIXED, FLAG_VAR_REMOVED, FLAG_VAR_VIRTUAL,
-  FLAG_EQ_INITIAL, FLAG_EQ_REMOVED,
+  FLAG_EQ_INITIAL, FLAG_EQ_REMOVED, FLAG_EQ_BOUNDARY,
+  PROBLEM_ODE, PROBLEM_DAE, PROBLEM_OPTIMIZATION, PROBLEM_SDE, PROBLEM_DDE,
+  PROBLEM_BVP, PROBLEM_JUMP, PROBLEM_UNCERTAIN, PROBLEM_REACHABILITY, PROBLEM_HYBRID,
   EQ_STRIDE, EQ_KIND, EQ_LHS, EQ_RHS, EQ_AUX,
   EXPR_STRIDE, EXPR_KIND, EXPR_DATA1, EXPR_LEFT, EXPR_RIGHT,
   STMT_STRIDE, STMT_KIND, STMT_DATA1, STMT_LEFT, STMT_RIGHT,
   VAR_ATTR_STRIDE, CLOCK_STRIDE, WHEN_STRIDE, FOR_STRIDE, IF_STRIDE,
   SM_STRIDE, STATE_STRIDE, TRANSITION_STRIDE,
-  ExprKind, EqKind, VarType, Variability,
+  OBJ_STRIDE, OBJ_MAYER_EXPR, OBJ_LAGRANGE_EXPR, OBJ_SENSE, OBJ_FLAGS,
+  FLAG_OBJ_MAYER, FLAG_OBJ_LAGRANGE,
+  CON_STRIDE, CON_EXPR, CON_LB_HI, CON_LB_LO, CON_UB_HI, CON_UB_LO, CON_KIND_FLAGS,
+  CONE_STRIDE, CONE_KIND, CONE_MEMBER_START, CONE_MEMBER_COUNT, CONE_DIM,
+  DIFF_STRIDE, DIFF_STATE_VAR, DIFF_NOISE_CH, DIFF_EXPR, DIFF_FLAGS,
+  DELAY_STRIDE, DELAY_TARGET_EXPR, DELAY_TAU_EXPR, DELAY_HISTORY_EXPR, DELAY_HISTORY_DERIV_EXPR, DELAY_FLAGS,
+  JUMP_STRIDE, JUMP_PROPENSITY_EXPR, JUMP_AFFECT_START, JUMP_AFFECT_COUNT, JUMP_FLAGS,
+  AFFECT_STRIDE, AFFECT_VAR, AFFECT_EXPR, AFFECT_MODE,
+  UNC_STRIDE, UNC_VAR, UNC_DIST_KIND, UNC_P1_HI, UNC_P1_LO, UNC_P2_HI, UNC_P2_LO,
+  STL_STRIDE, STL_OP, STL_LEFT, STL_RIGHT, STL_TLO_HI, STL_TLO_LO, STL_THI_HI, STL_THI_LO, STL_FLAGS,
+  INV_STRIDE, INV_STATE, INV_VAR, INV_LO_HI, INV_LO_LO, INV_HI_HI, INV_HI_LO,
+  NULL_ID,
+  ExprKind, EqKind, VarType, Variability, ObjectiveSense,
 } from "./types";
 
 // Re-export accessor types for convenient access
@@ -113,6 +146,52 @@ export class DaeBuilder {
   startTimeExprId: u32;
   finalTimeExprId: u32;
 
+  // Problem Class Bitmask
+  problemFlags: u32;
+
+  // 1. Multi-Objective & Constraint Optimization Side-Tables (Lazy)
+  objectivesData: ChunkedInt32Array;
+  objectiveCount: u32;
+  constraintsData: ChunkedInt32Array;
+  constraintCount: u32;
+  coneData: ChunkedInt32Array;
+  coneCount: u32;
+  coneMembers: ChunkedInt32Array;
+  coneMemberCount: u32;
+
+  // 2. Stochastic Differential Equation (SDE) Side-Table (Lazy)
+  diffusionData: ChunkedInt32Array;
+  diffusionCount: u32;
+  sdeNoiseType: i32;
+  sdeCalculus: i32;
+  sdeBrownianDim: u32;
+  sdeSeed: u32;
+  sdeEnsemblePaths: u32;
+
+  // 3. Boundary Value Problem (BVP) Config & Boundary Points (Lazy)
+  bvpMethod: i32;
+  bvpIntervals: u32;
+  bvpBoundaryPoints: ChunkedInt32Array;
+  bvpBoundaryPointCount: u32;
+
+  // 4. Delay Differential Equation (DDE / NDDE) Side-Table (Lazy)
+  delayData: ChunkedInt32Array;
+  delayCount: u32;
+
+  // 5. Jump Process / Hybrid Kinetics (SSA) Side-Tables (Lazy)
+  jumpData: ChunkedInt32Array;
+  jumpCount: u32;
+  jumpAffects: ChunkedInt32Array;
+  jumpAffectCount: u32;
+
+  // 6. Uncertainty, Reachability & STL Verification Side-Tables (Lazy)
+  uncertaintyData: ChunkedInt32Array;
+  uncertaintyCount: u32;
+  stlData: ChunkedInt32Array;
+  stlCount: u32;
+  stateInvariants: ChunkedInt32Array;
+  stateInvariantCount: u32;
+
   // Snapshots
   snapshotVarCount: u32;
   snapshotEqCount: u32;
@@ -131,6 +210,19 @@ export class DaeBuilder {
   snapshotStateVarCount: u32;
   snapshotTransitionCount: u32;
   snapshotEventIndicatorCount: u32;
+  snapshotProblemFlags: u32;
+  snapshotObjectiveCount: u32;
+  snapshotConstraintCount: u32;
+  snapshotConeCount: u32;
+  snapshotConeMemberCount: u32;
+  snapshotDiffusionCount: u32;
+  snapshotBvpBoundaryPointCount: u32;
+  snapshotDelayCount: u32;
+  snapshotJumpCount: u32;
+  snapshotJumpAffectCount: u32;
+  snapshotUncertaintyCount: u32;
+  snapshotStlCount: u32;
+  snapshotStateInvariantCount: u32;
 
   // Method Accessors for backwards compatibility
   @inline getVarData(): ChunkedInt32Array { return this.varData; }
@@ -197,6 +289,54 @@ export class DaeBuilder {
     if (changetype<usize>(this.eventIndicators) == 0) this.eventIndicators = createChunkedInt32Array(128);
     return this.eventIndicators;
   }
+  @inline getObjectivesData(): ChunkedInt32Array {
+    if (changetype<usize>(this.objectivesData) == 0) this.objectivesData = createChunkedInt32Array(16 * OBJ_STRIDE);
+    return this.objectivesData;
+  }
+  @inline getConstraintsData(): ChunkedInt32Array {
+    if (changetype<usize>(this.constraintsData) == 0) this.constraintsData = createChunkedInt32Array(128 * CON_STRIDE);
+    return this.constraintsData;
+  }
+  @inline getConeData(): ChunkedInt32Array {
+    if (changetype<usize>(this.coneData) == 0) this.coneData = createChunkedInt32Array(32 * CONE_STRIDE);
+    return this.coneData;
+  }
+  @inline getConeMembers(): ChunkedInt32Array {
+    if (changetype<usize>(this.coneMembers) == 0) this.coneMembers = createChunkedInt32Array(128);
+    return this.coneMembers;
+  }
+  @inline getDiffusionData(): ChunkedInt32Array {
+    if (changetype<usize>(this.diffusionData) == 0) this.diffusionData = createChunkedInt32Array(64 * DIFF_STRIDE);
+    return this.diffusionData;
+  }
+  @inline getBvpBoundaryPoints(): ChunkedInt32Array {
+    if (changetype<usize>(this.bvpBoundaryPoints) == 0) this.bvpBoundaryPoints = createChunkedInt32Array(16);
+    return this.bvpBoundaryPoints;
+  }
+  @inline getDelayData(): ChunkedInt32Array {
+    if (changetype<usize>(this.delayData) == 0) this.delayData = createChunkedInt32Array(32 * DELAY_STRIDE);
+    return this.delayData;
+  }
+  @inline getJumpData(): ChunkedInt32Array {
+    if (changetype<usize>(this.jumpData) == 0) this.jumpData = createChunkedInt32Array(64 * JUMP_STRIDE);
+    return this.jumpData;
+  }
+  @inline getJumpAffects(): ChunkedInt32Array {
+    if (changetype<usize>(this.jumpAffects) == 0) this.jumpAffects = createChunkedInt32Array(128 * AFFECT_STRIDE);
+    return this.jumpAffects;
+  }
+  @inline getUncertaintyData(): ChunkedInt32Array {
+    if (changetype<usize>(this.uncertaintyData) == 0) this.uncertaintyData = createChunkedInt32Array(64 * UNC_STRIDE);
+    return this.uncertaintyData;
+  }
+  @inline getStlData(): ChunkedInt32Array {
+    if (changetype<usize>(this.stlData) == 0) this.stlData = createChunkedInt32Array(64 * STL_STRIDE);
+    return this.stlData;
+  }
+  @inline getStateInvariants(): ChunkedInt32Array {
+    if (changetype<usize>(this.stateInvariants) == 0) this.stateInvariants = createChunkedInt32Array(64 * INV_STRIDE);
+    return this.stateInvariants;
+  }
 
   /**
    * Initializes chunked memory arrays and hash structures.
@@ -218,7 +358,7 @@ export class DaeBuilder {
     this.nameIndex.init(512);
     this.aliasData = createChunkedInt32Array(512);
 
-    let spPtr = atomicChunkAlloc(sizeof<ArenaStringPool>());
+    let spPtr = atomicChunkAlloc(offsetof<ArenaStringPool>() as u32);
     this.stringPool = changetype<ArenaStringPool>(spPtr);
     this.stringPool.init();
 
@@ -265,6 +405,46 @@ export class DaeBuilder {
     this.startTimeExprId = 0xffffffff;
     this.finalTimeExprId = 0xffffffff;
 
+    this.problemFlags = 0;
+
+    // Lazy multi-problem side-tables (zero memory cost when unused)
+    this.objectivesData = changetype<ChunkedInt32Array>(0);
+    this.objectiveCount = 0;
+    this.constraintsData = changetype<ChunkedInt32Array>(0);
+    this.constraintCount = 0;
+    this.coneData = changetype<ChunkedInt32Array>(0);
+    this.coneCount = 0;
+    this.coneMembers = changetype<ChunkedInt32Array>(0);
+    this.coneMemberCount = 0;
+
+    this.diffusionData = changetype<ChunkedInt32Array>(0);
+    this.diffusionCount = 0;
+    this.sdeNoiseType = 0;
+    this.sdeCalculus = 0;
+    this.sdeBrownianDim = 0;
+    this.sdeSeed = 0;
+    this.sdeEnsemblePaths = 1;
+
+    this.bvpMethod = 0;
+    this.bvpIntervals = 20;
+    this.bvpBoundaryPoints = changetype<ChunkedInt32Array>(0);
+    this.bvpBoundaryPointCount = 0;
+
+    this.delayData = changetype<ChunkedInt32Array>(0);
+    this.delayCount = 0;
+
+    this.jumpData = changetype<ChunkedInt32Array>(0);
+    this.jumpCount = 0;
+    this.jumpAffects = changetype<ChunkedInt32Array>(0);
+    this.jumpAffectCount = 0;
+
+    this.uncertaintyData = changetype<ChunkedInt32Array>(0);
+    this.uncertaintyCount = 0;
+    this.stlData = changetype<ChunkedInt32Array>(0);
+    this.stlCount = 0;
+    this.stateInvariants = changetype<ChunkedInt32Array>(0);
+    this.stateInvariantCount = 0;
+
     this.snapshotVarCount = 0;
     this.snapshotEqCount = 0;
     this.snapshotExprCount = 0;
@@ -282,6 +462,19 @@ export class DaeBuilder {
     this.snapshotStateVarCount = 0;
     this.snapshotTransitionCount = 0;
     this.snapshotEventIndicatorCount = 0;
+    this.snapshotProblemFlags = 0;
+    this.snapshotObjectiveCount = 0;
+    this.snapshotConstraintCount = 0;
+    this.snapshotConeCount = 0;
+    this.snapshotConeMemberCount = 0;
+    this.snapshotDiffusionCount = 0;
+    this.snapshotBvpBoundaryPointCount = 0;
+    this.snapshotDelayCount = 0;
+    this.snapshotJumpCount = 0;
+    this.snapshotJumpAffectCount = 0;
+    this.snapshotUncertaintyCount = 0;
+    this.snapshotStlCount = 0;
+    this.snapshotStateInvariantCount = 0;
   }
 
   /**
@@ -309,6 +502,19 @@ export class DaeBuilder {
     this.objectiveIntegrandExprId = 0xffffffff;
     this.startTimeExprId = 0xffffffff;
     this.finalTimeExprId = 0xffffffff;
+    this.problemFlags = 0;
+    this.objectiveCount = 0;
+    this.constraintCount = 0;
+    this.coneCount = 0;
+    this.coneMemberCount = 0;
+    this.diffusionCount = 0;
+    this.bvpBoundaryPointCount = 0;
+    this.delayCount = 0;
+    this.jumpCount = 0;
+    this.jumpAffectCount = 0;
+    this.uncertaintyCount = 0;
+    this.stlCount = 0;
+    this.stateInvariantCount = 0;
     if (changetype<usize>(this.nameIndex) != 0) {
       this.getNameIndex().clear();
     }
@@ -351,6 +557,18 @@ export class DaeBuilder {
     freeChunked(this.stateVars);
     freeChunked(this.transitions);
     freeChunked(this.eventIndicators);
+    freeChunked(this.objectivesData);
+    freeChunked(this.constraintsData);
+    freeChunked(this.coneData);
+    freeChunked(this.coneMembers);
+    freeChunked(this.diffusionData);
+    freeChunked(this.bvpBoundaryPoints);
+    freeChunked(this.delayData);
+    freeChunked(this.jumpData);
+    freeChunked(this.jumpAffects);
+    freeChunked(this.uncertaintyData);
+    freeChunked(this.stlData);
+    freeChunked(this.stateInvariants);
 
     if (changetype<usize>(this.nameIndex) != 0) {
       this.nameIndex.release();
@@ -1021,6 +1239,381 @@ export class DaeBuilder {
   }
 
   /**
+   * Returns the problem class bitmask flags.
+   */
+  getProblemFlags(): u32 {
+    return this.problemFlags;
+  }
+
+  setProblemFlag(flag: u32): void {
+    this.problemFlags |= flag;
+  }
+
+  clearProblemFlag(flag: u32): void {
+    this.problemFlags &= ~flag;
+  }
+
+  // ── 1. Optimization Side-Table Methods ──
+
+  addObjective(mayerExprId: u32, lagrangeExprId: u32, sense: i32, flags: i32): u32 {
+    let idx = this.objectiveCount++;
+    let offset = idx * OBJ_STRIDE;
+    let tbl = this.getObjectivesData();
+    tbl.set(offset + OBJ_MAYER_EXPR, mayerExprId as i32);
+    tbl.set(offset + OBJ_LAGRANGE_EXPR, lagrangeExprId as i32);
+    tbl.set(offset + OBJ_SENSE, sense);
+    tbl.set(offset + OBJ_FLAGS, flags);
+    if (idx == 0) {
+      this.objectiveExprId = mayerExprId;
+      this.objectiveIntegrandExprId = lagrangeExprId;
+    }
+    this.problemFlags |= PROBLEM_OPTIMIZATION;
+    return idx;
+  }
+
+  addConstraint(exprId: u32, lb: f64, ub: f64, kindAndFlags: i32): u32 {
+    let idx = this.constraintCount++;
+    let offset = idx * CON_STRIDE;
+    let lbBits = i64.reinterpret_f64(lb) as u64;
+    let ubBits = i64.reinterpret_f64(ub) as u64;
+    let tbl = this.getConstraintsData();
+    tbl.set(offset + CON_EXPR, exprId as i32);
+    tbl.set(offset + CON_LB_HI, (lbBits >> 32) as i32);
+    tbl.set(offset + CON_LB_LO, (lbBits & 0xffffffff) as i32);
+    tbl.set(offset + CON_UB_HI, (ubBits >> 32) as i32);
+    tbl.set(offset + CON_UB_LO, (ubBits & 0xffffffff) as i32);
+    tbl.set(offset + CON_KIND_FLAGS, kindAndFlags);
+    this.problemFlags |= PROBLEM_OPTIMIZATION;
+    return idx;
+  }
+
+  addConeConstraint(kind: i32, dim: u32): u32 {
+    let idx = this.coneCount++;
+    let offset = idx * CONE_STRIDE;
+    let tbl = this.getConeData();
+    tbl.set(offset + CONE_KIND, kind);
+    tbl.set(offset + CONE_MEMBER_START, this.coneMemberCount as i32);
+    tbl.set(offset + CONE_MEMBER_COUNT, 0);
+    tbl.set(offset + CONE_DIM, dim as i32);
+    this.problemFlags |= PROBLEM_OPTIMIZATION;
+    return idx;
+  }
+
+  addConeMember(coneIdx: u32, exprId: u32): u32 {
+    let mIdx = this.coneMemberCount++;
+    this.getConeMembers().set(mIdx, exprId as i32);
+    let countOffset = coneIdx * CONE_STRIDE + CONE_MEMBER_COUNT;
+    let c = this.getConeData().get(countOffset);
+    this.getConeData().set(countOffset, c + 1);
+    return mIdx;
+  }
+
+  // ── 2. SDE Side-Table Methods ──
+
+  addDiffusion(stateVarId: u32, noiseChannelId: u32, exprId: u32, flags: i32 = 0): u32 {
+    let idx = this.diffusionCount++;
+    let offset = idx * DIFF_STRIDE;
+    let tbl = this.getDiffusionData();
+    tbl.set(offset + DIFF_STATE_VAR, stateVarId as i32);
+    tbl.set(offset + DIFF_NOISE_CH, noiseChannelId as i32);
+    tbl.set(offset + DIFF_EXPR, exprId as i32);
+    tbl.set(offset + DIFF_FLAGS, flags);
+    if (noiseChannelId + 1 > this.sdeBrownianDim) {
+      this.sdeBrownianDim = noiseChannelId + 1;
+    }
+    this.problemFlags |= PROBLEM_SDE;
+    return idx;
+  }
+
+  setSdeConfig(noiseType: i32, calculus: i32, brownianDim: u32, seed: u32, ensemblePaths: u32): void {
+    this.sdeNoiseType = noiseType;
+    this.sdeCalculus = calculus;
+    if (brownianDim > 0) this.sdeBrownianDim = brownianDim;
+    this.sdeSeed = seed;
+    if (ensemblePaths > 0) this.sdeEnsemblePaths = ensemblePaths;
+    this.problemFlags |= PROBLEM_SDE;
+  }
+
+  // ── 3. BVP Side-Table Methods ──
+
+  addBoundaryEquation(lhsId: u32, rhsId: u32, flags: i32 = 0): u32 {
+    this.problemFlags |= PROBLEM_BVP;
+    return this.addEquation(EqKind.Boundary, lhsId, rhsId, (flags | FLAG_EQ_BOUNDARY) as u32);
+  }
+
+  addAtBoundaryExpr(varId: u32, boundaryPointIdx: u32): u32 {
+    this.problemFlags |= PROBLEM_BVP;
+    return this.addExpression(ExprKind.AtBoundary, varId, boundaryPointIdx, NULL_ID);
+  }
+
+  setBvpConfig(method: i32, intervals: u32): void {
+    this.bvpMethod = method;
+    if (intervals > 0) this.bvpIntervals = intervals;
+    this.problemFlags |= PROBLEM_BVP;
+  }
+
+  addBvpBoundaryPoint(tVal: f64): u32 {
+    let idx = this.bvpBoundaryPointCount++;
+    let bits = i64.reinterpret_f64(tVal) as u64;
+    let tbl = this.getBvpBoundaryPoints();
+    tbl.set(idx * 2, (bits >> 32) as i32);
+    tbl.set(idx * 2 + 1, (bits & 0xffffffff) as i32);
+    this.problemFlags |= PROBLEM_BVP;
+    return idx;
+  }
+
+  // ── 4. DDE / NDDE Side-Table Methods ──
+
+  addDelayChannel(targetExprId: u32, tauExprId: u32, historyExprId: u32, historyDerivExprId: u32, flags: i32): u32 {
+    let idx = this.delayCount++;
+    let offset = idx * DELAY_STRIDE;
+    let tbl = this.getDelayData();
+    tbl.set(offset + DELAY_TARGET_EXPR, targetExprId as i32);
+    tbl.set(offset + DELAY_TAU_EXPR, tauExprId as i32);
+    tbl.set(offset + DELAY_HISTORY_EXPR, historyExprId as i32);
+    tbl.set(offset + DELAY_HISTORY_DERIV_EXPR, historyDerivExprId as i32);
+    tbl.set(offset + DELAY_FLAGS, flags);
+    this.problemFlags |= PROBLEM_DDE;
+    return idx;
+  }
+
+  addDelayExpr(delayChannelIdx: u32, targetExprId: u32, tauExprId: u32): u32 {
+    this.problemFlags |= PROBLEM_DDE;
+    return this.addExpression(ExprKind.Delay, delayChannelIdx, targetExprId, tauExprId);
+  }
+
+  // ── 5. Jump Process / SSA Side-Table Methods ──
+
+  addJump(propensityExprId: u32, flags: i32 = 0): u32 {
+    let idx = this.jumpCount++;
+    let offset = idx * JUMP_STRIDE;
+    let tbl = this.getJumpData();
+    tbl.set(offset + JUMP_PROPENSITY_EXPR, propensityExprId as i32);
+    tbl.set(offset + JUMP_AFFECT_START, this.jumpAffectCount as i32);
+    tbl.set(offset + JUMP_AFFECT_COUNT, 0);
+    tbl.set(offset + JUMP_FLAGS, flags);
+    this.problemFlags |= PROBLEM_JUMP;
+    return idx;
+  }
+
+  addJumpAffect(jumpIdx: u32, targetVarId: u32, deltaExprId: u32, mode: i32 = 0): u32 {
+    let aIdx = this.jumpAffectCount++;
+    let aOff = aIdx * AFFECT_STRIDE;
+    let tbl = this.getJumpAffects();
+    tbl.set(aOff + AFFECT_VAR, targetVarId as i32);
+    tbl.set(aOff + AFFECT_EXPR, deltaExprId as i32);
+    tbl.set(aOff + AFFECT_MODE, mode);
+    let cntOff = jumpIdx * JUMP_STRIDE + JUMP_AFFECT_COUNT;
+    let c = this.getJumpData().get(cntOff);
+    this.getJumpData().set(cntOff, c + 1);
+    return aIdx;
+  }
+
+  // ── 6. Uncertainty, Reachability & STL Side-Table Methods ──
+
+  addVarUncertainty(varId: u32, distKind: i32, p1: f64, p2: f64): u32 {
+    let idx = this.uncertaintyCount++;
+    let offset = idx * UNC_STRIDE;
+    let p1Bits = i64.reinterpret_f64(p1) as u64;
+    let p2Bits = i64.reinterpret_f64(p2) as u64;
+    let tbl = this.getUncertaintyData();
+    tbl.set(offset + UNC_VAR, varId as i32);
+    tbl.set(offset + UNC_DIST_KIND, distKind);
+    tbl.set(offset + UNC_P1_HI, (p1Bits >> 32) as i32);
+    tbl.set(offset + UNC_P1_LO, (p1Bits & 0xffffffff) as i32);
+    tbl.set(offset + UNC_P2_HI, (p2Bits >> 32) as i32);
+    tbl.set(offset + UNC_P2_LO, (p2Bits & 0xffffffff) as i32);
+    this.problemFlags |= PROBLEM_UNCERTAIN;
+    return idx;
+  }
+
+  addStlNode(op: i32, leftId: u32, rightId: u32, tLo: f64, tHi: f64, flags: i32 = 0): u32 {
+    let idx = this.stlCount++;
+    let offset = idx * STL_STRIDE;
+    let tLoBits = i64.reinterpret_f64(tLo) as u64;
+    let tHiBits = i64.reinterpret_f64(tHi) as u64;
+    let tbl = this.getStlData();
+    tbl.set(offset + STL_OP, op);
+    tbl.set(offset + STL_LEFT, leftId as i32);
+    tbl.set(offset + STL_RIGHT, rightId as i32);
+    tbl.set(offset + STL_TLO_HI, (tLoBits >> 32) as i32);
+    tbl.set(offset + STL_TLO_LO, (tLoBits & 0xffffffff) as i32);
+    tbl.set(offset + STL_THI_HI, (tHiBits >> 32) as i32);
+    tbl.set(offset + STL_THI_LO, (tHiBits & 0xffffffff) as i32);
+    tbl.set(offset + STL_FLAGS, flags);
+    this.problemFlags |= PROBLEM_REACHABILITY;
+    return idx;
+  }
+
+  addStateInvariant(stateId: u32, varId: u32, lo: f64, hi: f64): u32 {
+    let idx = this.stateInvariantCount++;
+    let offset = idx * INV_STRIDE;
+    let loBits = i64.reinterpret_f64(lo) as u64;
+    let hiBits = i64.reinterpret_f64(hi) as u64;
+    let tbl = this.getStateInvariants();
+    tbl.set(offset + INV_STATE, stateId as i32);
+    tbl.set(offset + INV_VAR, varId as i32);
+    tbl.set(offset + INV_LO_HI, (loBits >> 32) as i32);
+    tbl.set(offset + INV_LO_LO, (loBits & 0xffffffff) as i32);
+    tbl.set(offset + INV_HI_HI, (hiBits >> 32) as i32);
+    tbl.set(offset + INV_HI_LO, (hiBits & 0xffffffff) as i32);
+    this.problemFlags |= (PROBLEM_REACHABILITY | PROBLEM_HYBRID);
+    return idx;
+  }
+
+  /**
+   * Deep-copies all core and lazy side-tables into `dst`.
+   */
+  cloneTo(dst: DaeBuilder): void {
+    let copyArr = (srcArr: ChunkedInt32Array, dstArr: ChunkedInt32Array, count: u32): void => {
+      for (let i: u32 = 0; i < count; i++) {
+        dstArr.set(i, srcArr.get(i));
+      }
+      dstArr.length = count;
+    };
+
+    dst.varCount = this.varCount;
+    copyArr(this.varData, dst.varData, this.varCount * VAR_STRIDE);
+    copyArr(this.aliasData, dst.aliasData, this.varCount);
+    copyArr(this.varAttrData, dst.varAttrData, this.varCount * VAR_ATTR_STRIDE);
+    copyArr(this.varShapes, dst.varShapes, this.varCount * 4);
+    copyArr(this.varSymbolicShapes, dst.varSymbolicShapes, this.varCount * 4);
+    copyArr(this.varClockMap, dst.varClockMap, this.varCount);
+
+    // Rebuild nameIndex in dst
+    const dstIdx = dst.getNameIndex();
+    dstIdx.clear();
+    for (let i: u32 = 0; i < this.varCount; i++) {
+      const nameId = this.varData.get(i * VAR_STRIDE + VAR_NAME);
+      dstIdx.set(nameId, i + 1);
+    }
+
+    dst.eqCount = this.eqCount;
+    copyArr(this.eqData, dst.eqData, this.eqCount * EQ_STRIDE);
+    copyArr(this.eqClockMap, dst.eqClockMap, this.eqCount);
+
+    dst.exprCount = this.exprCount;
+    copyArr(this.exprData, dst.exprData, this.exprCount * EXPR_STRIDE);
+
+    dst.stmtCount = this.stmtCount;
+    copyArr(this.stmtData, dst.stmtData, this.stmtCount * STMT_STRIDE);
+
+    dst.objectiveExprId = this.objectiveExprId;
+    dst.objectiveIntegrandExprId = this.objectiveIntegrandExprId;
+    dst.startTimeExprId = this.startTimeExprId;
+    dst.finalTimeExprId = this.finalTimeExprId;
+    dst.problemFlags = this.problemFlags;
+
+    if (this.clockCount > 0 && changetype<usize>(this.clocksData) != 0) {
+      dst.clockCount = this.clockCount;
+      copyArr(this.clocksData, dst.getClocksData(), this.clockCount * CLOCK_STRIDE);
+    }
+    if (this.whenCount > 0 && changetype<usize>(this.whenMeta) != 0) {
+      dst.whenCount = this.whenCount;
+      copyArr(this.whenMeta, dst.getWhenMeta(), this.whenCount * WHEN_STRIDE);
+    }
+    if (this.whenBodyEqCount > 0 && changetype<usize>(this.whenBodyEqs) != 0) {
+      dst.whenBodyEqCount = this.whenBodyEqCount;
+      copyArr(this.whenBodyEqs, dst.getWhenBodyEqs(), this.whenBodyEqCount * EQ_STRIDE);
+    }
+    if (this.forCount > 0 && changetype<usize>(this.forMeta) != 0) {
+      dst.forCount = this.forCount;
+      copyArr(this.forMeta, dst.getForMeta(), this.forCount * FOR_STRIDE);
+    }
+    if (this.forBodyEqCount > 0 && changetype<usize>(this.forBodyEqs) != 0) {
+      dst.forBodyEqCount = this.forBodyEqCount;
+      copyArr(this.forBodyEqs, dst.getForBodyEqs(), this.forBodyEqCount * EQ_STRIDE);
+    }
+    if (this.ifCount > 0 && changetype<usize>(this.ifMeta) != 0) {
+      dst.ifCount = this.ifCount;
+      copyArr(this.ifMeta, dst.getIfMeta(), this.ifCount * IF_STRIDE);
+    }
+    if (this.ifBranchEqCount > 0 && changetype<usize>(this.ifBranchEqs) != 0) {
+      dst.ifBranchEqCount = this.ifBranchEqCount;
+      copyArr(this.ifBranchEqs, dst.getIfBranchEqs(), this.ifBranchEqCount * EQ_STRIDE);
+    }
+    if (this.smCount > 0 && changetype<usize>(this.stateMachines) != 0) {
+      dst.smCount = this.smCount;
+      copyArr(this.stateMachines, dst.getStateMachines(), this.smCount * SM_STRIDE);
+    }
+    if (this.stateCount > 0 && changetype<usize>(this.stateData) != 0) {
+      dst.stateCount = this.stateCount;
+      copyArr(this.stateData, dst.getStateData(), this.stateCount * STATE_STRIDE);
+    }
+    if (this.stateEqCount > 0 && changetype<usize>(this.stateEqs) != 0) {
+      dst.stateEqCount = this.stateEqCount;
+      copyArr(this.stateEqs, dst.getStateEqs(), this.stateEqCount * 4);
+    }
+    if (this.stateVarCount > 0 && changetype<usize>(this.stateVars) != 0) {
+      dst.stateVarCount = this.stateVarCount;
+      copyArr(this.stateVars, dst.getStateVars(), this.stateVarCount * 4);
+    }
+    if (this.transitionCount > 0 && changetype<usize>(this.transitions) != 0) {
+      dst.transitionCount = this.transitionCount;
+      copyArr(this.transitions, dst.getTransitions(), this.transitionCount * TRANSITION_STRIDE);
+    }
+    if (this.eventIndicatorCount > 0 && changetype<usize>(this.eventIndicators) != 0) {
+      dst.eventIndicatorCount = this.eventIndicatorCount;
+      copyArr(this.eventIndicators, dst.getEventIndicators(), this.eventIndicatorCount);
+    }
+    if (this.objectiveCount > 0 && changetype<usize>(this.objectivesData) != 0) {
+      dst.objectiveCount = this.objectiveCount;
+      copyArr(this.objectivesData, dst.getObjectivesData(), this.objectiveCount * OBJ_STRIDE);
+    }
+    if (this.constraintCount > 0 && changetype<usize>(this.constraintsData) != 0) {
+      dst.constraintCount = this.constraintCount;
+      copyArr(this.constraintsData, dst.getConstraintsData(), this.constraintCount * CON_STRIDE);
+    }
+    if (this.coneCount > 0 && changetype<usize>(this.coneData) != 0) {
+      dst.coneCount = this.coneCount;
+      copyArr(this.coneData, dst.getConeData(), this.coneCount * CONE_STRIDE);
+    }
+    if (this.coneMemberCount > 0 && changetype<usize>(this.coneMembers) != 0) {
+      dst.coneMemberCount = this.coneMemberCount;
+      copyArr(this.coneMembers, dst.getConeMembers(), this.coneMemberCount);
+    }
+    dst.sdeNoiseType = this.sdeNoiseType;
+    dst.sdeCalculus = this.sdeCalculus;
+    dst.sdeBrownianDim = this.sdeBrownianDim;
+    dst.sdeSeed = this.sdeSeed;
+    dst.sdeEnsemblePaths = this.sdeEnsemblePaths;
+    if (this.diffusionCount > 0 && changetype<usize>(this.diffusionData) != 0) {
+      dst.diffusionCount = this.diffusionCount;
+      copyArr(this.diffusionData, dst.getDiffusionData(), this.diffusionCount * DIFF_STRIDE);
+    }
+    dst.bvpMethod = this.bvpMethod;
+    dst.bvpIntervals = this.bvpIntervals;
+    if (this.bvpBoundaryPointCount > 0 && changetype<usize>(this.bvpBoundaryPoints) != 0) {
+      dst.bvpBoundaryPointCount = this.bvpBoundaryPointCount;
+      copyArr(this.bvpBoundaryPoints, dst.getBvpBoundaryPoints(), this.bvpBoundaryPointCount * 2);
+    }
+    if (this.delayCount > 0 && changetype<usize>(this.delayData) != 0) {
+      dst.delayCount = this.delayCount;
+      copyArr(this.delayData, dst.getDelayData(), this.delayCount * DELAY_STRIDE);
+    }
+    if (this.jumpCount > 0 && changetype<usize>(this.jumpData) != 0) {
+      dst.jumpCount = this.jumpCount;
+      copyArr(this.jumpData, dst.getJumpData(), this.jumpCount * JUMP_STRIDE);
+    }
+    if (this.jumpAffectCount > 0 && changetype<usize>(this.jumpAffects) != 0) {
+      dst.jumpAffectCount = this.jumpAffectCount;
+      copyArr(this.jumpAffects, dst.getJumpAffects(), this.jumpAffectCount * AFFECT_STRIDE);
+    }
+    if (this.uncertaintyCount > 0 && changetype<usize>(this.uncertaintyData) != 0) {
+      dst.uncertaintyCount = this.uncertaintyCount;
+      copyArr(this.uncertaintyData, dst.getUncertaintyData(), this.uncertaintyCount * UNC_STRIDE);
+    }
+    if (this.stlCount > 0 && changetype<usize>(this.stlData) != 0) {
+      dst.stlCount = this.stlCount;
+      copyArr(this.stlData, dst.getStlData(), this.stlCount * STL_STRIDE);
+    }
+    if (this.stateInvariantCount > 0 && changetype<usize>(this.stateInvariants) != 0) {
+      dst.stateInvariantCount = this.stateInvariantCount;
+      copyArr(this.stateInvariants, dst.getStateInvariants(), this.stateInvariantCount * INV_STRIDE);
+    }
+  }
+
+  /**
    * Captures a snapshot checkpoint of all variable, equation, and metadata counts.
    */
   snapshot(): void {
@@ -1041,6 +1634,19 @@ export class DaeBuilder {
     this.snapshotStateVarCount = this.stateVarCount;
     this.snapshotTransitionCount = this.transitionCount;
     this.snapshotEventIndicatorCount = this.eventIndicatorCount;
+    this.snapshotProblemFlags = this.problemFlags;
+    this.snapshotObjectiveCount = this.objectiveCount;
+    this.snapshotConstraintCount = this.constraintCount;
+    this.snapshotConeCount = this.coneCount;
+    this.snapshotConeMemberCount = this.coneMemberCount;
+    this.snapshotDiffusionCount = this.diffusionCount;
+    this.snapshotBvpBoundaryPointCount = this.bvpBoundaryPointCount;
+    this.snapshotDelayCount = this.delayCount;
+    this.snapshotJumpCount = this.jumpCount;
+    this.snapshotJumpAffectCount = this.jumpAffectCount;
+    this.snapshotUncertaintyCount = this.uncertaintyCount;
+    this.snapshotStlCount = this.stlCount;
+    this.snapshotStateInvariantCount = this.stateInvariantCount;
   }
 
   /**
@@ -1077,36 +1683,62 @@ export class DaeBuilder {
     this.getStmtData().length = this.stmtCount * STMT_STRIDE;
 
     this.clockCount = this.snapshotClockCount;
-    this.getClocksData().length = this.clockCount * CLOCK_STRIDE;
+    if (changetype<usize>(this.clocksData) != 0) this.clocksData.length = this.clockCount * CLOCK_STRIDE;
 
     this.whenCount = this.snapshotWhenCount;
-    this.getWhenMeta().length = this.whenCount * WHEN_STRIDE;
+    if (changetype<usize>(this.whenMeta) != 0) this.whenMeta.length = this.whenCount * WHEN_STRIDE;
     this.whenBodyEqCount = this.snapshotWhenBodyEqCount;
-    this.getWhenBodyEqs().length = this.whenBodyEqCount * EQ_STRIDE;
+    if (changetype<usize>(this.whenBodyEqs) != 0) this.whenBodyEqs.length = this.whenBodyEqCount * EQ_STRIDE;
 
     this.forCount = this.snapshotForCount;
-    this.getForMeta().length = this.forCount * FOR_STRIDE;
+    if (changetype<usize>(this.forMeta) != 0) this.forMeta.length = this.forCount * FOR_STRIDE;
     this.forBodyEqCount = this.snapshotForBodyEqCount;
-    this.getForBodyEqs().length = this.forBodyEqCount * EQ_STRIDE;
+    if (changetype<usize>(this.forBodyEqs) != 0) this.forBodyEqs.length = this.forBodyEqCount * EQ_STRIDE;
 
     this.ifCount = this.snapshotIfCount;
-    this.getIfMeta().length = this.ifCount * IF_STRIDE;
+    if (changetype<usize>(this.ifMeta) != 0) this.ifMeta.length = this.ifCount * IF_STRIDE;
     this.ifBranchEqCount = this.snapshotIfBranchEqCount;
-    this.getIfBranchEqs().length = this.ifBranchEqCount * EQ_STRIDE;
+    if (changetype<usize>(this.ifBranchEqs) != 0) this.ifBranchEqs.length = this.ifBranchEqCount * EQ_STRIDE;
 
     this.smCount = this.snapshotSmCount;
-    this.getStateMachines().length = this.smCount * SM_STRIDE;
+    if (changetype<usize>(this.stateMachines) != 0) this.stateMachines.length = this.smCount * SM_STRIDE;
     this.stateCount = this.snapshotStateCount;
-    this.getStateData().length = this.stateCount * STATE_STRIDE;
+    if (changetype<usize>(this.stateData) != 0) this.stateData.length = this.stateCount * STATE_STRIDE;
     this.stateEqCount = this.snapshotStateEqCount;
-    this.getStateEqs().length = this.stateEqCount * 4;
+    if (changetype<usize>(this.stateEqs) != 0) this.stateEqs.length = this.stateEqCount * 4;
     this.stateVarCount = this.snapshotStateVarCount;
-    this.getStateVars().length = this.stateVarCount;
+    if (changetype<usize>(this.stateVars) != 0) this.stateVars.length = this.stateVarCount;
     this.transitionCount = this.snapshotTransitionCount;
-    this.getTransitions().length = this.transitionCount * TRANSITION_STRIDE;
+    if (changetype<usize>(this.transitions) != 0) this.transitions.length = this.transitionCount * TRANSITION_STRIDE;
 
     this.eventIndicatorCount = this.snapshotEventIndicatorCount;
-    this.getEventIndicators().length = this.eventIndicatorCount;
+    if (changetype<usize>(this.eventIndicators) != 0) this.eventIndicators.length = this.eventIndicatorCount;
+
+    this.problemFlags = this.snapshotProblemFlags;
+    this.objectiveCount = this.snapshotObjectiveCount;
+    if (changetype<usize>(this.objectivesData) != 0) this.objectivesData.length = this.objectiveCount * OBJ_STRIDE;
+    this.constraintCount = this.snapshotConstraintCount;
+    if (changetype<usize>(this.constraintsData) != 0) this.constraintsData.length = this.constraintCount * CON_STRIDE;
+    this.coneCount = this.snapshotConeCount;
+    if (changetype<usize>(this.coneData) != 0) this.coneData.length = this.coneCount * CONE_STRIDE;
+    this.coneMemberCount = this.snapshotConeMemberCount;
+    if (changetype<usize>(this.coneMembers) != 0) this.coneMembers.length = this.coneMemberCount;
+    this.diffusionCount = this.snapshotDiffusionCount;
+    if (changetype<usize>(this.diffusionData) != 0) this.diffusionData.length = this.diffusionCount * DIFF_STRIDE;
+    this.bvpBoundaryPointCount = this.snapshotBvpBoundaryPointCount;
+    if (changetype<usize>(this.bvpBoundaryPoints) != 0) this.bvpBoundaryPoints.length = this.bvpBoundaryPointCount * 2;
+    this.delayCount = this.snapshotDelayCount;
+    if (changetype<usize>(this.delayData) != 0) this.delayData.length = this.delayCount * DELAY_STRIDE;
+    this.jumpCount = this.snapshotJumpCount;
+    if (changetype<usize>(this.jumpData) != 0) this.jumpData.length = this.jumpCount * JUMP_STRIDE;
+    this.jumpAffectCount = this.snapshotJumpAffectCount;
+    if (changetype<usize>(this.jumpAffects) != 0) this.jumpAffects.length = this.jumpAffectCount * AFFECT_STRIDE;
+    this.uncertaintyCount = this.snapshotUncertaintyCount;
+    if (changetype<usize>(this.uncertaintyData) != 0) this.uncertaintyData.length = this.uncertaintyCount * UNC_STRIDE;
+    this.stlCount = this.snapshotStlCount;
+    if (changetype<usize>(this.stlData) != 0) this.stlData.length = this.stlCount * STL_STRIDE;
+    this.stateInvariantCount = this.snapshotStateInvariantCount;
+    if (changetype<usize>(this.stateInvariants) != 0) this.stateInvariants.length = this.stateInvariantCount * INV_STRIDE;
   }
 
   resolveBuiltinMathFunc(funcId: i32): i32 {
@@ -1122,13 +1754,20 @@ export class DaeBuilder {
 // Exported C/WASM Bridge Functions
 // ─────────────────────────────────────────────────────────────────────────────
 
-const DAE_BUILDER_SIZE: u32 = 512;
+const DAE_BUILDER_SIZE: u32 = offsetof<DaeBuilder>() > 1024 ? (offsetof<DaeBuilder>() as u32) : 1024;
 
 export function dae_createBuilder(): u32 {
   let ptr = atomicChunkAlloc(DAE_BUILDER_SIZE);
   let builder = changetype<DaeBuilder>(ptr);
   builder.init();
   return ptr as u32;
+}
+
+export function dae_clone(srcPtr: u32): u32 {
+  if (srcPtr == 0) return 0;
+  let dstPtr = dae_createBuilder();
+  changetype<DaeBuilder>(srcPtr).cloneTo(changetype<DaeBuilder>(dstPtr));
+  return dstPtr;
 }
 
 export function dae_getStringPool(ptr: u32): usize {
@@ -1564,6 +2203,372 @@ export function dae_setSliceValue(viewPtr: u32, index: u32, varValuesPtr: u32, v
   if (viewPtr == 0) return;
   changetype<ArraySliceView>(viewPtr).setValue(index, varValuesPtr, val);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Exported Multi-Problem Side-Table C/WASM Bridge Functions
+// ─────────────────────────────────────────────────────────────────────────────
+
+@inline
+function unpackF64(hi: i32, lo: i32): f64 {
+  let bits = ((hi as u64) << 32) | ((lo as u64) & 0xffffffff);
+  return f64.reinterpret_i64(bits as i64);
+}
+
+// ── Problem Flags ──
+
+export function dae_getProblemFlags(ptr: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getProblemFlags();
+}
+
+export function dae_setProblemFlag(ptr: u32, flag: u32): void {
+  changetype<DaeBuilder>(ptr).setProblemFlag(flag);
+}
+
+export function dae_clearProblemFlag(ptr: u32, flag: u32): void {
+  changetype<DaeBuilder>(ptr).clearProblemFlag(flag);
+}
+
+// ── 1. Optimization ──
+
+export function dae_opt_addObjective(ptr: u32, mayerExprId: u32, lagrangeExprId: u32, sense: i32, flags: i32): u32 {
+  return changetype<DaeBuilder>(ptr).addObjective(mayerExprId, lagrangeExprId, sense, flags);
+}
+
+export function dae_opt_getObjectiveCount(ptr: u32): u32 {
+  return changetype<DaeBuilder>(ptr).objectiveCount;
+}
+
+export function dae_opt_getObjectiveMayer(ptr: u32, idx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getObjectivesData().get(idx * OBJ_STRIDE + OBJ_MAYER_EXPR) as u32;
+}
+
+export function dae_opt_getObjectiveLagrange(ptr: u32, idx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getObjectivesData().get(idx * OBJ_STRIDE + OBJ_LAGRANGE_EXPR) as u32;
+}
+
+export function dae_opt_getObjectiveSense(ptr: u32, idx: u32): i32 {
+  return changetype<DaeBuilder>(ptr).getObjectivesData().get(idx * OBJ_STRIDE + OBJ_SENSE);
+}
+
+export function dae_opt_getObjectiveFlags(ptr: u32, idx: u32): i32 {
+  return changetype<DaeBuilder>(ptr).getObjectivesData().get(idx * OBJ_STRIDE + OBJ_FLAGS);
+}
+
+export function dae_opt_addConstraint(ptr: u32, exprId: u32, lb: f64, ub: f64, kindAndFlags: i32): u32 {
+  return changetype<DaeBuilder>(ptr).addConstraint(exprId, lb, ub, kindAndFlags);
+}
+
+export function dae_opt_getConstraintCount(ptr: u32): u32 {
+  return changetype<DaeBuilder>(ptr).constraintCount;
+}
+
+export function dae_opt_getConstraintExpr(ptr: u32, idx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getConstraintsData().get(idx * CON_STRIDE + CON_EXPR) as u32;
+}
+
+export function dae_opt_getConstraintLb(ptr: u32, idx: u32): f64 {
+  let tbl = changetype<DaeBuilder>(ptr).getConstraintsData();
+  let off = idx * CON_STRIDE;
+  return unpackF64(tbl.get(off + CON_LB_HI), tbl.get(off + CON_LB_LO));
+}
+
+export function dae_opt_getConstraintUb(ptr: u32, idx: u32): f64 {
+  let tbl = changetype<DaeBuilder>(ptr).getConstraintsData();
+  let off = idx * CON_STRIDE;
+  return unpackF64(tbl.get(off + CON_UB_HI), tbl.get(off + CON_UB_LO));
+}
+
+export function dae_opt_getConstraintKind(ptr: u32, idx: u32): i32 {
+  return changetype<DaeBuilder>(ptr).getConstraintsData().get(idx * CON_STRIDE + CON_KIND_FLAGS);
+}
+
+export function dae_opt_addCone(ptr: u32, kind: i32, dim: u32): u32 {
+  return changetype<DaeBuilder>(ptr).addConeConstraint(kind, dim);
+}
+
+export function dae_opt_addConeMember(ptr: u32, coneIdx: u32, exprId: u32): u32 {
+  return changetype<DaeBuilder>(ptr).addConeMember(coneIdx, exprId);
+}
+
+export function dae_opt_getConeCount(ptr: u32): u32 {
+  return changetype<DaeBuilder>(ptr).coneCount;
+}
+
+export function dae_opt_getConeKind(ptr: u32, idx: u32): i32 {
+  return changetype<DaeBuilder>(ptr).getConeData().get(idx * CONE_STRIDE + CONE_KIND);
+}
+
+export function dae_opt_getConeMemberStart(ptr: u32, idx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getConeData().get(idx * CONE_STRIDE + CONE_MEMBER_START) as u32;
+}
+
+export function dae_opt_getConeMemberCount(ptr: u32, idx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getConeData().get(idx * CONE_STRIDE + CONE_MEMBER_COUNT) as u32;
+}
+
+export function dae_opt_getConeDim(ptr: u32, idx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getConeData().get(idx * CONE_STRIDE + CONE_DIM) as u32;
+}
+
+export function dae_opt_getConeMember(ptr: u32, memberIdx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getConeMembers().get(memberIdx) as u32;
+}
+
+// ── 2. SDE ──
+
+export function dae_sde_addDiffusion(ptr: u32, stateVarId: u32, noiseChannelId: u32, exprId: u32, flags: i32): u32 {
+  return changetype<DaeBuilder>(ptr).addDiffusion(stateVarId, noiseChannelId, exprId, flags);
+}
+
+export function dae_sde_getDiffusionCount(ptr: u32): u32 {
+  return changetype<DaeBuilder>(ptr).diffusionCount;
+}
+
+export function dae_sde_getDiffusionStateVar(ptr: u32, idx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getDiffusionData().get(idx * DIFF_STRIDE + DIFF_STATE_VAR) as u32;
+}
+
+export function dae_sde_getDiffusionNoiseChannel(ptr: u32, idx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getDiffusionData().get(idx * DIFF_STRIDE + DIFF_NOISE_CH) as u32;
+}
+
+export function dae_sde_getDiffusionExpr(ptr: u32, idx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getDiffusionData().get(idx * DIFF_STRIDE + DIFF_EXPR) as u32;
+}
+
+export function dae_sde_getDiffusionFlags(ptr: u32, idx: u32): i32 {
+  return changetype<DaeBuilder>(ptr).getDiffusionData().get(idx * DIFF_STRIDE + DIFF_FLAGS);
+}
+
+export function dae_sde_setConfig(ptr: u32, noiseType: i32, calculus: i32, brownianDim: u32, seed: u32, ensemblePaths: u32): void {
+  changetype<DaeBuilder>(ptr).setSdeConfig(noiseType, calculus, brownianDim, seed, ensemblePaths);
+}
+
+export function dae_sde_getNoiseType(ptr: u32): i32 {
+  return changetype<DaeBuilder>(ptr).sdeNoiseType;
+}
+
+export function dae_sde_getCalculus(ptr: u32): i32 {
+  return changetype<DaeBuilder>(ptr).sdeCalculus;
+}
+
+export function dae_sde_getBrownianDim(ptr: u32): u32 {
+  return changetype<DaeBuilder>(ptr).sdeBrownianDim;
+}
+
+export function dae_sde_getSeed(ptr: u32): u32 {
+  return changetype<DaeBuilder>(ptr).sdeSeed;
+}
+
+export function dae_sde_getEnsemblePaths(ptr: u32): u32 {
+  return changetype<DaeBuilder>(ptr).sdeEnsemblePaths;
+}
+
+// ── 3. BVP ──
+
+export function dae_bvp_addBoundaryEquation(ptr: u32, lhsId: u32, rhsId: u32, flags: i32): u32 {
+  return changetype<DaeBuilder>(ptr).addBoundaryEquation(lhsId, rhsId, flags);
+}
+
+export function dae_bvp_addAtBoundaryExpr(ptr: u32, varId: u32, boundaryPointIdx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).addAtBoundaryExpr(varId, boundaryPointIdx);
+}
+
+export function dae_bvp_setConfig(ptr: u32, method: i32, intervals: u32): void {
+  changetype<DaeBuilder>(ptr).setBvpConfig(method, intervals);
+}
+
+export function dae_bvp_getMethod(ptr: u32): i32 {
+  return changetype<DaeBuilder>(ptr).bvpMethod;
+}
+
+export function dae_bvp_getIntervals(ptr: u32): u32 {
+  return changetype<DaeBuilder>(ptr).bvpIntervals;
+}
+
+export function dae_bvp_addBoundaryPoint(ptr: u32, tVal: f64): u32 {
+  return changetype<DaeBuilder>(ptr).addBvpBoundaryPoint(tVal);
+}
+
+export function dae_bvp_getBoundaryPointCount(ptr: u32): u32 {
+  return changetype<DaeBuilder>(ptr).bvpBoundaryPointCount;
+}
+
+export function dae_bvp_getBoundaryPoint(ptr: u32, idx: u32): f64 {
+  let tbl = changetype<DaeBuilder>(ptr).getBvpBoundaryPoints();
+  return unpackF64(tbl.get(idx * 2), tbl.get(idx * 2 + 1));
+}
+
+// ── 4. DDE / NDDE ──
+
+export function dae_delay_addChannel(ptr: u32, targetExprId: u32, tauExprId: u32, historyExprId: u32, historyDerivExprId: u32, flags: i32): u32 {
+  return changetype<DaeBuilder>(ptr).addDelayChannel(targetExprId, tauExprId, historyExprId, historyDerivExprId, flags);
+}
+
+export function dae_delay_addExpr(ptr: u32, delayChannelIdx: u32, targetExprId: u32, tauExprId: u32): u32 {
+  return changetype<DaeBuilder>(ptr).addDelayExpr(delayChannelIdx, targetExprId, tauExprId);
+}
+
+export function dae_delay_getCount(ptr: u32): u32 {
+  return changetype<DaeBuilder>(ptr).delayCount;
+}
+
+export function dae_delay_getTargetExpr(ptr: u32, idx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getDelayData().get(idx * DELAY_STRIDE + DELAY_TARGET_EXPR) as u32;
+}
+
+export function dae_delay_getTauExpr(ptr: u32, idx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getDelayData().get(idx * DELAY_STRIDE + DELAY_TAU_EXPR) as u32;
+}
+
+export function dae_delay_getHistoryExpr(ptr: u32, idx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getDelayData().get(idx * DELAY_STRIDE + DELAY_HISTORY_EXPR) as u32;
+}
+
+export function dae_delay_getHistoryDerivExpr(ptr: u32, idx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getDelayData().get(idx * DELAY_STRIDE + DELAY_HISTORY_DERIV_EXPR) as u32;
+}
+
+export function dae_delay_getFlags(ptr: u32, idx: u32): i32 {
+  return changetype<DaeBuilder>(ptr).getDelayData().get(idx * DELAY_STRIDE + DELAY_FLAGS);
+}
+
+// ── 5. Jump Process / SSA ──
+
+export function dae_jump_add(ptr: u32, propensityExprId: u32, flags: i32): u32 {
+  return changetype<DaeBuilder>(ptr).addJump(propensityExprId, flags);
+}
+
+export function dae_jump_addAffect(ptr: u32, jumpIdx: u32, targetVarId: u32, deltaExprId: u32, mode: i32): u32 {
+  return changetype<DaeBuilder>(ptr).addJumpAffect(jumpIdx, targetVarId, deltaExprId, mode);
+}
+
+export function dae_jump_getCount(ptr: u32): u32 {
+  return changetype<DaeBuilder>(ptr).jumpCount;
+}
+
+export function dae_jump_getPropensityExpr(ptr: u32, idx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getJumpData().get(idx * JUMP_STRIDE + JUMP_PROPENSITY_EXPR) as u32;
+}
+
+export function dae_jump_getAffectStart(ptr: u32, idx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getJumpData().get(idx * JUMP_STRIDE + JUMP_AFFECT_START) as u32;
+}
+
+export function dae_jump_getAffectCount(ptr: u32, idx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getJumpData().get(idx * JUMP_STRIDE + JUMP_AFFECT_COUNT) as u32;
+}
+
+export function dae_jump_getFlags(ptr: u32, idx: u32): i32 {
+  return changetype<DaeBuilder>(ptr).getJumpData().get(idx * JUMP_STRIDE + JUMP_FLAGS);
+}
+
+export function dae_jump_getAffectVar(ptr: u32, affectIdx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getJumpAffects().get(affectIdx * AFFECT_STRIDE + AFFECT_VAR) as u32;
+}
+
+export function dae_jump_getAffectExpr(ptr: u32, affectIdx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getJumpAffects().get(affectIdx * AFFECT_STRIDE + AFFECT_EXPR) as u32;
+}
+
+export function dae_jump_getAffectMode(ptr: u32, affectIdx: u32): i32 {
+  return changetype<DaeBuilder>(ptr).getJumpAffects().get(affectIdx * AFFECT_STRIDE + AFFECT_MODE);
+}
+
+// ── 6. Uncertainty, Reachability & STL ──
+
+export function dae_unc_addVar(ptr: u32, varId: u32, distKind: i32, p1: f64, p2: f64): u32 {
+  return changetype<DaeBuilder>(ptr).addVarUncertainty(varId, distKind, p1, p2);
+}
+
+export function dae_unc_getCount(ptr: u32): u32 {
+  return changetype<DaeBuilder>(ptr).uncertaintyCount;
+}
+
+export function dae_unc_getVarId(ptr: u32, idx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getUncertaintyData().get(idx * UNC_STRIDE + UNC_VAR) as u32;
+}
+
+export function dae_unc_getDistKind(ptr: u32, idx: u32): i32 {
+  return changetype<DaeBuilder>(ptr).getUncertaintyData().get(idx * UNC_STRIDE + UNC_DIST_KIND);
+}
+
+export function dae_unc_getP1(ptr: u32, idx: u32): f64 {
+  let tbl = changetype<DaeBuilder>(ptr).getUncertaintyData();
+  let off = idx * UNC_STRIDE;
+  return unpackF64(tbl.get(off + UNC_P1_HI), tbl.get(off + UNC_P1_LO));
+}
+
+export function dae_unc_getP2(ptr: u32, idx: u32): f64 {
+  let tbl = changetype<DaeBuilder>(ptr).getUncertaintyData();
+  let off = idx * UNC_STRIDE;
+  return unpackF64(tbl.get(off + UNC_P2_HI), tbl.get(off + UNC_P2_LO));
+}
+
+export function dae_stl_addNode(ptr: u32, op: i32, leftId: u32, rightId: u32, tLo: f64, tHi: f64, flags: i32): u32 {
+  return changetype<DaeBuilder>(ptr).addStlNode(op, leftId, rightId, tLo, tHi, flags);
+}
+
+export function dae_stl_getCount(ptr: u32): u32 {
+  return changetype<DaeBuilder>(ptr).stlCount;
+}
+
+export function dae_stl_getOp(ptr: u32, idx: u32): i32 {
+  return changetype<DaeBuilder>(ptr).getStlData().get(idx * STL_STRIDE + STL_OP);
+}
+
+export function dae_stl_getLeft(ptr: u32, idx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getStlData().get(idx * STL_STRIDE + STL_LEFT) as u32;
+}
+
+export function dae_stl_getRight(ptr: u32, idx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getStlData().get(idx * STL_STRIDE + STL_RIGHT) as u32;
+}
+
+export function dae_stl_getTLo(ptr: u32, idx: u32): f64 {
+  let tbl = changetype<DaeBuilder>(ptr).getStlData();
+  let off = idx * STL_STRIDE;
+  return unpackF64(tbl.get(off + STL_TLO_HI), tbl.get(off + STL_TLO_LO));
+}
+
+export function dae_stl_getTHi(ptr: u32, idx: u32): f64 {
+  let tbl = changetype<DaeBuilder>(ptr).getStlData();
+  let off = idx * STL_STRIDE;
+  return unpackF64(tbl.get(off + STL_THI_HI), tbl.get(off + STL_THI_LO));
+}
+
+export function dae_stl_getFlags(ptr: u32, idx: u32): i32 {
+  return changetype<DaeBuilder>(ptr).getStlData().get(idx * STL_STRIDE + STL_FLAGS);
+}
+
+export function dae_inv_addStateInvariant(ptr: u32, stateId: u32, varId: u32, lo: f64, hi: f64): u32 {
+  return changetype<DaeBuilder>(ptr).addStateInvariant(stateId, varId, lo, hi);
+}
+
+export function dae_inv_getCount(ptr: u32): u32 {
+  return changetype<DaeBuilder>(ptr).stateInvariantCount;
+}
+
+export function dae_inv_getStateId(ptr: u32, idx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getStateInvariants().get(idx * INV_STRIDE + INV_STATE) as u32;
+}
+
+export function dae_inv_getVarId(ptr: u32, idx: u32): u32 {
+  return changetype<DaeBuilder>(ptr).getStateInvariants().get(idx * INV_STRIDE + INV_VAR) as u32;
+}
+
+export function dae_inv_getLo(ptr: u32, idx: u32): f64 {
+  let tbl = changetype<DaeBuilder>(ptr).getStateInvariants();
+  let off = idx * INV_STRIDE;
+  return unpackF64(tbl.get(off + INV_LO_HI), tbl.get(off + INV_LO_LO));
+}
+
+export function dae_inv_getHi(ptr: u32, idx: u32): f64 {
+  let tbl = changetype<DaeBuilder>(ptr).getStateInvariants();
+  let off = idx * INV_STRIDE;
+  return unpackF64(tbl.get(off + INV_HI_HI), tbl.get(off + INV_HI_LO));
+}
+
 
 
 

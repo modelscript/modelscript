@@ -1,0 +1,11 @@
+name: "@modelscript/segy-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom SEG-Y Rev 0 / Rev 1 header schemas and standard seismic wavelets (13 schemas, cleanroom SVG block icons, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: segy
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

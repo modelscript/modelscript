@@ -1306,8 +1306,8 @@ class ScopeAPI {
 
   /** Allocates and initializes the `ArenaStringPool` and `GenericScopeStack` in linear memory. */
   constructor() {
-    let poolPtr = atomicChunkAlloc(sizeof<ArenaStringPool>());
-    let stackPtr = atomicChunkAlloc(sizeof<GenericScopeStack>());
+    let poolPtr = atomicChunkAlloc(offsetof<ArenaStringPool>() as u32);
+    let stackPtr = atomicChunkAlloc(offsetof<GenericScopeStack>() as u32);
     this.pool = changetype<ArenaStringPool>(poolPtr);
     this.stack = changetype<GenericScopeStack>(stackPtr);
     this.pool.init();
@@ -1527,7 +1527,7 @@ export class ModificationEnvironment {
   bindDottedPath(parentKeyHash: u32, subKeyHash: u32, valExprId: u32, isFinal: boolean = false, isEach: boolean = false): void {
     let childEnvPtr = this.lookupNested(parentKeyHash);
     if (childEnvPtr == 0) {
-      childEnvPtr = atomicChunkAlloc(sizeof<ModificationEnvironment>());
+      childEnvPtr = atomicChunkAlloc(offsetof<ModificationEnvironment>() as u32);
       let childEnv = changetype<ModificationEnvironment>(childEnvPtr);
       childEnv.init(this.parentEnvPtr);
       this.bindNested(parentKeyHash, childEnvPtr, isFinal, isEach);
@@ -1566,7 +1566,7 @@ export class ModificationEnvironment {
 class EnvAPI {
   /** Allocates and initializes a new `ModificationEnvironment` with optional `parentPtr`. */
   @inline create(parentPtr: u32 = 0): u32 {
-    let ptr = atomicChunkAlloc(sizeof<ModificationEnvironment>());
+    let ptr = atomicChunkAlloc(offsetof<ModificationEnvironment>() as u32);
     let env = changetype<ModificationEnvironment>(ptr);
     env.init(parentPtr);
     return ptr as u32;

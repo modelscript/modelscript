@@ -61,6 +61,12 @@ export const FLAG_VAR_PROTECTED: i32 = 1 << 7;
 export const FLAG_VAR_FINAL: i32 = 1 << 8;
 /** Compiler-synthesized virtual/auxiliary variable (`1 << 9`). */
 export const FLAG_VAR_VIRTUAL: i32 = 1 << 9;
+/** Parameter marked with `annotation(Evaluate = true)` or structural evaluation (`1 << 10`). */
+export const FLAG_VAR_EVALUATE: i32 = 1 << 10;
+/** Variable hidden from standard result output (`HideResult` or internal helper) (`1 << 11`). */
+export const FLAG_VAR_HIDDEN: i32 = 1 << 11;
+/** Binary decision variable restricted to $\{0, 1\}$ for MILP/MINLP (`1 << 12`). */
+export const FLAG_VAR_BINARY: i32 = 1 << 12;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Equation SoA Layout
@@ -91,6 +97,33 @@ export const FLAG_EQ_STREAM_CONNECT: i32 = 1 << 2;
 export const FLAG_HIGH_INDEX_EQ: i32 = 1 << 3;
 /** Equation eliminated during alias elimination or dead-equation pruning (`1 << 4`). */
 export const FLAG_EQ_REMOVED: i32 = 1 << 4;
+/** Equation is a two-point or multi-point boundary condition for a BVP (`1 << 5`). */
+export const FLAG_EQ_BOUNDARY: i32 = 1 << 5;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Problem Class Bitmask Flags
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Explicit or implicit ODE system (`1 << 0`). */
+export const PROBLEM_ODE: u32 = 1 << 0;
+/** Differential-Algebraic Equation system (`1 << 1`). */
+export const PROBLEM_DAE: u32 = 1 << 1;
+/** Mathematical programming / dynamic optimization / OCP (`1 << 2`). */
+export const PROBLEM_OPTIMIZATION: u32 = 1 << 2;
+/** Stochastic Differential Equation system (`1 << 3`). */
+export const PROBLEM_SDE: u32 = 1 << 3;
+/** Delay or Neutral Delay Differential Equation system (`1 << 4`). */
+export const PROBLEM_DDE: u32 = 1 << 4;
+/** Two-point or multi-point Boundary Value Problem (`1 << 5`). */
+export const PROBLEM_BVP: u32 = 1 << 5;
+/** Stochastic jump process / chemical kinetics SSA (`1 << 6`). */
+export const PROBLEM_JUMP: u32 = 1 << 6;
+/** Parametric or initial-state uncertainty distributions/intervals (`1 << 7`). */
+export const PROBLEM_UNCERTAIN: u32 = 1 << 7;
+/** Formal reachability / STL safety verification specs (`1 << 8`). */
+export const PROBLEM_REACHABILITY: u32 = 1 << 8;
+/** Hybrid continuous + discrete event / state-machine / jump system (`1 << 9`). */
+export const PROBLEM_HYBRID: u32 = 1 << 9;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Expression SoA Layout
@@ -207,6 +240,7 @@ export enum EqKind {
   InitialSimple = 7,
   InitialFor = 8,
   InitialFunctionCall = 9,
+  Boundary = 10,
 }
 
 /**
@@ -231,6 +265,8 @@ export enum EqKind {
  * - `TensorMatMul`: `DATA1` = transposition flags, `LEFT` = lhs `ExprId`, `RIGHT` = rhs `ExprId`.
  * - `TensorReduce`: `DATA1` = `TensorReduceOp`, `LEFT` = operand `ExprId`, `RIGHT` = axis index.
  * - `TensorMap`: `DATA1` = operator ID, `LEFT` = operand `ExprId`, `RIGHT` = aux.
+ * - `AtBoundary`: `DATA1` = `varId`, `LEFT` = boundary point index (`0 = t0`, `1 = tf`, `k = interior`).
+ * - `Delay`: `DATA1` = delay channel index in `delayData`, `LEFT` = target `ExprId`, `RIGHT` = tau `ExprId`.
  */
 export enum ExprKind {
   Name = 0,
@@ -259,6 +295,8 @@ export enum ExprKind {
   TensorMatMul = 23,
   TensorReduce = 24,
   TensorMap = 25,
+  AtBoundary = 26,
+  Delay = 27,
 }
 
 /** Reduction operator kind stored in `EXPR_DATA1` when `EXPR_KIND == ExprKind.TensorReduce`. */
@@ -396,6 +434,172 @@ export const BC_OP_MUL_NAMES: i32 = 6;  // [BC_OP_MUL_NAMES, targetId, leftId, r
 export const BC_OP_DIV_NAMES: i32 = 7;  // [BC_OP_DIV_NAMES, targetId, leftId, rightId]
 export const BC_OP_EXPR: i32 = 8;       // [BC_OP_EXPR, targetId, exprId]
 export const BC_OP_SYSTEM: i32 = 9;     // [BC_OP_SYSTEM, sysBlockIndex]
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Multi-Problem Side-Table Layouts & Enums
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── 1. Optimization / Math Programming / OCP ──
+
+/** Words per objective row: `[mayerExprId, lagrangeExprId, sense, flags]`. */
+export const OBJ_STRIDE: u32 = 4;
+export const OBJ_MAYER_EXPR: u32 = 0;
+export const OBJ_LAGRANGE_EXPR: u32 = 1;
+export const OBJ_SENSE: u32 = 2;
+export const OBJ_FLAGS: u32 = 3;
+
+export enum ObjectiveSense {
+  Minimize = 0,
+  Maximize = 1,
+}
+
+export const FLAG_OBJ_MAYER: i32 = 1 << 0;
+export const FLAG_OBJ_LAGRANGE: i32 = 1 << 1;
+
+/** Words per constraint row: `[exprId, lbHi, lbLo, ubHi, ubLo, kindAndFlags]`. */
+export const CON_STRIDE: u32 = 6;
+export const CON_EXPR: u32 = 0;
+export const CON_LB_HI: u32 = 1;
+export const CON_LB_LO: u32 = 2;
+export const CON_UB_HI: u32 = 3;
+export const CON_UB_LO: u32 = 4;
+export const CON_KIND_FLAGS: u32 = 5;
+
+export enum ConstraintKind {
+  Algebraic = 0,
+  Path = 1,
+  Initial = 2,
+  Terminal = 3,
+  Complementarity = 4,
+  SOC = 5,
+  PSD = 6,
+}
+
+/** Words per cone/complementarity block row: `[kind, memberStart, memberCount, dim]`. */
+export const CONE_STRIDE: u32 = 4;
+export const CONE_KIND: u32 = 0;
+export const CONE_MEMBER_START: u32 = 1;
+export const CONE_MEMBER_COUNT: u32 = 2;
+export const CONE_DIM: u32 = 3;
+
+// ── 2. Stochastic Differential Equations (SDE) ──
+
+/** Words per diffusion row: `[stateVarId, noiseChannelId, exprId, flags]`. */
+export const DIFF_STRIDE: u32 = 4;
+export const DIFF_STATE_VAR: u32 = 0;
+export const DIFF_NOISE_CH: u32 = 1;
+export const DIFF_EXPR: u32 = 2;
+export const DIFF_FLAGS: u32 = 3;
+
+export enum SdeNoiseType {
+  Diagonal = 0,
+  Scalar = 1,
+  Matrix = 2,
+}
+
+export enum SdeCalculus {
+  Ito = 0,
+  Stratonovich = 1,
+}
+
+// ── 3. Boundary Value Problems (BVP) ──
+
+export enum BvpMethod {
+  Collocation = 0,
+  Shooting = 1,
+}
+
+// ── 4. Delay Differential Equations (DDE / NDDE) ──
+
+/** Words per delay channel row: `[targetExprId, tauExprId, historyExprId, historyDerivExprId, flags]`. */
+export const DELAY_STRIDE: u32 = 5;
+export const DELAY_TARGET_EXPR: u32 = 0;
+export const DELAY_TAU_EXPR: u32 = 1;
+export const DELAY_HISTORY_EXPR: u32 = 2;
+export const DELAY_HISTORY_DERIV_EXPR: u32 = 3;
+export const DELAY_FLAGS: u32 = 4;
+
+export const FLAG_DELAY_CONSTANT: i32 = 1 << 0;
+export const FLAG_DELAY_TIME_DEP: i32 = 1 << 1;
+export const FLAG_DELAY_STATE_DEP: i32 = 1 << 2;
+export const FLAG_DELAY_NEUTRAL: i32 = 1 << 3;
+
+// ── 5. Jump Processes / Hybrid Kinetics (SSA) ──
+
+/** Words per jump/reaction row: `[propensityExprId, affectStart, affectCount, flags]`. */
+export const JUMP_STRIDE: u32 = 4;
+export const JUMP_PROPENSITY_EXPR: u32 = 0;
+export const JUMP_AFFECT_START: u32 = 1;
+export const JUMP_AFFECT_COUNT: u32 = 2;
+export const JUMP_FLAGS: u32 = 3;
+
+/** Words per jump affect row: `[targetVarId, deltaExprId, mode]`. */
+export const AFFECT_STRIDE: u32 = 3;
+export const AFFECT_VAR: u32 = 0;
+export const AFFECT_EXPR: u32 = 1;
+export const AFFECT_MODE: u32 = 2;
+
+export enum JumpRateKind {
+  ConstantRate = 0,
+  VariableRate = 1,
+  MassAction = 2,
+}
+
+export enum JumpAffectMode {
+  Additive = 0,
+  Assign = 1,
+}
+
+// ── 6. Uncertainty, Formal Reachability & STL Verification ──
+
+/** Words per variable uncertainty row: `[varId, distKind, p1Hi, p1Lo, p2Hi, p2Lo]`. */
+export const UNC_STRIDE: u32 = 6;
+export const UNC_VAR: u32 = 0;
+export const UNC_DIST_KIND: u32 = 1;
+export const UNC_P1_HI: u32 = 2;
+export const UNC_P1_LO: u32 = 3;
+export const UNC_P2_HI: u32 = 4;
+export const UNC_P2_LO: u32 = 5;
+
+export enum UncertaintyDistKind {
+  Interval = 0,
+  Uniform = 1,
+  Normal = 2,
+  LogNormal = 3,
+  TruncNormal = 4,
+  Discrete = 5,
+}
+
+/** Words per STL specification node row: `[op, leftId, rightId, tLoHi, tLoLo, tHiHi, tHiLo, flags]`. */
+export const STL_STRIDE: u32 = 8;
+export const STL_OP: u32 = 0;
+export const STL_LEFT: u32 = 1;
+export const STL_RIGHT: u32 = 2;
+export const STL_TLO_HI: u32 = 3;
+export const STL_TLO_LO: u32 = 4;
+export const STL_THI_HI: u32 = 5;
+export const STL_THI_LO: u32 = 6;
+export const STL_FLAGS: u32 = 7;
+
+export enum StlOp {
+  Atomic = 0,
+  Not = 1,
+  And = 2,
+  Or = 3,
+  Always = 4,
+  Eventually = 5,
+  Until = 6,
+}
+
+/** Words per hybrid state invariant row: `[stateId, varId, loHi, loLo, hiHi, hiLo]`. */
+export const INV_STRIDE: u32 = 6;
+export const INV_STATE: u32 = 0;
+export const INV_VAR: u32 = 1;
+export const INV_LO_HI: u32 = 2;
+export const INV_LO_LO: u32 = 3;
+export const INV_HI_HI: u32 = 4;
+export const INV_HI_LO: u32 = 5;
+
 
 
 

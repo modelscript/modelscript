@@ -1,0 +1,1073 @@
+[
+  {
+    "name": "TYPE_100",
+    "kind": "Class",
+    "namePath": "iges.std.TYPE_100",
+    "exports": [
+      "zt",
+      "cx",
+      "cy",
+      "sx",
+      "sy",
+      "ex",
+      "ey"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 100 — Circular Arc",
+      "category": "Curves & Points",
+      "domain": "cad",
+      "description": "Planar circular arc or full circle defined by ZT, center (X1,Y1), start (X2,Y2), and end (X3,Y3).",
+      "provenance": "IGES 5.3 §4.3 (ANSI Y14.26M)",
+      "aliases": [
+        "100",
+        "CircularArc",
+        "CIRCULAR_ARC"
+      ],
+      "parameters": [
+        {
+          "key": "zt",
+          "label": "zt",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Parallel Z-plane displacement"
+        },
+        {
+          "key": "cx",
+          "label": "cx",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Center X"
+        },
+        {
+          "key": "cy",
+          "label": "cy",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Center Y"
+        },
+        {
+          "key": "sx",
+          "label": "sx",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "Start point X"
+        },
+        {
+          "key": "sy",
+          "label": "sy",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Start point Y"
+        },
+        {
+          "key": "ex",
+          "label": "ex",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "End point X"
+        },
+        {
+          "key": "ey",
+          "label": "ey",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "End point Y"
+        }
+      ],
+      "wasmKernel": "igesEvalKernel",
+      "archetypeId": 100
+    }
+  },
+  {
+    "name": "TYPE_102",
+    "kind": "Class",
+    "namePath": "iges.std.TYPE_102",
+    "exports": [
+      "n"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 102 — Composite Curve",
+      "category": "Curves & Points",
+      "domain": "cad",
+      "description": "Ordered list of connected constituent curve entities forming a continuous composite curve.",
+      "provenance": "IGES 5.3 §4.4 (ANSI Y14.26M)",
+      "aliases": [
+        "102",
+        "CompositeCurve",
+        "COMPOSITE_CURVE"
+      ],
+      "parameters": [
+        {
+          "key": "n",
+          "label": "n",
+          "type": "integer",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Number of constituent curve pointers"
+        }
+      ],
+      "wasmKernel": "igesEvalKernel",
+      "archetypeId": 102
+    }
+  },
+  {
+    "name": "TYPE_104",
+    "kind": "Class",
+    "namePath": "iges.std.TYPE_104",
+    "exports": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 104 — Conic Arc",
+      "category": "Curves & Points",
+      "domain": "cad",
+      "description": "General planar conic section A*x^2 + B*x*y + C*y^2 + D*x + E*y + F = 0.",
+      "provenance": "IGES 5.3 §4.5 (ANSI Y14.26M)",
+      "aliases": [
+        "104",
+        "ConicArc",
+        "CONIC_ARC"
+      ],
+      "parameters": [
+        {
+          "key": "A",
+          "label": "A",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Quadratic X^2 coefficient"
+        },
+        {
+          "key": "B",
+          "label": "B",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Cross XY coefficient"
+        },
+        {
+          "key": "C",
+          "label": "C",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Quadratic Y^2 coefficient"
+        },
+        {
+          "key": "D",
+          "label": "D",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Linear X coefficient"
+        },
+        {
+          "key": "E",
+          "label": "E",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Linear Y coefficient"
+        },
+        {
+          "key": "F",
+          "label": "F",
+          "type": "integer",
+          "defaultValue": -1,
+          "unit": "1",
+          "description": "Constant term"
+        }
+      ],
+      "wasmKernel": "igesEvalKernel",
+      "archetypeId": 104
+    }
+  },
+  {
+    "name": "TYPE_106",
+    "kind": "Class",
+    "namePath": "iges.std.TYPE_106",
+    "exports": [
+      "ip",
+      "n"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 106 — Copious Data",
+      "category": "Curves & Points",
+      "domain": "cad",
+      "description": "Point clouds, 2D/3D polylines, and sextuple curve-with-vector sequences.",
+      "provenance": "IGES 5.3 §4.6 (ANSI Y14.26M)",
+      "aliases": [
+        "106",
+        "CopiousData",
+        "COPIOUS_DATA"
+      ],
+      "parameters": [
+        {
+          "key": "ip",
+          "label": "ip",
+          "type": "integer",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Interpretation flag (1=2D, 2=3D, 3=6D)"
+        },
+        {
+          "key": "n",
+          "label": "n",
+          "type": "integer",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Number of n-tuples"
+        }
+      ],
+      "wasmKernel": "igesEvalKernel",
+      "archetypeId": 106
+    }
+  },
+  {
+    "name": "TYPE_108",
+    "kind": "Class",
+    "namePath": "iges.std.TYPE_108",
+    "exports": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 108 — Plane",
+      "category": "Surfaces",
+      "domain": "cad",
+      "description": "Unbounded or bounded plane A*x + B*y + C*z = D.",
+      "provenance": "IGES 5.3 §4.7 (ANSI Y14.26M)",
+      "aliases": [
+        "108",
+        "Plane",
+        "PLANE"
+      ],
+      "parameters": [
+        {
+          "key": "A",
+          "label": "A",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Plane normal X"
+        },
+        {
+          "key": "B",
+          "label": "B",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Plane normal Y"
+        },
+        {
+          "key": "C",
+          "label": "C",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Plane normal Z"
+        },
+        {
+          "key": "D",
+          "label": "D",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Plane offset"
+        }
+      ],
+      "wasmKernel": "igesEvalKernel",
+      "archetypeId": 108
+    }
+  },
+  {
+    "name": "TYPE_110",
+    "kind": "Class",
+    "namePath": "iges.std.TYPE_110",
+    "exports": [
+      "x1",
+      "y1",
+      "z1",
+      "x2",
+      "y2",
+      "z2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 110 — Line",
+      "category": "Curves & Points",
+      "domain": "cad",
+      "description": "3D straight line segment from (X1,Y1,Z1) to (X2,Y2,Z2).",
+      "provenance": "IGES 5.3 §4.8 (ANSI Y14.26M)",
+      "aliases": [
+        "110",
+        "Line",
+        "LINE"
+      ],
+      "parameters": [
+        {
+          "key": "x1",
+          "label": "x1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Start X"
+        },
+        {
+          "key": "y1",
+          "label": "y1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Start Y"
+        },
+        {
+          "key": "z1",
+          "label": "z1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Start Z"
+        },
+        {
+          "key": "x2",
+          "label": "x2",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "End X"
+        },
+        {
+          "key": "y2",
+          "label": "y2",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "End Y"
+        },
+        {
+          "key": "z2",
+          "label": "z2",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "End Z"
+        }
+      ],
+      "wasmKernel": "igesEvalKernel",
+      "archetypeId": 110
+    }
+  },
+  {
+    "name": "TYPE_116",
+    "kind": "Class",
+    "namePath": "iges.std.TYPE_116",
+    "exports": [
+      "x",
+      "y",
+      "z"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 116 — Point",
+      "category": "Curves & Points",
+      "domain": "cad",
+      "description": "3D Cartesian point (X, Y, Z) with optional display symbol pointer.",
+      "provenance": "IGES 5.3 §4.11 (ANSI Y14.26M)",
+      "aliases": [
+        "116",
+        "Point",
+        "POINT"
+      ],
+      "parameters": [
+        {
+          "key": "x",
+          "label": "x",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "X coordinate"
+        },
+        {
+          "key": "y",
+          "label": "y",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Y coordinate"
+        },
+        {
+          "key": "z",
+          "label": "z",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Z coordinate"
+        }
+      ],
+      "wasmKernel": "igesEvalKernel",
+      "archetypeId": 116
+    }
+  },
+  {
+    "name": "TYPE_120",
+    "kind": "Class",
+    "namePath": "iges.std.TYPE_120",
+    "exports": [
+      "sa",
+      "ta"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 120 — Surface of Revolution",
+      "category": "Surfaces",
+      "domain": "cad",
+      "description": "Surface generated by rotating a generatrix curve about a line axis.",
+      "provenance": "IGES 5.3 §4.13 (ANSI Y14.26M)",
+      "aliases": [
+        "120",
+        "SurfaceOfRevolution",
+        "SURFACE_OF_REVOLUTION"
+      ],
+      "parameters": [
+        {
+          "key": "sa",
+          "label": "sa",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "rad",
+          "description": "Start angle"
+        },
+        {
+          "key": "ta",
+          "label": "ta",
+          "type": "real",
+          "defaultValue": 6.283185307179586,
+          "unit": "rad",
+          "description": "Terminate angle"
+        }
+      ],
+      "wasmKernel": "igesEvalKernel",
+      "archetypeId": 120
+    }
+  },
+  {
+    "name": "TYPE_122",
+    "kind": "Class",
+    "namePath": "iges.std.TYPE_122",
+    "exports": [
+      "lx",
+      "ly",
+      "lz"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 122 — Tabulated Cylinder",
+      "category": "Surfaces",
+      "domain": "cad",
+      "description": "Ruled surface formed by sweeping a directrix curve along a constant translation vector.",
+      "provenance": "IGES 5.3 §4.14 (ANSI Y14.26M)",
+      "aliases": [
+        "122",
+        "TabulatedCylinder",
+        "TABULATED_CYLINDER"
+      ],
+      "parameters": [
+        {
+          "key": "lx",
+          "label": "lx",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Generatrix end X"
+        },
+        {
+          "key": "ly",
+          "label": "ly",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Generatrix end Y"
+        },
+        {
+          "key": "lz",
+          "label": "lz",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "Generatrix end Z"
+        }
+      ],
+      "wasmKernel": "igesEvalKernel",
+      "archetypeId": 122
+    }
+  },
+  {
+    "name": "TYPE_124",
+    "kind": "Class",
+    "namePath": "iges.std.TYPE_124",
+    "exports": [
+      "r11",
+      "r12",
+      "r13",
+      "t1",
+      "r21",
+      "r22",
+      "r23",
+      "t2",
+      "r31",
+      "r32",
+      "r33",
+      "t3"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 124 — Transformation Matrix",
+      "category": "Transforms",
+      "domain": "cad",
+      "description": "3x4 rigid/affine coordinate transformation matrix [R | T].",
+      "provenance": "IGES 5.3 §4.15 (ANSI Y14.26M)",
+      "aliases": [
+        "124",
+        "TransformationMatrix",
+        "TRANSFORMATION_MATRIX"
+      ],
+      "parameters": [
+        {
+          "key": "r11",
+          "label": "r11",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "R11"
+        },
+        {
+          "key": "r12",
+          "label": "r12",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "R12"
+        },
+        {
+          "key": "r13",
+          "label": "r13",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "R13"
+        },
+        {
+          "key": "t1",
+          "label": "t1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Translation X"
+        },
+        {
+          "key": "r21",
+          "label": "r21",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "R21"
+        },
+        {
+          "key": "r22",
+          "label": "r22",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "R22"
+        },
+        {
+          "key": "r23",
+          "label": "r23",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "R23"
+        },
+        {
+          "key": "t2",
+          "label": "t2",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Translation Y"
+        },
+        {
+          "key": "r31",
+          "label": "r31",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "R31"
+        },
+        {
+          "key": "r32",
+          "label": "r32",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "R32"
+        },
+        {
+          "key": "r33",
+          "label": "r33",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "R33"
+        },
+        {
+          "key": "t3",
+          "label": "t3",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Translation Z"
+        }
+      ],
+      "wasmKernel": "igesEvalKernel",
+      "archetypeId": 124
+    }
+  },
+  {
+    "name": "TYPE_126",
+    "kind": "Class",
+    "namePath": "iges.std.TYPE_126",
+    "exports": [
+      "k",
+      "m",
+      "v0",
+      "v1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 126 — Rational B-Spline Curve (NURBS)",
+      "category": "Curves & Points",
+      "domain": "cad",
+      "description": "Non-Uniform Rational B-Spline (NURBS) curve with degree M, K+1 control points, knots, and weights.",
+      "provenance": "IGES 5.3 §4.23 (ANSI Y14.26M)",
+      "aliases": [
+        "126",
+        "NurbsCurve",
+        "RATIONAL_BSPLINE_CURVE"
+      ],
+      "parameters": [
+        {
+          "key": "k",
+          "label": "k",
+          "type": "integer",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Upper control point index (K)"
+        },
+        {
+          "key": "m",
+          "label": "m",
+          "type": "integer",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Spline degree (M)"
+        },
+        {
+          "key": "v0",
+          "label": "v0",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Start parameter"
+        },
+        {
+          "key": "v1",
+          "label": "v1",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "End parameter"
+        }
+      ],
+      "wasmKernel": "igesEvalKernel",
+      "archetypeId": 126
+    }
+  },
+  {
+    "name": "TYPE_128",
+    "kind": "Class",
+    "namePath": "iges.std.TYPE_128",
+    "exports": [
+      "k1",
+      "k2",
+      "m1",
+      "m2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 128 — Rational B-Spline Surface (NURBS)",
+      "category": "Surfaces",
+      "domain": "cad",
+      "description": "Tensor-product NURBS surface with degrees (M1, M2) and (K1+1)x(K2+1) control net.",
+      "provenance": "IGES 5.3 §4.24 (ANSI Y14.26M)",
+      "aliases": [
+        "128",
+        "NurbsSurface",
+        "RATIONAL_BSPLINE_SURFACE"
+      ],
+      "parameters": [
+        {
+          "key": "k1",
+          "label": "k1",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "U upper index"
+        },
+        {
+          "key": "k2",
+          "label": "k2",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "V upper index"
+        },
+        {
+          "key": "m1",
+          "label": "m1",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "U degree"
+        },
+        {
+          "key": "m2",
+          "label": "m2",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "V degree"
+        }
+      ],
+      "wasmKernel": "igesEvalKernel",
+      "archetypeId": 128
+    }
+  },
+  {
+    "name": "TYPE_142",
+    "kind": "Class",
+    "namePath": "iges.std.TYPE_142",
+    "exports": [
+      "crtn"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 142 — Curve on Parametric Surface",
+      "category": "Surfaces",
+      "domain": "cad",
+      "description": "Associates a parametric UV curve and 3D model-space curve with a host surface.",
+      "provenance": "IGES 5.3 §4.32 (ANSI Y14.26M)",
+      "aliases": [
+        "142",
+        "CurveOnParametricSurface",
+        "CURVE_ON_PARAMETRIC_SURFACE"
+      ],
+      "parameters": [
+        {
+          "key": "crtn",
+          "label": "crtn",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Creation way flag"
+        }
+      ],
+      "wasmKernel": "igesEvalKernel",
+      "archetypeId": 142
+    }
+  },
+  {
+    "name": "TYPE_144",
+    "kind": "Class",
+    "namePath": "iges.std.TYPE_144",
+    "exports": [
+      "n1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 144 — Trimmed Parametric Surface",
+      "category": "Surfaces",
+      "domain": "cad",
+      "description": "Surface bounded by an outer boundary curve (Type 142) and zero or more inner hole loops.",
+      "provenance": "IGES 5.3 §4.34 (ANSI Y14.26M)",
+      "aliases": [
+        "144",
+        "TrimmedParametricSurface",
+        "TRIMMED_PARAMETRIC_SURFACE"
+      ],
+      "parameters": [
+        {
+          "key": "n1",
+          "label": "n1",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Outer boundary flag"
+        }
+      ],
+      "wasmKernel": "igesEvalKernel",
+      "archetypeId": 144
+    }
+  },
+  {
+    "name": "TYPE_186",
+    "kind": "Class",
+    "namePath": "iges.std.TYPE_186",
+    "exports": [
+      "voids"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 186 — Manifold Solid B-Rep Object",
+      "category": "Topology & B-Rep",
+      "domain": "cad",
+      "description": "Watertight 3D solid defined by an outer closed shell (Type 514) and optional void shells.",
+      "provenance": "IGES 5.3 §4.48 (ANSI Y14.26M)",
+      "aliases": [
+        "186",
+        "ManifoldSolidBRep",
+        "MANIFOLD_SOLID_BREP"
+      ],
+      "parameters": [
+        {
+          "key": "voids",
+          "label": "voids",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Number of void shells"
+        }
+      ],
+      "wasmKernel": "igesEvalKernel",
+      "archetypeId": 186
+    }
+  },
+  {
+    "name": "UNIT_INCH",
+    "kind": "Class",
+    "namePath": "iges.std.UNIT_INCH",
+    "exports": [
+      "metersPerUnit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IGES Unit 1 — Inch (0.0254 m)",
+      "category": "Unit Presets",
+      "domain": "cad",
+      "description": "IGES Global unit flag 1: international inch (0.0254 m).",
+      "provenance": "IGES 5.3 §2.2.4.2",
+      "aliases": [
+        "IN",
+        "INCH",
+        "FLAG_1"
+      ],
+      "parameters": [
+        {
+          "key": "metersPerUnit",
+          "label": "metersPerUnit",
+          "type": "real",
+          "defaultValue": 0.0254,
+          "unit": "m/in",
+          "description": "SI meters per inch"
+        }
+      ],
+      "wasmKernel": "igesEvalKernel",
+      "archetypeId": 1001
+    }
+  },
+  {
+    "name": "UNIT_MM",
+    "kind": "Class",
+    "namePath": "iges.std.UNIT_MM",
+    "exports": [
+      "metersPerUnit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IGES Unit 2 — Millimeter (0.001 m)",
+      "category": "Unit Presets",
+      "domain": "cad",
+      "description": "IGES Global unit flag 2: millimeter (0.001 m).",
+      "provenance": "IGES 5.3 §2.2.4.2",
+      "aliases": [
+        "MM",
+        "MILLIMETER",
+        "FLAG_2"
+      ],
+      "parameters": [
+        {
+          "key": "metersPerUnit",
+          "label": "metersPerUnit",
+          "type": "real",
+          "defaultValue": 0.001,
+          "unit": "m/mm",
+          "description": "SI meters per millimeter"
+        }
+      ],
+      "wasmKernel": "igesEvalKernel",
+      "archetypeId": 1002
+    }
+  },
+  {
+    "name": "UNIT_FOOT",
+    "kind": "Class",
+    "namePath": "iges.std.UNIT_FOOT",
+    "exports": [
+      "metersPerUnit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IGES Unit 4 — Foot (0.3048 m)",
+      "category": "Unit Presets",
+      "domain": "cad",
+      "description": "IGES Global unit flag 4: international foot (0.3048 m).",
+      "provenance": "IGES 5.3 §2.2.4.2",
+      "aliases": [
+        "FT",
+        "FOOT",
+        "FLAG_4"
+      ],
+      "parameters": [
+        {
+          "key": "metersPerUnit",
+          "label": "metersPerUnit",
+          "type": "real",
+          "defaultValue": 0.3048,
+          "unit": "m/ft",
+          "description": "SI meters per foot"
+        }
+      ],
+      "wasmKernel": "igesEvalKernel",
+      "archetypeId": 1004
+    }
+  },
+  {
+    "name": "UNIT_METER",
+    "kind": "Class",
+    "namePath": "iges.std.UNIT_METER",
+    "exports": [
+      "metersPerUnit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IGES Unit 6 — Meter (1.0 m)",
+      "category": "Unit Presets",
+      "domain": "cad",
+      "description": "IGES Global unit flag 6: SI meter (1.0 m).",
+      "provenance": "IGES 5.3 §2.2.4.2",
+      "aliases": [
+        "M",
+        "METER",
+        "FLAG_6"
+      ],
+      "parameters": [
+        {
+          "key": "metersPerUnit",
+          "label": "metersPerUnit",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m/m",
+          "description": "SI meters per meter"
+        }
+      ],
+      "wasmKernel": "igesEvalKernel",
+      "archetypeId": 1006
+    }
+  },
+  {
+    "name": "UNIT_MICRON",
+    "kind": "Class",
+    "namePath": "iges.std.UNIT_MICRON",
+    "exports": [
+      "metersPerUnit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IGES Unit 9 — Micron (1e-6 m)",
+      "category": "Unit Presets",
+      "domain": "cad",
+      "description": "IGES Global unit flag 9: micrometer (1e-6 m).",
+      "provenance": "IGES 5.3 §2.2.4.2",
+      "aliases": [
+        "UM",
+        "MICRON",
+        "FLAG_9"
+      ],
+      "parameters": [
+        {
+          "key": "metersPerUnit",
+          "label": "metersPerUnit",
+          "type": "real",
+          "defaultValue": 0.000001,
+          "unit": "m/um",
+          "description": "SI meters per micron"
+        }
+      ],
+      "wasmKernel": "igesEvalKernel",
+      "archetypeId": 1009
+    }
+  },
+  {
+    "name": "UNIT_CM",
+    "kind": "Class",
+    "namePath": "iges.std.UNIT_CM",
+    "exports": [
+      "metersPerUnit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IGES Unit 10 — Centimeter (0.01 m)",
+      "category": "Unit Presets",
+      "domain": "cad",
+      "description": "IGES Global unit flag 10: centimeter (0.01 m).",
+      "provenance": "IGES 5.3 §2.2.4.2",
+      "aliases": [
+        "CM",
+        "CENTIMETER",
+        "FLAG_10"
+      ],
+      "parameters": [
+        {
+          "key": "metersPerUnit",
+          "label": "metersPerUnit",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "m/cm",
+          "description": "SI meters per centimeter"
+        }
+      ],
+      "wasmKernel": "igesEvalKernel",
+      "archetypeId": 1010
+    }
+  }
+]

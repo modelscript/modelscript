@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { registerHeritageLanguagePlugins } from "./heritage-plugins.js";
+
 import {
   adamsLanguage,
   createAdamsActionHandlers,
@@ -2387,6 +2389,9 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       hover: (offset: number, text: string) => getMlxtranHover(text, offsetToPosition(text, offset)),
     },
   });
+
+  // 93–136. Heritage 1960s–1980s Beta Engineering Languages (44 packages)
+  registerHeritageLanguagePlugins(registerStandardPlugin);
 
   if (
     workspaceManager?.unifiedWorkspace &&

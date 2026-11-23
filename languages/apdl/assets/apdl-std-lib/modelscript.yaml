@@ -1,0 +1,11 @@
+name: "@modelscript/apdl-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom ANSYS APDL standard element library (7 element types, cleanroom SVG icons, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: apdl
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

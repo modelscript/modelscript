@@ -181,7 +181,6 @@
   },
   "pnpm": {
     "overrides": {
-      "@antv/x6-plugin-selection>@antv/x6": "^3.1.7",
       "@babel/core": "^7.29.6",
       "@babel/plugin-transform-modules-systemjs": "^7.29.4",
       "@hono/node-server": "^2.1.3",

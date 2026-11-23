@@ -75,9 +75,9 @@ Source (.mo) → WASM GLR Parser → Linear Memory CST
 | `apps/docs/`              | Unified `modelscript.org` website and VitePress documentation portal (`@modelscript/docs`)                                                                                  |
 | `ee/`                     | Enterprise Edition (`@modelscript/ee`) — Ed25519 offline license verifier, NERC CIP / FERC CEII / FDA 21 CFR Part 11 compliance, SSO/SAML, RBAC, Slurm HPC, Digital Twin    |
 
-### Polyglot Languages (`languages/` — 106 Languages)
+### Polyglot Languages (`languages/` — 169 Languages)
 
-ModelScript is a polyglot compiler supporting **106 engineering languages and simulation formats** (`33 Beta`, `72 Alpha`, `1 Pre-Alpha`) across 8 domain clusters with unified querying, `DAEBuilder` lowering, and cross-language interoperability. Each package declares its maturity tier in `package.json#modelscript.tier` (`"beta"`, `"alpha"`, or `"pre-alpha"`), validated by `pnpm run lint:manifests` and `pnpm run audit:languages`:
+ModelScript is a polyglot compiler supporting **169 engineering languages and simulation/data formats** (`96 Beta`, `72 Alpha`, `1 Pre-Alpha`) across 10 domain clusters with unified querying, `DAEBuilder` lowering, and cross-language interoperability. Each package declares its maturity tier in `package.json#modelscript.tier` (`"beta"`, `"alpha"`, or `"pre-alpha"`), validated by `pnpm run lint:manifests` and `pnpm run audit:languages`:
 
 - **Native & Core Systems Engineering (11):** `modelscript` (`Beta`), `modelica` (`Beta`), `ampl` (`Beta`), `sysml2` (`Beta`), `magicdraw` (`Beta`), `ssp` (`Beta`), `reqif` (`Beta`), `oscal` (`Alpha`), `owl2` (`Beta`), `sparql` (`Beta`), `csv` (`Beta`)
 - **Electrical Power Grids, RF, Telecommunications & Electronics (32):** `pscad` (`Beta`), `psse` (`Beta`), `cgmes` (`Alpha`), `opendss` (`Alpha`), `powerfactory` (`Beta`), `pslf` (`Alpha`), `ocpp` (`Alpha`), `openadr` (`Alpha`), `spice` (`Beta`), `atopile` (`Beta`), `kicad` (`Beta`), `verilog-a` (`Alpha`), `ibis` (`Alpha`), `touchstone` (`Alpha`), `optical` (`Alpha`), `ran` (`Alpha`), `fiber` (`Beta`), `matpower` (`Alpha`), `comtrade` (`Alpha`), `scl` (`Alpha`), `atp` (`Alpha`), `dnp3` (`Alpha`), `oneliner` (`Alpha`), `sel` (`Alpha`), `c37118` (`Alpha`), `cyme` (`Alpha`), `gridlabd` (`Alpha`), `iec104` (`Alpha`), `plscadd` (`Alpha`), `powerworld` (`Alpha`), `pypsa` (`Alpha`), `rtds` (`Alpha`)
@@ -87,6 +87,8 @@ ModelScript is a polyglot compiler supporting **106 engineering languages and si
 - **3D CAD, Digital Metrology & Continuum Physics (6):** `step` (`Beta`), `qif` (`Alpha`), `scad` (`Beta`), `usd` (`Alpha`), `fea` (`Alpha`), `cfd` (`Alpha`)
 - **Chemistry, Systems/Synthetic Biology & Scientific Code (16):** `sbml` (`Alpha`), `antimony` (`Alpha`), `cantera` (`Beta`), `smiles` (`Alpha`), `nmtran` (`Alpha`), `mlxtran` (`Alpha`), `nmodl` (`Alpha`), `sbol` (`Alpha`), `bngl` (`Alpha`), `sedml` (`Alpha`), `pdb` (`Alpha`), `genbank` (`Alpha`), `gproms` (`Alpha`), `phreeqc` (`Alpha`), `fortran` (`Alpha`), `c` (`Alpha`)
 - **Radiology, Radiation Oncology & Computer-Assisted Surgery (8):** `opensim` (`Alpha`), `dicom-rt` (`Alpha`), `cellml` (`Alpha`), `febio` (`Alpha`), `nifti` (`Alpha`), `topas` (`Alpha`), `three-mf` (`Alpha`), `igtl` (`Alpha`)
+- **Heritage 1960s–1980s Simulation, EDA, Nuclear/Aerospace, Optimization, CAD/CAM & Scientific (44 — all `Beta`):** `acsl`, `csmp`, `dynamo`, `esl`, `gpss`, `simscript`, `slam`, `vhdl`, `verilog`, `lustre`, `esterel`, `sdl`, `edif`, `gdsii`, `cif`, `gerber`, `mcnp`, `melcor`, `scale`, `sinda`, `trasys`, `nec2`, `datcom`, `cea`, `gams`, `mps`, `cplex-lp`, `iges`, `dxf`, `gcode`, `apt`, `lsdyna`, `apdl`, `plot3d`, `trnsys`, `doe2`, `chemkin`, `molfile`, `gaussian`, `ieee-cdf`, `hec1`, `hec2`, `segy`, `fits`
+- **Heritage 1960s–1980s Engineering, Telemetry, Nuclear, Spectroscopy, 3D Mesh & Firmware Data Formats (19 — all `Beta` with interactive React/SVG panels):** `netcdf`, `nasa-cdf`, `grib`, `bufr`, `usgs-dem`, `hdf4`, `arinc429`, `nmea0183`, `rinex`, `irig106`, `endf6`, `jcamp-dx`, `iucr-cif`, `stl`, `obj`, `ihex`, `srec`, `jedec`, `asn1`
 
 ### SymbolIndex Data Model
 

@@ -1252,6 +1252,22 @@ export class ArenaDAEPrinter {
         this.out.write(")");
         break;
 
+      case ExprKind.AtBoundary: {
+        const vId = a.getExprData1(id);
+        const bIdx = a.getExprLeft(id);
+        const fn = bIdx === 0 ? "atStart" : bIdx === 1 ? "atEnd" : `atPoint_${bIdx}`;
+        this.out.write(`${fn}(${a.getVarName(vId)})`);
+        break;
+      }
+
+      case ExprKind.Delay:
+        this.out.write("delay(");
+        this.printExpr(a.getExprLeft(id));
+        this.out.write(", ");
+        this.printExpr(a.getExprRight(id));
+        this.out.write(")");
+        break;
+
       case ExprKind.IfElse:
         this.out.write("if ");
         this.printExpr(a.getExprData1(id));
@@ -1478,11 +1494,12 @@ export class ArenaDAEPrinter {
     else if (causality === 2 || isStateOutput) this.out.write("output ");
     if (
       customType &&
-      type !== VarType.Integer &&
-      type !== VarType.Boolean &&
-      type !== VarType.String &&
-      type !== VarType.Enumeration &&
-      type !== VarType.Clock
+      ((type !== VarType.Integer &&
+        type !== VarType.Boolean &&
+        type !== VarType.String &&
+        type !== VarType.Enumeration &&
+        type !== VarType.Clock) ||
+        Boolean(a.getFunction(`${customType}.constructor`) || a.getFunction(`${customType}.destructor`)))
     ) {
       this.out.write(customType);
     } else if (type === VarType.Real) this.out.write(customType ?? "Real");
@@ -1669,6 +1686,7 @@ export class ArenaDAEPrinter {
     switch (kind) {
       case EqKind.Simple:
       case EqKind.InitialSimple:
+      case EqKind.Boundary:
       case EqKind.Array: {
         this.out.write(this.indent());
         this.printExpr(a.getEqLhs(idx));

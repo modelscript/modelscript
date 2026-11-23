@@ -19,9 +19,83 @@ import {
   updateParameterText,
   type DiagramGridMode,
 } from "@modelscript/diagram";
+import type { DiagramData } from "@modelscript/diagram/protocol";
 import type { Theme } from "@monaco-editor/react";
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { Scissor3DViewport, SharedScissor3DHost, type Embedded3DPortalKind } from "./cad-viewer/SharedScissor3DHost";
 import { clearPlacement, movePlacementGhost } from "./placement";
+
+export interface PinPlotSeriesInput {
+  id: string;
+  label: string;
+  color: string;
+  unit?: string | undefined;
+  x: Float64Array | number[];
+  y: Float64Array | number[];
+}
+
+export interface PinPlotWidgetInput {
+  id?: string | undefined;
+  title: string;
+  kind?: "timeseries" | "xy" | "bode" | "scatter" | "pareto" | undefined;
+  series: PinPlotSeriesInput[];
+  bounds?: { x: number; y: number; width: number; height: number } | undefined;
+  xLabel?: string | undefined;
+  yLabel?: string | undefined;
+  crosshairX?: number | undefined;
+}
+
+export interface PinStickyWidgetInput {
+  id?: string | undefined;
+  label: string;
+  value: string;
+  unit?: string | undefined;
+  status?: "ok" | "warning" | "error" | "stale" | undefined;
+  tetherTarget?: { x: number; y: number } | undefined;
+  bounds?: { x: number; y: number; width: number; height: number } | undefined;
+}
+
+export interface EmbeddedPortalScissorRect {
+  portalId: string;
+  kind: Embedded3DPortalKind;
+  artifactUri: string;
+  cssX: number;
+  cssY: number;
+  cssWidth: number;
+  cssHeight: number;
+  glX: number;
+  glY: number;
+  glWidth: number;
+  glHeight: number;
+  renderLive: boolean;
+  lod: string;
+  snapshotDataUrl?: string | undefined;
+}
+
+interface EmbeddedPortalOverlayState extends EmbeddedPortalScissorRect {
+  vtkBuffer?: Uint8Array | null | undefined;
+  badgeLabel?: string | undefined;
+}
+
+export interface SimulationResultInput {
+  time: number[] | Float64Array;
+  signals: Record<string, number[] | Float64Array>;
+}
+
+interface NormalizedSimulationData {
+  time: Float64Array;
+  signals: Record<string, Float64Array>;
+  signalNames: string[];
+  varIndexMap: Map<string, number>;
+  frameBuffer: Float64Array;
+}
+
+interface SimulationPlaybackState {
+  start: number;
+  end: number;
+  current: number;
+  isPlaying: boolean;
+}
 
 export interface DiagramEditorHandle {
   fitContent: () => void;
@@ -39,6 +113,12 @@ export interface DiagramEditorHandle {
   setGridMode: (mode: DiagramGridMode) => void;
   setSnapToGrid: (enabled: boolean) => void;
   centerCell?: (cellId: string) => void;
+  pinPlotWidget: (spec: PinPlotWidgetInput) => string | null;
+  pinStickyWidget: (spec: PinStickyWidgetInput) => string | null;
+  loadSimulationResult: (result: SimulationResultInput) => void;
+  playSimulation: () => void;
+  pauseSimulation: () => void;
+  seekSimulation: (time: number) => void;
 }
 
 interface DiagramEditorProps {
@@ -90,6 +170,8 @@ interface DiagramEditorProps {
   onShowProperties?: ((nodeId: string, cachedProps?: any, isLoading?: boolean) => void) | undefined;
   onNodeDoubleClick?: ((nodeId: string, nodeData?: any) => void) | undefined;
   fitInsets?: { top: number; right: number; bottom: number; left: number } | undefined;
+  onFetchArtifactBytes?: ((artifactUri: string) => Promise<Uint8Array | null>) | undefined;
+  onTessellateStep?: ((artifactUri: string) => Promise<string | Uint8Array | null>) | undefined;
 }
 
 type DiagramGraphInstance = {
@@ -100,11 +182,181 @@ type DiagramGraphInstance = {
   off?: (event: string, fn: unknown) => void;
   on?: (event: string, fn: unknown) => void;
   getCellById?: (id: string) => unknown;
+  scale?: () => { sx: number; sy: number };
+  translate?: (tx?: number, ty?: number) => { tx: number; ty: number };
+  computeEmbedded3DScissorRects?: () => EmbeddedPortalScissorRect[];
+  portal3DManager?:
+    | {
+        setFocusedPortal?: (id: string | null) => void;
+        updatePortalBounds?: (id: string, bounds: { x: number; y: number; width: number; height: number }) => void;
+        getPortal?: (id: string) => unknown;
+      }
+    | undefined;
+  registerCanvasWidget?: (widget: Record<string, unknown>) => void;
+  getCanvasWidgets?: () => Array<Record<string, unknown>>;
+  syncPlotCrosshair?: (time: number | undefined) => void;
+  tickAnimations?: (frame: Float64Array, dt?: number) => number;
+  animationEngine?: { bindVariableIndices?: (m: Map<string, number>) => void } | undefined;
+  timelineStore?:
+    | {
+        loadTrajectories?: (time: Float64Array, signals: Record<string, Float64Array>) => void;
+        seek?: (time: number) => { currentTime: number };
+        setPlaying?: (playing: boolean) => void;
+        getState?: () => { currentTime: number; startTime: number; endTime: number; playing: boolean };
+        subscribe?: (
+          fn: (
+            state: { currentTime: number; startTime: number; endTime: number; playing: boolean },
+            values: Float64Array,
+            varIndexMap: Map<string, number>,
+          ) => void,
+        ) => () => void;
+      }
+    | undefined;
+  snapshotBaker?:
+    | {
+        captureFromCanvas?: (
+          portalId: string,
+          sourceCanvas: HTMLCanvasElement | null,
+          rect: { x: number; y: number; width: number; height: number },
+          stampKey: string,
+        ) => Promise<boolean>;
+        hasSnapshot?: (portalId: string, stampKey?: string) => boolean;
+      }
+    | undefined;
+  loadSimulationResult?: (result: { time: Float64Array; signals: Record<string, Float64Array> }) => void;
+  playSimulation?: () => void;
+  pauseSimulation?: () => void;
+  seekSimulation?: (time: number) => void;
 };
+
+function isVtkArtifactUri(uri: string | undefined): uri is string {
+  if (!uri) return false;
+  const clean = uri.split(/[?#]/)[0] ?? "";
+  const lower = clean.toLowerCase();
+  return lower.endsWith(".vtk") || lower.endsWith(".vtu");
+}
+
+function isHttpOrRootUri(uri: string): boolean {
+  return uri.startsWith("/") || uri.startsWith("http://") || uri.startsWith("https://");
+}
+
+function normalizeSimulationResult(input: SimulationResultInput): NormalizedSimulationData | null {
+  if (!input || !input.time || !input.signals) return null;
+  const time = input.time instanceof Float64Array ? input.time : Float64Array.from(input.time);
+  if (time.length === 0) return null;
+
+  const signals: Record<string, Float64Array> = {};
+  const signalNames: string[] = [];
+  const varIndexMap = new Map<string, number>();
+  let idx = 0;
+  for (const [name, raw] of Object.entries(input.signals)) {
+    if (!raw) continue;
+    const f64 = raw instanceof Float64Array ? raw : Float64Array.from(raw);
+    signals[name] = f64;
+    signalNames.push(name);
+    varIndexMap.set(name, idx++);
+  }
+  return {
+    time,
+    signals,
+    signalNames,
+    varIndexMap,
+    frameBuffer: new Float64Array(idx),
+  };
+}
+
+function sampleSimulationAtTime(
+  data: NormalizedSimulationData,
+  t: number,
+): { time: number; values: Record<string, number>; frame: Float64Array } {
+  const n = data.time.length;
+  const values: Record<string, number> = {};
+  if (n === 0) {
+    return { time: t, values, frame: data.frameBuffer };
+  }
+
+  let lo = 0;
+  let hi = n - 1;
+  while (lo + 1 < hi) {
+    const mid = (lo + hi) >>> 1;
+    if ((data.time[mid] ?? 0) <= t) lo = mid;
+    else hi = mid;
+  }
+
+  const t0 = data.time[lo] ?? 0;
+  const t1 = data.time[hi] ?? t0;
+  const alpha = t1 > t0 ? Math.max(0, Math.min(1, (t - t0) / (t1 - t0))) : 0;
+
+  for (let i = 0; i < data.signalNames.length; i++) {
+    const name = data.signalNames[i];
+    if (!name) continue;
+    const arr = data.signals[name];
+    if (!arr || arr.length === 0) continue;
+    const v0 = arr[Math.min(lo, arr.length - 1)] ?? 0;
+    const v1 = arr[Math.min(hi, arr.length - 1)] ?? v0;
+    const interpolated = v0 + (v1 - v0) * alpha;
+    data.frameBuffer[i] = interpolated;
+    if (i < 64) {
+      values[name] = interpolated;
+    }
+  }
+
+  return { time: t, values, frame: data.frameBuffer };
+}
+
+function arePortalListsEqual(
+  a: ReadonlyArray<EmbeddedPortalOverlayState>,
+  b: ReadonlyArray<EmbeddedPortalOverlayState>,
+): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const p = a[i];
+    const q = b[i];
+    if (!p || !q) return false;
+    if (
+      p.portalId !== q.portalId ||
+      p.kind !== q.kind ||
+      p.artifactUri !== q.artifactUri ||
+      p.cssX !== q.cssX ||
+      p.cssY !== q.cssY ||
+      p.cssWidth !== q.cssWidth ||
+      p.cssHeight !== q.cssHeight ||
+      p.renderLive !== q.renderLive ||
+      p.lod !== q.lod ||
+      p.snapshotDataUrl !== q.snapshotDataUrl ||
+      p.vtkBuffer !== q.vtkBuffer ||
+      p.badgeLabel !== q.badgeLabel
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+const PIN_PLOT_PALETTE = ["#38bdf8", "#34d399", "#f59e0b", "#f472b6"] as const;
 
 const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const isInternalSelectionRef = useRef<string | null>(null);
+  const widgetCounterRef = useRef(0);
+  const scrubHistoryRef = useRef<Array<{ time: number; values: Record<string, number> }>>([]);
+  const mountedRef = useRef(true);
+  const mountGenRef = useRef(0);
+  const vtkFetchStateRef = useRef<Set<string>>(new Set());
+  const simDataRef = useRef<NormalizedSimulationData | null>(null);
+  const simStateRef = useRef<SimulationPlaybackState | null>(null);
+  const simRafRef = useRef<number | null>(null);
+  const timelineUnsubRef = useRef<(() => void) | null>(null);
+  const lastGraphTimelineTickRef = useRef<number>(0);
+
+  const [embeddedPortals, setEmbeddedPortals] = useState<EmbeddedPortalOverlayState[]>([]);
+  const [focusedPortalId, setFocusedPortalId] = useState<string | null>(null);
+  const [fetchedVtkBuffers, setFetchedVtkBuffers] = useState<Record<string, Uint8Array>>({});
+  const [simPlayback, setSimPlayback] = useState<SimulationPlaybackState | null>(null);
+  const [scrubbedPoint, setScrubbedPoint] = useState<{
+    time: number | null;
+    values: Record<string, number> | null;
+  }>({ time: null, values: null });
 
   // Use a ref for props so callbacks in event listeners have access to latest props
   const propsRef = useRef(props);
@@ -112,17 +364,84 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     propsRef.current = props;
   }, [props]);
 
-  const handleNodeDblClick = useRef(({ node }: any) => {
+  const syncEmbeddedPortals = useCallback(() => {
+    const g = getGraph(containerRef.current) as DiagramGraphInstance | null;
+    if (!g || typeof g.computeEmbedded3DScissorRects !== "function") {
+      setEmbeddedPortals((prev) => (prev.length === 0 ? prev : []));
+      return;
+    }
+    const rects = g.computeEmbedded3DScissorRects();
+    const next: EmbeddedPortalOverlayState[] = rects
+      .filter((r) => r.cssWidth > 1 && r.cssHeight > 1)
+      .map((r) => {
+        const cell = g.getCellById?.(r.portalId) as { getData?: () => Record<string, unknown> | undefined } | null;
+        const cellData = typeof cell?.getData === "function" ? cell.getData() : undefined;
+        const portalMeta =
+          cellData && typeof cellData["portal"] === "object" && cellData["portal"] !== null
+            ? (cellData["portal"] as Record<string, unknown>)
+            : undefined;
+        const propsMeta =
+          cellData && typeof cellData["properties"] === "object" && cellData["properties"] !== null
+            ? (cellData["properties"] as Record<string, unknown>)
+            : undefined;
+        const rawVtk = portalMeta?.["vtkBuffer"] ?? cellData?.["vtkBuffer"];
+        const vtkBuffer = rawVtk instanceof Uint8Array ? rawVtk : undefined;
+        const rawLabel = portalMeta?.["badgeLabel"] ?? propsMeta?.["name"];
+        const badgeLabel = typeof rawLabel === "string" && rawLabel.length > 0 ? rawLabel : undefined;
+        return {
+          ...r,
+          vtkBuffer,
+          badgeLabel,
+        };
+      });
+    setEmbeddedPortals((prev) => (arePortalListsEqual(prev, next) ? prev : next));
+  }, []);
+
+  const handlePortalViewportChange = useCallback(() => {
+    syncEmbeddedPortals();
+  }, [syncEmbeddedPortals]);
+
+  const handlePortalNodeGeometryChange = useCallback(
+    (payload?: { node?: unknown; cell?: unknown }) => {
+      const g = getGraph(containerRef.current) as DiagramGraphInstance | null;
+      const targetCell = (payload?.node ?? payload?.cell) as
+        { id?: string; getBBox?: () => { x: number; y: number; width: number; height: number } } | undefined;
+      if (
+        g?.portal3DManager?.updatePortalBounds &&
+        targetCell?.id &&
+        typeof targetCell.getBBox === "function" &&
+        (!g.portal3DManager.getPortal || g.portal3DManager.getPortal(targetCell.id))
+      ) {
+        g.portal3DManager.updatePortalBounds(targetCell.id, targetCell.getBBox());
+      }
+      syncEmbeddedPortals();
+    },
+    [syncEmbeddedPortals],
+  );
+
+  const handleNodeDblClick = useCallback(({ node }: any) => {
     if (!node || isEphemeralDiagramNode(node.id)) return;
+    const g = getGraph(containerRef.current) as DiagramGraphInstance | null;
+    const hasPortal =
+      Boolean(g?.portal3DManager?.getPortal?.(node.id)) ||
+      Boolean(g?.computeEmbedded3DScissorRects?.().some((r) => r.portalId === node.id));
+    if (hasPortal) {
+      setFocusedPortalId(node.id);
+      return;
+    }
     const data = typeof node.getData === "function" ? node.getData() : undefined;
     propsRef.current.onNodeDoubleClick?.(node.id, data);
-  }).current;
+  }, []);
 
-  const handleScale = useRef(({ sx }: any) => {
-    if (typeof sx === "number" && !isNaN(sx)) {
-      propsRef.current.onZoomChange?.(Math.round(sx * 100) / 100);
-    }
-  }).current;
+  const handleScale = useCallback(
+    ({ sx }: any) => {
+      if (typeof sx === "number" && !isNaN(sx)) {
+        propsRef.current.onZoomChange?.(Math.round(sx * 100) / 100);
+      }
+      syncEmbeddedPortals();
+    },
+    [syncEmbeddedPortals],
+  );
 
   const attachGraphListeners = () => {
     const g = getGraph(containerRef.current) as DiagramGraphInstance | null;
@@ -131,6 +450,20 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       g.on("node:dblclick", handleNodeDblClick);
       g.off?.("scale", handleScale);
       g.on("scale", handleScale);
+      g.off?.("translate", handlePortalViewportChange);
+      g.on("translate", handlePortalViewportChange);
+      g.off?.("node:moved", handlePortalNodeGeometryChange);
+      g.on("node:moved", handlePortalNodeGeometryChange);
+      g.off?.("node:resized", handlePortalNodeGeometryChange);
+      g.on("node:resized", handlePortalNodeGeometryChange);
+      g.off?.("node:change:position", handlePortalNodeGeometryChange);
+      g.on("node:change:position", handlePortalNodeGeometryChange);
+      g.off?.("node:change:size", handlePortalNodeGeometryChange);
+      g.on("node:change:size", handlePortalNodeGeometryChange);
+      g.off?.("node:added", handlePortalViewportChange);
+      g.on("node:added", handlePortalViewportChange);
+      g.off?.("node:removed", handlePortalViewportChange);
+      g.on("node:removed", handlePortalViewportChange);
     }
   };
 
@@ -254,6 +587,283 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     }
   };
 
+  const computeDefaultWidgetBounds = useCallback(
+    (
+      g: DiagramGraphInstance,
+      width: number,
+      height: number,
+    ): { x: number; y: number; width: number; height: number } => {
+      const existingCount = g.getCanvasWidgets?.().length ?? 0;
+      let x = 40 + existingCount * 24;
+      let y = 40 + existingCount * 24;
+      if (typeof g.scale === "function" && typeof g.translate === "function") {
+        const s = g.scale();
+        const t = g.translate();
+        const zoom = s && typeof s.sx === "number" && Number.isFinite(s.sx) && s.sx > 0 ? s.sx : 1;
+        const tx = t && typeof t.tx === "number" && Number.isFinite(t.tx) ? t.tx : 0;
+        const ty = t && typeof t.ty === "number" && Number.isFinite(t.ty) ? t.ty : 0;
+        x = (24 - tx) / zoom + existingCount * (24 / zoom);
+        y = (60 - ty) / zoom + existingCount * (24 / zoom);
+      }
+      return { x, y, width, height };
+    },
+    [],
+  );
+
+  const pinPlotWidget = useCallback(
+    (spec: PinPlotWidgetInput): string | null => {
+      const g = (getGraph(containerRef.current) ?? getGraph()) as DiagramGraphInstance | null;
+      if (!g || typeof g.registerCanvasWidget !== "function") return null;
+      widgetCounterRef.current += 1;
+      const id = spec.id ?? `pinned_plot_${widgetCounterRef.current}`;
+      const bounds = spec.bounds ?? computeDefaultWidgetBounds(g, 260, 150);
+      g.registerCanvasWidget({
+        id,
+        kind: "plot",
+        bounds,
+        plot: {
+          id,
+          title: spec.title,
+          kind: spec.kind ?? "timeseries",
+          series: spec.series,
+          xLabel: spec.xLabel,
+          yLabel: spec.yLabel,
+          crosshairX: spec.crosshairX,
+          dark: propsRef.current.theme === "vs-dark",
+        },
+      });
+      return id;
+    },
+    [computeDefaultWidgetBounds],
+  );
+
+  const pinStickyWidget = useCallback(
+    (spec: PinStickyWidgetInput): string | null => {
+      const g = (getGraph(containerRef.current) ?? getGraph()) as DiagramGraphInstance | null;
+      if (!g || typeof g.registerCanvasWidget !== "function") return null;
+      widgetCounterRef.current += 1;
+      const id = spec.id ?? `pinned_sticky_${widgetCounterRef.current}`;
+      const bounds = spec.bounds ?? computeDefaultWidgetBounds(g, 170, 54);
+      g.registerCanvasWidget({
+        id,
+        kind: "sticky",
+        bounds,
+        sticky: {
+          label: spec.label,
+          value: spec.value,
+          unit: spec.unit,
+          status: spec.status,
+          tetherTarget: spec.tetherTarget,
+          dark: propsRef.current.theme === "vs-dark",
+        },
+      });
+      return id;
+    },
+    [computeDefaultWidgetBounds],
+  );
+
+  const stopSimPlaybackLoop = useCallback(() => {
+    if (simRafRef.current !== null && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(simRafRef.current);
+    }
+    simRafRef.current = null;
+  }, []);
+
+  const bindGraphTimelineSubscription = useCallback((g: DiagramGraphInstance | null) => {
+    if (timelineUnsubRef.current) {
+      timelineUnsubRef.current();
+      timelineUnsubRef.current = null;
+    }
+    if (!g?.timelineStore?.subscribe) return;
+    timelineUnsubRef.current = g.timelineStore.subscribe((state, frame, varIndexMap) => {
+      lastGraphTimelineTickRef.current = typeof performance !== "undefined" ? performance.now() : Date.now();
+      const prev = simStateRef.current;
+      if (!prev) return;
+      const nextCurrent = state.currentTime;
+      simStateRef.current = {
+        ...prev,
+        current: nextCurrent,
+        isPlaying: state.playing,
+      };
+      setSimPlayback((cur) =>
+        cur
+          ? cur.current === nextCurrent && cur.isPlaying === state.playing
+            ? cur
+            : { ...cur, current: nextCurrent, isPlaying: state.playing }
+          : cur,
+      );
+      const values: Record<string, number> = {};
+      let count = 0;
+      for (const [name, idx] of varIndexMap.entries()) {
+        if (count >= 64) break;
+        const val = frame[idx];
+        if (typeof val === "number" && Number.isFinite(val)) {
+          values[name] = val;
+          count++;
+        }
+      }
+      setScrubbedPoint({ time: nextCurrent, values: count > 0 ? values : null });
+    });
+  }, []);
+
+  const loadSimulationResult = useCallback(
+    (result: SimulationResultInput) => {
+      const normalized = normalizeSimulationResult(result);
+      if (!normalized) return;
+
+      stopSimPlaybackLoop();
+      simDataRef.current = normalized;
+
+      const rawStart = normalized.time[0] ?? 0;
+      const rawEnd = normalized.time[normalized.time.length - 1] ?? rawStart;
+      const start = Number.isFinite(rawStart) ? rawStart : 0;
+      const end = Number.isFinite(rawEnd) && rawEnd >= start ? rawEnd : start;
+
+      const nextState: SimulationPlaybackState = {
+        start,
+        end,
+        current: start,
+        isPlaying: false,
+      };
+      simStateRef.current = nextState;
+      setSimPlayback(nextState);
+
+      const g = (getGraph(containerRef.current) ?? getGraph()) as DiagramGraphInstance | null;
+      g?.animationEngine?.bindVariableIndices?.(normalized.varIndexMap);
+      if (typeof g?.loadSimulationResult === "function") {
+        g.loadSimulationResult({ time: normalized.time, signals: normalized.signals });
+      } else {
+        g?.timelineStore?.loadTrajectories?.(normalized.time, normalized.signals);
+      }
+
+      bindGraphTimelineSubscription(g);
+
+      const sampled = sampleSimulationAtTime(normalized, start);
+      setScrubbedPoint({ time: start, values: sampled.values });
+      g?.syncPlotCrosshair?.(start);
+      if (typeof g?.loadSimulationResult !== "function" && g?.tickAnimations) {
+        g.tickAnimations(sampled.frame, 1 / 60);
+      }
+    },
+    [bindGraphTimelineSubscription, stopSimPlaybackLoop],
+  );
+
+  const seekSimulation = useCallback((time: number) => {
+    if (!Number.isFinite(time)) return;
+    const prev = simStateRef.current;
+    const targetTime = prev ? Math.max(prev.start, Math.min(prev.end, time)) : time;
+
+    const g = (getGraph(containerRef.current) ?? getGraph()) as DiagramGraphInstance | null;
+    if (typeof g?.seekSimulation === "function") {
+      g.seekSimulation(targetTime);
+    }
+
+    const data = simDataRef.current;
+    if (data) {
+      const sampled = sampleSimulationAtTime(data, targetTime);
+      if (typeof g?.seekSimulation !== "function") {
+        g?.tickAnimations?.(sampled.frame, 1 / 60);
+      }
+      g?.syncPlotCrosshair?.(targetTime);
+      if (prev) {
+        const nextState = { ...prev, current: targetTime };
+        simStateRef.current = nextState;
+        setSimPlayback(nextState);
+      }
+      setScrubbedPoint({ time: targetTime, values: sampled.values });
+    } else {
+      g?.syncPlotCrosshair?.(targetTime);
+      if (prev) {
+        const nextState = { ...prev, current: targetTime };
+        simStateRef.current = nextState;
+        setSimPlayback(nextState);
+      }
+      setScrubbedPoint((cur) => ({ time: targetTime, values: cur.values }));
+    }
+  }, []);
+
+  const pauseSimulation = useCallback(() => {
+    stopSimPlaybackLoop();
+    const prev = simStateRef.current;
+    if (prev) {
+      const nextState = { ...prev, isPlaying: false };
+      simStateRef.current = nextState;
+      setSimPlayback(nextState);
+    }
+    const g = (getGraph(containerRef.current) ?? getGraph()) as DiagramGraphInstance | null;
+    if (typeof g?.pauseSimulation === "function") {
+      g.pauseSimulation();
+    } else {
+      g?.timelineStore?.setPlaying?.(false);
+    }
+  }, [stopSimPlaybackLoop]);
+
+  const playSimulation = useCallback(() => {
+    const prev = simStateRef.current;
+    if (!prev) return;
+    stopSimPlaybackLoop();
+
+    const nextState: SimulationPlaybackState = { ...prev, isPlaying: true };
+    simStateRef.current = nextState;
+    setSimPlayback(nextState);
+
+    const g = (getGraph(containerRef.current) ?? getGraph()) as DiagramGraphInstance | null;
+    const graphHasNativePlayback = typeof g?.playSimulation === "function";
+    if (graphHasNativePlayback) {
+      g.playSimulation?.();
+    } else {
+      g?.timelineStore?.setPlaying?.(true);
+    }
+
+    if (typeof requestAnimationFrame !== "function") return;
+
+    let lastTs = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const step = (now: number) => {
+      const state = simStateRef.current;
+      if (!mountedRef.current || !state || !state.isPlaying) {
+        simRafRef.current = null;
+        return;
+      }
+
+      const dt = Math.min(0.1, Math.max(0, (now - lastTs) / 1000));
+      lastTs = now;
+
+      const activeGraph = (getGraph(containerRef.current) ?? getGraph()) as DiagramGraphInstance | null;
+      const graphTickedRecently = graphHasNativePlayback && now - lastGraphTimelineTickRef.current < 150;
+
+      if (!graphTickedRecently && dt > 0) {
+        const span = state.end - state.start;
+        let nextTime = state.current + dt;
+        if (span > 0 && nextTime > state.end) {
+          nextTime = state.start + ((nextTime - state.start) % span);
+        } else if (span <= 0) {
+          nextTime = state.start;
+        }
+
+        const updated: SimulationPlaybackState = { ...state, current: nextTime };
+        simStateRef.current = updated;
+        setSimPlayback(updated);
+
+        const data = simDataRef.current;
+        if (data) {
+          const sampled = sampleSimulationAtTime(data, nextTime);
+          setScrubbedPoint({ time: nextTime, values: sampled.values });
+          if (!graphHasNativePlayback) {
+            activeGraph?.tickAnimations?.(sampled.frame, dt);
+          }
+          activeGraph?.syncPlotCrosshair?.(nextTime);
+        } else {
+          setScrubbedPoint((cur) => ({ time: nextTime, values: cur.values }));
+          activeGraph?.syncPlotCrosshair?.(nextTime);
+        }
+      }
+
+      simRafRef.current = requestAnimationFrame(step);
+    };
+
+    simRafRef.current = requestAnimationFrame(step);
+  }, [stopSimPlaybackLoop]);
+
   useImperativeHandle(ref, () => ({
     fitContent: () => {
       syncDiagramOptions();
@@ -273,6 +883,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           if (typeof (g as any).zoom === "function") {
             propsRef.current.onZoomChange?.(Math.round((g as any).zoom() * 100) / 100);
           }
+          syncEmbeddedPortals();
         } catch {
           // ignore if zoom fails before layout
         }
@@ -301,6 +912,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           g.zoom(next, { absolute: true });
         }
         propsRef.current.onZoomChange?.(next);
+        syncEmbeddedPortals();
         return next;
       }
       return 1;
@@ -317,6 +929,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           g.zoom(next, { absolute: true });
         }
         propsRef.current.onZoomChange?.(next);
+        syncEmbeddedPortals();
         return next;
       }
       return 1;
@@ -332,6 +945,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           g.zoom(clamped, { absolute: true });
         }
         propsRef.current.onZoomChange?.(clamped);
+        syncEmbeddedPortals();
       }
     },
     zoomToFit: () => {
@@ -353,6 +967,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         if (typeof g.zoom === "function") {
           propsRef.current.onZoomChange?.(Math.round(g.zoom() * 100) / 100);
         }
+        syncEmbeddedPortals();
       }
     },
     getZoom: () => {
@@ -401,11 +1016,18 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
             }, 3000);
           }
           g.centerCell?.(cell, { animation: { duration: 300 } });
+          syncEmbeddedPortals();
         } catch {
           // fallback if animation unsupported
         }
       }
     },
+    pinPlotWidget,
+    pinStickyWidget,
+    loadSimulationResult,
+    playSimulation,
+    pauseSimulation,
+    seekSimulation,
   }));
 
   useEffect(() => {
@@ -420,7 +1042,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     const configuredWasmUrl =
       (typeof window !== "undefined" &&
         ((window as unknown as { __MODELSCRIPT_WASM_URL__?: string }).__MODELSCRIPT_WASM_URL__ ||
-          container.dataset?.wasmUrl)) ||
+          container.dataset?.["wasmUrl"])) ||
       "/lsp/server/dist/release.wasm";
     void hydrateDiagramWasm(configuredWasmUrl);
 
@@ -460,6 +1082,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
                 if (typeof (g as any).zoom === "function") {
                   propsRef.current.onZoomChange?.(Math.round((g as any).zoom() * 100) / 100);
                 }
+                syncEmbeddedPortals();
               }
             }, 60);
           })
@@ -487,6 +1110,10 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     const isThemeOnlyChange = prevThemeRef.current !== props.theme && prevDiagramDataRef.current === props.diagramData;
     prevThemeRef.current = props.theme;
     prevDiagramDataRef.current = props.diagramData;
+
+    if (!isThemeOnlyChange) {
+      setFocusedPortalId(null);
+    }
 
     if (props.diagramData && containerRef.current) {
       try {
@@ -519,6 +1146,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         if (!props.diagramData.isLoading && rect.width > 0 && rect.height > 0) {
           hasFittedViewportRef.current = true;
         }
+        syncEmbeddedPortals();
       } catch (err) {
         console.error("Failed to render diagram:", err);
       } finally {
@@ -529,6 +1157,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         syncDiagramOptions();
         renderDiagram({ nodes: [], edges: [] } as unknown as DiagramData, props.theme === "vs-dark");
         attachGraphListeners();
+        syncEmbeddedPortals();
       } catch {
         // ignore empty canvas initialization errors
       }
@@ -536,9 +1165,29 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       if (props.onRenderComplete) props.onRenderComplete(null);
     } else if (!props.diagramData && props.onRenderComplete) {
       hasFittedViewportRef.current = false;
+      setEmbeddedPortals([]);
       props.onRenderComplete(null);
     }
   }, [props.diagramData, props.theme]);
+
+  useEffect(() => {
+    const g = getGraph(containerRef.current) as DiagramGraphInstance | null;
+    g?.portal3DManager?.setFocusedPortal?.(focusedPortalId);
+    syncEmbeddedPortals();
+
+    if (!focusedPortalId || typeof window === "undefined") return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setFocusedPortalId(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [focusedPortalId, syncEmbeddedPortals]);
+
+  useEffect(() => {
+    scrubHistoryRef.current = [];
+  }, [props.diagramClassName]);
 
   useEffect(() => {
     if (props.selectedName !== undefined) {
@@ -551,7 +1200,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         const isInternal = isInternalSelectionRef.current === props.selectedName;
         isInternalSelectionRef.current = null;
 
-        const cell = g.getCellById(props.selectedName);
+        const cell = g.getCellById?.(props.selectedName);
         if (cell) {
           if (!isInternal) {
             g.cleanSelection?.();
@@ -562,19 +1211,256 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     }
   }, [props.selectedName, props.theme]);
 
-  const [scrubbedPoint, setScrubbedPoint] = useState<{
-    time: number | null;
-    values: Record<string, number> | null;
-  }>({ time: null, values: null });
+  useEffect(() => {
+    mountedRef.current = true;
+    mountGenRef.current += 1;
+    return () => {
+      mountedRef.current = false;
+      stopSimPlaybackLoop();
+      if (timelineUnsubRef.current) {
+        timelineUnsubRef.current();
+        timelineUnsubRef.current = null;
+      }
+      vtkFetchStateRef.current.clear();
+    };
+  }, [stopSimPlaybackLoop]);
+
+  useEffect(() => {
+    if (embeddedPortals.length === 0) return;
+    const urisToFetch: string[] = [];
+    for (const p of embeddedPortals) {
+      if (p.vtkBuffer && p.vtkBuffer.length > 0) continue;
+      const uri = p.artifactUri;
+      if (!isVtkArtifactUri(uri)) continue;
+      if (fetchedVtkBuffers[uri] || vtkFetchStateRef.current.has(uri)) continue;
+      const canCustomFetch = typeof propsRef.current.onFetchArtifactBytes === "function";
+      const canBrowserFetch = typeof fetch === "function" && isHttpOrRootUri(uri);
+      if (!canCustomFetch && !canBrowserFetch) continue;
+      urisToFetch.push(uri);
+    }
+    if (urisToFetch.length === 0) return;
+
+    const gen = mountGenRef.current;
+    const uniqueUris = Array.from(new Set(urisToFetch));
+    for (const uri of uniqueUris) {
+      vtkFetchStateRef.current.add(uri);
+      const fetchBytes = async (): Promise<Uint8Array | null> => {
+        const customFetcher = propsRef.current.onFetchArtifactBytes;
+        if (typeof customFetcher === "function") {
+          const customBytes = await customFetcher(uri);
+          if (customBytes && customBytes.length > 0) return customBytes;
+        }
+        if (typeof fetch === "function" && isHttpOrRootUri(uri)) {
+          const response = await fetch(uri);
+          if (!response.ok) return null;
+          const arrayBuf = await response.arrayBuffer();
+          return arrayBuf.byteLength > 0 ? new Uint8Array(arrayBuf) : null;
+        }
+        return null;
+      };
+      void fetchBytes()
+        .then((bytes) => {
+          if (!mountedRef.current || mountGenRef.current !== gen) {
+            vtkFetchStateRef.current.delete(uri);
+            return;
+          }
+          if (bytes && bytes.length > 0) {
+            setFetchedVtkBuffers((prev) => (prev[uri] === bytes ? prev : { ...prev, [uri]: bytes }));
+          }
+        })
+        .catch(() => {
+          if (!mountedRef.current || mountGenRef.current !== gen) {
+            vtkFetchStateRef.current.delete(uri);
+          }
+        });
+    }
+  }, [embeddedPortals, fetchedVtkBuffers, props.onFetchArtifactBytes]);
+
+  // Bake offscreen ImageBitmap snapshots from the shared WebGL scissor canvas while portals are live
+  // so zoomed-out / idle portals stamp crisp frozen frames on Layer 0 at 0 GPU cost.
+  useEffect(() => {
+    if (embeddedPortals.length === 0 || typeof document === "undefined") return;
+    const g = (getGraph(containerRef.current) ?? getGraph()) as DiagramGraphInstance | null;
+    const baker = g?.snapshotBaker;
+    if (!baker?.captureFromCanvas) return;
+
+    const hostRoot = containerRef.current?.closest?.('[data-testid="shared-scissor-3d-host"]') ?? document;
+    const glCanvas = hostRoot.querySelector('canvas[data-shared-webgl-canvas="true"]') as HTMLCanvasElement | null;
+    if (!glCanvas || glCanvas.width <= 0 || glCanvas.height <= 0) return;
+
+    const dpr = typeof window !== "undefined" ? Math.max(1, window.devicePixelRatio || 1) : 1;
+    const simTimeBucket = Math.round((scrubbedPoint.time ?? simPlayback?.current ?? 0) * 4);
+    for (const p of embeddedPortals) {
+      if (!p.renderLive || p.cssWidth < 24 || p.cssHeight < 24) continue;
+      const stampKey = `${p.artifactUri}@${simTimeBucket}@${Math.round(p.cssWidth)}x${Math.round(p.cssHeight)}`;
+      if (baker.hasSnapshot?.(p.portalId, stampKey)) continue;
+      const hostRect = containerRef.current?.getBoundingClientRect();
+      const sx = Math.max(0, Math.round(((hostRect?.left ?? 0) + p.cssX) * dpr));
+      const sy = Math.max(0, Math.round(((hostRect?.top ?? 0) + p.cssY) * dpr));
+      const sw = Math.min(glCanvas.width - sx, Math.round(p.cssWidth * dpr));
+      const sh = Math.min(glCanvas.height - sy, Math.round(p.cssHeight * dpr));
+      if (sw > 4 && sh > 4) {
+        void baker.captureFromCanvas(p.portalId, glCanvas, { x: sx, y: sy, width: sw, height: sh }, stampKey);
+      }
+    }
+  }, [embeddedPortals, scrubbedPoint.time, simPlayback?.current]);
+
+  const handlePinScrubbedPlot = useCallback(() => {
+    const simData = simDataRef.current;
+    const currentTime = scrubbedPoint.time ?? simStateRef.current?.current ?? null;
+    if (currentTime == null) return;
+
+    if (simData && simData.time.length > 0) {
+      const plotSignalNames = simData.signalNames.filter((n) => n !== "time").slice(0, 4);
+      const series: PinPlotSeriesInput[] =
+        plotSignalNames.length > 0
+          ? plotSignalNames.map((varName, idx) => ({
+              id: varName,
+              label: varName,
+              color: PIN_PLOT_PALETTE[idx % PIN_PLOT_PALETTE.length] ?? "#38bdf8",
+              x: simData.time,
+              y: simData.signals[varName] ?? new Float64Array(simData.time.length),
+            }))
+          : [
+              {
+                id: "time",
+                label: "t",
+                color: "#38bdf8",
+                x: simData.time,
+                y: simData.time,
+              },
+            ];
+
+      const firstVar = plotSignalNames[0];
+      const title =
+        plotSignalNames.length === 1 && firstVar
+          ? `${firstVar} (t)`
+          : `${propsRef.current.diagramClassName || "Simulation"} Telemetry`;
+
+      pinPlotWidget({
+        title,
+        kind: "timeseries",
+        series,
+        xLabel: "t (s)",
+        crosshairX: currentTime,
+      });
+      return;
+    }
+
+    const entries = scrubbedPoint.values
+      ? Object.entries(scrubbedPoint.values)
+          .filter(([, v]) => typeof v === "number" && Number.isFinite(v))
+          .slice(0, 4)
+      : [];
+
+    const history = scrubHistoryRef.current;
+    const series: PinPlotSeriesInput[] =
+      entries.length > 0
+        ? entries.map(([varName, currentVal], idx) => {
+            const xs: number[] = [];
+            const ys: number[] = [];
+            for (const sample of history) {
+              const v = sample.values[varName];
+              if (typeof v === "number" && Number.isFinite(v)) {
+                xs.push(sample.time);
+                ys.push(v);
+              }
+            }
+            if (xs.length < 2) {
+              xs.length = 0;
+              ys.length = 0;
+              const t0 = currentTime > 0 ? 0 : currentTime - 1;
+              xs.push(t0, currentTime);
+              ys.push(currentVal, currentVal);
+            }
+            return {
+              id: varName,
+              label: varName,
+              color: PIN_PLOT_PALETTE[idx % PIN_PLOT_PALETTE.length] ?? "#38bdf8",
+              x: xs,
+              y: ys,
+            };
+          })
+        : [
+            {
+              id: "time",
+              label: "t",
+              color: "#38bdf8",
+              x: [0, currentTime > 0 ? currentTime : 1],
+              y: [0, currentTime],
+            },
+          ];
+
+    const firstVar = entries[0]?.[0];
+    const title =
+      entries.length === 1 && firstVar
+        ? `${firstVar} (t)`
+        : `${propsRef.current.diagramClassName || "Simulation"} Telemetry`;
+
+    pinPlotWidget({
+      title,
+      kind: "timeseries",
+      series,
+      xLabel: "t (s)",
+      crosshairX: currentTime,
+    });
+  }, [pinPlotWidget, scrubbedPoint.time, scrubbedPoint.values]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleSimulationResult = (e: Event) => {
+      const detail = (e as CustomEvent<SimulationResultInput | null | undefined>).detail;
+      if (!detail || !detail.time || !detail.signals) return;
+      loadSimulationResult(detail);
+    };
+    window.addEventListener("morsel:simulation-result", handleSimulationResult);
+    return () => window.removeEventListener("morsel:simulation-result", handleSimulationResult);
+  }, [loadSimulationResult]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handleTimeScrub = (e: Event) => {
       const detail = (e as CustomEvent<{ time?: number | null; values?: Record<string, number> | null }>).detail;
+      const g = containerRef.current ? (getGraph(containerRef.current) as DiagramGraphInstance | null) : null;
+
       if (detail && detail.time != null && Number.isFinite(detail.time)) {
-        setScrubbedPoint({ time: detail.time, values: detail.values ?? null });
+        const scrubTime = detail.time;
+        setScrubbedPoint({ time: scrubTime, values: detail.values ?? null });
+        if (simStateRef.current) {
+          const clamped = Math.max(simStateRef.current.start, Math.min(simStateRef.current.end, scrubTime));
+          simStateRef.current = { ...simStateRef.current, current: clamped };
+          setSimPlayback((prev) => (prev ? { ...prev, current: clamped } : prev));
+        }
+        if (detail.values) {
+          const hist = scrubHistoryRef.current;
+          const existingIdx = hist.findIndex((s) => Math.abs(s.time - scrubTime) < 1e-9);
+          if (existingIdx >= 0) {
+            hist[existingIdx] = { time: scrubTime, values: { ...detail.values } };
+          } else {
+            hist.push({ time: scrubTime, values: { ...detail.values } });
+            hist.sort((a, b) => a.time - b.time);
+            if (hist.length > 256) {
+              hist.splice(0, hist.length - 256);
+            }
+          }
+        }
+        g?.syncPlotCrosshair?.(scrubTime);
+        if (detail.values && g?.tickAnimations && g.animationEngine?.bindVariableIndices) {
+          const entries = Object.entries(detail.values);
+          const varMap = new Map<string, number>();
+          const frame = new Float64Array(entries.length);
+          for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i];
+            if (!entry) continue;
+            varMap.set(entry[0], i);
+            frame[i] = entry[1];
+          }
+          g.animationEngine.bindVariableIndices(varMap);
+          g.tickAnimations(frame, 1 / 60);
+        }
       } else {
         setScrubbedPoint({ time: null, values: null });
+        g?.syncPlotCrosshair?.(undefined);
       }
     };
     window.addEventListener("morsel:time-scrub", handleTimeScrub);
@@ -724,162 +1610,373 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
   }, []);
 
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden" }}>
-      <div
-        ref={containerRef}
-        style={{ width: "100%", height: "100%", maxWidth: "100%", maxHeight: "100%", outline: "none" }}
-        tabIndex={0}
-        onDragOver={(e) => {
-          e.preventDefault();
-          e.dataTransfer.dropEffect = "copy";
-          const g = getGraph(containerRef.current);
-          if (g && containerRef.current) {
-            const p = g.clientToLocal(e.clientX, e.clientY);
-            movePlacementGhost(p.x, p.y);
-          }
-        }}
-        onDrop={(e) => {
-          e.preventDefault();
-          let className = e.dataTransfer.getData("application/vnd.modelscript.classname");
-          let iconSvg = e.dataTransfer.getData("application/vnd.modelscript.iconsvg");
-          if (!className) {
-            try {
-              const json = e.dataTransfer.getData("application/json") || e.dataTransfer.getData("text/plain");
-              if (json) {
-                const parsed = JSON.parse(json);
-                if (parsed.className) {
-                  className = parsed.className;
-                  if (parsed.iconSvg) iconSvg = parsed.iconSvg;
-                }
-              }
-            } catch {
-              // ignore json parse error
-            }
-          }
-
-          if (className && containerRef.current) {
-            syncDiagramOptions();
-            const g = getGraph(containerRef.current) ?? initGraph(props.theme === "vs-dark", containerRef.current);
-            if (!g) return;
-            const p = g.clientToLocal(e.clientX, e.clientY);
-
-            // Clear drag placement ghost without dispatching Escape (which would destroy the drop placeholder)
-            clearPlacement();
-
-            // Render the pop & bounce animation placeholder while the action queues
-            dropComponentGhost(g, p.x, p.y, className, iconSvg, props.theme === "vs-dark");
-
-            if (props.onDrop) {
-              props.onDrop(className, p.x, p.y, iconSvg);
-            }
-          }
-        }}
-      />
-      {scrubbedPoint.time != null && (
+    <SharedScissor3DHost>
+      <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden" }}>
         <div
-          data-testid="diagram-time-scrub-hud"
-          style={{
-            position: "absolute",
-            top: 12,
-            right: 12,
-            zIndex: 20,
-            pointerEvents: "none",
-            display: "flex",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: "8px 12px",
-            padding: "6px 12px",
-            borderRadius: "999px",
-            fontSize: "11px",
-            fontFamily: "'SF Mono', 'Cascadia Code', 'Fira Code', monospace",
-            backgroundColor: "var(--ms-surface-glass)",
-            color: "var(--fgColor-default, var(--ms-text-1))",
-            border: "1px solid var(--borderColor-default, var(--ms-border))",
-            boxShadow: "0 4px 14px rgba(0,0,0,0.22)",
-            backdropFilter: "blur(8px)",
-          }}
-        >
-          <span style={{ fontWeight: 700, color: "var(--fgColor-accent, var(--ms-brand))" }}>
-            t = {scrubbedPoint.time.toFixed(3)}s
-          </span>
-          {scrubbedPoint.values &&
-            Object.entries(scrubbedPoint.values)
-              .slice(0, 4)
-              .map(([varName, val]) => (
-                <span key={varName} style={{ display: "inline-flex", gap: 4 }}>
-                  <span style={{ opacity: 0.75 }}>{varName}:</span>
-                  <span style={{ fontWeight: 600, color: "var(--ms-status-pass-fg, #34d399)" }}>
-                    {typeof val === "number" && Number.isFinite(val) ? val.toFixed(3) : String(val)}
-                  </span>
-                </span>
-              ))}
-        </div>
-      )}
-      {props.isLoading &&
-        (() => {
-          const g = getGraph(containerRef.current) as {
-            scale?: () => { sx: number; sy: number };
-            translate?: () => { tx: number; ty: number };
-          } | null;
-          const cs = props.diagramData?.coordinateSystem;
-          const ox = cs?.axesStyle?.origin?.[0] ?? 0;
-          const oy = cs?.axesStyle?.origin?.[1] ?? 0;
-          let originScreenPos: { x: number; y: number } | null = null;
-          if (g && hasFittedViewportRef.current && typeof g.scale === "function" && typeof g.translate === "function") {
-            const s = g.scale();
-            const t = g.translate();
-            if (s && t && typeof s.sx === "number" && typeof t.tx === "number") {
-              originScreenPos = { x: ox * s.sx + t.tx, y: oy * s.sy + t.ty };
+          ref={containerRef}
+          style={{ width: "100%", height: "100%", maxWidth: "100%", maxHeight: "100%", outline: "none" }}
+          tabIndex={0}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+            const g = getGraph(containerRef.current);
+            if (g && containerRef.current) {
+              const p = g.clientToLocal(e.clientX, e.clientY);
+              movePlacementGhost(p.x, p.y);
             }
-          }
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            let className = e.dataTransfer.getData("application/vnd.modelscript.classname");
+            let iconSvg = e.dataTransfer.getData("application/vnd.modelscript.iconsvg");
+            if (!className) {
+              try {
+                const json = e.dataTransfer.getData("application/json") || e.dataTransfer.getData("text/plain");
+                if (json) {
+                  const parsed = JSON.parse(json);
+                  if (parsed.className) {
+                    className = parsed.className;
+                    if (parsed.iconSvg) iconSvg = parsed.iconSvg;
+                  }
+                }
+              } catch {
+                // ignore json parse error
+              }
+            }
+
+            if (className && containerRef.current) {
+              syncDiagramOptions();
+              const g = getGraph(containerRef.current) ?? initGraph(props.theme === "vs-dark", containerRef.current);
+              if (!g) return;
+              const p = g.clientToLocal(e.clientX, e.clientY);
+
+              // Clear drag placement ghost without dispatching Escape (which would destroy the drop placeholder)
+              clearPlacement();
+
+              // Render the pop & bounce animation placeholder while the action queues
+              dropComponentGhost(g, p.x, p.y, className, iconSvg, props.theme === "vs-dark");
+
+              if (props.onDrop) {
+                props.onDrop(className, p.x, p.y, iconSvg);
+              }
+            }
+          }}
+        />
+        {embeddedPortals.map((p) => {
+          const isFocused = focusedPortalId === p.portalId;
           return (
             <div
+              key={p.portalId}
+              data-testid={`diagram-embedded-portal-${p.portalId}`}
+              data-portal-kind={p.kind}
+              data-portal-focused={isFocused ? "true" : "false"}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                setFocusedPortalId(p.portalId);
+              }}
               style={{
                 position: "absolute",
-                inset: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                paddingTop: originScreenPos ? 0 : (props.fitInsets?.top ?? 0),
-                paddingRight: originScreenPos ? 0 : (props.fitInsets?.right ?? 0),
-                paddingBottom: originScreenPos ? 0 : (props.fitInsets?.bottom ?? 0),
-                paddingLeft: originScreenPos ? 0 : (props.fitInsets?.left ?? 0),
+                left: p.cssX,
+                top: p.cssY,
+                width: p.cssWidth,
+                height: p.cssHeight,
+                pointerEvents: "auto",
+                borderRadius: 6,
                 boxSizing: "border-box",
-                backgroundColor: props.theme === "vs-dark" ? "rgba(18, 18, 20, 0.72)" : "rgba(248, 250, 252, 0.72)",
-                zIndex: 1000,
-                pointerEvents: "none",
               }}
             >
-              <div
-                style={
-                  originScreenPos
-                    ? {
-                        position: "absolute",
-                        left: originScreenPos.x,
-                        top: originScreenPos.y,
-                        transform: "translate(-50%, -50%)",
-                      }
-                    : undefined
-                }
-              >
+              {!p.renderLive && p.snapshotDataUrl && !isFocused ? (
                 <div
-                  style={{
-                    width: 36,
-                    height: 36,
-                    border: `3px solid ${props.theme === "vs-dark" ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"}`,
-                    borderTopColor: props.theme === "vs-dark" ? "#ccc" : "#333",
-                    borderRadius: "50%",
-                    animation: "diagram-spin 0.7s linear infinite",
+                  style={{ position: "relative", width: "100%", height: "100%", borderRadius: 6, overflow: "hidden" }}
+                >
+                  <img
+                    src={p.snapshotDataUrl}
+                    alt={`${p.kind.toUpperCase()} portal snapshot`}
+                    draggable={false}
+                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                  />
+                  <button
+                    type="button"
+                    data-testid={`diagram-embedded-portal-orbit-${p.portalId}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFocusedPortalId(p.portalId);
+                    }}
+                    style={{
+                      position: "absolute",
+                      top: 6,
+                      right: 6,
+                      zIndex: 6,
+                      pointerEvents: "auto",
+                      cursor: "pointer",
+                      fontSize: 10,
+                      fontWeight: 600,
+                      color: "#e2e8f0",
+                      background: "rgba(15, 23, 42, 0.88)",
+                      border: "1px solid rgba(56, 189, 248, 0.55)",
+                      borderRadius: 4,
+                      padding: "2px 6px",
+                    }}
+                  >
+                    Orbit 3D
+                  </button>
+                </div>
+              ) : (
+                <Scissor3DViewport
+                  kind={p.kind}
+                  artifactUri={p.artifactUri}
+                  vtkBuffer={p.vtkBuffer ?? fetchedVtkBuffers[p.artifactUri] ?? null}
+                  onTessellateStep={props.onTessellateStep}
+                  simulationTime={scrubbedPoint.time ?? 0}
+                  animate={simPlayback ? simPlayback.isPlaying : scrubbedPoint.time != null}
+                  interactive={isFocused}
+                  width="100%"
+                  height="100%"
+                  badgeLabel={p.badgeLabel ?? `${p.kind.toUpperCase()} · ${p.portalId}`}
+                  onToggleInteract={() => {
+                    setFocusedPortalId((prev) => (prev === p.portalId ? null : p.portalId));
                   }}
                 />
-              </div>
+              )}
             </div>
           );
-        })()}
-      <style>{`
-        @keyframes diagram-spin { to { transform: rotate(360deg); } }
-      `}</style>
-    </div>
+        })}
+        {scrubbedPoint.time != null && (
+          <div
+            data-testid="diagram-time-scrub-hud"
+            style={{
+              position: "absolute",
+              top: 12,
+              right: 12,
+              zIndex: 20,
+              pointerEvents: "none",
+              display: "flex",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "8px 12px",
+              padding: "6px 12px",
+              borderRadius: "999px",
+              fontSize: "11px",
+              fontFamily: "'SF Mono', 'Cascadia Code', 'Fira Code', monospace",
+              backgroundColor: "var(--ms-surface-glass)",
+              color: "var(--fgColor-default, var(--ms-text-1))",
+              border: "1px solid var(--borderColor-default, var(--ms-border))",
+              boxShadow: "0 4px 14px rgba(0,0,0,0.22)",
+              backdropFilter: "blur(8px)",
+            }}
+          >
+            <span style={{ fontWeight: 700, color: "var(--fgColor-accent, var(--ms-brand))" }}>
+              t = {scrubbedPoint.time.toFixed(3)}s
+            </span>
+            {scrubbedPoint.values &&
+              Object.entries(scrubbedPoint.values)
+                .slice(0, 4)
+                .map(([varName, val]) => (
+                  <span key={varName} style={{ display: "inline-flex", gap: 4 }}>
+                    <span style={{ opacity: 0.75 }}>{varName}:</span>
+                    <span style={{ fontWeight: 600, color: "var(--ms-status-pass-fg, #34d399)" }}>
+                      {typeof val === "number" && Number.isFinite(val) ? val.toFixed(3) : String(val)}
+                    </span>
+                  </span>
+                ))}
+            <button
+              type="button"
+              data-testid="diagram-pin-plot-btn"
+              title="Pin live Canvas2D plot widget onto the schematic"
+              onClick={handlePinScrubbedPlot}
+              style={{
+                pointerEvents: "auto",
+                cursor: "pointer",
+                fontSize: "10px",
+                fontWeight: 600,
+                lineHeight: 1.2,
+                padding: "2px 8px",
+                borderRadius: "999px",
+                border: "1px solid var(--borderColor-accent-muted, rgba(56, 189, 248, 0.45))",
+                backgroundColor: "var(--bgColor-accent-muted, rgba(56, 189, 248, 0.14))",
+                color: "var(--fgColor-accent, #38bdf8)",
+              }}
+            >
+              + Pin Plot
+            </button>
+          </div>
+        )}
+        {simPlayback && (
+          <div
+            data-testid="diagram-sim-transport"
+            style={{
+              position: "absolute",
+              bottom: 14,
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 25,
+              pointerEvents: "auto",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "6px 12px",
+              borderRadius: "999px",
+              fontSize: "11px",
+              fontFamily: "'SF Mono', 'Cascadia Code', 'Fira Code', monospace",
+              backgroundColor: "var(--ms-surface-glass, rgba(15, 23, 42, 0.88))",
+              color: "var(--fgColor-default, var(--ms-text-1, #e2e8f0))",
+              border: "1px solid var(--borderColor-default, var(--ms-border, rgba(148, 163, 184, 0.25)))",
+              boxShadow: "0 8px 24px rgba(0, 0, 0, 0.28)",
+              backdropFilter: "blur(10px)",
+              maxWidth: "calc(100% - 32px)",
+            }}
+          >
+            <button
+              type="button"
+              data-testid="diagram-sim-play-toggle"
+              aria-label={simPlayback.isPlaying ? "Pause simulation" : "Play simulation"}
+              title={simPlayback.isPlaying ? "Pause simulation playback" : "Play simulation playback"}
+              onClick={() => {
+                if (simPlayback.isPlaying) {
+                  pauseSimulation();
+                } else {
+                  playSimulation();
+                }
+              }}
+              style={{
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 4,
+                minWidth: 58,
+                padding: "3px 9px",
+                borderRadius: "999px",
+                fontSize: "10px",
+                fontWeight: 700,
+                lineHeight: 1.2,
+                border: "1px solid rgba(56, 189, 248, 0.55)",
+                backgroundColor: simPlayback.isPlaying ? "rgba(56, 189, 248, 0.24)" : "rgba(56, 189, 248, 0.14)",
+                color: "var(--fgColor-accent, #38bdf8)",
+              }}
+            >
+              {simPlayback.isPlaying ? "Pause" : "Play"}
+            </button>
+            <input
+              type="range"
+              data-testid="diagram-sim-slider"
+              aria-label="Simulation time"
+              min={simPlayback.start}
+              max={simPlayback.end > simPlayback.start ? simPlayback.end : simPlayback.start + 1}
+              step={Math.max(1e-6, (simPlayback.end - simPlayback.start) / 500 || 0.01)}
+              value={simPlayback.current}
+              onChange={(e) => {
+                seekSimulation(Number(e.target.value));
+              }}
+              style={{
+                width: 150,
+                accentColor: "#38bdf8",
+                cursor: "pointer",
+              }}
+            />
+            <span
+              data-testid="diagram-sim-time"
+              style={{
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+                color: "var(--fgColor-accent, var(--ms-brand, #38bdf8))",
+              }}
+            >
+              t = {simPlayback.current.toFixed(3)}s / {simPlayback.end.toFixed(2)}s
+            </span>
+            <button
+              type="button"
+              data-testid="diagram-sim-pin-plot-btn"
+              title="Pin live Float64Array plot widget onto the schematic"
+              onClick={handlePinScrubbedPlot}
+              style={{
+                cursor: "pointer",
+                fontSize: "10px",
+                fontWeight: 600,
+                lineHeight: 1.2,
+                padding: "2px 8px",
+                borderRadius: "999px",
+                whiteSpace: "nowrap",
+                border: "1px solid var(--borderColor-accent-muted, rgba(56, 189, 248, 0.45))",
+                backgroundColor: "var(--bgColor-accent-muted, rgba(56, 189, 248, 0.14))",
+                color: "var(--fgColor-accent, #38bdf8)",
+              }}
+            >
+              + Pin Plot
+            </button>
+          </div>
+        )}
+        {props.isLoading &&
+          (() => {
+            const g = getGraph(containerRef.current) as {
+              scale?: () => { sx: number; sy: number };
+              translate?: () => { tx: number; ty: number };
+            } | null;
+            const cs = props.diagramData?.coordinateSystem;
+            const ox = cs?.axesStyle?.origin?.[0] ?? 0;
+            const oy = cs?.axesStyle?.origin?.[1] ?? 0;
+            let originScreenPos: { x: number; y: number } | null = null;
+            if (
+              g &&
+              hasFittedViewportRef.current &&
+              typeof g.scale === "function" &&
+              typeof g.translate === "function"
+            ) {
+              const s = g.scale();
+              const t = g.translate();
+              if (s && t && typeof s.sx === "number" && typeof t.tx === "number") {
+                originScreenPos = { x: ox * s.sx + t.tx, y: oy * s.sy + t.ty };
+              }
+            }
+            return (
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  paddingTop: originScreenPos ? 0 : (props.fitInsets?.top ?? 0),
+                  paddingRight: originScreenPos ? 0 : (props.fitInsets?.right ?? 0),
+                  paddingBottom: originScreenPos ? 0 : (props.fitInsets?.bottom ?? 0),
+                  paddingLeft: originScreenPos ? 0 : (props.fitInsets?.left ?? 0),
+                  boxSizing: "border-box",
+                  backgroundColor: props.theme === "vs-dark" ? "rgba(18, 18, 20, 0.72)" : "rgba(248, 250, 252, 0.72)",
+                  zIndex: 1000,
+                  pointerEvents: "none",
+                }}
+              >
+                <div
+                  style={
+                    originScreenPos
+                      ? {
+                          position: "absolute",
+                          left: originScreenPos.x,
+                          top: originScreenPos.y,
+                          transform: "translate(-50%, -50%)",
+                        }
+                      : undefined
+                  }
+                >
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      border: `3px solid ${props.theme === "vs-dark" ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"}`,
+                      borderTopColor: props.theme === "vs-dark" ? "#ccc" : "#333",
+                      borderRadius: "50%",
+                      animation: "diagram-spin 0.7s linear infinite",
+                    }}
+                  />
+                </div>
+              </div>
+            );
+          })()}
+        <style>{`
+          @keyframes diagram-spin { to { transform: rotate(360deg); } }
+        `}</style>
+      </div>
+    </SharedScissor3DHost>
   );
 });
 

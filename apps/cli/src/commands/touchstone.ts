@@ -30,9 +30,9 @@ export const TouchstoneCommand: CommandModule<Record<string, unknown>, Record<st
   builder: (yargs) => {
     return yargs
       .positional("action", {
-        description: "Action to perform (inspect, lint, passivity, to-dae, to-modelica, fit)",
+        description: "Action to perform (inspect, lint, passivity, to-dae, to-modelica, fit, vector-fit)",
         type: "string",
-        choices: ["inspect", "summary", "lint", "passivity", "to-dae", "to-modelica", "fit"],
+        choices: ["inspect", "summary", "lint", "passivity", "to-dae", "to-modelica", "fit", "vector-fit"],
         demandOption: true,
       })
       .positional("files", {
@@ -158,6 +158,28 @@ export const TouchstoneCommand: CommandModule<Record<string, unknown>, Record<st
             const p = ss.poles[k]!;
             console.log(`  Pole ${k + 1}: ${p.re.toExponential(3)} + ${p.im.toExponential(3)}j rad/s`);
           }
+          break;
+        }
+
+        case "vector-fit": {
+          const { touchstoneToPassiveMacromodel } = await import("@modelscript/simulate");
+          const freqs = deck.points.map((pt) => pt.frequency);
+          const s11Re = deck.points.map((pt) => pt.matrix[0]?.[0]?.re ?? 0);
+          const s11Im = deck.points.map((pt) => pt.matrix[0]?.[0]?.im ?? 0);
+          const res = touchstoneToPassiveMacromodel(path.basename(file), freqs, s11Re, s11Im, order);
+          console.log(
+            JSON.stringify(
+              {
+                oracleCertifiedPassive: res.oracleCertifiedPassive,
+                rmsError: res.fit.rmsError,
+                maxMagnitude: res.fit.maxMagnitude,
+                poles: Array.from(res.fit.poles),
+                residues: Array.from(res.fit.residues),
+              },
+              null,
+              2,
+            ),
+          );
           break;
         }
 

@@ -1,0 +1,337 @@
+[
+  {
+    "namePath": "BUFR.WmoBlockStation",
+    "aliases": [
+      "0-01-001",
+      "0-01-002",
+      "WMO_STATION_ID",
+      "STATION"
+    ],
+    "label": "WMO Station ID",
+    "category": "Identification & Location",
+    "domain": "meteorology",
+    "width": 96,
+    "height": 56,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 56\" width=\"96\" height=\"56\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"52\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.5\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"700\" fill=\"#60a5fa\">META</text><text x=\"48\" y=\"31\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"700\" fill=\"#f8fafc\">0-01-001</text><text x=\"48\" y=\"45\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"8\" fill=\"#cbd5e1\">WMO Station </text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 28
+      }
+    ]
+  },
+  {
+    "namePath": "BUFR.GeoCoordinates",
+    "aliases": [
+      "0-05-001",
+      "0-06-001",
+      "LATLON",
+      "3-01-021"
+    ],
+    "label": "Lat / Lon (High Acc)",
+    "category": "Identification & Location",
+    "domain": "meteorology",
+    "width": 96,
+    "height": 56,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 56\" width=\"96\" height=\"56\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"52\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.5\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"700\" fill=\"#60a5fa\">META</text><text x=\"48\" y=\"31\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"700\" fill=\"#f8fafc\">0-05-001</text><text x=\"48\" y=\"45\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"8\" fill=\"#cbd5e1\">Lat / Lon (H</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 28
+      }
+    ]
+  },
+  {
+    "namePath": "BUFR.AtmosphericPressure",
+    "aliases": [
+      "0-07-004",
+      "0-10-004",
+      "0-10-051",
+      "PRESSURE"
+    ],
+    "label": "Pressure (Pa)",
+    "category": "Pressure & Vertical",
+    "domain": "meteorology",
+    "width": 96,
+    "height": 56,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 56\" width=\"96\" height=\"56\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"52\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.5\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"700\" fill=\"#c084fc\">PRES</text><text x=\"48\" y=\"31\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"700\" fill=\"#f8fafc\">0-07-004</text><text x=\"48\" y=\"45\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"8\" fill=\"#cbd5e1\">Pressure (Pa</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 28
+      }
+    ]
+  },
+  {
+    "namePath": "BUFR.GeopotentialHeight",
+    "aliases": [
+      "0-10-009",
+      "GEOPOTENTIAL",
+      "ALTITUDE"
+    ],
+    "label": "Geopotential Height",
+    "category": "Pressure & Vertical",
+    "domain": "meteorology",
+    "width": 96,
+    "height": 56,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 56\" width=\"96\" height=\"56\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"52\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.5\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"700\" fill=\"#c084fc\">PRES</text><text x=\"48\" y=\"31\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"700\" fill=\"#f8fafc\">0-10-009</text><text x=\"48\" y=\"45\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"8\" fill=\"#cbd5e1\">Geopotential</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 28
+      }
+    ]
+  },
+  {
+    "namePath": "BUFR.DryBulbTemperature",
+    "aliases": [
+      "0-12-101",
+      "0-12-001",
+      "TEMPERATURE",
+      "T"
+    ],
+    "label": "Dry-Bulb Temp (K)",
+    "category": "Thermodynamics & Moisture",
+    "domain": "meteorology",
+    "width": 96,
+    "height": 56,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 56\" width=\"96\" height=\"56\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"52\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#f97316\" stroke-width=\"1.5\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#f97316\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"700\" fill=\"#f97316\">THERM</text><text x=\"48\" y=\"31\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"700\" fill=\"#f8fafc\">0-12-101</text><text x=\"48\" y=\"45\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"8\" fill=\"#cbd5e1\">Dry-Bulb Tem</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 28
+      }
+    ]
+  },
+  {
+    "namePath": "BUFR.DewpointTemperature",
+    "aliases": [
+      "0-12-103",
+      "0-12-003",
+      "DEWPOINT",
+      "TD"
+    ],
+    "label": "Dewpoint Temp (K)",
+    "category": "Thermodynamics & Moisture",
+    "domain": "meteorology",
+    "width": 96,
+    "height": 56,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 56\" width=\"96\" height=\"56\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"52\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#f97316\" stroke-width=\"1.5\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#f97316\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"700\" fill=\"#f97316\">THERM</text><text x=\"48\" y=\"31\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"700\" fill=\"#f8fafc\">0-12-103</text><text x=\"48\" y=\"45\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"8\" fill=\"#cbd5e1\">Dewpoint Tem</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 28
+      }
+    ]
+  },
+  {
+    "namePath": "BUFR.RelativeHumidity",
+    "aliases": [
+      "0-13-003",
+      "RH",
+      "HUMIDITY"
+    ],
+    "label": "Relative Humidity",
+    "category": "Thermodynamics & Moisture",
+    "domain": "meteorology",
+    "width": 96,
+    "height": 56,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 56\" width=\"96\" height=\"56\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"52\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#f97316\" stroke-width=\"1.5\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#f97316\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"700\" fill=\"#f97316\">THERM</text><text x=\"48\" y=\"31\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"700\" fill=\"#f8fafc\">0-13-003</text><text x=\"48\" y=\"45\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"8\" fill=\"#cbd5e1\">Relative Hum</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 28
+      }
+    ]
+  },
+  {
+    "namePath": "BUFR.WindVector",
+    "aliases": [
+      "0-11-001",
+      "0-11-002",
+      "WIND"
+    ],
+    "label": "Wind Speed / Dir",
+    "category": "Wind & Precipitation",
+    "domain": "meteorology",
+    "width": 96,
+    "height": 56,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 56\" width=\"96\" height=\"56\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"52\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.5\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"700\" fill=\"#2dd4bf\">WIND</text><text x=\"48\" y=\"31\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"700\" fill=\"#f8fafc\">0-11-002</text><text x=\"48\" y=\"45\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"8\" fill=\"#cbd5e1\">Wind Speed /</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 28
+      }
+    ]
+  },
+  {
+    "namePath": "BUFR.TotalPrecipitation",
+    "aliases": [
+      "0-13-011",
+      "0-13-019",
+      "PRECIP"
+    ],
+    "label": "Precipitation",
+    "category": "Wind & Precipitation",
+    "domain": "meteorology",
+    "width": 96,
+    "height": 56,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 56\" width=\"96\" height=\"56\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"52\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.5\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"700\" fill=\"#2dd4bf\">WIND</text><text x=\"48\" y=\"31\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"700\" fill=\"#f8fafc\">0-13-011</text><text x=\"48\" y=\"45\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"8\" fill=\"#cbd5e1\">Precipitatio</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 28
+      }
+    ]
+  },
+  {
+    "namePath": "BUFR.SynopSurfaceSequence",
+    "aliases": [
+      "3-07-080",
+      "SYNOP"
+    ],
+    "label": "SYNOP Surface Seq",
+    "category": "WMO Table D Sequences",
+    "domain": "meteorology",
+    "width": 96,
+    "height": 56,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 56\" width=\"96\" height=\"56\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"52\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.5\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"700\" fill=\"#34d399\">SEQ</text><text x=\"48\" y=\"31\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"700\" fill=\"#f8fafc\">3-07-080</text><text x=\"48\" y=\"45\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"8\" fill=\"#cbd5e1\">SYNOP Surfac</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 28
+      }
+    ]
+  },
+  {
+    "namePath": "BUFR.RadiosondeSoundingSequence",
+    "aliases": [
+      "3-09-052",
+      "RADIOSONDE",
+      "TEMP",
+      "SOUNDING"
+    ],
+    "label": "Radiosonde 3-09-052",
+    "category": "WMO Table D Sequences",
+    "domain": "meteorology",
+    "width": 96,
+    "height": 56,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 56\" width=\"96\" height=\"56\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"52\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.5\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"700\" fill=\"#34d399\">SEQ</text><text x=\"48\" y=\"31\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"700\" fill=\"#f8fafc\">3-09-052</text><text x=\"48\" y=\"45\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"8\" fill=\"#cbd5e1\">Radiosonde 3</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 28
+      }
+    ]
+  }
+]

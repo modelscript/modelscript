@@ -87,6 +87,7 @@ console.log("Testing WASM Interval, McCormick & Spatial Branch-and-Bound...");
     tape_evaluateInterval: () => {},
     tape_evaluateMcCormick: () => {},
     bnb_solveGlobalMin: () => 0,
+    arena_alloc: () => 1024,
     memory: new WebAssembly.Memory({ initial: 1 }),
   };
 

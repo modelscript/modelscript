@@ -48,6 +48,7 @@
     "@modelscript/aspen": "workspace:*",
     "@modelscript/automationml": "workspace:*",
     "@modelscript/cad": "workspace:*",
+    "@modelscript/canvas": "workspace:*",
     "@modelscript/cfd": "workspace:*",
     "@modelscript/diagram": "workspace:*",
     "@modelscript/dsl": "workspace:*",

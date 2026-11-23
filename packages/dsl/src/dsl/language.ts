@@ -405,8 +405,7 @@ export interface LanguageOptions<
 
   /** Reserved keywords to omit from generic identifier matching. */
   reserved?:
-    | Record<string, ($: Record<string, Rule<string>> & Record<RuleName, Rule<string>>) => Rule<string>[]>
-    | undefined;
+    Record<string, ($: Record<string, Rule<string>> & Record<RuleName, Rule<string>>) => Rule<string>[]> | undefined;
 
   model?:
     | Partial<
@@ -490,6 +489,8 @@ export interface LanguageOptions<
         folding?: (NoInfer<RuleName> | FoldingRuleConfig<NoInfer<RuleName>>)[] | undefined;
         /** List of node types that define a new variable scope */
         outline?: NoInfer<RuleName>[] | undefined;
+        /** Declarative GraalVM-style `SemanticCstTag` bitmask overrides per grammar rule name */
+        semanticTags?: Partial<Record<NoInfer<RuleName>, number>> | undefined;
         /** AssemblyScript callback or function name for goto definition */
         definition?: string | ASTQueryFunction<RuleName, FieldName, QueryName, ModelAttrs> | undefined;
         /**

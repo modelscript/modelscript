@@ -288,6 +288,9 @@ export {
 } from "./gdt-overlay.js";
 
 // Self-Contained STEP Provenance, Cross-File Directives & Modelica Telemetry
+export * from "./ecad/engine/lvs-and-routing.js";
+export * from "./geometry-kernels.js";
+export * from "./sdf-marching-cubes.js";
 export {
   basenamePosix,
   dirnamePosix,

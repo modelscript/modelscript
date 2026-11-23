@@ -18,6 +18,7 @@ export * from "./mcp-types.js";
 export * from "./primitives.js";
 export * from "./query-types.js";
 export * from "./scanner-types.js";
+export * from "./semantic-tags.js";
 export * from "./shared-grammars.js";
 export * from "./tabular-types.js";
 export * from "./tgg-types.js";

@@ -1,0 +1,602 @@
+[
+  {
+    "name": "STDSTL",
+    "kind": "Model",
+    "namePath": "SINDA.STDSTL",
+    "exports": [
+      "NLOOP",
+      "DRLXCA",
+      "ARLXCA",
+      "DAMPA"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Steady-State Newton-Raphson Solver (STDSTL)",
+      "category": "Solver Routines",
+      "domain": "thermal",
+      "description": "NASA SINDA steady-state thermal network solver using damped Newton-Raphson relaxation for linear and radiative equilibrium.",
+      "provenance": "NASA MSC-13805 / SINDA User's Manual",
+      "aliases": [
+        "STEADY",
+        "STDSTL_NR"
+      ],
+      "parameters": [
+        {
+          "key": "NLOOP",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "",
+          "description": "Maximum relaxation / Newton iterations"
+        },
+        {
+          "key": "DRLXCA",
+          "type": "real",
+          "defaultValue": 0.000001,
+          "unit": "K",
+          "description": "Diffusion node convergence tolerance"
+        },
+        {
+          "key": "ARLXCA",
+          "type": "real",
+          "defaultValue": 0.000001,
+          "unit": "K",
+          "description": "Arithmetic node convergence tolerance"
+        },
+        {
+          "key": "DAMPA",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Under-relaxation damping factor"
+        }
+      ],
+      "wasmKernel": "evalSindaThermalElement",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "FWDBCK",
+    "kind": "Model",
+    "namePath": "SINDA.FWDBCK",
+    "exports": [
+      "TIMEO",
+      "TIMEND",
+      "DTIMEI",
+      "THETA"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Forward-Backward Implicit Transient Solver (FWDBCK)",
+      "category": "Solver Routines",
+      "domain": "thermal",
+      "description": "NASA SINDA implicit forward-backward (Crank-Nicolson) transient thermal network integrator with unconditional linear stability.",
+      "provenance": "NASA MSC-13805 / SINDA User's Manual",
+      "aliases": [
+        "FORWARD_BACKWARD"
+      ],
+      "parameters": [
+        {
+          "key": "TIMEO",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Initial simulation time"
+        },
+        {
+          "key": "TIMEND",
+          "type": "real",
+          "defaultValue": 3600,
+          "unit": "s",
+          "description": "Final simulation time"
+        },
+        {
+          "key": "DTIMEI",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Initial integration time step"
+        },
+        {
+          "key": "THETA",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "",
+          "description": "Implicit weighting factor (0.5 = Crank-Nicolson)"
+        }
+      ],
+      "wasmKernel": "evalSindaThermalElement",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "CRANKN",
+    "kind": "Model",
+    "namePath": "SINDA.CRANKN",
+    "exports": [
+      "TIMEO",
+      "TIMEND",
+      "DTIMEI",
+      "NLOOP"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Crank-Nicolson Implicit Transient Solver (CRANKN)",
+      "category": "Solver Routines",
+      "domain": "thermal",
+      "description": "Second-order implicit Crank-Nicolson transient thermal integrator with per-step Newton-Raphson iteration for radiation and arithmetic nodes.",
+      "provenance": "NASA MSC-13805 / SINDA-FLUINT Reference Manual",
+      "aliases": [
+        "CRANK_NICOLSON",
+        "CN"
+      ],
+      "parameters": [
+        {
+          "key": "TIMEO",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Initial simulation time"
+        },
+        {
+          "key": "TIMEND",
+          "type": "real",
+          "defaultValue": 3600,
+          "unit": "s",
+          "description": "Final simulation time"
+        },
+        {
+          "key": "DTIMEI",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Integration time step"
+        },
+        {
+          "key": "NLOOP",
+          "type": "real",
+          "defaultValue": 40,
+          "unit": "",
+          "description": "Max Newton iterations per time step"
+        }
+      ],
+      "wasmKernel": "evalSindaThermalElement",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "SNFR",
+    "kind": "Model",
+    "namePath": "SINDA.SNFR",
+    "exports": [
+      "NLOOP",
+      "TOL",
+      "SIGMA"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Simultaneous Newton / Fast Relaxation Solver (SNFR)",
+      "category": "Solver Routines",
+      "domain": "thermal",
+      "description": "Simultaneous matrix steady-state solver with analytical radiative Jacobian for tightly coupled spacecraft thermal networks.",
+      "provenance": "NASA SINDA/G & SINDA-FLUINT Reference Manual",
+      "aliases": [
+        "SNFR_SOLVER",
+        "FAST_RELAX"
+      ],
+      "parameters": [
+        {
+          "key": "NLOOP",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "",
+          "description": "Maximum Newton-Raphson iterations"
+        },
+        {
+          "key": "TOL",
+          "type": "real",
+          "defaultValue": 1e-8,
+          "unit": "W",
+          "description": "Energy balance residual tolerance"
+        },
+        {
+          "key": "SIGMA",
+          "type": "real",
+          "defaultValue": 5.670374419e-8,
+          "unit": "W/(m2.K4)",
+          "description": "Stefan-Boltzmann constant"
+        }
+      ],
+      "wasmKernel": "evalSindaThermalElement",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "AL_6061",
+    "kind": "Model",
+    "namePath": "SINDA.AL_6061",
+    "exports": [
+      "k",
+      "rho",
+      "cp",
+      "alpha_s",
+      "epsilon_ir"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Aluminum 6061-T6 Structural Alloy",
+      "category": "Spacecraft Thermal Materials",
+      "domain": "thermal",
+      "description": "Standard spacecraft structural aluminum alloy (6061-T6) with high thermal conductivity and moderate bare IR emittance.",
+      "provenance": "Gilmore, Spacecraft Thermal Control Handbook, Vol. I (Aerospace Press)",
+      "aliases": [
+        "ALUMINUM_6061",
+        "AL6061",
+        "AL6061_T6"
+      ],
+      "parameters": [
+        {
+          "key": "k",
+          "type": "real",
+          "defaultValue": 167,
+          "unit": "W/(m.K)",
+          "description": "Thermal conductivity at 300 K"
+        },
+        {
+          "key": "rho",
+          "type": "real",
+          "defaultValue": 2700,
+          "unit": "kg/m3",
+          "description": "Mass density"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 896,
+          "unit": "J/(kg.K)",
+          "description": "Specific heat capacity"
+        },
+        {
+          "key": "alpha_s",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "",
+          "description": "Solar absorptance (bare polished/mill)"
+        },
+        {
+          "key": "epsilon_ir",
+          "type": "real",
+          "defaultValue": 0.08,
+          "unit": "",
+          "description": "Infrared hemispherical emittance"
+        }
+      ],
+      "wasmKernel": "evalSindaThermalElement",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "TI_6AL_4V",
+    "kind": "Model",
+    "namePath": "SINDA.TI_6AL_4V",
+    "exports": [
+      "k",
+      "rho",
+      "cp",
+      "alpha_s",
+      "epsilon_ir"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Titanium Ti-6Al-4V Thermal Isolator Alloy",
+      "category": "Spacecraft Thermal Materials",
+      "domain": "thermal",
+      "description": "Low-conductivity aerospace titanium alloy widely used for spacecraft thermal standoffs, flexures, and cryo-mounts.",
+      "provenance": "Gilmore, Spacecraft Thermal Control Handbook, Vol. I (Aerospace Press)",
+      "aliases": [
+        "TITANIUM_6AL_4V",
+        "TI64",
+        "TITANIUM"
+      ],
+      "parameters": [
+        {
+          "key": "k",
+          "type": "real",
+          "defaultValue": 6.7,
+          "unit": "W/(m.K)",
+          "description": "Thermal conductivity at 300 K"
+        },
+        {
+          "key": "rho",
+          "type": "real",
+          "defaultValue": 4430,
+          "unit": "kg/m3",
+          "description": "Mass density"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 526,
+          "unit": "J/(kg.K)",
+          "description": "Specific heat capacity"
+        },
+        {
+          "key": "alpha_s",
+          "type": "real",
+          "defaultValue": 0.52,
+          "unit": "",
+          "description": "Solar absorptance"
+        },
+        {
+          "key": "epsilon_ir",
+          "type": "real",
+          "defaultValue": 0.19,
+          "unit": "",
+          "description": "Infrared hemispherical emittance"
+        }
+      ],
+      "wasmKernel": "evalSindaThermalElement",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "MLI",
+    "kind": "Model",
+    "namePath": "SINDA.MLI",
+    "exports": [
+      "k",
+      "rho",
+      "cp",
+      "e_star",
+      "alpha_s",
+      "epsilon_ir"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Multi-Layer Insulation (MLI Blanket)",
+      "category": "Spacecraft Thermal Materials",
+      "domain": "thermal",
+      "description": "Spacecraft radiation shield blanket characterized by effective emittance e* (~0.02–0.03) and ultra-low effective conductivity.",
+      "provenance": "NASA TP-1999-209263 / Gilmore Spacecraft Thermal Control Handbook",
+      "aliases": [
+        "MULTI_LAYER_INSULATION",
+        "BLANKET"
+      ],
+      "parameters": [
+        {
+          "key": "k",
+          "type": "real",
+          "defaultValue": 0.0002,
+          "unit": "W/(m.K)",
+          "description": "Effective vacuum thermal conductivity"
+        },
+        {
+          "key": "rho",
+          "type": "real",
+          "defaultValue": 40,
+          "unit": "kg/m3",
+          "description": "Bulk blanket density"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 1090,
+          "unit": "J/(kg.K)",
+          "description": "Effective specific heat capacity"
+        },
+        {
+          "key": "e_star",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "",
+          "description": "Effective blanket emittance e*"
+        },
+        {
+          "key": "alpha_s",
+          "type": "real",
+          "defaultValue": 0.38,
+          "unit": "",
+          "description": "Outer Kapton/aluminized film solar absorptance"
+        },
+        {
+          "key": "epsilon_ir",
+          "type": "real",
+          "defaultValue": 0.67,
+          "unit": "",
+          "description": "Outer layer IR emittance"
+        }
+      ],
+      "wasmKernel": "evalSindaThermalElement",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "KAPTON",
+    "kind": "Model",
+    "namePath": "SINDA.KAPTON",
+    "exports": [
+      "k",
+      "rho",
+      "cp",
+      "alpha_s",
+      "epsilon_ir"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Aluminized Kapton (2 mil Polyimide Film)",
+      "category": "Spacecraft Thermal Materials",
+      "domain": "thermal",
+      "description": "Second-surface vapor-deposited aluminum (VDA) Kapton polyimide thermal control film for spacecraft exterior blankets.",
+      "provenance": "NASA RP-1121 / Gilmore Spacecraft Thermal Control Handbook",
+      "aliases": [
+        "ALUMINIZED_KAPTON",
+        "POLYIMIDE"
+      ],
+      "parameters": [
+        {
+          "key": "k",
+          "type": "real",
+          "defaultValue": 0.12,
+          "unit": "W/(m.K)",
+          "description": "Thermal conductivity"
+        },
+        {
+          "key": "rho",
+          "type": "real",
+          "defaultValue": 1420,
+          "unit": "kg/m3",
+          "description": "Mass density"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 1090,
+          "unit": "J/(kg.K)",
+          "description": "Specific heat capacity"
+        },
+        {
+          "key": "alpha_s",
+          "type": "real",
+          "defaultValue": 0.41,
+          "unit": "",
+          "description": "Solar absorptance (2 mil Kapton/Al)"
+        },
+        {
+          "key": "epsilon_ir",
+          "type": "real",
+          "defaultValue": 0.75,
+          "unit": "",
+          "description": "Infrared hemispherical emittance"
+        }
+      ],
+      "wasmKernel": "evalSindaThermalElement",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "BLACK_ANODIZE",
+    "kind": "Model",
+    "namePath": "SINDA.BLACK_ANODIZE",
+    "exports": [
+      "k",
+      "rho",
+      "cp",
+      "alpha_s",
+      "epsilon_ir"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Black Anodized Aluminum Coating",
+      "category": "Spacecraft Thermal Materials",
+      "domain": "thermal",
+      "description": "High-emittance, high-absorptance black anodized aluminum surface finish used on internal spacecraft electronics boxes and baffles.",
+      "provenance": "NASA RP-1121 / Gilmore Spacecraft Thermal Control Handbook",
+      "aliases": [
+        "BLACK_ANODIZED_AL",
+        "ANODIZE_BLACK"
+      ],
+      "parameters": [
+        {
+          "key": "k",
+          "type": "real",
+          "defaultValue": 167,
+          "unit": "W/(m.K)",
+          "description": "Substrate thermal conductivity (Al 6061)"
+        },
+        {
+          "key": "rho",
+          "type": "real",
+          "defaultValue": 2700,
+          "unit": "kg/m3",
+          "description": "Substrate density"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 896,
+          "unit": "J/(kg.K)",
+          "description": "Substrate specific heat"
+        },
+        {
+          "key": "alpha_s",
+          "type": "real",
+          "defaultValue": 0.88,
+          "unit": "",
+          "description": "Solar absorptance"
+        },
+        {
+          "key": "epsilon_ir",
+          "type": "real",
+          "defaultValue": 0.86,
+          "unit": "",
+          "description": "Infrared hemispherical emittance"
+        }
+      ],
+      "wasmKernel": "evalSindaThermalElement",
+      "archetypeId": 14
+    }
+  },
+  {
+    "name": "OSR",
+    "kind": "Model",
+    "namePath": "SINDA.OSR",
+    "exports": [
+      "k",
+      "rho",
+      "cp",
+      "alpha_s",
+      "epsilon_ir"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Optical Solar Reflector (OSR Quartz Mirror)",
+      "category": "Spacecraft Thermal Materials",
+      "domain": "thermal",
+      "description": "Second-surface silvered fused-silica radiator mirror with ultra-low solar absorptance (alpha_s ~ 0.08) and high IR emittance (epsilon ~ 0.80).",
+      "provenance": "Gilmore, Spacecraft Thermal Control Handbook, Vol. I (Aerospace Press)",
+      "aliases": [
+        "OPTICAL_SOLAR_REFLECTOR",
+        "SSM",
+        "SILVER_TEFLON"
+      ],
+      "parameters": [
+        {
+          "key": "k",
+          "type": "real",
+          "defaultValue": 1.38,
+          "unit": "W/(m.K)",
+          "description": "Fused silica thermal conductivity"
+        },
+        {
+          "key": "rho",
+          "type": "real",
+          "defaultValue": 2200,
+          "unit": "kg/m3",
+          "description": "Fused silica density"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 740,
+          "unit": "J/(kg.K)",
+          "description": "Fused silica specific heat"
+        },
+        {
+          "key": "alpha_s",
+          "type": "real",
+          "defaultValue": 0.08,
+          "unit": "",
+          "description": "Solar absorptance (BOL)"
+        },
+        {
+          "key": "epsilon_ir",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "",
+          "description": "Infrared hemispherical emittance"
+        }
+      ],
+      "wasmKernel": "evalSindaThermalElement",
+      "archetypeId": 15
+    }
+  }
+]

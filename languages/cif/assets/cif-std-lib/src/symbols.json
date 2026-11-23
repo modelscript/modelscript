@@ -1,0 +1,968 @@
+[
+  {
+    "name": "CWN",
+    "kind": "Layer",
+    "namePath": "CIF.Layers.CWN",
+    "exports": [
+      "minWidthLambda",
+      "minSpacingLambda",
+      "sheetResistanceOhmPerSq",
+      "areaCapAfPerUm2",
+      "fringeCapAfPerUm",
+      "gdsLayer"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "N-Well (CWN)",
+      "category": "MOSIS SCMOS",
+      "domain": "ic-layout",
+      "description": "MOSIS SCMOS N-Well diffusion tub for PMOS transistors (min width 10λ).",
+      "provenance": "MOSIS Scalable CMOS (SCMOS) Design Rules",
+      "aliases": [
+        "cwn",
+        "L_CWN"
+      ],
+      "parameters": [
+        {
+          "key": "minWidthLambda",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "lambda",
+          "description": "Minimum feature width in lambda units"
+        },
+        {
+          "key": "minSpacingLambda",
+          "type": "real",
+          "defaultValue": 9,
+          "unit": "lambda",
+          "description": "Minimum same-layer spacing in lambda units"
+        },
+        {
+          "key": "sheetResistanceOhmPerSq",
+          "type": "real",
+          "defaultValue": 1200,
+          "unit": "Ohm/sq",
+          "description": "Sheet resistance"
+        },
+        {
+          "key": "areaCapAfPerUm2",
+          "type": "real",
+          "defaultValue": 110,
+          "unit": "aF/um^2",
+          "description": "Area capacitance to substrate"
+        },
+        {
+          "key": "fringeCapAfPerUm",
+          "type": "real",
+          "defaultValue": 30,
+          "unit": "aF/um",
+          "description": "Perimeter fringe capacitance"
+        },
+        {
+          "key": "gdsLayer",
+          "type": "integer",
+          "defaultValue": 42,
+          "unit": "1",
+          "description": "GDSII stream layer number"
+        }
+      ],
+      "wasmKernel": "cifEvalLayerParasitics",
+      "archetypeId": 7,
+      "gdsLayer": 42,
+      "minWidthLambda": 10,
+      "minSpacingLambda": 9
+    }
+  },
+  {
+    "name": "CAA",
+    "kind": "Layer",
+    "namePath": "CIF.Layers.CAA",
+    "exports": [
+      "minWidthLambda",
+      "minSpacingLambda",
+      "sheetResistanceOhmPerSq",
+      "areaCapAfPerUm2",
+      "fringeCapAfPerUm",
+      "gdsLayer"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Active Area (CAA)",
+      "category": "MOSIS SCMOS",
+      "domain": "ic-layout",
+      "description": "MOSIS SCMOS Active Area / thin-oxide diffusion region (min width 3λ).",
+      "provenance": "MOSIS Scalable CMOS (SCMOS) Design Rules",
+      "aliases": [
+        "caa",
+        "L_CAA"
+      ],
+      "parameters": [
+        {
+          "key": "minWidthLambda",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "lambda",
+          "description": "Minimum feature width in lambda units"
+        },
+        {
+          "key": "minSpacingLambda",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "lambda",
+          "description": "Minimum same-layer spacing in lambda units"
+        },
+        {
+          "key": "sheetResistanceOhmPerSq",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "Ohm/sq",
+          "description": "Sheet resistance"
+        },
+        {
+          "key": "areaCapAfPerUm2",
+          "type": "real",
+          "defaultValue": 420,
+          "unit": "aF/um^2",
+          "description": "Area capacitance to substrate"
+        },
+        {
+          "key": "fringeCapAfPerUm",
+          "type": "real",
+          "defaultValue": 180,
+          "unit": "aF/um",
+          "description": "Perimeter fringe capacitance"
+        },
+        {
+          "key": "gdsLayer",
+          "type": "integer",
+          "defaultValue": 43,
+          "unit": "1",
+          "description": "GDSII stream layer number"
+        }
+      ],
+      "wasmKernel": "cifEvalLayerParasitics",
+      "archetypeId": 1,
+      "gdsLayer": 43,
+      "minWidthLambda": 3,
+      "minSpacingLambda": 3
+    }
+  },
+  {
+    "name": "CPG",
+    "kind": "Layer",
+    "namePath": "CIF.Layers.CPG",
+    "exports": [
+      "minWidthLambda",
+      "minSpacingLambda",
+      "sheetResistanceOhmPerSq",
+      "areaCapAfPerUm2",
+      "fringeCapAfPerUm",
+      "gdsLayer"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Polysilicon Gate (CPG)",
+      "category": "MOSIS SCMOS",
+      "domain": "ic-layout",
+      "description": "MOSIS SCMOS Polysilicon 1 transistor gate and local interconnect (min width 2λ).",
+      "provenance": "MOSIS Scalable CMOS (SCMOS) Design Rules",
+      "aliases": [
+        "cpg",
+        "L_CPG"
+      ],
+      "parameters": [
+        {
+          "key": "minWidthLambda",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "lambda",
+          "description": "Minimum feature width in lambda units"
+        },
+        {
+          "key": "minSpacingLambda",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "lambda",
+          "description": "Minimum same-layer spacing in lambda units"
+        },
+        {
+          "key": "sheetResistanceOhmPerSq",
+          "type": "real",
+          "defaultValue": 25,
+          "unit": "Ohm/sq",
+          "description": "Sheet resistance"
+        },
+        {
+          "key": "areaCapAfPerUm2",
+          "type": "real",
+          "defaultValue": 95,
+          "unit": "aF/um^2",
+          "description": "Area capacitance to substrate"
+        },
+        {
+          "key": "fringeCapAfPerUm",
+          "type": "real",
+          "defaultValue": 45,
+          "unit": "aF/um",
+          "description": "Perimeter fringe capacitance"
+        },
+        {
+          "key": "gdsLayer",
+          "type": "integer",
+          "defaultValue": 46,
+          "unit": "1",
+          "description": "GDSII stream layer number"
+        }
+      ],
+      "wasmKernel": "cifEvalLayerParasitics",
+      "archetypeId": 2,
+      "gdsLayer": 46,
+      "minWidthLambda": 2,
+      "minSpacingLambda": 2
+    }
+  },
+  {
+    "name": "CCA",
+    "kind": "Layer",
+    "namePath": "CIF.Layers.CCA",
+    "exports": [
+      "minWidthLambda",
+      "minSpacingLambda",
+      "sheetResistanceOhmPerSq",
+      "areaCapAfPerUm2",
+      "fringeCapAfPerUm",
+      "gdsLayer"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Contact Cut (CCA)",
+      "category": "MOSIS SCMOS",
+      "domain": "ic-layout",
+      "description": "MOSIS SCMOS Contact cut between Metal 1 and Active/Polysilicon (exact 2λ × 2λ).",
+      "provenance": "MOSIS Scalable CMOS (SCMOS) Design Rules",
+      "aliases": [
+        "cca",
+        "L_CCA"
+      ],
+      "parameters": [
+        {
+          "key": "minWidthLambda",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "lambda",
+          "description": "Minimum feature width in lambda units"
+        },
+        {
+          "key": "minSpacingLambda",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "lambda",
+          "description": "Minimum same-layer spacing in lambda units"
+        },
+        {
+          "key": "sheetResistanceOhmPerSq",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "Ohm/sq",
+          "description": "Sheet resistance"
+        },
+        {
+          "key": "areaCapAfPerUm2",
+          "type": "real",
+          "defaultValue": 60,
+          "unit": "aF/um^2",
+          "description": "Area capacitance to substrate"
+        },
+        {
+          "key": "fringeCapAfPerUm",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "aF/um",
+          "description": "Perimeter fringe capacitance"
+        },
+        {
+          "key": "gdsLayer",
+          "type": "integer",
+          "defaultValue": 48,
+          "unit": "1",
+          "description": "GDSII stream layer number"
+        }
+      ],
+      "wasmKernel": "cifEvalLayerParasitics",
+      "archetypeId": 3,
+      "gdsLayer": 48,
+      "minWidthLambda": 2,
+      "minSpacingLambda": 2
+    }
+  },
+  {
+    "name": "CMF",
+    "kind": "Layer",
+    "namePath": "CIF.Layers.CMF",
+    "exports": [
+      "minWidthLambda",
+      "minSpacingLambda",
+      "sheetResistanceOhmPerSq",
+      "areaCapAfPerUm2",
+      "fringeCapAfPerUm",
+      "gdsLayer"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Metal 1 (CMF)",
+      "category": "MOSIS SCMOS",
+      "domain": "ic-layout",
+      "description": "MOSIS SCMOS First-level Aluminum Metallization (min width 3λ).",
+      "provenance": "MOSIS Scalable CMOS (SCMOS) Design Rules",
+      "aliases": [
+        "cmf",
+        "L_CMF"
+      ],
+      "parameters": [
+        {
+          "key": "minWidthLambda",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "lambda",
+          "description": "Minimum feature width in lambda units"
+        },
+        {
+          "key": "minSpacingLambda",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "lambda",
+          "description": "Minimum same-layer spacing in lambda units"
+        },
+        {
+          "key": "sheetResistanceOhmPerSq",
+          "type": "real",
+          "defaultValue": 0.08,
+          "unit": "Ohm/sq",
+          "description": "Sheet resistance"
+        },
+        {
+          "key": "areaCapAfPerUm2",
+          "type": "real",
+          "defaultValue": 38,
+          "unit": "aF/um^2",
+          "description": "Area capacitance to substrate"
+        },
+        {
+          "key": "fringeCapAfPerUm",
+          "type": "real",
+          "defaultValue": 52,
+          "unit": "aF/um",
+          "description": "Perimeter fringe capacitance"
+        },
+        {
+          "key": "gdsLayer",
+          "type": "integer",
+          "defaultValue": 49,
+          "unit": "1",
+          "description": "GDSII stream layer number"
+        }
+      ],
+      "wasmKernel": "cifEvalLayerParasitics",
+      "archetypeId": 4,
+      "gdsLayer": 49,
+      "minWidthLambda": 3,
+      "minSpacingLambda": 3
+    }
+  },
+  {
+    "name": "CVA",
+    "kind": "Layer",
+    "namePath": "CIF.Layers.CVA",
+    "exports": [
+      "minWidthLambda",
+      "minSpacingLambda",
+      "sheetResistanceOhmPerSq",
+      "areaCapAfPerUm2",
+      "fringeCapAfPerUm",
+      "gdsLayer"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Via 1-2 (CVA)",
+      "category": "MOSIS SCMOS",
+      "domain": "ic-layout",
+      "description": "MOSIS SCMOS Via cut connecting Metal 1 (CMF) to Metal 2 (CMS) (2λ × 2λ).",
+      "provenance": "MOSIS Scalable CMOS (SCMOS) Design Rules",
+      "aliases": [
+        "cva",
+        "L_CVA"
+      ],
+      "parameters": [
+        {
+          "key": "minWidthLambda",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "lambda",
+          "description": "Minimum feature width in lambda units"
+        },
+        {
+          "key": "minSpacingLambda",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "lambda",
+          "description": "Minimum same-layer spacing in lambda units"
+        },
+        {
+          "key": "sheetResistanceOhmPerSq",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "Ohm/sq",
+          "description": "Sheet resistance"
+        },
+        {
+          "key": "areaCapAfPerUm2",
+          "type": "real",
+          "defaultValue": 30,
+          "unit": "aF/um^2",
+          "description": "Area capacitance to substrate"
+        },
+        {
+          "key": "fringeCapAfPerUm",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "aF/um",
+          "description": "Perimeter fringe capacitance"
+        },
+        {
+          "key": "gdsLayer",
+          "type": "integer",
+          "defaultValue": 50,
+          "unit": "1",
+          "description": "GDSII stream layer number"
+        }
+      ],
+      "wasmKernel": "cifEvalLayerParasitics",
+      "archetypeId": 5,
+      "gdsLayer": 50,
+      "minWidthLambda": 2,
+      "minSpacingLambda": 3
+    }
+  },
+  {
+    "name": "CMS",
+    "kind": "Layer",
+    "namePath": "CIF.Layers.CMS",
+    "exports": [
+      "minWidthLambda",
+      "minSpacingLambda",
+      "sheetResistanceOhmPerSq",
+      "areaCapAfPerUm2",
+      "fringeCapAfPerUm",
+      "gdsLayer"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Metal 2 (CMS)",
+      "category": "MOSIS SCMOS",
+      "domain": "ic-layout",
+      "description": "MOSIS SCMOS Second-level Aluminum Metallization (min width 3λ).",
+      "provenance": "MOSIS Scalable CMOS (SCMOS) Design Rules",
+      "aliases": [
+        "cms",
+        "L_CMS"
+      ],
+      "parameters": [
+        {
+          "key": "minWidthLambda",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "lambda",
+          "description": "Minimum feature width in lambda units"
+        },
+        {
+          "key": "minSpacingLambda",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "lambda",
+          "description": "Minimum same-layer spacing in lambda units"
+        },
+        {
+          "key": "sheetResistanceOhmPerSq",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "Ohm/sq",
+          "description": "Sheet resistance"
+        },
+        {
+          "key": "areaCapAfPerUm2",
+          "type": "real",
+          "defaultValue": 22,
+          "unit": "aF/um^2",
+          "description": "Area capacitance to substrate"
+        },
+        {
+          "key": "fringeCapAfPerUm",
+          "type": "real",
+          "defaultValue": 44,
+          "unit": "aF/um",
+          "description": "Perimeter fringe capacitance"
+        },
+        {
+          "key": "gdsLayer",
+          "type": "integer",
+          "defaultValue": 51,
+          "unit": "1",
+          "description": "GDSII stream layer number"
+        }
+      ],
+      "wasmKernel": "cifEvalLayerParasitics",
+      "archetypeId": 6,
+      "gdsLayer": 51,
+      "minWidthLambda": 3,
+      "minSpacingLambda": 4
+    }
+  },
+  {
+    "name": "ND",
+    "kind": "Layer",
+    "namePath": "CIF.Layers.ND",
+    "exports": [
+      "minWidthLambda",
+      "minSpacingLambda",
+      "sheetResistanceOhmPerSq",
+      "areaCapAfPerUm2",
+      "fringeCapAfPerUm",
+      "gdsLayer"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NMOS Diffusion (ND)",
+      "category": "Mead-Conway NMOS",
+      "domain": "ic-layout",
+      "description": "Mead-Conway NMOS n+ diffusion layer (min width 2λ).",
+      "provenance": "Mead & Conway, Introduction to VLSI Systems (1980)",
+      "aliases": [
+        "nd",
+        "L_ND"
+      ],
+      "parameters": [
+        {
+          "key": "minWidthLambda",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "lambda",
+          "description": "Minimum feature width in lambda units"
+        },
+        {
+          "key": "minSpacingLambda",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "lambda",
+          "description": "Minimum same-layer spacing in lambda units"
+        },
+        {
+          "key": "sheetResistanceOhmPerSq",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "Ohm/sq",
+          "description": "Sheet resistance"
+        },
+        {
+          "key": "areaCapAfPerUm2",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "aF/um^2",
+          "description": "Area capacitance to substrate"
+        },
+        {
+          "key": "fringeCapAfPerUm",
+          "type": "real",
+          "defaultValue": 40,
+          "unit": "aF/um",
+          "description": "Perimeter fringe capacitance"
+        },
+        {
+          "key": "gdsLayer",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "GDSII stream layer number"
+        }
+      ],
+      "wasmKernel": "cifEvalLayerParasitics",
+      "archetypeId": 10,
+      "gdsLayer": 1,
+      "minWidthLambda": 2,
+      "minSpacingLambda": 3
+    }
+  },
+  {
+    "name": "NP",
+    "kind": "Layer",
+    "namePath": "CIF.Layers.NP",
+    "exports": [
+      "minWidthLambda",
+      "minSpacingLambda",
+      "sheetResistanceOhmPerSq",
+      "areaCapAfPerUm2",
+      "fringeCapAfPerUm",
+      "gdsLayer"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NMOS Polysilicon (NP)",
+      "category": "Mead-Conway NMOS",
+      "domain": "ic-layout",
+      "description": "Mead-Conway NMOS polysilicon gate layer (min width 2λ).",
+      "provenance": "Mead & Conway, Introduction to VLSI Systems (1980)",
+      "aliases": [
+        "np",
+        "L_NP"
+      ],
+      "parameters": [
+        {
+          "key": "minWidthLambda",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "lambda",
+          "description": "Minimum feature width in lambda units"
+        },
+        {
+          "key": "minSpacingLambda",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "lambda",
+          "description": "Minimum same-layer spacing in lambda units"
+        },
+        {
+          "key": "sheetResistanceOhmPerSq",
+          "type": "real",
+          "defaultValue": 30,
+          "unit": "Ohm/sq",
+          "description": "Sheet resistance"
+        },
+        {
+          "key": "areaCapAfPerUm2",
+          "type": "real",
+          "defaultValue": 40,
+          "unit": "aF/um^2",
+          "description": "Area capacitance to substrate"
+        },
+        {
+          "key": "fringeCapAfPerUm",
+          "type": "real",
+          "defaultValue": 25,
+          "unit": "aF/um",
+          "description": "Perimeter fringe capacitance"
+        },
+        {
+          "key": "gdsLayer",
+          "type": "integer",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "GDSII stream layer number"
+        }
+      ],
+      "wasmKernel": "cifEvalLayerParasitics",
+      "archetypeId": 11,
+      "gdsLayer": 2,
+      "minWidthLambda": 2,
+      "minSpacingLambda": 2
+    }
+  },
+  {
+    "name": "NM",
+    "kind": "Layer",
+    "namePath": "CIF.Layers.NM",
+    "exports": [
+      "minWidthLambda",
+      "minSpacingLambda",
+      "sheetResistanceOhmPerSq",
+      "areaCapAfPerUm2",
+      "fringeCapAfPerUm",
+      "gdsLayer"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NMOS Metal (NM)",
+      "category": "Mead-Conway NMOS",
+      "domain": "ic-layout",
+      "description": "Mead-Conway NMOS metal interconnect layer (min width 3λ).",
+      "provenance": "Mead & Conway, Introduction to VLSI Systems (1980)",
+      "aliases": [
+        "nm",
+        "L_NM"
+      ],
+      "parameters": [
+        {
+          "key": "minWidthLambda",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "lambda",
+          "description": "Minimum feature width in lambda units"
+        },
+        {
+          "key": "minSpacingLambda",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "lambda",
+          "description": "Minimum same-layer spacing in lambda units"
+        },
+        {
+          "key": "sheetResistanceOhmPerSq",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "Ohm/sq",
+          "description": "Sheet resistance"
+        },
+        {
+          "key": "areaCapAfPerUm2",
+          "type": "real",
+          "defaultValue": 30,
+          "unit": "aF/um^2",
+          "description": "Area capacitance to substrate"
+        },
+        {
+          "key": "fringeCapAfPerUm",
+          "type": "real",
+          "defaultValue": 35,
+          "unit": "aF/um",
+          "description": "Perimeter fringe capacitance"
+        },
+        {
+          "key": "gdsLayer",
+          "type": "integer",
+          "defaultValue": 3,
+          "unit": "1",
+          "description": "GDSII stream layer number"
+        }
+      ],
+      "wasmKernel": "cifEvalLayerParasitics",
+      "archetypeId": 12,
+      "gdsLayer": 3,
+      "minWidthLambda": 3,
+      "minSpacingLambda": 3
+    }
+  },
+  {
+    "name": "NC",
+    "kind": "Layer",
+    "namePath": "CIF.Layers.NC",
+    "exports": [
+      "minWidthLambda",
+      "minSpacingLambda",
+      "sheetResistanceOhmPerSq",
+      "areaCapAfPerUm2",
+      "fringeCapAfPerUm",
+      "gdsLayer"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NMOS Contact Cut (NC)",
+      "category": "Mead-Conway NMOS",
+      "domain": "ic-layout",
+      "description": "Mead-Conway NMOS contact cut (2λ × 2λ).",
+      "provenance": "Mead & Conway, Introduction to VLSI Systems (1980)",
+      "aliases": [
+        "nc",
+        "L_NC"
+      ],
+      "parameters": [
+        {
+          "key": "minWidthLambda",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "lambda",
+          "description": "Minimum feature width in lambda units"
+        },
+        {
+          "key": "minSpacingLambda",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "lambda",
+          "description": "Minimum same-layer spacing in lambda units"
+        },
+        {
+          "key": "sheetResistanceOhmPerSq",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "Ohm/sq",
+          "description": "Sheet resistance"
+        },
+        {
+          "key": "areaCapAfPerUm2",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "aF/um^2",
+          "description": "Area capacitance to substrate"
+        },
+        {
+          "key": "fringeCapAfPerUm",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "aF/um",
+          "description": "Perimeter fringe capacitance"
+        },
+        {
+          "key": "gdsLayer",
+          "type": "integer",
+          "defaultValue": 4,
+          "unit": "1",
+          "description": "GDSII stream layer number"
+        }
+      ],
+      "wasmKernel": "cifEvalLayerParasitics",
+      "archetypeId": 13,
+      "gdsLayer": 4,
+      "minWidthLambda": 2,
+      "minSpacingLambda": 2
+    }
+  },
+  {
+    "name": "NI",
+    "kind": "Layer",
+    "namePath": "CIF.Layers.NI",
+    "exports": [
+      "minWidthLambda",
+      "minSpacingLambda",
+      "sheetResistanceOhmPerSq",
+      "areaCapAfPerUm2",
+      "fringeCapAfPerUm",
+      "gdsLayer"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NMOS Implant (NI)",
+      "category": "Mead-Conway NMOS",
+      "domain": "ic-layout",
+      "description": "Mead-Conway NMOS depletion-mode ion implant (min width 4λ).",
+      "provenance": "Mead & Conway, Introduction to VLSI Systems (1980)",
+      "aliases": [
+        "ni",
+        "L_NI"
+      ],
+      "parameters": [
+        {
+          "key": "minWidthLambda",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "lambda",
+          "description": "Minimum feature width in lambda units"
+        },
+        {
+          "key": "minSpacingLambda",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "lambda",
+          "description": "Minimum same-layer spacing in lambda units"
+        },
+        {
+          "key": "sheetResistanceOhmPerSq",
+          "type": "real",
+          "defaultValue": 200,
+          "unit": "Ohm/sq",
+          "description": "Sheet resistance"
+        },
+        {
+          "key": "areaCapAfPerUm2",
+          "type": "real",
+          "defaultValue": 80,
+          "unit": "aF/um^2",
+          "description": "Area capacitance to substrate"
+        },
+        {
+          "key": "fringeCapAfPerUm",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "aF/um",
+          "description": "Perimeter fringe capacitance"
+        },
+        {
+          "key": "gdsLayer",
+          "type": "integer",
+          "defaultValue": 5,
+          "unit": "1",
+          "description": "GDSII stream layer number"
+        }
+      ],
+      "wasmKernel": "cifEvalLayerParasitics",
+      "archetypeId": 14,
+      "gdsLayer": 5,
+      "minWidthLambda": 4,
+      "minSpacingLambda": 2
+    }
+  },
+  {
+    "name": "NMOS_INVERTER",
+    "kind": "Cell",
+    "namePath": "CIF.Cells.NMOS_INVERTER",
+    "exports": [
+      "lambdaUm",
+      "pullupRatio"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Mead-Conway NMOS Inverter",
+      "category": "Standard Cells",
+      "domain": "ic-layout",
+      "description": "Classic Mead-Conway depletion-load NMOS inverter cell (ND, NP, NM, NC, NI).",
+      "provenance": "Mead & Conway, Introduction to VLSI Systems (1980), Chapter 2",
+      "aliases": [
+        "nmos_inv",
+        "INV_NMOS"
+      ],
+      "parameters": [
+        {
+          "key": "lambdaUm",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "um",
+          "description": "Lambda feature scale"
+        },
+        {
+          "key": "pullupRatio",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "1",
+          "description": "Zpu/Zpd inverter ratio"
+        }
+      ],
+      "wasmKernel": "cifCheckMinWidth",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "CMOS_INVERTER",
+    "kind": "Cell",
+    "namePath": "CIF.Cells.CMOS_INVERTER",
+    "exports": [
+      "lambdaUm",
+      "betaRatio"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "MOSIS SCMOS Inverter",
+      "category": "Standard Cells",
+      "domain": "ic-layout",
+      "description": "Static CMOS inverter cell in MOSIS SCMOS (CWN, CAA, CPG, CCA, CMF).",
+      "provenance": "MOSIS SCMOS Standard Cell Reference",
+      "aliases": [
+        "cmos_inv",
+        "INV_CMOS"
+      ],
+      "parameters": [
+        {
+          "key": "lambdaUm",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "um",
+          "description": "Lambda feature scale"
+        },
+        {
+          "key": "betaRatio",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "PMOS/NMOS width ratio"
+        }
+      ],
+      "wasmKernel": "cifCheckMinWidth",
+      "archetypeId": 21
+    }
+  }
+]

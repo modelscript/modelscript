@@ -14,6 +14,7 @@ export * from "./errors.js";
 export * from "./factory.js";
 export * from "./flattener.js";
 export * from "./formatter.js";
+export * from "./interop.js";
 export * from "./lints/index.js";
 export * from "./lsp-formal-validator.js";
 export * from "./types.js";

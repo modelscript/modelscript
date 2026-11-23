@@ -5,7 +5,6 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@antv/x6-plugin-selection>@antv/x6': ^3.1.7
   '@babel/core': ^7.29.6
   '@babel/plugin-transform-modules-systemjs': ^7.29.4
   '@hono/node-server': ^2.1.3
@@ -184,6 +183,9 @@ importers:
       '@modelscript/cad':
         specifier: workspace:*
         version: link:../../packages/cad
+      '@modelscript/canvas':
+        specifier: workspace:*
+        version: link:../../packages/canvas
       '@modelscript/cfd':
         specifier: workspace:*
         version: link:../../languages/cfd
@@ -458,15 +460,30 @@ importers:
       '@babel/standalone':
         specifier: ^7.29.7
         version: 7.29.15
+      '@modelscript/acsl':
+        specifier: workspace:*
+        version: link:../../languages/acsl
       '@modelscript/adams':
         specifier: workspace:*
         version: link:../../languages/adams
       '@modelscript/ampl':
         specifier: workspace:*
         version: link:../../languages/ampl
+      '@modelscript/apdl':
+        specifier: workspace:*
+        version: link:../../languages/apdl
+      '@modelscript/apt':
+        specifier: workspace:*
+        version: link:../../languages/apt
+      '@modelscript/arinc429':
+        specifier: workspace:*
+        version: link:../../languages/arinc429
       '@modelscript/asm':
         specifier: workspace:*
         version: link:../../languages/asm
+      '@modelscript/asn1':
+        specifier: workspace:*
+        version: link:../../languages/asn1
       '@modelscript/aspen':
         specifier: workspace:*
         version: link:../../languages/aspen
@@ -482,6 +499,9 @@ importers:
       '@modelscript/autosar':
         specifier: workspace:*
         version: link:../../languages/autosar
+      '@modelscript/bufr':
+        specifier: workspace:*
+        version: link:../../languages/bufr
       '@modelscript/c':
         specifier: workspace:*
         version: link:../../languages/c
@@ -491,6 +511,9 @@ importers:
       '@modelscript/ccsds':
         specifier: workspace:*
         version: link:../../languages/ccsds
+      '@modelscript/cea':
+        specifier: workspace:*
+        version: link:../../languages/cea
       '@modelscript/cellml':
         specifier: workspace:*
         version: link:../../languages/cellml
@@ -500,12 +523,27 @@ importers:
       '@modelscript/cgmes':
         specifier: workspace:*
         version: link:../../languages/cgmes
+      '@modelscript/chemkin':
+        specifier: workspace:*
+        version: link:../../languages/chemkin
+      '@modelscript/cif':
+        specifier: workspace:*
+        version: link:../../languages/cif
       '@modelscript/comtrade':
         specifier: workspace:*
         version: link:../../languages/comtrade
+      '@modelscript/cplex-lp':
+        specifier: workspace:*
+        version: link:../../languages/cplex-lp
+      '@modelscript/csmp':
+        specifier: workspace:*
+        version: link:../../languages/csmp
       '@modelscript/csv':
         specifier: workspace:*
         version: link:../../languages/csv
+      '@modelscript/datcom':
+        specifier: workspace:*
+        version: link:../../languages/datcom
       '@modelscript/diagram':
         specifier: workspace:*
         version: link:../../packages/diagram
@@ -515,21 +553,42 @@ importers:
       '@modelscript/dnp3':
         specifier: workspace:*
         version: link:../../languages/dnp3
+      '@modelscript/doe2':
+        specifier: workspace:*
+        version: link:../../languages/doe2
       '@modelscript/dsl':
         specifier: workspace:*
         version: link:../../packages/dsl
+      '@modelscript/dxf':
+        specifier: workspace:*
+        version: link:../../languages/dxf
+      '@modelscript/dynamo':
+        specifier: workspace:*
+        version: link:../../languages/dynamo
       '@modelscript/easy5':
         specifier: workspace:*
         version: link:../../languages/easy5
       '@modelscript/eclipse':
         specifier: workspace:*
         version: link:../../languages/eclipse
+      '@modelscript/edif':
+        specifier: workspace:*
+        version: link:../../languages/edif
+      '@modelscript/endf6':
+        specifier: workspace:*
+        version: link:../../languages/endf6
       '@modelscript/energyplus':
         specifier: workspace:*
         version: link:../../languages/energyplus
       '@modelscript/epanet':
         specifier: workspace:*
         version: link:../../languages/epanet
+      '@modelscript/esl':
+        specifier: workspace:*
+        version: link:../../languages/esl
+      '@modelscript/esterel':
+        specifier: workspace:*
+        version: link:../../languages/esterel
       '@modelscript/exchange':
         specifier: workspace:*
         version: link:../../packages/exchange
@@ -542,30 +601,84 @@ importers:
       '@modelscript/fiber':
         specifier: workspace:*
         version: link:../../languages/fiber
+      '@modelscript/fits':
+        specifier: workspace:*
+        version: link:../../languages/fits
       '@modelscript/fortran':
         specifier: workspace:*
         version: link:../../languages/fortran
+      '@modelscript/gams':
+        specifier: workspace:*
+        version: link:../../languages/gams
+      '@modelscript/gaussian':
+        specifier: workspace:*
+        version: link:../../languages/gaussian
+      '@modelscript/gcode':
+        specifier: workspace:*
+        version: link:../../languages/gcode
+      '@modelscript/gdsii':
+        specifier: workspace:*
+        version: link:../../languages/gdsii
       '@modelscript/gensys':
         specifier: workspace:*
         version: link:../../languages/gensys
+      '@modelscript/gerber':
+        specifier: workspace:*
+        version: link:../../languages/gerber
+      '@modelscript/gpss':
+        specifier: workspace:*
+        version: link:../../languages/gpss
+      '@modelscript/grib':
+        specifier: workspace:*
+        version: link:../../languages/grib
       '@modelscript/gtfs':
         specifier: workspace:*
         version: link:../../languages/gtfs
       '@modelscript/gtsuite':
         specifier: workspace:*
         version: link:../../languages/gtsuite
+      '@modelscript/hdf4':
+        specifier: workspace:*
+        version: link:../../languages/hdf4
       '@modelscript/hec-hms':
         specifier: workspace:*
         version: link:../../languages/hec-hms
       '@modelscript/hec-ras':
         specifier: workspace:*
         version: link:../../languages/hec-ras
+      '@modelscript/hec1':
+        specifier: workspace:*
+        version: link:../../languages/hec1
+      '@modelscript/hec2':
+        specifier: workspace:*
+        version: link:../../languages/hec2
       '@modelscript/ibis':
         specifier: workspace:*
         version: link:../../languages/ibis
+      '@modelscript/ieee-cdf':
+        specifier: workspace:*
+        version: link:../../languages/ieee-cdf
+      '@modelscript/iges':
+        specifier: workspace:*
+        version: link:../../languages/iges
       '@modelscript/igtl':
         specifier: workspace:*
         version: link:../../languages/igtl
+      '@modelscript/ihex':
+        specifier: workspace:*
+        version: link:../../languages/ihex
+      '@modelscript/irig106':
+        specifier: workspace:*
+        version: link:../../languages/irig106
+      '@modelscript/iucr-cif':
+        specifier: workspace:*
+        version: link:../../languages/iucr-cif
+      '@modelscript/jcamp-dx':
+        specifier: workspace:*
+        version: link:../../languages/jcamp-dx
+      '@modelscript/jedec':
+        specifier: workspace:*
+        version: link:../../languages/jedec
       '@modelscript/jsbsim':
         specifier: workspace:*
         version: link:../../languages/jsbsim
@@ -581,15 +694,27 @@ importers:
       '@modelscript/lps':
         specifier: workspace:*
         version: link:../../languages/lps
+      '@modelscript/lsdyna':
+        specifier: workspace:*
+        version: link:../../languages/lsdyna
       '@modelscript/lsp':
         specifier: workspace:*
         version: link:../../packages/lsp
+      '@modelscript/lustre':
+        specifier: workspace:*
+        version: link:../../languages/lustre
       '@modelscript/magicdraw':
         specifier: workspace:*
         version: link:../../languages/magicdraw
       '@modelscript/matpower':
         specifier: workspace:*
         version: link:../../languages/matpower
+      '@modelscript/mcnp':
+        specifier: workspace:*
+        version: link:../../languages/mcnp
+      '@modelscript/melcor':
+        specifier: workspace:*
+        version: link:../../languages/melcor
       '@modelscript/modelica':
         specifier: workspace:*
         version: link:../../languages/modelica
@@ -599,9 +724,30 @@ importers:
       '@modelscript/modflow':
         specifier: workspace:*
         version: link:../../languages/modflow
+      '@modelscript/molfile':
+        specifier: workspace:*
+        version: link:../../languages/molfile
+      '@modelscript/mps':
+        specifier: workspace:*
+        version: link:../../languages/mps
+      '@modelscript/nasa-cdf':
+        specifier: workspace:*
+        version: link:../../languages/nasa-cdf
+      '@modelscript/nec2':
+        specifier: workspace:*
+        version: link:../../languages/nec2
+      '@modelscript/netcdf':
+        specifier: workspace:*
+        version: link:../../languages/netcdf
       '@modelscript/nifti':
         specifier: workspace:*
         version: link:../../languages/nifti
+      '@modelscript/nmea0183':
+        specifier: workspace:*
+        version: link:../../languages/nmea0183
+      '@modelscript/obj':
+        specifier: workspace:*
+        version: link:../../languages/obj
       '@modelscript/ocpp':
         specifier: workspace:*
         version: link:../../languages/ocpp
@@ -638,6 +784,9 @@ importers:
       '@modelscript/plcopen':
         specifier: workspace:*
         version: link:../../languages/plcopen
+      '@modelscript/plot3d':
+        specifier: workspace:*
+        version: link:../../languages/plot3d
       '@modelscript/powerfactory':
         specifier: workspace:*
         version: link:../../languages/powerfactory
@@ -662,6 +811,9 @@ importers:
       '@modelscript/reqif':
         specifier: workspace:*
         version: link:../../languages/reqif
+      '@modelscript/rinex':
+        specifier: workspace:*
+        version: link:../../languages/rinex
       '@modelscript/rocets':
         specifier: workspace:*
         version: link:../../languages/rocets
@@ -674,12 +826,21 @@ importers:
       '@modelscript/scad':
         specifier: workspace:*
         version: link:../../languages/scad
+      '@modelscript/scale':
+        specifier: workspace:*
+        version: link:../../languages/scale
       '@modelscript/scl':
         specifier: workspace:*
         version: link:../../languages/scl
       '@modelscript/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@modelscript/sdl':
+        specifier: workspace:*
+        version: link:../../languages/sdl
+      '@modelscript/segy':
+        specifier: workspace:*
+        version: link:../../languages/segy
       '@modelscript/sel':
         specifier: workspace:*
         version: link:../../languages/sel
@@ -689,21 +850,36 @@ importers:
       '@modelscript/simpack':
         specifier: workspace:*
         version: link:../../languages/simpack
+      '@modelscript/simscript':
+        specifier: workspace:*
+        version: link:../../languages/simscript
       '@modelscript/simulate':
         specifier: workspace:*
         version: link:../../packages/simulate
       '@modelscript/simulink':
         specifier: workspace:*
         version: link:../../languages/simulink
+      '@modelscript/sinda':
+        specifier: workspace:*
+        version: link:../../languages/sinda
+      '@modelscript/slam':
+        specifier: workspace:*
+        version: link:../../languages/slam
       '@modelscript/spice':
         specifier: workspace:*
         version: link:../../languages/spice
+      '@modelscript/srec':
+        specifier: workspace:*
+        version: link:../../languages/srec
       '@modelscript/ssp':
         specifier: workspace:*
         version: link:../../languages/ssp
       '@modelscript/step':
         specifier: workspace:*
         version: link:../../languages/step
+      '@modelscript/stl':
+        specifier: workspace:*
+        version: link:../../languages/stl
       '@modelscript/swmm':
         specifier: workspace:*
         version: link:../../languages/swmm
@@ -722,12 +898,27 @@ importers:
       '@modelscript/tough':
         specifier: workspace:*
         version: link:../../languages/tough
+      '@modelscript/trasys':
+        specifier: workspace:*
+        version: link:../../languages/trasys
+      '@modelscript/trnsys':
+        specifier: workspace:*
+        version: link:../../languages/trnsys
       '@modelscript/urdf':
         specifier: workspace:*
         version: link:../../languages/urdf
+      '@modelscript/usgs-dem':
+        specifier: workspace:*
+        version: link:../../languages/usgs-dem
+      '@modelscript/verilog':
+        specifier: workspace:*
+        version: link:../../languages/verilog
       '@modelscript/verilog-a':
         specifier: workspace:*
         version: link:../../languages/verilog-a
+      '@modelscript/vhdl':
+        specifier: workspace:*
+        version: link:../../languages/vhdl
       '@modelscript/waterml':
         specifier: workspace:*
         version: link:../../languages/waterml
@@ -934,15 +1125,15 @@ importers:
       '@antv/layout':
         specifier: ^0.3.25
         version: 0.3.25(dagre@0.8.5)
-      '@antv/x6':
-        specifier: ^3.1.7
-        version: 3.1.8
       '@mlc-ai/web-llm':
         specifier: ^0.2.85
         version: 0.2.89
       '@modelscript/cad':
         specifier: workspace:*
         version: link:../../packages/cad
+      '@modelscript/canvas':
+        specifier: workspace:*
+        version: link:../../packages/canvas
       '@modelscript/design-tokens':
         specifier: workspace:*
         version: link:../../packages/design-tokens
@@ -1261,6 +1452,22 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  languages/acsl:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   languages/adams:
     dependencies:
       '@modelscript/design-tokens':
@@ -1297,6 +1504,9 @@ importers:
       '@modelscript/dsl':
         specifier: workspace:*
         version: link:../../packages/dsl
+      '@modelscript/mps':
+        specifier: workspace:*
+        version: link:../mps
       '@modelscript/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -1333,6 +1543,66 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  languages/apdl:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/apt:
+    dependencies:
+      '@modelscript/cad':
+        specifier: workspace:*
+        version: link:../../packages/cad
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/arinc429:
+    dependencies:
+      '@modelscript/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.3.1
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.3.0
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   languages/asm:
     dependencies:
       '@modelscript/dsl':
@@ -1345,6 +1615,31 @@ importers:
       '@types/node':
         specifier: ^25.3.2
         version: 25.9.9
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/asn1:
+    dependencies:
+      '@modelscript/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.3.1
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.3.0
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -1466,6 +1761,31 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  languages/bufr:
+    dependencies:
+      '@modelscript/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.3.1
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.3.0
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   languages/c:
     dependencies:
       '@modelscript/dsl':
@@ -1521,6 +1841,22 @@ importers:
         version: 5.9.3
 
   languages/ccsds:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/cea:
     dependencies:
       '@modelscript/dsl':
         specifier: workspace:*
@@ -1599,7 +1935,74 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  languages/chemkin:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/cif:
+    dependencies:
+      '@modelscript/cad':
+        specifier: workspace:*
+        version: link:../../packages/cad
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   languages/comtrade:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/cplex-lp:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/csmp:
     dependencies:
       '@modelscript/dsl':
         specifier: workspace:*
@@ -1647,6 +2050,22 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  languages/datcom:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   languages/dicom-rt:
     dependencies:
       '@modelscript/design-tokens':
@@ -1676,6 +2095,57 @@ importers:
         version: 5.9.3
 
   languages/dnp3:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/doe2:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/dxf:
+    dependencies:
+      '@modelscript/cad':
+        specifier: workspace:*
+        version: link:../../packages/cad
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/dynamo:
     dependencies:
       '@modelscript/dsl':
         specifier: workspace:*
@@ -1741,6 +2211,47 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  languages/edif:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/endf6:
+    dependencies:
+      '@modelscript/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.3.1
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.3.0
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   languages/energyplus:
     dependencies:
       '@modelscript/dsl':
@@ -1778,6 +2289,38 @@ importers:
       '@types/react':
         specifier: ^19.2.7
         version: 19.3.0
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/esl:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/esterel:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
       rimraf:
         specifier: ^6.1.0
         version: 6.1.4
@@ -1842,8 +2385,94 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  languages/fits:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   languages/fortran:
     dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/gams:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/gaussian:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/gcode:
+    dependencies:
+      '@modelscript/cad':
+        specifier: workspace:*
+        version: link:../../packages/cad
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/gdsii:
+    dependencies:
+      '@modelscript/cad':
+        specifier: workspace:*
+        version: link:../../packages/cad
       '@modelscript/dsl':
         specifier: workspace:*
         version: link:../../packages/dsl
@@ -1902,6 +2531,25 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  languages/gerber:
+    dependencies:
+      '@modelscript/cad':
+        specifier: workspace:*
+        version: link:../../packages/cad
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   languages/gproms:
     dependencies:
       '@modelscript/dsl':
@@ -1911,6 +2559,47 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
     devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/gpss:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/grib:
+    dependencies:
+      '@modelscript/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.3.1
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.3.0
       rimraf:
         specifier: ^6.1.0
         version: 6.1.4
@@ -1975,6 +2664,31 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  languages/hdf4:
+    dependencies:
+      '@modelscript/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.3.1
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.3.0
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   languages/hec-hms:
     dependencies:
       '@modelscript/dsl':
@@ -1995,6 +2709,38 @@ importers:
         version: 5.9.3
 
   languages/hec-ras:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/hec1:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/hec2:
     dependencies:
       '@modelscript/dsl':
         specifier: workspace:*
@@ -2042,6 +2788,41 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  languages/ieee-cdf:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/iges:
+    dependencies:
+      '@modelscript/cad':
+        specifier: workspace:*
+        version: link:../../packages/cad
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   languages/igtl:
     dependencies:
       '@modelscript/design-tokens':
@@ -2050,6 +2831,131 @@ importers:
       '@modelscript/diagram':
         specifier: workspace:*
         version: link:../../packages/diagram
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.3.1
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.3.0
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/ihex:
+    dependencies:
+      '@modelscript/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.3.1
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.3.0
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/irig106:
+    dependencies:
+      '@modelscript/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.3.1
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.3.0
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/iucr-cif:
+    dependencies:
+      '@modelscript/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.3.1
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.3.0
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/jcamp-dx:
+    dependencies:
+      '@modelscript/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.3.1
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.3.0
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/jedec:
+    dependencies:
+      '@modelscript/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
       '@modelscript/dsl':
         specifier: workspace:*
         version: link:../../packages/dsl
@@ -2168,6 +3074,38 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  languages/lsdyna:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/lustre:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   languages/magicdraw:
     dependencies:
       '@modelscript/design-tokens':
@@ -2201,6 +3139,41 @@ importers:
       '@modelscript/psse':
         specifier: workspace:*
         version: link:../psse
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/mcnp:
+    dependencies:
+      '@modelscript/cad':
+        specifier: workspace:*
+        version: link:../../packages/cad
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/melcor:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
       '@modelscript/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -2321,6 +3294,104 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  languages/molfile:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/mps:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/nasa-cdf:
+    dependencies:
+      '@modelscript/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.3.1
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.3.0
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/nec2:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/netcdf:
+    dependencies:
+      '@modelscript/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.3.1
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.3.0
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   languages/nifti:
     dependencies:
       '@modelscript/dsl':
@@ -2330,6 +3401,31 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
     devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/nmea0183:
+    dependencies:
+      '@modelscript/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.3.1
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.3.0
       rimraf:
         specifier: ^6.1.0
         version: 6.1.4
@@ -2371,6 +3467,34 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
     devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/obj:
+    dependencies:
+      '@modelscript/cad':
+        specifier: workspace:*
+        version: link:../../packages/cad
+      '@modelscript/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.3.1
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.3.0
       rimraf:
         specifier: ^6.1.0
         version: 6.1.4
@@ -2683,6 +3807,22 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  languages/plot3d:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   languages/plscadd:
     dependencies:
       '@modelscript/dsl':
@@ -2940,6 +4080,31 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  languages/rinex:
+    dependencies:
+      '@modelscript/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.3.1
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.3.0
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   languages/rocets:
     dependencies:
       '@modelscript/design-tokens':
@@ -3044,6 +4209,25 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  languages/scale:
+    dependencies:
+      '@modelscript/cad':
+        specifier: workspace:*
+        version: link:../../packages/cad
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   languages/scl:
     dependencies:
       '@modelscript/dsl':
@@ -3060,7 +4244,39 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  languages/sdl:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   languages/sedml:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/segy:
     dependencies:
       '@modelscript/dsl':
         specifier: workspace:*
@@ -3148,6 +4364,22 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  languages/simscript:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   languages/simulink:
     dependencies:
       '@modelscript/diagram':
@@ -3166,6 +4398,38 @@ importers:
       '@types/adm-zip':
         specifier: ^0.5.7
         version: 0.5.8
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/sinda:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/slam:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
       rimraf:
         specifier: ^6.1.0
         version: 6.1.4
@@ -3229,6 +4493,31 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  languages/srec:
+    dependencies:
+      '@modelscript/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.3.1
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.3.0
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   languages/ssp:
     dependencies:
       '@modelscript/diagram':
@@ -3262,6 +4551,34 @@ importers:
       '@types/react':
         specifier: ^19.2.7
         version: 19.3.0
+
+  languages/stl:
+    dependencies:
+      '@modelscript/cad':
+        specifier: workspace:*
+        version: link:../../packages/cad
+      '@modelscript/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.3.1
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.3.0
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   languages/swmm:
     dependencies:
@@ -3389,6 +4706,41 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  languages/trasys:
+    dependencies:
+      '@modelscript/cad':
+        specifier: workspace:*
+        version: link:../../packages/cad
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/trnsys:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   languages/urdf:
     dependencies:
       '@modelscript/adams':
@@ -3454,7 +4806,67 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  languages/usgs-dem:
+    dependencies:
+      '@modelscript/cad':
+        specifier: workspace:*
+        version: link:../../packages/cad
+      '@modelscript/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.3.1
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.3.0
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/verilog:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   languages/verilog-a:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  languages/vhdl:
     dependencies:
       '@modelscript/dsl':
         specifier: workspace:*
@@ -3508,6 +4920,21 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  packages/canvas:
+    devDependencies:
+      '@types/node':
+        specifier: ^25.3.2
+        version: 25.9.9
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.3.0
+      react:
+        specifier: ^19.2.7
+        version: 19.3.1
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   packages/design-tokens:
     devDependencies:
       '@types/react':
@@ -3525,12 +4952,9 @@ importers:
       '@antv/layout':
         specifier: ^0.3.25
         version: 0.3.25(dagre@0.8.5)
-      '@antv/x6':
-        specifier: ^3.1.7
-        version: 3.1.8
-      '@antv/x6-plugin-selection':
-        specifier: ^2.2.2
-        version: 2.2.2(@antv/x6@3.1.8)
+      '@modelscript/canvas':
+        specifier: workspace:*
+        version: link:../canvas
       helmlab:
         specifier: ^0.11.9
         version: 0.11.9
@@ -3715,6 +5139,9 @@ importers:
       '@modelscript/cantera':
         specifier: workspace:*
         version: link:../../languages/cantera
+      '@modelscript/canvas':
+        specifier: workspace:*
+        version: link:../canvas
       '@modelscript/cfd':
         specifier: workspace:*
         version: link:../../languages/cfd
@@ -3797,6 +5224,9 @@ importers:
 
   packages/lsp:
     dependencies:
+      '@modelscript/acsl':
+        specifier: workspace:*
+        version: link:../../languages/acsl
       '@modelscript/adams':
         specifier: workspace:*
         version: link:../../languages/adams
@@ -3806,9 +5236,21 @@ importers:
       '@modelscript/antimony':
         specifier: workspace:*
         version: link:../../languages/antimony
+      '@modelscript/apdl':
+        specifier: workspace:*
+        version: link:../../languages/apdl
+      '@modelscript/apt':
+        specifier: workspace:*
+        version: link:../../languages/apt
+      '@modelscript/arinc429':
+        specifier: workspace:*
+        version: link:../../languages/arinc429
       '@modelscript/asm':
         specifier: workspace:*
         version: link:../../languages/asm
+      '@modelscript/asn1':
+        specifier: workspace:*
+        version: link:../../languages/asn1
       '@modelscript/aspen':
         specifier: workspace:*
         version: link:../../languages/aspen
@@ -3827,6 +5269,9 @@ importers:
       '@modelscript/bngl':
         specifier: workspace:*
         version: link:../../languages/bngl
+      '@modelscript/bufr':
+        specifier: workspace:*
+        version: link:../../languages/bufr
       '@modelscript/c':
         specifier: workspace:*
         version: link:../../languages/c
@@ -3839,9 +5284,15 @@ importers:
       '@modelscript/cantera':
         specifier: workspace:*
         version: link:../../languages/cantera
+      '@modelscript/canvas':
+        specifier: workspace:*
+        version: link:../canvas
       '@modelscript/ccsds':
         specifier: workspace:*
         version: link:../../languages/ccsds
+      '@modelscript/cea':
+        specifier: workspace:*
+        version: link:../../languages/cea
       '@modelscript/cellml':
         specifier: workspace:*
         version: link:../../languages/cellml
@@ -3851,15 +5302,30 @@ importers:
       '@modelscript/cgmes':
         specifier: workspace:*
         version: link:../../languages/cgmes
+      '@modelscript/chemkin':
+        specifier: workspace:*
+        version: link:../../languages/chemkin
+      '@modelscript/cif':
+        specifier: workspace:*
+        version: link:../../languages/cif
       '@modelscript/comtrade':
         specifier: workspace:*
         version: link:../../languages/comtrade
+      '@modelscript/cplex-lp':
+        specifier: workspace:*
+        version: link:../../languages/cplex-lp
+      '@modelscript/csmp':
+        specifier: workspace:*
+        version: link:../../languages/csmp
       '@modelscript/csv':
         specifier: workspace:*
         version: link:../../languages/csv
       '@modelscript/cyme':
         specifier: workspace:*
         version: link:../../languages/cyme
+      '@modelscript/datcom':
+        specifier: workspace:*
+        version: link:../../languages/datcom
       '@modelscript/diagram':
         specifier: workspace:*
         version: link:../diagram
@@ -3869,21 +5335,42 @@ importers:
       '@modelscript/dnp3':
         specifier: workspace:*
         version: link:../../languages/dnp3
+      '@modelscript/doe2':
+        specifier: workspace:*
+        version: link:../../languages/doe2
       '@modelscript/dsl':
         specifier: workspace:*
         version: link:../dsl
+      '@modelscript/dxf':
+        specifier: workspace:*
+        version: link:../../languages/dxf
+      '@modelscript/dynamo':
+        specifier: workspace:*
+        version: link:../../languages/dynamo
       '@modelscript/easy5':
         specifier: workspace:*
         version: link:../../languages/easy5
       '@modelscript/eclipse':
         specifier: workspace:*
         version: link:../../languages/eclipse
+      '@modelscript/edif':
+        specifier: workspace:*
+        version: link:../../languages/edif
+      '@modelscript/endf6':
+        specifier: workspace:*
+        version: link:../../languages/endf6
       '@modelscript/energyplus':
         specifier: workspace:*
         version: link:../../languages/energyplus
       '@modelscript/epanet':
         specifier: workspace:*
         version: link:../../languages/epanet
+      '@modelscript/esl':
+        specifier: workspace:*
+        version: link:../../languages/esl
+      '@modelscript/esterel':
+        specifier: workspace:*
+        version: link:../../languages/esterel
       '@modelscript/exchange':
         specifier: workspace:*
         version: link:../exchange
@@ -3896,18 +5383,42 @@ importers:
       '@modelscript/fiber':
         specifier: workspace:*
         version: link:../../languages/fiber
+      '@modelscript/fits':
+        specifier: workspace:*
+        version: link:../../languages/fits
       '@modelscript/fortran':
         specifier: workspace:*
         version: link:../../languages/fortran
+      '@modelscript/gams':
+        specifier: workspace:*
+        version: link:../../languages/gams
+      '@modelscript/gaussian':
+        specifier: workspace:*
+        version: link:../../languages/gaussian
+      '@modelscript/gcode':
+        specifier: workspace:*
+        version: link:../../languages/gcode
+      '@modelscript/gdsii':
+        specifier: workspace:*
+        version: link:../../languages/gdsii
       '@modelscript/genbank':
         specifier: workspace:*
         version: link:../../languages/genbank
       '@modelscript/gensys':
         specifier: workspace:*
         version: link:../../languages/gensys
+      '@modelscript/gerber':
+        specifier: workspace:*
+        version: link:../../languages/gerber
       '@modelscript/gproms':
         specifier: workspace:*
         version: link:../../languages/gproms
+      '@modelscript/gpss':
+        specifier: workspace:*
+        version: link:../../languages/gpss
+      '@modelscript/grib':
+        specifier: workspace:*
+        version: link:../../languages/grib
       '@modelscript/gridlabd':
         specifier: workspace:*
         version: link:../../languages/gridlabd
@@ -3917,21 +5428,51 @@ importers:
       '@modelscript/gtsuite':
         specifier: workspace:*
         version: link:../../languages/gtsuite
+      '@modelscript/hdf4':
+        specifier: workspace:*
+        version: link:../../languages/hdf4
       '@modelscript/hec-hms':
         specifier: workspace:*
         version: link:../../languages/hec-hms
       '@modelscript/hec-ras':
         specifier: workspace:*
         version: link:../../languages/hec-ras
+      '@modelscript/hec1':
+        specifier: workspace:*
+        version: link:../../languages/hec1
+      '@modelscript/hec2':
+        specifier: workspace:*
+        version: link:../../languages/hec2
       '@modelscript/ibis':
         specifier: workspace:*
         version: link:../../languages/ibis
       '@modelscript/iec104':
         specifier: workspace:*
         version: link:../../languages/iec104
+      '@modelscript/ieee-cdf':
+        specifier: workspace:*
+        version: link:../../languages/ieee-cdf
+      '@modelscript/iges':
+        specifier: workspace:*
+        version: link:../../languages/iges
       '@modelscript/igtl':
         specifier: workspace:*
         version: link:../../languages/igtl
+      '@modelscript/ihex':
+        specifier: workspace:*
+        version: link:../../languages/ihex
+      '@modelscript/irig106':
+        specifier: workspace:*
+        version: link:../../languages/irig106
+      '@modelscript/iucr-cif':
+        specifier: workspace:*
+        version: link:../../languages/iucr-cif
+      '@modelscript/jcamp-dx':
+        specifier: workspace:*
+        version: link:../../languages/jcamp-dx
+      '@modelscript/jedec':
+        specifier: workspace:*
+        version: link:../../languages/jedec
       '@modelscript/jsbsim':
         specifier: workspace:*
         version: link:../../languages/jsbsim
@@ -3947,12 +5488,24 @@ importers:
       '@modelscript/lps':
         specifier: workspace:*
         version: link:../../languages/lps
+      '@modelscript/lsdyna':
+        specifier: workspace:*
+        version: link:../../languages/lsdyna
+      '@modelscript/lustre':
+        specifier: workspace:*
+        version: link:../../languages/lustre
       '@modelscript/magicdraw':
         specifier: workspace:*
         version: link:../../languages/magicdraw
       '@modelscript/matpower':
         specifier: workspace:*
         version: link:../../languages/matpower
+      '@modelscript/mcnp':
+        specifier: workspace:*
+        version: link:../../languages/mcnp
+      '@modelscript/melcor':
+        specifier: workspace:*
+        version: link:../../languages/melcor
       '@modelscript/mlxtran':
         specifier: workspace:*
         version: link:../../languages/mlxtran
@@ -3965,12 +5518,33 @@ importers:
       '@modelscript/modflow':
         specifier: workspace:*
         version: link:../../languages/modflow
+      '@modelscript/molfile':
+        specifier: workspace:*
+        version: link:../../languages/molfile
+      '@modelscript/mps':
+        specifier: workspace:*
+        version: link:../../languages/mps
+      '@modelscript/nasa-cdf':
+        specifier: workspace:*
+        version: link:../../languages/nasa-cdf
+      '@modelscript/nec2':
+        specifier: workspace:*
+        version: link:../../languages/nec2
+      '@modelscript/netcdf':
+        specifier: workspace:*
+        version: link:../../languages/netcdf
       '@modelscript/nifti':
         specifier: workspace:*
         version: link:../../languages/nifti
+      '@modelscript/nmea0183':
+        specifier: workspace:*
+        version: link:../../languages/nmea0183
       '@modelscript/nmtran':
         specifier: workspace:*
         version: link:../../languages/nmtran
+      '@modelscript/obj':
+        specifier: workspace:*
+        version: link:../../languages/obj
       '@modelscript/ocpp':
         specifier: workspace:*
         version: link:../../languages/ocpp
@@ -4013,6 +5587,9 @@ importers:
       '@modelscript/plcopen':
         specifier: workspace:*
         version: link:../../languages/plcopen
+      '@modelscript/plot3d':
+        specifier: workspace:*
+        version: link:../../languages/plot3d
       '@modelscript/plscadd':
         specifier: workspace:*
         version: link:../../languages/plscadd
@@ -4046,6 +5623,9 @@ importers:
       '@modelscript/reqif':
         specifier: workspace:*
         version: link:../../languages/reqif
+      '@modelscript/rinex':
+        specifier: workspace:*
+        version: link:../../languages/rinex
       '@modelscript/rocets':
         specifier: workspace:*
         version: link:../../languages/rocets
@@ -4064,12 +5644,21 @@ importers:
       '@modelscript/scad':
         specifier: workspace:*
         version: link:../../languages/scad
+      '@modelscript/scale':
+        specifier: workspace:*
+        version: link:../../languages/scale
       '@modelscript/scl':
         specifier: workspace:*
         version: link:../../languages/scl
+      '@modelscript/sdl':
+        specifier: workspace:*
+        version: link:../../languages/sdl
       '@modelscript/sedml':
         specifier: workspace:*
         version: link:../../languages/sedml
+      '@modelscript/segy':
+        specifier: workspace:*
+        version: link:../../languages/segy
       '@modelscript/sel':
         specifier: workspace:*
         version: link:../../languages/sel
@@ -4079,24 +5668,39 @@ importers:
       '@modelscript/simpack':
         specifier: workspace:*
         version: link:../../languages/simpack
+      '@modelscript/simscript':
+        specifier: workspace:*
+        version: link:../../languages/simscript
       '@modelscript/simulate':
         specifier: workspace:*
         version: link:../simulate
       '@modelscript/simulink':
         specifier: workspace:*
         version: link:../../languages/simulink
+      '@modelscript/sinda':
+        specifier: workspace:*
+        version: link:../../languages/sinda
+      '@modelscript/slam':
+        specifier: workspace:*
+        version: link:../../languages/slam
       '@modelscript/smiles':
         specifier: workspace:*
         version: link:../../languages/smiles
       '@modelscript/spice':
         specifier: workspace:*
         version: link:../../languages/spice
+      '@modelscript/srec':
+        specifier: workspace:*
+        version: link:../../languages/srec
       '@modelscript/ssp':
         specifier: workspace:*
         version: link:../../languages/ssp
       '@modelscript/step':
         specifier: workspace:*
         version: link:../../languages/step
+      '@modelscript/stl':
+        specifier: workspace:*
+        version: link:../../languages/stl
       '@modelscript/swmm':
         specifier: workspace:*
         version: link:../../languages/swmm
@@ -4115,15 +5719,30 @@ importers:
       '@modelscript/tough':
         specifier: workspace:*
         version: link:../../languages/tough
+      '@modelscript/trasys':
+        specifier: workspace:*
+        version: link:../../languages/trasys
+      '@modelscript/trnsys':
+        specifier: workspace:*
+        version: link:../../languages/trnsys
       '@modelscript/urdf':
         specifier: workspace:*
         version: link:../../languages/urdf
       '@modelscript/usd':
         specifier: workspace:*
         version: link:../../languages/usd
+      '@modelscript/usgs-dem':
+        specifier: workspace:*
+        version: link:../../languages/usgs-dem
+      '@modelscript/verilog':
+        specifier: workspace:*
+        version: link:../../languages/verilog
       '@modelscript/verilog-a':
         specifier: workspace:*
         version: link:../../languages/verilog-a
+      '@modelscript/vhdl':
+        specifier: workspace:*
+        version: link:../../languages/vhdl
       '@modelscript/waterml':
         specifier: workspace:*
         version: link:../../languages/waterml
@@ -4136,6 +5755,9 @@ importers:
       vscode-languageserver:
         specifier: ^9.0.1
         version: 9.0.1
+      vscode-languageserver-protocol:
+        specifier: ^3.18.2
+        version: 3.18.6
       vscode-languageserver-textdocument:
         specifier: ^1.0.12
         version: 1.0.16
@@ -4173,6 +5795,9 @@ importers:
       '@modelscript/cad':
         specifier: workspace:*
         version: link:../cad
+      '@modelscript/canvas':
+        specifier: workspace:*
+        version: link:../canvas
       '@modelscript/cellml':
         specifier: workspace:*
         version: link:../../languages/cellml
@@ -4522,15 +6147,6 @@ packages:
 
   '@antv/util@3.3.11':
     resolution: {integrity: sha512-FII08DFM4ABh2q5rPYdr0hMtKXRgeZazvXaFYCs7J7uTcWDHUhczab2qOCJLNDugoj8jFag1djb7wS9ehaRYBg==}
-
-  '@antv/x6-plugin-selection@2.2.2':
-    resolution: {integrity: sha512-s2gtR9Onlhr7HOHqyqg0d+4sG76JCcQEbvrZZ64XmSChlvieIPlC3YtH4dg1KMNhYIuBmBmpSum6S0eVTEiPQw==}
-    peerDependencies:
-      '@antv/x6': ^3.1.7
-
-  '@antv/x6@3.1.8':
-    resolution: {integrity: sha512-JVGxBRmjnqDr7W7Ql5XWc6FUtFcy+QlFaV31cv0pHIeVIJmyYnB5rHmdzz93CY5lCS/XcNBtOnNIIq6JVgfZ5w==}
-    engines: {node: '>=20.0.0'}
 
   '@asamuzakjp/css-color@5.1.11':
     resolution: {integrity: sha512-KVw6qIiCTUQhByfTd78h2yD1/00waTmm9uy/R7Ck/ctUyAPj+AEDLkQIdJW0T8+qGgj3j5bpNKK7Q3G+LedJWg==}
@@ -7877,9 +9493,6 @@ packages:
   dijkstrajs@1.0.3:
     resolution: {integrity: sha512-qiSlmBq9+BCdCA/L46dw8Uy93mloxsPSbwnm5yrKn2vMPiy8KyAskTF6zuV/j5BMsmOGZDPs7KjU+mjb670kfA==}
 
-  dom-align@1.12.4:
-    resolution: {integrity: sha512-R8LUSEay/68zE5c8/3BDxiTEvgb4xZTF0RKmAHfiEVN3klfIpXfi2/QCoiWPccVQ0J/ZGdz9OjzL4uJEP/MRAw==}
-
   dom-serializer@1.4.1:
     resolution: {integrity: sha512-VHwB3KfrcOOkelEG2ZOfxqLZdfkil8PtJi4P8N2MMXucZq2yLp75ClViUlOVwyoHEDjYU433Aq+5zWP61+RGag==}
 
@@ -9354,9 +10967,6 @@ packages:
   morgan@1.12.1:
     resolution: {integrity: sha512-tljKC0ex20AjO58Ob/eZ53JloycbVswbVNCHx6V6VLGzqt/w8dIynVGL0G8qVjNKwiA7sYSogCrN6QtJ82IV+g==}
     engines: {node: '>= 0.8.0'}
-
-  mousetrap@1.6.5:
-    resolution: {integrity: sha512-QNo4kEepaIBwiT8CDhP98umTetp+JNfQYBWvC1pc6/OAibuXtRcxZ58Qz8skvEHYvURne/7R8T5VoOI7rDsEUA==}
 
   mqemitter@7.1.0:
     resolution: {integrity: sha512-GnBDNz3lxmllW201ne0mrmdy5tPOTnc79jjVcsfUa2LG2pUGeyGWVeiae6ZysfC/64XrYOqCKRAQYrB7pGyBVQ==}
@@ -11399,17 +13009,6 @@ snapshots:
       fast-deep-equal: 3.1.3
       gl-matrix: 3.4.4
       tslib: 2.9.1
-
-  '@antv/x6-plugin-selection@2.2.2(@antv/x6@3.1.8)':
-    dependencies:
-      '@antv/x6': 3.1.8
-
-  '@antv/x6@3.1.8':
-    dependencies:
-      dom-align: 1.12.4
-      lodash-es: 4.18.1
-      mousetrap: 1.6.5
-      utility-types: 3.11.0
 
   '@asamuzakjp/css-color@5.1.11':
     dependencies:
@@ -15002,8 +16601,6 @@ snapshots:
 
   dijkstrajs@1.0.3: {}
 
-  dom-align@1.12.4: {}
-
   dom-serializer@1.4.1:
     dependencies:
       domelementtype: 2.3.0
@@ -16773,8 +18370,6 @@ snapshots:
       on-headers: 1.1.0
     transitivePeerDependencies:
       - supports-color
-
-  mousetrap@1.6.5: {}
 
   mqemitter@7.1.0:
     dependencies:

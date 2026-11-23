@@ -99,6 +99,7 @@
   },
   "dependencies": {
     "@modelscript/dsl": "workspace:*",
+    "@modelscript/mps": "workspace:*",
     "@modelscript/runtime": "workspace:*",
     "@modelscript/simulate": "workspace:*"
   },

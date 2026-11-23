@@ -1,0 +1,448 @@
+[
+  {
+    "name": "INTGRL",
+    "kind": "csmp_block",
+    "namePath": "csmp:INTGRL",
+    "exports": [
+      "IC"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Integrator (INTGRL)",
+      "category": "Integration & Differentiation",
+      "domain": "controls",
+      "description": "Continuous time integrator: Y(t) = IC + integral_0^t X(tau) dtau (dY/dt = X).",
+      "provenance": "IBM System/360 CSMP User's Manual GH20-0367-4, Table 1; SCi CSSL-67",
+      "aliases": [
+        "INTEGRATOR",
+        "INTEG"
+      ],
+      "parameters": [
+        {
+          "key": "IC",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial condition Y(0)"
+        }
+      ],
+      "wasmKernel": "INTGRL",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "DERIV",
+    "kind": "csmp_block",
+    "namePath": "csmp:DERIV",
+    "exports": [
+      "IC"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Derivative (DERIV)",
+      "category": "Integration & Differentiation",
+      "domain": "controls",
+      "description": "Numerical time derivative Y(t) = dX/dt with quadratic backward difference.",
+      "provenance": "IBM System/360 CSMP User's Manual GH20-0367-4, Table 1",
+      "aliases": [
+        "DERIVATIVE"
+      ],
+      "parameters": [
+        {
+          "key": "IC",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial value of X at t = 0"
+        }
+      ],
+      "wasmKernel": "DERIV",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "DELAY",
+    "kind": "csmp_block",
+    "namePath": "csmp:DELAY",
+    "exports": [
+      "N",
+      "P"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Dead Time Delay (DELAY)",
+      "category": "Integration & Differentiation",
+      "domain": "controls",
+      "description": "Transport dead-time delay: Y(t) = X(t - P) for t >= P, else 0.",
+      "provenance": "IBM System/360 CSMP User's Manual GH20-0367-4, Table 1",
+      "aliases": [
+        "DEADTIME",
+        "TRANSPORT_DELAY"
+      ],
+      "parameters": [
+        {
+          "key": "N",
+          "type": "real",
+          "defaultValue": 16,
+          "unit": "",
+          "description": "Number of delay buffer samples"
+        },
+        {
+          "key": "P",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Delay time constant"
+        }
+      ],
+      "wasmKernel": "DELAY",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "ZHOLD",
+    "kind": "csmp_block",
+    "namePath": "csmp:ZHOLD",
+    "exports": [
+      "IC"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Zero-Order Hold (ZHOLD)",
+      "category": "Integration & Differentiation",
+      "domain": "controls",
+      "description": "Samples input X when trigger X1 > 0 and holds the value while X1 <= 0.",
+      "provenance": "IBM System/360 CSMP User's Manual GH20-0367-4, Table 1",
+      "aliases": [
+        "ZERO_ORDER_HOLD"
+      ],
+      "parameters": [
+        {
+          "key": "IC",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial held output value"
+        }
+      ],
+      "wasmKernel": "ZHOLD",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "REALPL",
+    "kind": "csmp_block",
+    "namePath": "csmp:REALPL",
+    "exports": [
+      "IC",
+      "P"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Real Pole / 1st-Order Lag (REALPL)",
+      "category": "Transfer Functions",
+      "domain": "controls",
+      "description": "First-order lag transfer function: P * dY/dt + Y = X, Y(0) = IC.",
+      "provenance": "IBM System/360 CSMP User's Manual GH20-0367-4, Table 1",
+      "aliases": [
+        "FIRST_ORDER_LAG",
+        "REAL_POLE"
+      ],
+      "parameters": [
+        {
+          "key": "IC",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial condition Y(0)"
+        },
+        {
+          "key": "P",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "First-order time constant"
+        }
+      ],
+      "wasmKernel": "REALPL",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "CMPXPL",
+    "kind": "csmp_block",
+    "namePath": "csmp:CMPXPL",
+    "exports": [
+      "IC1",
+      "IC2",
+      "P1",
+      "P2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Complex Pole / 2nd-Order System (CMPXPL)",
+      "category": "Transfer Functions",
+      "domain": "controls",
+      "description": "Second-order transfer function: d2Y/dt2 + 2*P1*P2*dY/dt + P2^2*Y = X.",
+      "provenance": "IBM System/360 CSMP User's Manual GH20-0367-4, Table 1",
+      "aliases": [
+        "COMPLEX_POLE",
+        "SECOND_ORDER"
+      ],
+      "parameters": [
+        {
+          "key": "IC1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial position Y(0)"
+        },
+        {
+          "key": "IC2",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial velocity dY/dt(0)"
+        },
+        {
+          "key": "P1",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "",
+          "description": "Damping ratio zeta"
+        },
+        {
+          "key": "P2",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "rad/s",
+          "description": "Undamped natural frequency omega_n"
+        }
+      ],
+      "wasmKernel": "CMPXPL",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "LEDLAG",
+    "kind": "csmp_block",
+    "namePath": "csmp:LEDLAG",
+    "exports": [
+      "P1",
+      "P2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Lead-Lag Compensator (LEDLAG)",
+      "category": "Transfer Functions",
+      "domain": "controls",
+      "description": "Lead-lag transfer function: (P1*s + 1) / (P2*s + 1) applied to input X.",
+      "provenance": "IBM System/360 CSMP User's Manual GH20-0367-4, Table 1",
+      "aliases": [
+        "LEAD_LAG"
+      ],
+      "parameters": [
+        {
+          "key": "P1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Lead time constant"
+        },
+        {
+          "key": "P2",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "s",
+          "description": "Lag time constant"
+        }
+      ],
+      "wasmKernel": "LEDLAG",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "HYSTRS",
+    "kind": "csmp_block",
+    "namePath": "csmp:HYSTRS",
+    "exports": [
+      "IC",
+      "P1",
+      "P2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Hysteresis Loop (HYSTRS)",
+      "category": "Nonlinear & Switching",
+      "domain": "controls",
+      "description": "Hysteresis nonlinearity with half-width (P2 - P1)/2 and initial state IC.",
+      "provenance": "IBM System/360 CSMP User's Manual GH20-0367-4, Table 2",
+      "aliases": [
+        "HYSTERESIS"
+      ],
+      "parameters": [
+        {
+          "key": "IC",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial output state"
+        },
+        {
+          "key": "P1",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "",
+          "description": "Lower switching threshold"
+        },
+        {
+          "key": "P2",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Upper switching threshold"
+        }
+      ],
+      "wasmKernel": "HYSTRS",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "LIMIT",
+    "kind": "csmp_block",
+    "namePath": "csmp:LIMIT",
+    "exports": [
+      "P1",
+      "P2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Limiter / Saturation (LIMIT)",
+      "category": "Nonlinear & Switching",
+      "domain": "controls",
+      "description": "Clamps input X to the closed interval [P1, P2]: Y = min(P2, max(P1, X)).",
+      "provenance": "IBM System/360 CSMP User's Manual GH20-0367-4, Table 2",
+      "aliases": [
+        "LIMITER",
+        "SATURATION"
+      ],
+      "parameters": [
+        {
+          "key": "P1",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "",
+          "description": "Lower saturation limit"
+        },
+        {
+          "key": "P2",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Upper saturation limit"
+        }
+      ],
+      "wasmKernel": "LIMIT",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "DEADSP",
+    "kind": "csmp_block",
+    "namePath": "csmp:DEADSP",
+    "exports": [
+      "P1",
+      "P2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Dead Space / Dead Zone (DEADSP)",
+      "category": "Nonlinear & Switching",
+      "domain": "controls",
+      "description": "Zero output for P1 <= X <= P2; Y = X - P2 for X > P2; Y = X - P1 for X < P1.",
+      "provenance": "IBM System/360 CSMP User's Manual GH20-0367-4, Table 2",
+      "aliases": [
+        "DEADSPACE",
+        "DEADZONE"
+      ],
+      "parameters": [
+        {
+          "key": "P1",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "",
+          "description": "Lower dead-zone bound"
+        },
+        {
+          "key": "P2",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Upper dead-zone bound"
+        }
+      ],
+      "wasmKernel": "DEADSP",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "AFGEN",
+    "kind": "csmp_block",
+    "namePath": "csmp:AFGEN",
+    "exports": [
+      "N_POINTS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Arbitrary Linear Function Generator (AFGEN)",
+      "category": "Function Generators",
+      "domain": "controls",
+      "description": "Piecewise-linear interpolation of a FUNCTION table (x_i, y_i) at input X.",
+      "provenance": "IBM System/360 CSMP User's Manual GH20-0367-4, Table 3",
+      "aliases": [
+        "ARBITRARY_FUNCTION"
+      ],
+      "parameters": [
+        {
+          "key": "N_POINTS",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "Number of (x, y) breakpoints in table"
+        }
+      ],
+      "wasmKernel": "AFGEN",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "NLFGEN",
+    "kind": "csmp_block",
+    "namePath": "csmp:NLFGEN",
+    "exports": [
+      "N_POINTS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Quadratic Function Generator (NLFGEN)",
+      "category": "Function Generators",
+      "domain": "controls",
+      "description": "Lagrange quadratic interpolation of a FUNCTION table (x_i, y_i) at input X.",
+      "provenance": "IBM System/360 CSMP User's Manual GH20-0367-4, Table 3",
+      "aliases": [
+        "NONLINEAR_FUNCTION"
+      ],
+      "parameters": [
+        {
+          "key": "N_POINTS",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "",
+          "description": "Number of (x, y) breakpoints in table"
+        }
+      ],
+      "wasmKernel": "NLFGEN",
+      "archetypeId": 31
+    }
+  }
+]

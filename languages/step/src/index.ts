@@ -4,6 +4,7 @@ export * from "./assembly-extractor.js";
 export * from "./cae-mesher.js";
 export * from "./errors.js";
 export * from "./indexing.js";
+export * from "./interop.js";
 export * from "./language.js";
 export { default, default as stepLanguage } from "./language.js";
 export * from "./lints/index.js";

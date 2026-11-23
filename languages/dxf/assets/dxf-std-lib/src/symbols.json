@@ -1,0 +1,419 @@
+[
+  {
+    "name": "LINE",
+    "kind": "Entity",
+    "namePath": "DXF.LINE",
+    "exports": [
+      "x1",
+      "y1",
+      "x2",
+      "y2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Line Segment",
+      "category": "2D Primitives",
+      "domain": "cad",
+      "description": "Straight 2D/3D line segment defined by start (10,20,30) and end (11,21,31) coordinates.",
+      "provenance": "Autodesk DXF Reference (1982–2024)",
+      "aliases": [
+        "SEG",
+        "SEGMENT"
+      ],
+      "parameters": [
+        {
+          "key": "x1",
+          "label": "x1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Start X coordinate (code 10)"
+        },
+        {
+          "key": "y1",
+          "label": "y1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Start Y coordinate (code 20)"
+        },
+        {
+          "key": "x2",
+          "label": "x2",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "mm",
+          "description": "End X coordinate (code 11)"
+        },
+        {
+          "key": "y2",
+          "label": "y2",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "End Y coordinate (code 21)"
+        }
+      ],
+      "wasmKernel": "dxf_line",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "ARC",
+    "kind": "Entity",
+    "namePath": "DXF.ARC",
+    "exports": [
+      "cx",
+      "cy",
+      "radius",
+      "startAngle",
+      "endAngle"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Circular Arc",
+      "category": "2D Primitives",
+      "domain": "cad",
+      "description": "Counter-clockwise circular arc defined by center (10,20), radius (40), start angle (50), and end angle (51).",
+      "provenance": "Autodesk DXF Reference (1982–2024)",
+      "aliases": [
+        "CIRCULAR_ARC"
+      ],
+      "parameters": [
+        {
+          "key": "cx",
+          "label": "cx",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Center X coordinate (code 10)"
+        },
+        {
+          "key": "cy",
+          "label": "cy",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Center Y coordinate (code 20)"
+        },
+        {
+          "key": "radius",
+          "label": "radius",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "mm",
+          "description": "Arc radius (code 40)"
+        },
+        {
+          "key": "startAngle",
+          "label": "startAngle",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "Start angle in degrees (code 50)"
+        },
+        {
+          "key": "endAngle",
+          "label": "endAngle",
+          "type": "real",
+          "defaultValue": 90,
+          "unit": "deg",
+          "description": "End angle in degrees (code 51)"
+        }
+      ],
+      "wasmKernel": "dxf_arc",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "CIRCLE",
+    "kind": "Entity",
+    "namePath": "DXF.CIRCLE",
+    "exports": [
+      "cx",
+      "cy",
+      "radius"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Circle",
+      "category": "2D Primitives",
+      "domain": "cad",
+      "description": "Full circle defined by center (10,20,30) and radius (40).",
+      "provenance": "Autodesk DXF Reference (1982–2024)",
+      "aliases": [
+        "HOLE",
+        "BORE"
+      ],
+      "parameters": [
+        {
+          "key": "cx",
+          "label": "cx",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Center X coordinate (code 10)"
+        },
+        {
+          "key": "cy",
+          "label": "cy",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Center Y coordinate (code 20)"
+        },
+        {
+          "key": "radius",
+          "label": "radius",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "mm",
+          "description": "Circle radius (code 40)"
+        }
+      ],
+      "wasmKernel": "dxf_circle",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "LWPOLYLINE",
+    "kind": "Entity",
+    "namePath": "DXF.LWPOLYLINE",
+    "exports": [
+      "closed",
+      "elevation",
+      "bulge"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Lightweight Polyline",
+      "category": "Curves & Profiles",
+      "domain": "cad",
+      "description": "2D polyline of connected straight and bulged circular arc segments with optional closed flag (70).",
+      "provenance": "Autodesk DXF Reference (R14–2024)",
+      "aliases": [
+        "POLYLINE",
+        "PROFILE"
+      ],
+      "parameters": [
+        {
+          "key": "closed",
+          "label": "closed",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "flag",
+          "description": "Closed polyline flag (code 70 bit 1)"
+        },
+        {
+          "key": "elevation",
+          "label": "elevation",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Z elevation (code 38)"
+        },
+        {
+          "key": "bulge",
+          "label": "bulge",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "ratio",
+          "description": "Segment bulge tan(theta/4) (code 42)"
+        }
+      ],
+      "wasmKernel": "dxf_lwpolyline",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "SPLINE",
+    "kind": "Entity",
+    "namePath": "DXF.SPLINE",
+    "exports": [
+      "degree",
+      "closed"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NURBS / B-Spline",
+      "category": "Curves & Profiles",
+      "domain": "cad",
+      "description": "Parametric B-spline / NURBS curve with degree (71), knot vector (40), and control points (10,20,30).",
+      "provenance": "Autodesk DXF Reference (R13–2024)",
+      "aliases": [
+        "NURBS",
+        "BSPLINE"
+      ],
+      "parameters": [
+        {
+          "key": "degree",
+          "label": "degree",
+          "type": "integer",
+          "defaultValue": 3,
+          "unit": "order",
+          "description": "Spline polynomial degree (code 71)"
+        },
+        {
+          "key": "closed",
+          "label": "closed",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "flag",
+          "description": "Closed spline flag (code 70 bit 1)"
+        }
+      ],
+      "wasmKernel": "dxf_spline",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "ELLIPSE",
+    "kind": "Entity",
+    "namePath": "DXF.ELLIPSE",
+    "exports": [
+      "majorRadius",
+      "ratio",
+      "startParam",
+      "endParam"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Ellipse",
+      "category": "Curves & Profiles",
+      "domain": "cad",
+      "description": "Ellipse defined by center (10,20,30), major axis endpoint (11,21,31), minor/major ratio (40), and parameter range (41,42).",
+      "provenance": "Autodesk DXF Reference (R13–2024)",
+      "aliases": [
+        "OVAL"
+      ],
+      "parameters": [
+        {
+          "key": "majorRadius",
+          "label": "majorRadius",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "mm",
+          "description": "Semi-major axis length"
+        },
+        {
+          "key": "ratio",
+          "label": "ratio",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "ratio",
+          "description": "Minor-to-major axis ratio (code 40)"
+        },
+        {
+          "key": "startParam",
+          "label": "startParam",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "rad",
+          "description": "Start parameter (code 41)"
+        },
+        {
+          "key": "endParam",
+          "label": "endParam",
+          "type": "real",
+          "defaultValue": 6.283185307179586,
+          "unit": "rad",
+          "description": "End parameter (code 42)"
+        }
+      ],
+      "wasmKernel": "dxf_ellipse",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "3DFACE",
+    "kind": "Entity",
+    "namePath": "DXF.3DFACE",
+    "exports": [
+      "invisibleEdgeFlags"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "3D Face",
+      "category": "3D Surface",
+      "domain": "cad",
+      "description": "3- or 4-vertex planar 3D surface face used for faceted mesh representation.",
+      "provenance": "Autodesk DXF Reference (1982–2024)",
+      "aliases": [
+        "FACE",
+        "TRIANGLE",
+        "QUAD"
+      ],
+      "parameters": [
+        {
+          "key": "invisibleEdgeFlags",
+          "label": "invisibleEdgeFlags",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "bitmask",
+          "description": "Invisible edge bitmask (code 70)"
+        }
+      ],
+      "wasmKernel": "dxf_3dface",
+      "archetypeId": 7
+    }
+  },
+  {
+    "name": "INSERT",
+    "kind": "Entity",
+    "namePath": "DXF.INSERT",
+    "exports": [
+      "scaleX",
+      "scaleY",
+      "scaleZ",
+      "rotation"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Block Insert",
+      "category": "Blocks & Hierarchy",
+      "domain": "cad",
+      "description": "Hierarchical block reference applying translation (10,20,30), scale (41,42,43), and Z-rotation (50).",
+      "provenance": "Autodesk DXF Reference (1982–2024)",
+      "aliases": [
+        "BLOCK_REF",
+        "INSTANCE"
+      ],
+      "parameters": [
+        {
+          "key": "scaleX",
+          "label": "scaleX",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "ratio",
+          "description": "X scale factor (code 41)"
+        },
+        {
+          "key": "scaleY",
+          "label": "scaleY",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "ratio",
+          "description": "Y scale factor (code 42)"
+        },
+        {
+          "key": "scaleZ",
+          "label": "scaleZ",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "ratio",
+          "description": "Z scale factor (code 43)"
+        },
+        {
+          "key": "rotation",
+          "label": "rotation",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "CCW rotation angle in degrees (code 50)"
+        }
+      ],
+      "wasmKernel": "dxf_insert",
+      "archetypeId": 8
+    }
+  }
+]

@@ -2,49 +2,50 @@
 
 import * as esbuild from "esbuild";
 import * as fs from "fs";
+import { createRequire } from "module";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const pkgDir = __dirname;
+const require = createRequire(import.meta.url);
 
-const patchX6Plugin = {
-  name: "patch-x6",
+// Resolve `@antv/layout` directly to its lightweight pure-JS `dagre` module so
+// unused WebGL force shaders (`regl`, `dagre-compound`, `ml-matrix`, `g-webgpu`)
+// are completely excluded from the standalone browser bundle.
+const dagreOnlyPlugin = {
+  name: "antv-layout-dagre-only",
   setup(build) {
-    build.onEnd(async () => {
-      const diagramFile = path.join(pkgDir, "dist/diagram.browser.js");
-      if (fs.existsSync(diagramFile)) {
-        let code = fs.readFileSync(diagramFile, "utf8");
-        code = code.replace(
-          /node\s*&&\s*node\.tagName\.toUpperCase\(\)/g,
-          "node && (node.tagName || node.nodeName || '').toUpperCase()",
-        );
-        code = code.replace(
-          /firstChild\s*&&\s*firstChild\.tagName\.toUpperCase\(\)/g,
-          "firstChild && (firstChild.tagName || firstChild.nodeName || '').toUpperCase()",
-        );
-        fs.writeFileSync(diagramFile, code);
-        console.log("Patched X6 TextNode tagName handling in dist/diagram.browser.js");
-      }
+    build.onResolve({ filter: /^@antv\/layout$/ }, () => {
+      const layoutPkgPath = require.resolve("@antv/layout/package.json");
+      const dagreEntry = path.join(path.dirname(layoutPkgPath), "es/layout/dagre.js");
+      return { path: dagreEntry };
     });
   },
 };
 
+const outfile = path.join(pkgDir, "dist/diagram.browser.js");
+
 esbuild
   .build({
-    entryPoints: [path.join(pkgDir, "src/index.ts")],
+    entryPoints: [path.join(pkgDir, "src/browser-entry.ts")],
     bundle: true,
-    outfile: path.join(pkgDir, "dist/diagram.browser.js"),
+    minify: true,
+    treeShaking: true,
+    target: "es2022",
+    legalComments: "none",
+    outfile,
     format: "esm",
     platform: "browser",
-    plugins: [patchX6Plugin],
+    plugins: [dagreOnlyPlugin],
     define: {
       "process.env.NODE_ENV": '"production"',
     },
   })
   .then(() => {
-    console.log("Diagram browser bundle created at dist/diagram.browser.js");
+    const bytes = fs.statSync(outfile).size;
+    console.log(`Diagram browser bundle created at dist/diagram.browser.js (${(bytes / 1024).toFixed(1)} KB)`);
   })
   .catch((err) => {
     console.error(err);

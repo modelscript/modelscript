@@ -31,9 +31,9 @@ export const ComtradeCommand: CommandModule<Record<string, unknown>, Record<stri
   builder: (yargs) => {
     return yargs
       .positional("action", {
-        description: "Action to perform (lint, summary, extract-phasor, to-dae, to-cff)",
+        description: "Action to perform (lint, summary, extract-phasor, ringdown, to-dae, to-cff)",
         type: "string",
-        choices: ["lint", "summary", "extract-phasor", "to-dae", "to-cff"],
+        choices: ["lint", "summary", "extract-phasor", "ringdown", "to-dae", "to-cff"],
         demandOption: true,
       })
       .positional("files", {
@@ -135,6 +135,22 @@ export const ComtradeCommand: CommandModule<Record<string, unknown>, Record<stri
           );
         }
         if (phasors.length > 10) console.log(`  ... and ${phasors.length - 10} more samples.`);
+        continue;
+      }
+
+      if (action === "ringdown") {
+        if (!datContent) {
+          console.error(`Error: Associated .dat file not found for ringdown analysis: ${datPath}`);
+          process.exit(1);
+        }
+        const { comtradeWaveformDiagnostics } = await import("@modelscript/simulate");
+        const chIdx = Number(argv["channel"] ?? 0);
+        const samples = Array.isArray(record.analogData)
+          ? (record.analogData[chIdx] ?? [])
+          : (Array.from(record.analogData.values())[chIdx] ?? []);
+        const fsHz = cfg.samplingRates[0]?.rateHz ?? cfg.samplingRates[0]?.rate ?? 1000;
+        const diag = comtradeWaveformDiagnostics(samples, fsHz, { pronyOrder: 4 });
+        console.log(JSON.stringify(diag, null, 2));
         continue;
       }
 

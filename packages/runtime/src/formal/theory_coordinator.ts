@@ -59,8 +59,7 @@ export type TheoryDomain =
  * Cooperative cancellation token or standard `AbortSignal` used to interrupt long-running solver loops.
  */
 export type CancellationTokenLike =
-  | { isCancellationRequested?: boolean | undefined; aborted?: boolean | undefined }
-  | AbortSignal;
+  { isCancellationRequested?: boolean | undefined; aborted?: boolean | undefined } | AbortSignal;
 
 /**
  * Uninterpreted or surrogate function application term `resultVar = f(args...)` tracked for congruence closure.
@@ -82,6 +81,8 @@ export interface TheoryLiteral {
   isNegated?: boolean | undefined;
   domain?: TheoryDomain | undefined;
   sourceContext?: any;
+  /** Optional partitioned 32-bit `SymbolId` identifying the source model element that asserted this literal. */
+  originSymbolId?: number | undefined;
 }
 
 /**
@@ -108,6 +109,8 @@ export interface ConflictClause {
   explanation: string;
   culpritEntities: string[];
   theoryName: string;
+  /** Optional partitioned 32-bit `SymbolId`s of the conflicting model elements for cross-language causal traces. */
+  culpritSymbolIds?: number[] | undefined;
 }
 
 /**

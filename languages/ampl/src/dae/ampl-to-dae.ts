@@ -3,13 +3,23 @@
 /**
  * @modelscript/ampl — Direct Linear-Memory DAE Arena Lowering for AMPL Models.
  *
- * Compiles instantiated optimization variables and equality/optimality constraint equations
- * directly into ModelScript's zero-GC WebAssembly DAEBuilder struct-of-arrays arena.
+ * Compiles instantiated optimization variables, multi-objectives (preserving min/max sense),
+ * bounded equality/inequality constraints, and complementarity constraints directly into
+ * ModelScript's zero-GC WebAssembly DAEBuilder optimization side-tables.
  */
 
-import { BinOp, Causality, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime";
+import {
+  BinOp,
+  Causality,
+  ConstraintKind,
+  DAEBuilder,
+  DaeObjectiveSense,
+  FLAG_VAR_BINARY,
+  Variability,
+  VarType,
+} from "@modelscript/runtime";
 import { ensureBuiltInAmplLibraryRegistered, lookupAmplModelSchema } from "../catalog/library-package-adapter.js";
-import type { InstantiatedProblem } from "../types.js";
+import type { FlatExpression, InstantiatedProblem } from "../types.js";
 
 export interface AmplDaeOptions {
   builder?: DAEBuilder | undefined;
@@ -41,66 +51,66 @@ export function resolveAmplSchemaParamDefaults(
   return resolved;
 }
 
+function lowerFlatExpr(dae: DAEBuilder, expr: FlatExpression, daeVarIds: Map<number, number>): number {
+  let accId = dae.addRealLiteral(expr.constant);
+  for (const term of expr.linearTerms) {
+    const vId = daeVarIds.get(term.varId);
+    if (vId !== undefined) {
+      const termExpr = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(term.coeff), dae.addName(vId));
+      accId = dae.addBinaryExpr(BinOp.Add, accId, termExpr);
+    }
+  }
+  if (expr.quadraticTerms) {
+    for (const qt of expr.quadraticTerms) {
+      const v1 = daeVarIds.get(qt.var1Id);
+      const v2 = daeVarIds.get(qt.var2Id);
+      if (v1 !== undefined && v2 !== undefined) {
+        const prod = dae.addBinaryExpr(BinOp.Mul, dae.addName(v1), dae.addName(v2));
+        const scaled = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(qt.coeff), prod);
+        accId = dae.addBinaryExpr(BinOp.Add, accId, scaled);
+      }
+    }
+  }
+  return accId;
+}
+
 export function lowerAmplToDae(problem: InstantiatedProblem, options?: AmplDaeOptions): DAEBuilder {
   ensureBuiltInAmplLibraryRegistered();
   const safeName = (problem.name || "AmplModel").replace(/[^a-zA-Z0-9_]/g, "_");
   const dae = options?.builder ?? new DAEBuilder(undefined, safeName);
 
-  // 1. Declare Variables in DAE Arena
+  // 1. Declare Variables in DAE Arena (with exact types, binary flag, and min/max bounds)
   const daeVarIds = new Map<number, number>();
   for (const v of problem.variables) {
     const varType = v.type === "integer" || v.type === "binary" ? VarType.Integer : VarType.Real;
-    const vId = dae.addVariable(v.name, varType, Variability.Continuous, Causality.Local, v.initVal ?? 0.0);
+    const flags = v.type === "binary" ? FLAG_VAR_BINARY : 0;
+    const vId = dae.addVariable(v.name, varType, Variability.Continuous, Causality.Local, v.initVal ?? 0.0, flags);
+    if (Number.isFinite(v.lb)) {
+      dae.setVarAttr(vId, "min", dae.addRealLiteral(v.lb));
+    }
+    if (Number.isFinite(v.ub)) {
+      dae.setVarAttr(vId, "max", dae.addRealLiteral(v.ub));
+    }
     daeVarIds.set(v.id, vId);
   }
 
-  // 2. Add Objective as variable: obj = f(x)
-  const objVarId = dae.addVariable(
-    `_obj_${problem.objective.name}`,
-    VarType.Real,
-    Variability.Continuous,
-    Causality.Local,
-    0.0,
-  );
-
-  let objExprId = dae.addRealLiteral(problem.objective.expr.constant);
-  for (const term of problem.objective.expr.linearTerms) {
-    const vId = daeVarIds.get(term.varId);
-    if (vId !== undefined) {
-      const termExpr = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(term.coeff), dae.addName(vId));
-      objExprId = dae.addBinaryExpr(BinOp.Add, objExprId, termExpr);
-    }
+  // 2. Lower Objectives directly into WASM optimization side-table (preserving min/max sense)
+  const objectives = problem.objectives && problem.objectives.length > 0 ? problem.objectives : [problem.objective];
+  for (const obj of objectives) {
+    const objExprId = lowerFlatExpr(dae, obj.expr, daeVarIds);
+    const sense = obj.direction === "maximize" ? DaeObjectiveSense.Maximize : DaeObjectiveSense.Minimize;
+    dae.optimization.addObjective(objExprId, -1, sense);
   }
-  dae.addEquation(EqKind.Simple, dae.addName(objVarId), objExprId);
 
-  // 3. Lower Constraints
+  // 3. Lower Constraints directly into WASM optimization side-table (no fake _slack_* variables)
   for (const con of problem.constraints) {
-    // Check if equality constraint: lb == ub
-    const isEq = Number.isFinite(con.lb) && Number.isFinite(con.ub) && Math.abs(con.lb - con.ub) < 1e-9;
+    if (con.dropped) continue;
+    const exprId = lowerFlatExpr(dae, con.expr, daeVarIds);
+    dae.optimization.addConstraint(exprId, con.lb, con.ub, ConstraintKind.Algebraic);
 
-    let exprId = dae.addRealLiteral(con.expr.constant);
-    for (const term of con.expr.linearTerms) {
-      const vId = daeVarIds.get(term.varId);
-      if (vId !== undefined) {
-        const termExpr = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(term.coeff), dae.addName(vId));
-        exprId = dae.addBinaryExpr(BinOp.Add, exprId, termExpr);
-      }
-    }
-
-    if (isEq) {
-      // Equality: expr == lb
-      dae.addEquation(EqKind.Simple, exprId, dae.addRealLiteral(con.lb));
-    } else {
-      // Create slack variable for inequality: expr + slack == ub
-      const slackVarId = dae.addVariable(
-        `_slack_${con.name}`,
-        VarType.Real,
-        Variability.Continuous,
-        Causality.Local,
-        0.0,
-      );
-      const withSlack = dae.addBinaryExpr(BinOp.Add, exprId, dae.addName(slackVarId));
-      dae.addEquation(EqKind.Simple, withSlack, dae.addRealLiteral(Number.isFinite(con.ub) ? con.ub : con.lb));
+    if (con.complements) {
+      const compExprId = lowerFlatExpr(dae, con.complements.expr, daeVarIds);
+      dae.optimization.addComplementarity(exprId, compExprId);
     }
   }
 

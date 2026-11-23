@@ -1319,6 +1319,14 @@ await yargs(rawArgs)
       "InitKernelCommand",
     ),
   )
+  .command(
+    lazy(
+      "algo <task> [input]",
+      "Run advanced algorithm kernels (spectral, vector-fit, mor, fault-tree, ctmc, gr1, cbf-qp, nash, rcpsp, stn, max-flow, partition, topopt, lvs, fba, gibbs, ray-optics, dose)",
+      () => import("./commands/algo.js"),
+      "AlgoCommand",
+    ),
+  )
   .strictCommands()
   .demandCommand()
   .help()

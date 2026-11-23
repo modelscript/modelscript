@@ -19,6 +19,7 @@ import os from "node:os";
 import v8 from "node:v8";
 import { createApp } from "./app.js";
 import { attachCollabWebSocket } from "./routes/collab-ws.js";
+import { attachCanvasWebSocket } from "./services/canvas-collab-service.js";
 
 const port = parseInt(process.env["PORT"] ?? "3000", 10);
 const mqttUrl = process.env["MQTT_BROKER_URL"];
@@ -157,8 +158,10 @@ server.on("upgrade", (_req, socket) => {
 
 attachCosimWebSocket(server, mqttClient);
 attachCollabWebSocket(server);
+attachCanvasWebSocket(server);
 console.log("WebSocket co-simulation stream available at /api/v1/cosim/stream");
 console.log("WebSocket collaboration stream available at /api/v1/collab/stream");
+console.log("WebSocket spatial canvas stream available at /api/v1/canvas/stream");
 
 // ── Graceful shutdown ──
 

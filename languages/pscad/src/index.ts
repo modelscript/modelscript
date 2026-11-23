@@ -28,6 +28,7 @@ export * from "./drop-edits.js";
 export * from "./edit/diagram-actions.js";
 export * from "./edit/edit-engine.js";
 export * from "./indexing.js";
+export * from "./interop.js";
 export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp-actions.js";

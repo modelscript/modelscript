@@ -1,0 +1,224 @@
+[
+  {
+    "name": "UNIT_CUBE",
+    "kind": "Class",
+    "namePath": "STL.UNIT_CUBE",
+    "exports": [
+      "side",
+      "density"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Unit Cube",
+      "category": "Polyhedra",
+      "domain": "cad",
+      "description": "Watertight 12-triangle axis-aligned cube [0, a]^3 with exact volume a^3, surface area 6a^2, and Euler chi = 2.",
+      "provenance": "3D Systems Stereolithography Specification (1987) / Platonic Solid Reference",
+      "aliases": [
+        "cube",
+        "box",
+        "hexahedron"
+      ],
+      "parameters": [
+        {
+          "key": "side",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "Cube edge length"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "kg/m^3",
+          "description": "Uniform material density"
+        }
+      ],
+      "wasmKernel": "stlModelEval",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "REGULAR_TETRAHEDRON",
+    "kind": "Class",
+    "namePath": "STL.REGULAR_TETRAHEDRON",
+    "exports": [
+      "scale",
+      "density"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Tetrahedron",
+      "category": "Polyhedra",
+      "domain": "cad",
+      "description": "Watertight 4-triangle canonical tetrahedron with exact volume a^3 / 6 and Euler chi = 2.",
+      "provenance": "3D Systems Stereolithography Specification (1987) / Standard 3-Simplex",
+      "aliases": [
+        "tetrahedron",
+        "tet",
+        "simplex"
+      ],
+      "parameters": [
+        {
+          "key": "scale",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "Edge scale factor"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "kg/m^3",
+          "description": "Uniform material density"
+        }
+      ],
+      "wasmKernel": "stlModelEval",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "OCTAHEDRON",
+    "kind": "Class",
+    "namePath": "STL.OCTAHEDRON",
+    "exports": [
+      "radius",
+      "density"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Regular Octahedron",
+      "category": "Polyhedra",
+      "domain": "cad",
+      "description": "Watertight 8-triangle regular octahedron inscribed in radius R with exact volume (4/3) R^3 and Euler chi = 2.",
+      "provenance": "Platonic Solid Analytical Reference",
+      "aliases": [
+        "regular_octahedron",
+        "oct"
+      ],
+      "parameters": [
+        {
+          "key": "radius",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "Vertex circumradius R"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "kg/m^3",
+          "description": "Uniform material density"
+        }
+      ],
+      "wasmKernel": "stlModelEval",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "CYLINDER",
+    "kind": "Class",
+    "namePath": "STL.CYLINDER",
+    "exports": [
+      "radius",
+      "height",
+      "segments",
+      "density"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Cylinder",
+      "category": "Revolved Solids",
+      "domain": "cad",
+      "description": "Watertight tessellated right circular cylinder of radius R and height H along Z with Euler chi = 2.",
+      "provenance": "Analytical Solid Mechanics & CAD Tessellation Reference",
+      "aliases": [
+        "cyl",
+        "prism"
+      ],
+      "parameters": [
+        {
+          "key": "radius",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "Cylinder radius"
+        },
+        {
+          "key": "height",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "m",
+          "description": "Cylinder height"
+        },
+        {
+          "key": "segments",
+          "type": "real",
+          "defaultValue": 24,
+          "unit": "1",
+          "description": "Circumferential facet segments"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "kg/m^3",
+          "description": "Uniform material density"
+        }
+      ],
+      "wasmKernel": "stlModelEval",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "SPHERE_ICOSAHEDRON",
+    "kind": "Class",
+    "namePath": "STL.SPHERE_ICOSAHEDRON",
+    "exports": [
+      "radius",
+      "subdivisions",
+      "density"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Icosphere",
+      "category": "Geodesic Meshes",
+      "domain": "cad",
+      "description": "Watertight geodesic sphere built by subdividing a regular icosahedron of radius R with Euler chi = 2.",
+      "provenance": "Platonic Icosahedron & Geodesic Subdivision Reference",
+      "aliases": [
+        "icosphere",
+        "sphere",
+        "icosahedron"
+      ],
+      "parameters": [
+        {
+          "key": "radius",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "Sphere radius"
+        },
+        {
+          "key": "subdivisions",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Geodesic subdivision level"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "kg/m^3",
+          "description": "Uniform material density"
+        }
+      ],
+      "wasmKernel": "stlModelEval",
+      "archetypeId": 5
+    }
+  }
+]

@@ -10,6 +10,7 @@
 import type { TopologyGraph } from "@modelscript/diagram";
 import { EqKind, ExprKind } from "@modelscript/dsl";
 import {
+  BinOp,
   Causality,
   DAEBuilder,
   eliminateArenaAliases,
@@ -20,7 +21,9 @@ import {
   StmtKind,
   type SymbolEntry,
   type SymbolId,
+  UnaryOp,
   UnifiedWorkspace,
+  VarAttrKind,
   Variability,
   VarType,
 } from "@modelscript/runtime";
@@ -30,7 +33,9 @@ import { ModelicaPortBalancer } from "../connections.js";
 import { MODELICA_BASE_CONSTANTS, MODELICA_CONSTANTS } from "../constants.js";
 import { AnnotationEvaluator } from "../diagram/annotation-evaluator.js";
 import { ModelicaErrorCode } from "../errors.js";
+import { tryInlineForeignComponentInModelica } from "../interop.js";
 import { getShortClassSpecifierNode, isScopeEncapsulated, validateEnumeration } from "../queries.js";
+import { simplifyTrigonometricBinary } from "./expressions/binary-ops.js";
 import { emitWasmBailDiagnostic, postWasmValidate } from "./post-wasm-validate.js";
 
 import {
@@ -991,6 +996,19 @@ export class ModelicaFlattener {
 
   public get isOldFrontend(): boolean {
     return Boolean(this.options.isOldFrontend);
+  }
+
+  /**
+   * Attempts to inline a foreign-domain component (e.g. SPICE, Verilog-A) supporting
+   * `InteropTrait.LowerableDAE` directly into `dae` under `prefix`.
+   */
+  public tryInlineForeignComponent(
+    symbolId: SymbolId,
+    dae: DAEBuilder,
+    prefix: string,
+    parameterOverrides?: ReadonlyMap<string, number>,
+  ) {
+    return tryInlineForeignComponentInModelica(symbolId, dae, prefix, parameterOverrides, this.db.index);
   }
 
   private getElementDiagRange(target: any): any {
@@ -4840,7 +4858,7 @@ export class ModelicaFlattener {
             }
           }
         }
-        if (rootText.includes(":") && /\b(?:ones|zeros|identity|fill)\s*\(/.test(rootText)) {
+        if (/\b(?:ones|zeros|identity|fill)\s*\(/.test(rootText)) {
           const acRe = /\b(ones|zeros|identity|fill)\s*\(([^)]+)\)/g;
           let m: RegExpExecArray | null;
           while ((m = acRe.exec(rootText)) !== null) {
@@ -4901,7 +4919,7 @@ export class ModelicaFlattener {
     if (flattenedInWasm && isOldFrontend) {
       for (let i = 0; i < dae.eqCount; i++) {
         const ek = dae.getEqKind(i);
-        if (ek !== EqKind.Simple && ek !== EqKind.Array && ek !== EqKind.InitialSimple) continue;
+        if (ek !== EqKind.Simple && ek !== EqKind.InitialSimple) continue;
         const l = dae.getEqLhs(i);
         const r = dae.getEqRhs(i);
         if (l >= 0 && r >= 0 && dae.getExprKind(l) === ExprKind.Name) {
@@ -4912,7 +4930,336 @@ export class ModelicaFlattener {
         }
       }
     }
+    const preFoldCallBindings = new Set<number>();
+    if (flattenedInWasm) {
+      for (let vi = 0; vi < dae.varCount; vi++) {
+        const b = dae.getVarAttrExpr(vi, VarAttrKind.Binding);
+        if (b >= 0 && dae.getExprKind(b) === ExprKind.Call) {
+          preFoldCallBindings.add(vi);
+        }
+      }
+    }
     foldArenaConstants(dae, this.db, rootClassId, evalAllParams ? false : this.options.omcCompatibility);
+    if (flattenedInWasm) {
+      for (let vi = 0; vi < dae.varCount; vi++) {
+        const b = dae.getVarAttrExpr(vi, VarAttrKind.Binding);
+        if (b < 0) continue;
+        const bk = dae.getExprKind(b);
+        // Multi-output function call in scalar binding context (FunctionMultiOutput3, FunctionMultiReturn)
+        if (bk === ExprKind.ArrayCtor && preFoldCallBindings.has(vi)) {
+          const vName = dae.getVarName(vi);
+          if (!vName.includes("[") && dae.getExprData1(b) > 0) {
+            const elem0 = dae.getExprLeft(b);
+            if (elem0 >= 0) {
+              dae.setVarAttrExpr(vi, VarAttrKind.Binding, elem0);
+            }
+          }
+        } else if (bk === ExprKind.Binary) {
+          const l = dae.getExprLeft(b);
+          const r = dae.getExprRight(b);
+          if (
+            l >= 0 &&
+            r >= 0 &&
+            dae.getExprKind(l) === ExprKind.StringLiteral &&
+            dae.getExprKind(r) === ExprKind.StringLiteral
+          ) {
+            const ls = dae.interner.resolve(dae.getExprData1(l)) ?? "";
+            const rs = dae.interner.resolve(dae.getExprData1(r)) ?? "";
+            const op = dae.getExprData1(b);
+            let res: boolean | null = null;
+            if (op === BinOp.Lt) res = ls < rs;
+            else if (op === BinOp.Lte) res = ls <= rs;
+            else if (op === BinOp.Gt) res = ls > rs;
+            else if (op === BinOp.Gte) res = ls >= rs;
+            else if (op === BinOp.Eq) res = ls === rs;
+            else if (op === BinOp.Neq) res = ls !== rs;
+            if (res !== null) {
+              dae.setVarAttrExpr(vi, VarAttrKind.Binding, dae.addBoolLiteral(res));
+            }
+          }
+        }
+      }
+
+      // Post-fold simplification passes for WASM-flattened DAE
+      const postFoldRootText: string = (this.db.cstNode(rootClassId) as { text?: string } | null)?.text ?? "";
+
+      // 1. Trigonometric identity simplification & old-frontend delay(c + y, ...) hoisting
+      const simplifyPostFoldExpr = (exprId: number, depth = 0): number => {
+        if (exprId < 0 || exprId >= dae.exprCount || depth > 32) return exprId;
+        const k = dae.getExprKind(exprId);
+        if (k === ExprKind.Binary) {
+          const op = dae.getExprData1(exprId) as BinOp;
+          const origL = dae.getExprLeft(exprId);
+          const origR = dae.getExprRight(exprId);
+          const newL = simplifyPostFoldExpr(origL, depth + 1);
+          const newR = simplifyPostFoldExpr(origR, depth + 1);
+          const trig = simplifyTrigonometricBinary(dae, op, newL, newR);
+          if (trig !== null) return trig;
+          if (newL !== origL || newR !== origR) {
+            return dae.addBinaryExpr(op, newL, newR);
+          }
+          return exprId;
+        }
+        if (k === ExprKind.Call && isOldFrontend) {
+          const fnName = dae.interner.resolve(dae.getExprData1(exprId));
+          const argc = dae.getExprRight(exprId);
+          if (fnName === "delay" && (argc === 2 || argc === 3)) {
+            const arg0 = dae.getExprLeft(exprId);
+            if (arg0 >= 0 && dae.getExprKind(arg0) === ExprKind.Binary) {
+              const aOp = dae.getExprData1(arg0) as BinOp;
+              if (aOp === BinOp.Add || aOp === BinOp.Sub) {
+                const aL = dae.getExprLeft(arg0);
+                const aR = dae.getExprRight(arg0);
+                const isNumLit = (id: number): boolean => {
+                  if (id < 0) return false;
+                  const ek = dae.getExprKind(id);
+                  if (ek === ExprKind.RealLiteral || ek === ExprKind.IntLiteral) return true;
+                  if (ek === ExprKind.Negate || (ek === ExprKind.Unary && dae.getExprData1(id) === UnaryOp.Negate)) {
+                    const inner = dae.getExprLeft(id);
+                    const ik = inner >= 0 ? dae.getExprKind(inner) : -1;
+                    return ik === ExprKind.RealLiteral || ik === ExprKind.IntLiteral;
+                  }
+                  return false;
+                };
+                const restArgs: number[] = [];
+                for (let ai = 1; ai < argc; ai++) restArgs.push(dae.getExprLeft(exprId + ai));
+                if (argc === 2) restArgs.push(restArgs[0]!);
+                if (aOp === BinOp.Add && isNumLit(aL) && !isNumLit(aR)) {
+                  const newCall = dae.addCallExpr(dae.getExprData1(exprId), [aR, ...restArgs]);
+                  return dae.addBinaryExpr(BinOp.Add, aL, newCall);
+                }
+                if (isNumLit(aR) && !isNumLit(aL)) {
+                  const cExpr = aOp === BinOp.Sub ? dae.addNegateExpr(aR) : aR;
+                  const newCall = dae.addCallExpr(dae.getExprData1(exprId), [aL, ...restArgs]);
+                  return dae.addBinaryExpr(BinOp.Add, cExpr, newCall);
+                }
+              }
+            }
+          }
+        }
+        return exprId;
+      };
+
+      for (let vi = 0; vi < dae.varCount; vi++) {
+        const b = dae.getVarAttrExpr(vi, VarAttrKind.Binding);
+        if (b >= 0) {
+          const nb = simplifyPostFoldExpr(b);
+          if (nb !== b) dae.setVarAttrExpr(vi, VarAttrKind.Binding, nb);
+        }
+      }
+      for (let ei = 0; ei < dae.eqCount; ei++) {
+        if (dae.isEqRemoved(ei)) continue;
+        const ek = dae.getEqKind(ei);
+        if (ek !== EqKind.Simple && ek !== EqKind.InitialSimple) continue;
+        const l = dae.getEqLhs(ei);
+        const r = dae.getEqRhs(ei);
+        if (l >= 0) {
+          const nl = simplifyPostFoldExpr(l);
+          if (nl !== l) dae.setEqLhs(ei, nl);
+        }
+        if (r >= 0) {
+          const nr = simplifyPostFoldExpr(r);
+          if (nr !== r) dae.setEqRhs(ei, nr);
+        }
+      }
+
+      // 2. +scalarizeBindings: move scalarized array-binding equations back onto variable bindings
+      if (dae.extensionMetadata["scalarizeBindings"]) {
+        const varIndexByName = new Map<string, number>();
+        for (let vi = 0; vi < dae.varCount; vi++) {
+          varIndexByName.set(dae.getVarName(vi), vi);
+        }
+        for (let ei = 0; ei < dae.eqCount; ei++) {
+          if (dae.isEqRemoved(ei)) continue;
+          const ek = dae.getEqKind(ei);
+          if (ek !== EqKind.Simple && ek !== EqKind.Array) continue;
+          const l = dae.getEqLhs(ei);
+          const r = dae.getEqRhs(ei);
+          if (l < 0 || r < 0 || dae.getExprKind(l) !== ExprKind.Name) continue;
+          const lhsName = dae.interner.resolve(dae.getExprData1(l));
+          if (!lhsName) continue;
+          if (lhsName.includes("[")) {
+            const vi = varIndexByName.get(lhsName);
+            if (vi === undefined || dae.getVarAttrExpr(vi, VarAttrKind.Binding) >= 0) continue;
+            const baseName = lhsName.slice(0, lhsName.indexOf("["));
+            if (
+              new RegExp(`\\b${baseName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\[[^\\]]+\\]\\s*=`).test(
+                postFoldRootText,
+              )
+            ) {
+              dae.setVarAttrExpr(vi, VarAttrKind.Binding, r);
+              dae.markEqRemoved(ei);
+            }
+          } else if (dae.getExprKind(r) === ExprKind.ArrayCtor) {
+            const cnt = dae.getExprData1(r);
+            if (
+              cnt > 0 &&
+              new RegExp(`\\b${lhsName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\[[^\\]]+\\]\\s*=`).test(
+                postFoldRootText,
+              )
+            ) {
+              let allMatch = true;
+              const targets: number[] = [];
+              for (let idx = 1; idx <= cnt; idx++) {
+                const vi = varIndexByName.get(`${lhsName}[${idx}]`);
+                if (vi === undefined || dae.getVarAttrExpr(vi, VarAttrKind.Binding) >= 0) {
+                  allMatch = false;
+                  break;
+                }
+                targets.push(vi);
+              }
+              if (allMatch) {
+                for (let idx = 0; idx < cnt; idx++) {
+                  const elem = dae.getExprLeft(r + idx);
+                  if (elem >= 0) dae.setVarAttrExpr(targets[idx]!, VarAttrKind.Binding, elem);
+                }
+                dae.markEqRemoved(ei);
+              }
+            }
+          }
+        }
+      }
+
+      // 3. Old frontend: drop dead algorithm assignments to vanished 0-length arrays (ArrayAssignEmpty, EmptyArrayAlgorithm)
+      if (isOldFrontend && dae.algorithmSections.length > 0) {
+        const declaredVarBases = new Set<string>();
+        for (let vi = 0; vi < dae.varCount; vi++) {
+          const vn = dae.getVarName(vi);
+          declaredVarBases.add(vn);
+          const lb = vn.indexOf("[");
+          if (lb > 0) declaredVarBases.add(vn.slice(0, lb));
+        }
+        for (const sec of dae.algorithmSections) {
+          if (sec.count <= 0) continue;
+          let allDeadZeroArr = true;
+          for (let s = sec.start; s < sec.start + sec.count; s++) {
+            if (dae.getStmtKind(s) !== StmtKind.Assignment) {
+              allDeadZeroArr = false;
+              break;
+            }
+            const lhs = dae.getStmtData1(s);
+            if (lhs < 0 || dae.getExprKind(lhs) !== ExprKind.Name) {
+              allDeadZeroArr = false;
+              break;
+            }
+            const lhsName = dae.interner.resolve(dae.getExprData1(lhs));
+            if (!lhsName || declaredVarBases.has(lhsName)) {
+              allDeadZeroArr = false;
+              break;
+            }
+            const escaped = lhsName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            if (!new RegExp(`\\b${escaped}\\s*\\[`).test(postFoldRootText)) {
+              allDeadZeroArr = false;
+              break;
+            }
+          }
+          if (allDeadZeroArr) {
+            sec.count = 0;
+          }
+        }
+      }
+
+      // 4. Qualify unqualified enumeration literal in `start` attribute (Enum10)
+      for (let vi = 0; vi < dae.varCount; vi++) {
+        if (dae.getVarType(vi) !== VarType.Enumeration) continue;
+        const rawStart = dae.getVarAttr(vi, "start");
+        const attrStart = dae.getVarAttrExpr(vi, VarAttrKind.Start);
+        const startExpr = rawStart !== undefined && rawStart >= 0 ? rawStart : attrStart;
+        if (startExpr < 0) continue;
+        const sk = dae.getExprKind(startExpr);
+        const litName =
+          sk === ExprKind.Name
+            ? dae.interner.resolve(dae.getExprData1(startExpr))
+            : sk === ExprKind.EnumLiteral
+              ? dae.interner.resolve(dae.getExprLeft(startExpr))
+              : undefined;
+        if (!litName || litName.includes(".")) continue;
+        const lits = dae.getVarEnumerationLiterals(vi);
+        if (lits && lits.length > 0 && !lits.includes(litName)) continue;
+        let baseEnumName: string | undefined;
+        if (lits && lits.length > 0) {
+          for (const [eName, eLits] of this.enumTypeMap.entries()) {
+            if (eLits.length === lits.length && eLits.every((l, idx) => l === lits[idx])) {
+              baseEnumName = eName;
+              break;
+            }
+          }
+        }
+        if (!baseEnumName) {
+          const rootSym = this.db.symbol(rootClassId);
+          const scopeSyms = [
+            ...(rootSym?.parentId ? this.db.childrenOf(rootSym.parentId) : []),
+            ...this.db.childrenOf(null),
+            ...this.db.childrenOf(rootClassId),
+          ];
+          for (const sym of scopeSyms) {
+            const cText: string = (this.db.cstNode(sym.id) as { text?: string } | null)?.text ?? "";
+            const em = cText.match(/\benumeration\s*\(([^)]+)\)/);
+            if (!em) continue;
+            const symLits = em[1]!.split(",").map((s) => s.trim().split(/\s+/)[0]!);
+            if (
+              symLits.includes(litName) &&
+              (!lits ||
+                lits.length === 0 ||
+                (symLits.length === lits.length && symLits.every((l, idx) => l === lits[idx])))
+            ) {
+              baseEnumName = sym.name;
+              break;
+            }
+          }
+        }
+        if (baseEnumName) {
+          const qualExpr = dae.addName(dae.interner.intern(`${baseEnumName}.${litName}`));
+          dae.setVarAttr(vi, "start", qualExpr);
+          if (attrStart >= 0) dae.setVarAttrExpr(vi, VarAttrKind.Start, qualExpr);
+        }
+      }
+
+      // 5. Old frontend: fold literal-bound parameter references inside diagonal(...) parameter bindings (DiagonalSimplify1)
+      if (isOldFrontend && /\bdiagonal\s*\(/.test(postFoldRootText)) {
+        const paramLitVal = new Map<string, number>();
+        for (let vi = 0; vi < dae.varCount; vi++) {
+          if (dae.getVarVariability(vi) !== Variability.Parameter) continue;
+          const b = dae.getVarAttrExpr(vi, VarAttrKind.Binding);
+          if (b >= 0) {
+            const bk = dae.getExprKind(b);
+            if (bk === ExprKind.RealLiteral) paramLitVal.set(dae.getVarName(vi), dae.getExprRealValue(b));
+            else if (bk === ExprKind.IntLiteral) paramLitVal.set(dae.getVarName(vi), dae.getExprData1(b));
+          }
+        }
+        if (paramLitVal.size > 0) {
+          for (let vi = 0; vi < dae.varCount; vi++) {
+            if (dae.getVarVariability(vi) !== Variability.Parameter) continue;
+            const b = dae.getVarAttrExpr(vi, VarAttrKind.Binding);
+            if (b < 0 || dae.getExprKind(b) !== ExprKind.Binary) continue;
+            const op = dae.getExprData1(b) as BinOp;
+            const l = dae.getExprLeft(b);
+            const r = dae.getExprRight(b);
+            const getNum = (id: number): number | null => {
+              const ek = dae.getExprKind(id);
+              if (ek === ExprKind.RealLiteral) return dae.getExprRealValue(id);
+              if (ek === ExprKind.IntLiteral) return dae.getExprData1(id);
+              if (ek === ExprKind.Name) {
+                const nm = dae.interner.resolve(dae.getExprData1(id));
+                if (nm && paramLitVal.has(nm)) return paramLitVal.get(nm)!;
+              }
+              return null;
+            };
+            const lv = getNum(l);
+            const rv = getNum(r);
+            if (lv !== null && rv !== null) {
+              let res: number | null = null;
+              if (op === BinOp.Mul) res = lv * rv;
+              else if (op === BinOp.Add) res = lv + rv;
+              else if (op === BinOp.Sub) res = lv - rv;
+              if (res !== null) {
+                dae.setVarAttrExpr(vi, VarAttrKind.Binding, dae.addRealLiteral(res));
+              }
+            }
+          }
+        }
+      }
+    }
     if (flattenedInWasm && !isOldFrontend && this.options.omcCompatibility && paddedSingleLhsMultiOutEqs.size > 0) {
       for (const eqIdx of paddedSingleLhsMultiOutEqs) {
         if (dae.isEqRemoved(eqIdx)) continue;
@@ -5842,10 +6189,30 @@ export class ModelicaFlattener {
       eliminateArenaAliases(dae);
     }
 
+    if (flattenedInWasm) {
+      for (let vi = 0; vi < dae.varCount; vi++) {
+        const b = dae.getVarBindingExpr(vi) ?? -1;
+        if (b < 0) continue;
+        const bk = dae.getExprKind(b);
+        if (bk === ExprKind.ArrayCtor || bk === ExprKind.Tuple) {
+          const vName = dae.getVarName(vi);
+          if (!vName.includes("[")) {
+            let elem0 = dae.getExprLeft(b);
+            while (elem0 >= 0 && dae.getExprKind(elem0) === ExprKind.Tuple) {
+              elem0 = dae.getExprLeft(elem0);
+            }
+            if (elem0 >= 0) {
+              dae.setVarExpression(vi, elem0);
+            }
+          }
+        }
+      }
+    }
+
     if (this.options.omcCompatibility) {
       this.generateRecordConstructors(rootClassId, dae);
       this.generateOperatorFunctions(dae);
-      this.generateExternalObjectFunctions(dae);
+      this.generateExternalObjectFunctions(dae, rootClassId);
       this.propagateImpureFunctions(dae);
     }
 
@@ -7401,8 +7768,8 @@ export class ModelicaFlattener {
     generateFunctions(this, rootClassId, dae);
   }
 
-  private generateExternalObjectFunctions(dae: DAEBuilder): void {
-    generateExternalObjectFunctions(this, dae);
+  private generateExternalObjectFunctions(dae: DAEBuilder, rootClassId?: SymbolId): void {
+    generateExternalObjectFunctions(this, dae, rootClassId);
   }
 
   private propagateImpureFunctions(dae: DAEBuilder): void {

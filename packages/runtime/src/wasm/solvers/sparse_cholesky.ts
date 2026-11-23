@@ -271,7 +271,7 @@ export class SparseCholesky {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function dae_sparseCholeskyCreate(n: u32): u32 {
-  let ptr = atomicChunkAlloc(sizeof<SparseCholesky>());
+  let ptr = atomicChunkAlloc(offsetof<SparseCholesky>() as u32);
   let solver = changetype<SparseCholesky>(ptr);
   solver.init(n);
   return ptr as u32;

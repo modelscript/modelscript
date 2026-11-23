@@ -1,0 +1,62 @@
+<div align="center"><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b></div>
+<div align="center">In the name of Allah, the Compassionate, the Merciful</div>
+
+# @modelscript/nmea0183
+
+**Maturity:** Beta · **Extensions:** `.nmea`, `.nme`, `.gps`, `.log` · **Docs:** [modelscript.org/languages/nmea0183](https://modelscript.org/languages/nmea0183)
+
+Native **NMEA 0183 (National Marine Electronics Association 0183, 1983)** ASCII marine navigation & GNSS telemetry parser, WGS-84 geodesic solver, continuous DAE trajectory kinematics lowering, telemetry linter, polyglot projections (CSV, GPX 1.1, OpenDRIVE), and interactive 2D GPS ground-track + polar satellite skyplot viewer for ModelScript.
+
+---
+
+## Core Capabilities
+
+- **WASM GLR Parser & Typed Telemetry Decoder (`nmea0183Language`, `parseNmea0183`)**: Parses standard `$` and `!` NMEA 0183 sentences with 2-character talker IDs (`GP`, `GN`, `GL`, `GA`, `HC`, `SD`, `II`, `AI`, `GB`, `BD`, `HE`, `WI`) and 3-character formatters (`GGA`, `RMC`, `GSA`, `GSV`, `VTG`, `HDG`, `DBT`, `MWV`), comma-separated fields, and `*XX` hex XOR checksums.
+- **WGS-84 Geodesy & Track Kinematics Solver (`vincentyInverse`, `haversineDistance`, `geodeticToEcef`, `ecefToGeodetic`, `geodeticToEnu`, `solveNmeaTrack`)**: Exact iterative Vincenty inverse geodesic distance and azimuth on the WGS-84 reference ellipsoid ($a = 6378137\text{ m}$, $f = 1/298.257223563$), Haversine spherical distance, ECEF $(X, Y, Z)$ round-trip transformations, local East-North-Up (ENU) coordinates, and multi-epoch speed/course kinematics.
+- **Direct Continuous DAE Arena Lowering (`lowerNmea0183ToDae`, `nmea0183ToDae`)**: Lowers 2D/3D vehicle trajectory kinematics ($\dot{p}_e = v_e$, $\dot{p}_n = v_n$, $\dot{p}_u = v_u$, $\dot{s} = v$, $\dot{v}_e = a_e$, $\dot{v}_n = a_n$, $\dot{v}_u = a_u$) directly into `@modelscript/runtime`'s linear-memory `IDaeBuilder`.
+- **Telemetry Integrity Linter (`lintNmea0183`, `Nmea0183ErrorCode`)**: 14 domain diagnostics (`NMEA1001`–`NMEA5006`) checking syntax, XOR `*XX` checksum parity, 82-character sentence length limits, `ddmm.mmmm` coordinate range, void/invalid GPS fix status, high HDOP (`> 5.0`), non-monotonic UTC timestamps, unknown talkers/formatters, satellite geometry, and unrealistic speeds.
+- **Cleanroom Standard Library (`@modelscript/nmea0183-std-lib`)**: Zero-I/O standard library bundle with parametric SVG block icons, schema metadata, and AssemblyScript WASM runtime for `GGA`, `RMC`, `GSA`, `GSV`, `VTG`, `HDG`, `DBT`, and `MWV`.
+- **Polyglot Projections (`nmea0183ToCsv`, `nmea0183ToGpx`, `nmea0183ToOpenDrive`)**: Projects decoded GNSS tracks to RFC 4180 CSV, GPX 1.1 XML, and ASAM OpenDRIVE `.xodr` road trajectory geometry.
+- **Interactive SVG Visualization & React Panel (`renderNmea0183Svg`, `Nmea0183Panel`)**: Pure SVG 2D GPS ground-track map + polar satellite skyplot (from `GSV` azimuth/elevation/SNR) embedded in a full React panel using `@modelscript/design-tokens/panel`.
+
+---
+
+## Package Structure
+
+| Path                                  | Description                                                                       |
+| :------------------------------------ | :-------------------------------------------------------------------------------- |
+| `src/index.ts`                        | Public package exports                                                            |
+| `src/language.ts`                     | `nmea0183Language` WASM GLR grammar, file extensions, and UI panel registration   |
+| `src/types.ts`                        | Core TypeScript interfaces (`Nmea0183Document`, `NmeaSentence`, `NmeaTrackEpoch`) |
+| `src/errors.ts`                       | `Nmea0183ErrorCode` (`NMEA1001`–`NMEA5006`) diagnostic definitions                |
+| `src/parser/index.ts`                 | `parseNmea0183`, `computeNmeaChecksum`, `ddmmToDecimalDegrees`, `parseUtcTime`    |
+| `src/lints/index.ts`                  | `lintNmea0183` telemetry integrity linter                                         |
+| `src/solver/index.ts`                 | WGS-84 Vincenty, Haversine, ECEF, ENU, and `solveNmeaTrack` kinematics solver     |
+| `src/dae/lowering.ts`                 | `lowerNmea0183ToDae` and `nmea0183ToDae` continuous DAE arena lowering            |
+| `src/projections/index.ts`            | `nmea0183ToCsv`, `nmea0183ToGpx`, `nmea0183ToOpenDrive`                           |
+| `src/catalog/nmea0183-std-schemas.ts` | Cleanroom schemas and parametric SVG icons for standard NMEA 0183 formatters      |
+| `src/diagram/index.ts`                | `renderNmea0183Svg`, `renderNmea0183TrackSvg`, `renderNmea0183SkyplotSvg`         |
+| `src/ui/Nmea0183Panel.tsx`            | Interactive React viewer/editor panel using `@modelscript/design-tokens/panel`    |
+| `src/indexing.ts`                     | Declarative `UnifiedWorkspace` symbol indexing                                    |
+| `src/lsp.ts`                          | `validateNmea0183`, `getNmea0183DocumentSymbols`, `getNmea0183Hover`, completions |
+
+---
+
+## Diagnostic Codes (`NMEA1001`–`NMEA5006`)
+
+| Code       | Rule                         | Severity | Description                                                      |
+| :--------- | :--------------------------- | :------- | :--------------------------------------------------------------- |
+| `NMEA1001` | `syntax-error`               | Error    | Malformed NMEA 0183 sentence structure                           |
+| `NMEA1002` | `missing-checksum`           | Warning  | Sentence is missing `*XX` hex XOR checksum                       |
+| `NMEA2001` | `checksum-mismatch`          | Error    | Computed XOR checksum does not match `*XX`                       |
+| `NMEA2002` | `sentence-too-long`          | Warning  | Sentence exceeds the 82-character NMEA 0183 maximum length       |
+| `NMEA3001` | `invalid-latitude`           | Error    | Latitude `ddmm.mmmm` out of `[-90, 90]` or minutes `>= 60`       |
+| `NMEA3002` | `invalid-longitude`          | Error    | Longitude `dddmm.mmmm` out of `[-180, 180]` or minutes `>= 60`   |
+| `NMEA4001` | `unknown-talker`             | Warning  | Unrecognized 2-character NMEA 0183 talker ID                     |
+| `NMEA4002` | `unknown-formatter`          | Warning  | Unrecognized 3-character NMEA 0183 sentence formatter            |
+| `NMEA5001` | `void-gps-fix`               | Warning  | Void/invalid GPS fix (`RMC` status `V` or `GGA` fix quality `0`) |
+| `NMEA5002` | `high-hdop`                  | Warning  | High HDOP (`> 5.0`) indicating degraded positioning accuracy     |
+| `NMEA5003` | `non-monotonic-timestamp`    | Warning  | UTC timestamp moved backwards relative to previous epoch         |
+| `NMEA5004` | `invalid-field-count`        | Error    | Unexpected field count for a standard NMEA 0183 formatter        |
+| `NMEA5005` | `invalid-satellite-geometry` | Warning  | Satellite azimuth/elevation out of physical bounds               |
+| `NMEA5006` | `unrealistic-speed`          | Warning  | Speed over ground exceeds plausible marine/surface threshold     |

@@ -1792,6 +1792,38 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   /** Monotonically increasing workspace mutation counter. */
   private _version = 0;
 
+  /**
+   * Mounts an immutable `FrozenLibrarySnapshot` from a shared `PolyglotEngine` directly into
+   * this `UnifiedWorkspace` without copying symbol entries, invalidating merged index caches.
+   */
+  public mountFrozenLibrary(snapshot: {
+    readonly libraryId: string;
+    readonly symbols: ReadonlyMap<SymbolId, Readonly<SymbolEntry>>;
+    readonly byName: ReadonlyMap<string, readonly SymbolId[]>;
+    readonly childrenOf: ReadonlyMap<SymbolId | null, readonly SymbolId[]>;
+  }): this {
+    this.nativeBuiltinIndices.set(`frozen:${snapshot.libraryId}`, {
+      symbols: snapshot.symbols as Map<SymbolId, SymbolEntry>,
+      byName: snapshot.byName as Map<string, SymbolId[]>,
+      childrenOf: snapshot.childrenOf as Map<SymbolId | null, SymbolId[]>,
+    });
+    this._version++;
+    this.cachedIndexPartial = null;
+    this.cachedIndexEager = null;
+    return this;
+  }
+
+  /** Unmounts a previously mounted `FrozenLibrarySnapshot` by `libraryId`. */
+  public unmountFrozenLibrary(libraryId: string): boolean {
+    const removed = this.nativeBuiltinIndices.delete(`frozen:${libraryId}`);
+    if (removed) {
+      this._version++;
+      this.cachedIndexPartial = null;
+      this.cachedIndexEager = null;
+    }
+    return removed;
+  }
+
   /** Process-wide fallback registry mapping file extensions (e.g. `".mo"`) to WASM GLR parser instances. */
   private static globalParsers = new Map<string, any>();
   /** Instance-level registry mapping file extensions to WASM GLR parser instances. */

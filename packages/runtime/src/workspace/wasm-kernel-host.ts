@@ -33,11 +33,13 @@ export function getOrCompileWasmModule(wasmBytes: Uint8Array): WebAssembly.Modul
 }
 
 /**
- * Instantiates an isolated `WebAssembly.Instance` with a default AssemblyScript `env.abort` stub.
+ * Instantiates an isolated `WebAssembly.Instance` with a default AssemblyScript `env.abort` stub
+ * and optional `maxMemoryPages` capability enforcement (64 KiB per page).
  */
 export function createIsolatedWasmInstance(
   wasmBytes: Uint8Array,
   extraImports?: WebAssembly.Imports,
+  maxMemoryPages?: number,
 ): WebAssembly.Instance | undefined {
   const mod = getOrCompileWasmModule(wasmBytes);
   if (!mod) return undefined;
@@ -48,11 +50,21 @@ export function createIsolatedWasmInstance(
       },
       ...((extraImports?.["env"] as Record<string, WebAssembly.ImportValue> | undefined) ?? {}),
     };
-    return new WebAssembly.Instance(mod, {
+    const instance = new WebAssembly.Instance(mod, {
       ...extraImports,
       env: envImports,
     });
-  } catch {
+    if (maxMemoryPages !== undefined && instance.exports["memory"] instanceof WebAssembly.Memory) {
+      const currentPages = Math.ceil(instance.exports["memory"].buffer.byteLength / 65536);
+      if (currentPages > maxMemoryPages) {
+        throw new RangeError(
+          `WASM instance initial memory (${currentPages} pages) exceeds capability cap of ${maxMemoryPages} pages.`,
+        );
+      }
+    }
+    return instance;
+  } catch (err) {
+    if (err instanceof RangeError) throw err;
     return undefined;
   }
 }
@@ -75,9 +87,15 @@ export function createMemoryViews(mem: WebAssembly.Memory): CachedMemoryViews {
  * Ensures the underlying `WebAssembly.Memory` has at least `requiredBytes` capacity,
  * refreshing all typed-array views if the buffer was grown or detached.
  */
-export function ensureMemoryCapacity(views: CachedMemoryViews, requiredBytes: number): void {
+export function ensureMemoryCapacity(views: CachedMemoryViews, requiredBytes: number, maxMemoryPages?: number): void {
   if (views.mem.buffer.byteLength < requiredBytes) {
+    const currentPages = Math.ceil(views.mem.buffer.byteLength / 65536);
     const neededPages = Math.ceil((requiredBytes - views.mem.buffer.byteLength) / 65536);
+    if (maxMemoryPages !== undefined && currentPages + neededPages > maxMemoryPages) {
+      throw new RangeError(
+        `WASM memory growth to ${currentPages + neededPages} pages exceeds capability cap of ${maxMemoryPages} pages.`,
+      );
+    }
     views.mem.grow(neededPages);
   }
   if (views.buf !== views.mem.buffer) {

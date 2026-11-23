@@ -140,7 +140,23 @@ export function evalExprGeneric(exprId: u32, dae: DaeBuilder, varValuesPtr: usiz
     }
   }
 
+  if (kind == ExprKind.Delay) {
+    let ch = e.data1 as u32;
+    if (g_activeDelayValsPtr != 0 && ch < g_activeDelayCount) {
+      return load<f64>(g_activeDelayValsPtr + ((ch as usize) << 3));
+    }
+    return evalExprGeneric(e.left, dae, varValuesPtr, isStringIdEnv);
+  }
+
   return 0.0;
+}
+
+let g_activeDelayValsPtr: usize = 0;
+let g_activeDelayCount: u32 = 0;
+
+export function dae_setActiveDelayValues(ptr: usize, count: u32): void {
+  g_activeDelayValsPtr = ptr;
+  g_activeDelayCount = count;
 }
 
 /**

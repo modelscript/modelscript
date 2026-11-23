@@ -545,7 +545,7 @@ export class Dual {
 }
 
 export function createDual(val: f64, der: f64): Dual {
-  let ptr = atomicChunkAlloc(sizeof<Dual>());
+  let ptr = atomicChunkAlloc(offsetof<Dual>() as u32);
   let d = changetype<Dual>(ptr);
   d.val = val;
   d.der = der;

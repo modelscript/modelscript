@@ -7,13 +7,24 @@
  * rate rules, and assignment rules directly into ModelScript's zero-GC DAEBuilder.
  */
 
-import { BinOp, Causality, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime";
+import {
+  BinOp,
+  Causality,
+  DAEBuilder,
+  EqKind,
+  JumpAffectMode,
+  JumpRateKind,
+  Variability,
+  VarType,
+} from "@modelscript/runtime";
 import { flattenAntimonyModule } from "../solvers/antimony-solver.js";
 import type { AntimonyDocument, AntimonyRule } from "../types.js";
 
 export interface AntimonyDaeOptions {
   builder?: DAEBuilder | undefined;
   modelName?: string | undefined;
+  /** When true, also lowers Antimony reactions into `dae.jumps` for WASM SSA / Hybrid simulation. */
+  emitJumps?: boolean | undefined;
 }
 
 function isDigit(ch: string): boolean {
@@ -340,6 +351,33 @@ export function lowerAntimonyToDae(doc: AntimonyDocument, options?: AntimonyDaeO
     }
 
     dae.addEquation(EqKind.Simple, dae.addName(fluxVar), fluxExpr);
+
+    if (options?.emitJumps) {
+      const netStoich = new Map<number, number>();
+      for (const ref of r.reactants) {
+        const sVar = speciesVarMap.get(ref.species);
+        const sp = mod.species.get(ref.species);
+        if (sVar !== undefined && !sp?.constant && !sp?.boundaryCondition) {
+          netStoich.set(sVar, (netStoich.get(sVar) ?? 0) - ref.stoichiometry);
+        }
+      }
+      for (const ref of r.products) {
+        const sVar = speciesVarMap.get(ref.species);
+        const sp = mod.species.get(ref.species);
+        if (sVar !== undefined && !sp?.constant && !sp?.boundaryCondition) {
+          netStoich.set(sVar, (netStoich.get(sVar) ?? 0) + ref.stoichiometry);
+        }
+      }
+      const affects: { targetVarId: number; deltaExprId: number; mode: JumpAffectMode }[] = [];
+      for (const [sVar, delta] of netStoich) {
+        if (delta !== 0) {
+          affects.push({ targetVarId: sVar, deltaExprId: dae.addRealLiteral(delta), mode: JumpAffectMode.Additive });
+        }
+      }
+      if (affects.length > 0) {
+        dae.jumps.addJump(fluxExpr, affects, JumpRateKind.MassAction);
+      }
+    }
   }
 
   // 5. Emit Parameter Rule Equations (for parameters controlled by rate or assignment rules)

@@ -1,0 +1,351 @@
+[
+  {
+    "namePath": "HDF4.SDS",
+    "aliases": [
+      "DFTAG_SD",
+      "SCIENTIFIC_DATA_SET"
+    ],
+    "label": "Scientific Data Set (SDS)",
+    "category": "HDF4 Core Objects",
+    "domain": "scientific-data",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\">\n  <rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.6\"/>\n  <rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/>\n  <text x=\"21\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\" font-weight=\"700\">HDF4</text>\n  <text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" fill=\"#f8fafc\" font-weight=\"700\">SDS</text>\n</svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HDF4.Vgroup",
+    "aliases": [
+      "DFTAG_VG",
+      "VGROUP"
+    ],
+    "label": "Vgroup Container",
+    "category": "HDF4 Core Objects",
+    "domain": "scientific-data",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\">\n  <rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.6\"/>\n  <rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/>\n  <text x=\"21\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\" font-weight=\"700\">HDF4</text>\n  <text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" fill=\"#f8fafc\" font-weight=\"700\">VGROUP</text>\n</svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HDF4.Vdata",
+    "aliases": [
+      "DFTAG_VH",
+      "DFTAG_VS",
+      "VDATA"
+    ],
+    "label": "Vdata Table",
+    "category": "HDF4 Core Objects",
+    "domain": "scientific-data",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\">\n  <rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.6\"/>\n  <rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/>\n  <text x=\"21\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\" font-weight=\"700\">HDF4</text>\n  <text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" fill=\"#f8fafc\" font-weight=\"700\">VDATA</text>\n</svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HDF4.Raster8",
+    "aliases": [
+      "DFTAG_RI8",
+      "RASTER8",
+      "DFR8"
+    ],
+    "label": "8-Bit Raster Image",
+    "category": "HDF4 Core Objects",
+    "domain": "scientific-data",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\">\n  <rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.6\"/>\n  <rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/>\n  <text x=\"21\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\" font-weight=\"700\">HDF4</text>\n  <text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" fill=\"#f8fafc\" font-weight=\"700\">RASTER8</text>\n</svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HDF4.Palette",
+    "aliases": [
+      "DFTAG_IP8",
+      "PALETTE",
+      "DFP"
+    ],
+    "label": "8-Bit RGB Color Palette",
+    "category": "HDF4 Core Objects",
+    "domain": "scientific-data",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\">\n  <rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.6\"/>\n  <rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/>\n  <text x=\"21\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\" font-weight=\"700\">HDF4</text>\n  <text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" fill=\"#f8fafc\" font-weight=\"700\">PALETTE</text>\n</svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HDF4.NDG",
+    "aliases": [
+      "DFTAG_NDG",
+      "NUMERIC_DATA_GROUP"
+    ],
+    "label": "Numeric Data Group (NDG)",
+    "category": "HDF4 Core Objects",
+    "domain": "scientific-data",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\">\n  <rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.6\"/>\n  <rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/>\n  <text x=\"21\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\" font-weight=\"700\">HDF4</text>\n  <text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" fill=\"#f8fafc\" font-weight=\"700\">NDG</text>\n</svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HDF4.EOS_SWATH",
+    "aliases": [
+      "SWATH",
+      "HDF_EOS_SWATH"
+    ],
+    "label": "NASA HDF-EOS Swath",
+    "category": "NASA EOS-HDF Archetypes",
+    "domain": "scientific-data",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\">\n  <rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.6\"/>\n  <rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/>\n  <text x=\"21\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\" font-weight=\"700\">EOS</text>\n  <text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" fill=\"#f8fafc\" font-weight=\"700\">EOS_SWATH</text>\n</svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HDF4.EOS_GRID",
+    "aliases": [
+      "GRID",
+      "HDF_EOS_GRID"
+    ],
+    "label": "NASA HDF-EOS Grid",
+    "category": "NASA EOS-HDF Archetypes",
+    "domain": "scientific-data",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\">\n  <rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.6\"/>\n  <rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/>\n  <text x=\"21\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\" font-weight=\"700\">EOS</text>\n  <text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" fill=\"#f8fafc\" font-weight=\"700\">EOS_GRID</text>\n</svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HDF4.EOS_POINT",
+    "aliases": [
+      "POINT",
+      "HDF_EOS_POINT"
+    ],
+    "label": "NASA HDF-EOS Point",
+    "category": "NASA EOS-HDF Archetypes",
+    "domain": "scientific-data",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\">\n  <rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.6\"/>\n  <rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/>\n  <text x=\"21\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\" font-weight=\"700\">EOS</text>\n  <text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" fill=\"#f8fafc\" font-weight=\"700\">EOS_POINT</text>\n</svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HDF4.MODIS_L1B",
+    "aliases": [
+      "MOD021KM",
+      "MYD021KM"
+    ],
+    "label": "MODIS Level-1B Calibrated Radiance",
+    "category": "NASA EOS-HDF Archetypes",
+    "domain": "scientific-data",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\">\n  <rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.6\"/>\n  <rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/>\n  <text x=\"21\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\" font-weight=\"700\">EOS</text>\n  <text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" fill=\"#f8fafc\" font-weight=\"700\">MODIS_L1B</text>\n</svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HDF4.AIRS_L2",
+    "aliases": [
+      "AIRX2RET"
+    ],
+    "label": "AIRS Level-2 Atmospheric Retrieval",
+    "category": "NASA EOS-HDF Archetypes",
+    "domain": "scientific-data",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\">\n  <rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.6\"/>\n  <rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/>\n  <text x=\"21\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\" font-weight=\"700\">EOS</text>\n  <text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" fill=\"#f8fafc\" font-weight=\"700\">AIRS_L2</text>\n</svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "HDF4.LANDSAT_TM",
+    "aliases": [
+      "LANDSAT_ETM"
+    ],
+    "label": "Landsat TM/ETM+ Multispectral Scene",
+    "category": "NASA EOS-HDF Archetypes",
+    "domain": "scientific-data",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\">\n  <rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.6\"/>\n  <rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/>\n  <text x=\"21\" y=\"14.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\" font-weight=\"700\">EOS</text>\n  <text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" fill=\"#f8fafc\" font-weight=\"700\">LANDSAT_TM</text>\n</svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  }
+]

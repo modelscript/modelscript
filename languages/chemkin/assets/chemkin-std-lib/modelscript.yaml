@@ -1,0 +1,11 @@
+name: "@modelscript/chemkin-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom CHEMKIN IUPAC atomic weights & NASA-7 H2/O2/CH4 thermodynamic standard library (12 species, cleanroom SVG icons, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: chemkin
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

@@ -84,6 +84,67 @@ function hasModelicaDiagramHint(text: string): boolean {
   return false;
 }
 
+export interface EmbeddedDiagramPortalRef {
+  kind: "cad" | "fea" | "cfd" | "step" | "usd" | "urdf" | "vtk" | "subdiagram";
+  artifactUri: string;
+  animateWithSimulation: boolean;
+}
+
+/**
+ * Enriches Modelica / polyglot `DiagramData` nodes with `node.portal` metadata whenever
+ * the source text declares an embedded `CAD(uri="...")`, `FEA(uri="...")`, or `CFD(uri="...")`
+ * annotation on that component — enabling live nested 3D CAD/FEA/CFD viewports inside the schematic canvas.
+ */
+export function enrichDiagramWithEmbeddedPortals(
+  diagramData: { nodes?: { id?: string; portal?: unknown; data?: Record<string, unknown> }[] } | null | undefined,
+  sourceText: string | null | undefined,
+): void {
+  if (!diagramData || !Array.isArray(diagramData.nodes) || !sourceText) return;
+  if (!sourceText.includes("CAD(") && !sourceText.includes("FEA(") && !sourceText.includes("CFD(")) return;
+
+  const portalByComponent = new Map<string, EmbeddedDiagramPortalRef>();
+  // Match component declaration name followed on the same statement by CAD/FEA/CFD(uri="...")
+  const stmtRe = /\b([A-Za-z_]\w*)\s*(?:\([^;]*\))?\s*(?:"[^"]*"\s*)?annotation\s*\(([^;]*)\)\s*;/g;
+  let match: RegExpExecArray | null;
+  while ((match = stmtRe.exec(sourceText)) !== null) {
+    const compName = match[1];
+    const annBody = match[2];
+    if (!compName || !annBody) continue;
+    const portalMatch = /\b(CAD|FEA|CFD)\s*\([^)]*\buri\s*=\s*"([^"]+)"/.exec(annBody);
+    if (!portalMatch) continue;
+    const rawKind = portalMatch[1]!.toLowerCase();
+    const uri = portalMatch[2]!;
+    const kind: EmbeddedDiagramPortalRef["kind"] =
+      rawKind === "fea"
+        ? "fea"
+        : rawKind === "cfd"
+          ? "cfd"
+          : /\.step$|\.stp$/i.test(uri)
+            ? "step"
+            : /\.usd[azc]?$/i.test(uri)
+              ? "usd"
+              : /\.urdf$/i.test(uri)
+                ? "urdf"
+                : /\.vtk$|\.vtu$/i.test(uri)
+                  ? "vtk"
+                  : "cad";
+    portalByComponent.set(compName, {
+      kind,
+      artifactUri: uri,
+      animateWithSimulation: true,
+    });
+  }
+
+  if (portalByComponent.size === 0) return;
+  for (const node of diagramData.nodes) {
+    if (!node.id || node.portal) continue;
+    const portal = portalByComponent.get(node.id);
+    if (portal) {
+      node.portal = portal;
+    }
+  }
+}
+
 export interface DiagramServiceOptions {
   modelicaDiagramOps?: any;
   sysml2DiagramOps?: any;
@@ -377,6 +438,8 @@ export class DiagramService {
       const tBuild = performance.now() - tBuild0;
       if (result) {
         (result as any).isLoading = !dependenciesReady;
+        const sourceForPortals = indexedText ?? this.documentManager.documents.get(effectiveUri)?.getText();
+        enrichDiagramWithEmbeddedPortals(result, sourceForPortals);
       }
       this.connection.console.info(
         `[diagram-perf] ${classInstance.name}: resolve=${tResolve.toFixed(0)}ms build=${tBuild.toFixed(0)}ms nodes=${result?.nodes?.length ?? 0} edges=${result?.edges?.length ?? 0}`,

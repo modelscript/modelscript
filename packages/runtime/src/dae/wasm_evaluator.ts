@@ -9,6 +9,7 @@
 import type { QueryDB, SymbolEntry, SymbolId } from "../runtime.js";
 import { evaluateMslCFunction, isMslCFunction } from "../util/msl_ffi.js";
 import { getArenaRuntimeState } from "./arena_runtime_state.js";
+import { defaultUnboxedExternalFunctions } from "./polyglot_inliner.js";
 import { BinOp, DAEBuilder, ExprKind, UnaryOp, Variability } from "./wasm_dae.js";
 import {
   evaluateArenaFunctionCall,
@@ -1640,6 +1641,29 @@ export function evaluateArenaRuntime(
       const argCount = arena.getExprRight(exprId);
       const firstArgId = arena.getExprLeft(exprId);
 
+      // 8.0 Unboxed Polyglot External FFI fast path (zero per-call JS boxing)
+      const unboxedId =
+        defaultUnboxedExternalFunctions.getId(rawFuncName) >= 0
+          ? defaultUnboxedExternalFunctions.getId(rawFuncName)
+          : defaultUnboxedExternalFunctions.getId(funcName);
+      if (unboxedId >= 0) {
+        if (argCount === 1) {
+          const a0 = evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId);
+          return defaultUnboxedExternalFunctions.invokeScalar1(unboxedId, a0);
+        }
+        if (argCount === 2) {
+          const a0 = evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId);
+          const a1 = evaluateArenaRuntime(arena, arena.getExprLeft(exprId + 1), valuesByStringId, preValuesByStringId);
+          return defaultUnboxedExternalFunctions.invokeScalar2(unboxedId, a0, a1);
+        }
+        const evalArgs: number[] = [];
+        for (let i = 0; i < argCount; i++) {
+          const argExprId = i === 0 ? firstArgId : arena.getExprLeft(exprId + i);
+          evalArgs.push(evaluateArenaRuntime(arena, argExprId, valuesByStringId, preValuesByStringId));
+        }
+        return defaultUnboxedExternalFunctions.invokeScalarN(unboxedId, evalArgs);
+      }
+
       // 8a. Synchronous Event, Clock, Delay, and Homotopy Intrinsics
       switch (funcName) {
         case "pre": {
@@ -1715,8 +1739,7 @@ export function evaluateArenaRuntime(
             const timeId = arena.interner.intern("time");
             const currentTime = valuesByStringId[timeId] ?? 0;
             let delayMap = getArenaRuntimeState(arena).delayHistory as
-              | Map<number, { t: number[]; v: number[] }>
-              | undefined;
+              Map<number, { t: number[]; v: number[] }> | undefined;
             if (!delayMap) {
               delayMap = new Map();
               getArenaRuntimeState(arena).delayHistory = delayMap;

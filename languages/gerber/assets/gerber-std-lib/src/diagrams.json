@@ -1,0 +1,416 @@
+[
+  {
+    "namePath": "Gerber.StdLib.APERTURE_CIRCLE",
+    "aliases": [
+      "C",
+      "CIRCLE",
+      "CIRCULAR"
+    ],
+    "label": "Circle Aperture (C)",
+    "category": "Aperture Primitives",
+    "domain": "electronics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#38bdf8\">APER</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.4\" font-weight=\"bold\" fill=\"#f8fafc\">APERTURE_CIR</text></svg>",
+    "ports": [
+      {
+        "name": "coord_in",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "copper_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Gerber.StdLib.APERTURE_RECTANGLE",
+    "aliases": [
+      "R",
+      "RECT",
+      "RECTANGLE"
+    ],
+    "label": "Rectangle Aperture (R)",
+    "category": "Aperture Primitives",
+    "domain": "electronics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#38bdf8\">APER</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.4\" font-weight=\"bold\" fill=\"#f8fafc\">APERTURE_REC</text></svg>",
+    "ports": [
+      {
+        "name": "coord_in",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "copper_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Gerber.StdLib.APERTURE_OBROUND",
+    "aliases": [
+      "O",
+      "OBROUND",
+      "OVAL"
+    ],
+    "label": "Obround Aperture (O)",
+    "category": "Aperture Primitives",
+    "domain": "electronics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#38bdf8\">APER</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.4\" font-weight=\"bold\" fill=\"#f8fafc\">APERTURE_OBR</text></svg>",
+    "ports": [
+      {
+        "name": "coord_in",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "copper_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Gerber.StdLib.APERTURE_POLYGON",
+    "aliases": [
+      "P",
+      "POLYGON",
+      "POLY"
+    ],
+    "label": "Regular Polygon Aperture (P)",
+    "category": "Aperture Primitives",
+    "domain": "electronics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#38bdf8\">APER</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.4\" font-weight=\"bold\" fill=\"#f8fafc\">APERTURE_POL</text></svg>",
+    "ports": [
+      {
+        "name": "coord_in",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "copper_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Gerber.StdLib.MACRO_THERMAL",
+    "aliases": [
+      "THERMAL",
+      "AM_THERMAL",
+      "PRIMITIVE_7"
+    ],
+    "label": "Thermal Relief Macro (Code 7)",
+    "category": "Aperture Primitives",
+    "domain": "electronics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#38bdf8\">APER</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.4\" font-weight=\"bold\" fill=\"#f8fafc\">MACRO_THERMA</text></svg>",
+    "ports": [
+      {
+        "name": "coord_in",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "copper_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Gerber.StdLib.MACRO_MOIRE",
+    "aliases": [
+      "MOIRE",
+      "AM_MOIRE",
+      "PRIMITIVE_6"
+    ],
+    "label": "Moire Target Macro (Code 6)",
+    "category": "Aperture Primitives",
+    "domain": "electronics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#38bdf8\">APER</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.4\" font-weight=\"bold\" fill=\"#f8fafc\">MACRO_MOIRE</text></svg>",
+    "ports": [
+      {
+        "name": "coord_in",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "copper_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Gerber.StdLib.IPC2221_CLASS1_TRACE",
+    "aliases": [
+      "IPC_CLASS1",
+      "CLASS1_TRACE"
+    ],
+    "label": "IPC-2221 Class 1 Trace DFM",
+    "category": "IPC-2221 DFM Presets",
+    "domain": "electronics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b2314\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#f59e0b\">DFM</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.4\" font-weight=\"bold\" fill=\"#f8fafc\">IPC2221_CLAS</text></svg>",
+    "ports": [
+      {
+        "name": "geometry_in",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "dfm_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Gerber.StdLib.IPC2221_CLASS2_TRACE",
+    "aliases": [
+      "IPC_CLASS2",
+      "CLASS2_TRACE",
+      "IPC2221_STANDARD"
+    ],
+    "label": "IPC-2221 Class 2 Trace DFM",
+    "category": "IPC-2221 DFM Presets",
+    "domain": "electronics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b2314\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#f59e0b\">DFM</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.4\" font-weight=\"bold\" fill=\"#f8fafc\">IPC2221_CLAS</text></svg>",
+    "ports": [
+      {
+        "name": "geometry_in",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "dfm_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Gerber.StdLib.IPC2221_CLASS3_TRACE",
+    "aliases": [
+      "IPC_CLASS3",
+      "CLASS3_TRACE",
+      "AEROSPACE_TRACE"
+    ],
+    "label": "IPC-2221 Class 3 Trace DFM",
+    "category": "IPC-2221 DFM Presets",
+    "domain": "electronics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b2314\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#f59e0b\">DFM</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.4\" font-weight=\"bold\" fill=\"#f8fafc\">IPC2221_CLAS</text></svg>",
+    "ports": [
+      {
+        "name": "geometry_in",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "dfm_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Gerber.StdLib.IPC2221_VIA_STANDARD",
+    "aliases": [
+      "VIA_STD",
+      "STANDARD_VIA"
+    ],
+    "label": "Standard Through-Hole Via",
+    "category": "IPC-2221 DFM Presets",
+    "domain": "electronics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b2314\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#f59e0b\">DFM</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.4\" font-weight=\"bold\" fill=\"#f8fafc\">IPC2221_VIA_</text></svg>",
+    "ports": [
+      {
+        "name": "geometry_in",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "dfm_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Gerber.StdLib.IPC2221_VIA_MICRO",
+    "aliases": [
+      "MICROVIA",
+      "HDI_VIA"
+    ],
+    "label": "HDI Laser Microvia",
+    "category": "IPC-2221 DFM Presets",
+    "domain": "electronics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b2314\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#f59e0b\">DFM</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.4\" font-weight=\"bold\" fill=\"#f8fafc\">IPC2221_VIA_</text></svg>",
+    "ports": [
+      {
+        "name": "geometry_in",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "dfm_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Gerber.StdLib.IPC2221_COPPER_1OZ",
+    "aliases": [
+      "COPPER_1OZ",
+      "CU_1OZ"
+    ],
+    "label": "1 oz/ft^2 Copper Foil",
+    "category": "PCB Stackup Materials",
+    "domain": "electronics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#143829\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#34d399\">MATL</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.4\" font-weight=\"bold\" fill=\"#f8fafc\">IPC2221_COPP</text></svg>",
+    "ports": [
+      {
+        "name": "geometry_in",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "dfm_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Gerber.StdLib.IPC2221_COPPER_2OZ",
+    "aliases": [
+      "COPPER_2OZ",
+      "CU_2OZ"
+    ],
+    "label": "2 oz/ft^2 Heavy Copper Foil",
+    "category": "PCB Stackup Materials",
+    "domain": "electronics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#143829\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#34d399\">MATL</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.4\" font-weight=\"bold\" fill=\"#f8fafc\">IPC2221_COPP</text></svg>",
+    "ports": [
+      {
+        "name": "geometry_in",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "dfm_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Gerber.StdLib.IPC2221_FR4_SUBSTRATE",
+    "aliases": [
+      "FR4",
+      "SUBSTRATE_FR4"
+    ],
+    "label": "FR-4 Epoxy Glass Dielectric",
+    "category": "PCB Stackup Materials",
+    "domain": "electronics",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#143829\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#34d399\">MATL</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.4\" font-weight=\"bold\" fill=\"#f8fafc\">IPC2221_FR4_</text></svg>",
+    "ports": [
+      {
+        "name": "geometry_in",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "dfm_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  }
+]
