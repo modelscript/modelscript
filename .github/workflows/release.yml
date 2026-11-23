@@ -45,12 +45,12 @@ jobs:
       GITLAB_CLIENT_ID: ${{ secrets.GITLAB_CLIENT_ID || secrets.OAUTH_GITLAB_CLIENT_ID }}
       GITLAB_CLIENT_SECRET: ${{ secrets.GITLAB_CLIENT_SECRET || secrets.OAUTH_GITLAB_CLIENT_SECRET }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           token: ${{ secrets.DEPLOY_PAT }}
       - name: Import GPG Key
-        uses: crazy-max/ghaction-import-gpg@e89d40939c28e39f97cf32126055eeae86ba74ec # v6
+        uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd # v7.0.0
         with:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.GPG_PASSPHRASE }}
@@ -63,7 +63,7 @@ jobs:
           git config user.email "mnachawa@gmail.com"
       - name: Cache MSL
         id: cache-msl
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             scripts/ModelicaStandardLibrary_v4.1.0.zip
@@ -130,12 +130,12 @@ jobs:
         run: npx --yes @vscode/vsce@3.3.2 package --no-dependencies -o modelscript.vsix
         working-directory: apps/ide/dist/extension
       - name: Upload VSIX Artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: modelscript-vsix
           path: apps/ide/dist/extension/modelscript.vsix
       - name: Create or Update GitHub Release & Attach VSIX
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: v${{ steps.version.outputs.version }}
@@ -157,15 +157,15 @@ jobs:
         run: npx nx build @modelscript/docs --skip-nx-cache
 
       # --- Publish EE & CE Docker images to GHCR ---
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push EE & CE Docker images
-        uses: docker/bake-action@5be5f02ff8819ecd3092ea6b2e6261c31774f2b4 # v6
+        uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e # v7.5.0
         with:
           source: .
           files: docker-compose.yml

@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup-workspace
@@ -28,7 +28,7 @@ jobs:
           nx-cache-prefix: "lint"
           cache-wasm: "true"
       - name: Calculate Affected Bounds
-        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
+        uses: nrwl/nx-set-shas@e602fada7ad5987b0f7b1905e7a99ea1c661514c # v5.1.0
       - name: Run Repository Hygiene Doctor
         run: npm run lint:repo
       - name: Build DSL Templates
@@ -56,7 +56,7 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup-workspace
@@ -65,10 +65,10 @@ jobs:
           cache-wasm: "true"
           build-dsl-templates: "true"
       - name: Calculate Affected Bounds
-        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
+        uses: nrwl/nx-set-shas@e602fada7ad5987b0f7b1905e7a99ea1c661514c # v5.1.0
       - name: Cache MSL
         id: cache-msl
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             scripts/ModelicaStandardLibrary_v4.1.0.zip
@@ -81,7 +81,7 @@ jobs:
           fi
       - name: Cache FMI Simulator
         id: cache-fmusim
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: packages/exchange/validation/fmi/reference_fmus
           key: ${{ runner.os }}-fmusim-v0.0.39
@@ -98,7 +98,7 @@ jobs:
             node scripts/ci/test-coordinator.js run-many --shard=${{ matrix.shard }}/12
           fi
       - name: Upload CTRF Artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ctrf-${{ matrix.shard }}
           path: |
@@ -110,7 +110,7 @@ jobs:
           retention-days: 7
         if: always()
       - name: Upload Coverage Artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-${{ matrix.shard }}
           path: |
@@ -128,7 +128,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup-workspace
@@ -137,7 +137,7 @@ jobs:
           cache-wasm: "false"
           build-dsl-templates: "true"
       - name: Calculate Affected Bounds
-        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
+        uses: nrwl/nx-set-shas@e602fada7ad5987b0f7b1905e7a99ea1c661514c # v5.1.0
       - name: Check If Modelica Affected
         id: check-affected
         run: |
@@ -162,7 +162,7 @@ jobs:
           fi
       - name: Cache WASM Parsers
         if: steps.check-affected.outputs.run_suite == 'true'
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             .cache/asc-tests
@@ -188,7 +188,7 @@ jobs:
           NODE_OPTIONS="--max-old-space-size=12288" npx c8 report --temp-directory=.v8-coverage --reporter=lcov --reports-dir=languages/modelica/coverage/omc --include="languages/modelica/src/**" --include="packages/dsl/src/**" --include="packages/runtime/src/**"
       - name: Upload CTRF Artifacts
         if: always() && steps.check-affected.outputs.run_suite == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ctrf-omc-testsuite
           path: |
@@ -198,7 +198,7 @@ jobs:
           retention-days: 7
       - name: Upload HTML Test Reports
         if: always() && steps.check-affected.outputs.run_suite == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: omc-testsuite-html-reports
           path: |
@@ -207,7 +207,7 @@ jobs:
           retention-days: 7
       - name: Upload Coverage Artifacts
         if: always() && steps.check-affected.outputs.run_suite == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-omc-testsuite
           path: "languages/modelica/coverage/omc/*lcov*.info"
@@ -220,7 +220,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-workspace
         with:
           nx-cache-prefix: "benchmarks"
@@ -229,7 +229,7 @@ jobs:
       - name: Build Prerequisites
         run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/simulate,@modelscript/antimony,@modelscript/aspen,@modelscript/bngl,@modelscript/cantera,@modelscript/ccsds,@modelscript/cfd,@modelscript/cgmes,@modelscript/eclipse,@modelscript/epanet,@modelscript/fea,@modelscript/febio,@modelscript/fiber,@modelscript/fortran,@modelscript/genbank,@modelscript/gproms,@modelscript/gtfs,@modelscript/hec-ras,@modelscript/ibis,@modelscript/jsbsim,@modelscript/landgem,@modelscript/modflow,@modelscript/nmtran,@modelscript/ocpp,@modelscript/openadr,@modelscript/opendss,@modelscript/openscenario,@modelscript/opensim,@modelscript/optical,@modelscript/pdb,@modelscript/phreeqc,@modelscript/ran,@modelscript/relap5,@modelscript/rocets,@modelscript/sbml,@modelscript/sbol,@modelscript/sedml,@modelscript/sima,@modelscript/smiles,@modelscript/swmm,@modelscript/touchstone,@modelscript/tough,@modelscript/usd,@modelscript/verilog-a
       - name: Cache Benchmarks
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/benchmarks
           key: ${{ runner.os }}-benchmarks-${{ hashFiles('scripts/bench/fetch-benchmarks.ts', 'packages/exchange/src/catalog/benchmarks.catalog.json') }}
@@ -250,12 +250,12 @@ jobs:
       pull-requests: write
       checks: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: ".nvmrc"
       - name: Download All CTRF Artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: ctrf-artifacts
           pattern: ctrf-*
@@ -271,7 +271,7 @@ jobs:
             --output-html=ctrf-artifacts/test-report-unified.html
       - name: Upload Consolidated Report Artifacts
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: consolidated-test-report
           path: |
@@ -291,7 +291,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Download Coverage Artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: coverage-artifacts
           pattern: coverage-*
@@ -308,7 +308,7 @@ jobs:
             --threshold=55
       - name: Upload Consolidated Coverage Artifacts
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: consolidated-coverage
           path: |
@@ -324,7 +324,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup-workspace
@@ -332,7 +332,7 @@ jobs:
           nx-cache-prefix: "build"
           cache-wasm: "true"
       - name: Calculate Affected Bounds
-        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
+        uses: nrwl/nx-set-shas@e602fada7ad5987b0f7b1905e7a99ea1c661514c # v5.1.0
       - name: Ensure Standard Library Assets Exist
         run: npx tsx scripts/build/sync-stdlibs.ts --pack=core
       - name: Build VS Code Extension
@@ -377,7 +377,7 @@ jobs:
         run: npx --yes @vscode/vsce package --no-dependencies --allow-star-activation
         working-directory: dist/extension
       - name: Upload VSIX Artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: modelscript-vsix
           path: dist/extension/*.vsix
@@ -393,7 +393,7 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-workspace
         with:
           ignore-scripts: "true"
@@ -417,18 +417,18 @@ jobs:
       packages: write
       contents: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Enable Corepack
         run: corepack enable
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: ".nvmrc"
           cache: "pnpm"
       - name: Calculate Affected Bounds
         id: set-shas
-        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
+        uses: nrwl/nx-set-shas@e602fada7ad5987b0f7b1905e7a99ea1c661514c # v5.1.0
       - name: Check If Docker Services Affected
         id: check-affected
         run: |
@@ -453,7 +453,7 @@ jobs:
           CXXFLAGS: "-std=c++20"
       - name: Cache Nx
         if: steps.check-affected.outputs.run_docker == 'true'
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .nx/cache
           key: ${{ runner.os }}-nx-docker-${{ github.sha }}
@@ -479,18 +479,18 @@ jobs:
       - name: Rebuild Unified Site & Docs with PDF Manual
         if: steps.check-affected.outputs.run_docker == 'true'
         run: npx nx build @modelscript/docs
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         if: steps.check-affected.outputs.run_docker == 'true'
       - name: Log in to GHCR
         if: steps.check-affected.outputs.run_docker == 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push EE & CE Docker images
         if: steps.check-affected.outputs.run_docker == 'true'
-        uses: docker/bake-action@5be5f02ff8819ecd3092ea6b2e6261c31774f2b4 # v6
+        uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e # v7.5.0
         with:
           source: .
           files: docker-compose.yml
@@ -587,7 +587,7 @@ jobs:
       GITLAB_CLIENT_ID: ${{ secrets.GITLAB_CLIENT_ID || secrets.OAUTH_GITLAB_CLIENT_ID }}
       GITLAB_CLIENT_SECRET: ${{ secrets.GITLAB_CLIENT_SECRET || secrets.OAUTH_GITLAB_CLIENT_SECRET }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/deploy-production
         with:
           image-tag: sha-${{ github.sha }}
