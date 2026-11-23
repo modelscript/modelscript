@@ -58,7 +58,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "ANTIMONY",
     lang: "antimony",
     description: "ANTIMONY (.ant) starter model",
-    code: "model GlycolysisToy()\n  compartment cytoplasm = 1.0;\n  species Glc in cytoplasm = 5.0, G6P in cytoplasm = 0.1, Pyr in cytoplasm = 0.0;\n  const k_hex = 0.8, k_pkm = 0.5;\n\n  v1: Glc => G6P; k_hex * Glc;\n  v2: G6P => 2 Pyr; k_pkm * G6P;\n\n  TotalCarbon := Glc * 6.0 + G6P * 6.0 + Pyr * 3.0;\nend",
+    code: "model toggle_switch\n  species A = 10, B = 0;\n  J1: -> A; 1 / (1 + B^2);\n  J2: A -> ; 0.1 * A;\n  J3: -> B; 1 / (1 + A^2);\n  J4: B -> ; 0.1 * B;\nend",
   },
   {
     id: "antimony-example-2",
@@ -66,7 +66,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "ANTIMONY",
     lang: "antimony",
     description: "ANTIMONY (.ant) starter model",
-    code: "model TwoStepPathway()\n  compartment vol = 1.0;\n  species S in vol = 20.0, I in vol = 0.0, P in vol = 0.0;\n  const k1 = 0.5, k2 = 0.25;\n\n  J1: S => I; k1 * S;\n  J2: I => P; k2 * I;\n\n  TotalSpecies := S + I + P;\nend",
+    code: "model michaelis_menten\n  species S = 100, P = 0;\n  parameter Vmax = 5.0, Km = 10.0;\n  R1: S -> P; Vmax * S / (Km + S);\nend",
   },
   {
     id: "apdl-example-1",
@@ -202,7 +202,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "AUTOMATIONML",
     lang: "automationml",
     description: "AUTOMATIONML (.aml) starter model",
-    code: ';\n\n    const doc = parseAutomationML(xml);\n    assert.strictEqual(doc.fileName, "AssemblyCell.aml");\n    assert.strictEqual(doc.schemaVersion, "2.15");\n    assert.strictEqual(doc.instanceHierarchies.length, 1);\n    assert.strictEqual(doc.systemUnitClassLibs.length, 1);\n    assert.strictEqual(doc.roleClassLibs.length, 1);\n    assert.strictEqual(doc.interfaceClassLibs.length, 1);\n\n    const ih = doc.instanceHierarchies[0]!;\n    assert.strictEqual(ih.name, "ManufacturingCell");\n    assert.strictEqual(ih.elements.length, 2);\n\n    const conv = ih.elements[0]!;\n    assert.strictEqual(conv.id, "conv-01");\n    assert.strictEqual(conv.name, "ConveyorBelt");\n    assert.strictEqual(conv.pprCategory, "Resource");\n    assert(conv.frame !== undefined);\n    assert.strictEqual(conv.frame.x, 1.25);\n    assert.strictEqual(conv.frame.y, 0.5);\n    assert.strictEqual(conv.frame.rz, 90);\n    assert.strictEqual(conv.attributes.length, 1);\n    assert.strictEqual(conv.attributes[0]?.name, "maxSpeed");\n    assert.strictEqual(conv.attributes[0]?.value, 2.5);\n    assert.strictEqual(conv.interfaces.length, 3);\n    assert.strictEqual(conv.interfaces[2]?.category, "COLLADA");\n    assert.strictEqual(conv.interfaces[2]?.refUri, "file://meshes/conveyor.dae");\n\n    const plc = ih.elements[1]!;\n    assert.strictEqual(plc.internalLinks.length, 2);\n    assert.strictEqual(plc.internalLinks[0]?.refPartnerSideA, "plc-01:driveStart");\n    assert.strictEqual(plc.internalLinks[0]?.refPartnerSideB, "conv-01:motorCmd");\n    assert(conv.range.startLine >= 1);\n    assert(conv.range.endLine > conv.range.startLine);\n  });\n\n  it("parses declarative AML DSL syntax with 6-DOF frames, roles, interfaces, and links", () => {\n    const dsl =',
+    code: '<CAEXFile FileName="cell.aml" SchemaVersion="2.15">\n  <InstanceHierarchy Name="AssemblyCell">\n    <InternalElement Name="RobotArm1" ID="r1" />\n    <InternalElement Name="Conveyor1" ID="c1" />\n  </InstanceHierarchy>\n</CAEXFile>',
   },
   {
     id: "automationml-example-2",
@@ -386,7 +386,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "CGMES",
     lang: "cgmes",
     description: "CGMES (.cgmes) starter model",
-    code: ';\n\nconst SAMPLE_SSH_RDF = `<?xml version="1.0" encoding="UTF-8"?>\n<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"\n         xmlns:cim="http://iec.ch/TC57/2013/CIM-schema-cim16#">\n  <cim:SynchronousMachine rdf:about="#_gen1">\n    <cim:RotatingMachine.p>120.0</cim:RotatingMachine.p>\n    <cim:RotatingMachine.q>25.0</cim:RotatingMachine.q>\n  </cim:SynchronousMachine>\n</rdf:RDF>',
+    code: '<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:cim="http://iec.ch/TC57/2013/CIM-schema-cim16#">\n  <cim:BaseVoltage rdf:ID="_BV230"><cim:BaseVoltage.nominalVoltage>230</cim:BaseVoltage.nominalVoltage></cim:BaseVoltage>\n  <cim:ACLineSegment rdf:ID="_L1"><cim:IdentifiedObject.name>Line_1_2</cim:IdentifiedObject.name><cim:ACLineSegment.r>0.02</cim:ACLineSegment.r><cim:ACLineSegment.x>0.12</cim:ACLineSegment.x></cim:ACLineSegment>\n</rdf:RDF>',
   },
   {
     id: "chemkin-example-1",
@@ -474,7 +474,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "CSV",
     lang: "csv",
     description: "CSV (.csv) starter model",
-    code: 't;sensor_1\\n0;100\\n5;150`;\n    const mapping = new Map([["sensor_1", "motor.temperature"]]);\n    const result = parseCsvMeasurements(csvContent, { columnMapping: mapping });\n\n    assert.deepEqual(result.time, [0, 5]);\n    assert.ok(result.data.has("motor.temperature"));\n    assert.deepEqual(result.data.get("motor.temperature"), [100, 150]);\n  });\n\n  it("should support tab delimiter, case-insensitive time column, and CRLF endings", () => {\n    const csvContent = "Time\\tSpeed\\tVoltage\\r\\n0.0\\t10.5\\t220.0\\r\\n1.0\\t12.0\\t221.5\\r\\n";\n    const result = parseCsvMeasurements(csvContent);\n\n    assert.deepEqual(result.columns, ["Speed", "Voltage"]);\n    assert.deepEqual(result.time, [0.0, 1.0]);\n    assert.deepEqual(result.data.get("Speed"), [10.5, 12.0]);\n    assert.deepEqual(result.data.get("Voltage"), [220.0, 221.5]);\n  });\n\n  it("should parse quoted fields with escaped quotes and embedded commas", () => {\n    const csvContent =',
+    code: "time_s,bus1_v_pu,bus2_v_pu,freq_hz\n0.00,1.020,1.010,60.000\n0.10,1.018,1.007,59.985\n0.20,1.019,1.008,59.992\n0.30,1.020,1.010,60.000",
   },
   {
     id: "csv-example-2",
@@ -482,7 +482,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "CSV",
     lang: "csv",
     description: "CSV (.csv) starter model",
-    code: ';\n    const result = parseCsvMeasurements(csvContent);\n\n    assert.deepEqual(result.time, [0.0, 1.0]);\n    assert.ok(result.columns.some((c) => c.includes("temp")));\n  });\n\n  it("should skip NaN rows when skipNaN is enabled", () => {\n    const csvContent =',
+    code: "component,resistance_ohm,inductance_h,capacitance_f\nR1,100.0,0.0,0.0\nL1,0.05,0.5,0.0\nC1,0.0,0.0,1e-4",
   },
   {
     id: "cyme-example-1",
@@ -506,7 +506,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "DATCOM",
     lang: "datcom",
     description: "DATCOM (.dcm) starter model",
-    code: '@modelscript/datcom`.\n *\n * Verifies:\n * 1. High-aspect-ratio unswept NACA 0012 wing CL_alpha vs Prandtl lifting-line 2*pi / (1 + 2/AR)\n * 2. Prandtl-Glauert subsonic Mach scaling CL_alpha(M) / CL_alpha(0)\n * 3. Induced drag polar CD_i = CL^2 / (pi * e * AR)\n * 4. Phugoid & short-period linearized longitudinal modal parity\n */\n\nimport assert from "node:assert/strict";\nimport { describe, it } from "node:test";\nimport { DATCOM_AIRCRAFT_TEMPLATES } from "../src/catalog/datcom-std-schemas.js";\nimport { parseDatcomDeck } from "../src/parser/deck-parser.js";\nimport { solveDatcomCase } from "../src/solver/aero-solver.js";\n\nfunction relErr(actual: number, expected: number): number {\n  return Math.abs(actual - expected) / Math.max(1e-12, Math.abs(expected));\n}\n\ndescribe("DATCOM Semi-Empirical Aerodynamic Benchmarks", () => {\n  it("matches Prandtl lifting-line CL_alpha = 2*pi/(1 + 2/AR) for high-AR unswept NACA 0012 wing", () => {\n    const deck = parseDatcomDeck(\n      [\n        "CASEID HIGH AR NACA 0012 WING",\n        "DIM M",\n        "DERIV DEG",\n        " $FLTCON NMACH=1.0, MACH(1)=0.05, NALPHA=5.0, ALSCHD(1)=-2.0,0.0,2.0,4.0,6.0, NALT=1.0, ALT(1)=0.0$",\n        " $WGPLNF CHRDR=1.0, CHRDTP=1.0, SSPN=6.0, SAVSI=0.0, CHSTAT=0.25, TYPE=1.0$",\n        "NACA-W-4-0012",\n      ].join("\\n"),\n    );\n\n    const res = solveDatcomCase(deck.cases[0]!);\n    const AR = 12.0; // b = 12 m, c = 1 m -> AR = 12\n    assert.ok(relErr(res.aspectRatio, AR) < 1e-6);\n\n    const liftingLineCLalpha = (2 * Math.PI) / (1 + 2 / AR);\n    const err = relErr(res.CLalphaPerRad, liftingLineCLalpha);\n    const tolerance = 0.025; // Helmbold/Polhamus vs Prandtl lifting-line within 2.5% at AR=12\n    assert.ok(\n      err < tolerance,',
+    code: " $FLTCON NMACH=2.0, MACH(1)=0.3,0.8, ALSCHD(1)=-2.0,0.0,4.0,8.0$\n $OPTINS SREF=250.0, CBARR=12.0, BLREF=36.0$\n $SYNTHS XCG=18.5, ZCG=0.0, XW=15.0, ZW=-1.0$\n $WGPLNF CHRDTP=4.5, SSPNE=18.0, CHRDR=16.0, SAVSI=25.0$\nNEXT CASE",
   },
   {
     id: "datcom-example-2",
@@ -514,7 +514,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "DATCOM",
     lang: "datcom",
     description: "DATCOM (.dcm) starter model",
-    code: ',\n    );\n  });\n\n  it("follows Prandtl-Glauert subsonic Mach scaling for high-AR unswept wing", () => {\n    const deck = parseDatcomDeck(\n      [\n        "CASEID PRANDTL GLAUERT SCALING",\n        "DIM M",\n        " $FLTCON NMACH=2.0, MACH(1)=0.1,0.6, NALPHA=3.0, ALSCHD(1)=0.0,2.0,4.0, NALT=1.0, ALT(1)=0.0$",\n        " $WGPLNF CHRDR=1.0, CHRDTP=1.0, SSPN=10.0, SAVSI=0.0, CHSTAT=0.25, TYPE=1.0$",\n        "NACA-W-4-0012",\n      ].join("\\n"),\n    );\n\n    const c = deck.cases[0]!;\n    const lowM = solveDatcomCase(c, { machIndex: 0 });\n    const highM = solveDatcomCase(c, { machIndex: 1 });\n\n    // For finite AR=20, compressibility increases CL_alpha substantially toward 1/sqrt(1-M^2)\n    const betaLow = Math.sqrt(1 - 0.1 * 0.1);\n    const betaHigh = Math.sqrt(1 - 0.6 * 0.6);\n    const pgRatio2D = betaLow / betaHigh; // 1.2437\n    const actualRatio = highM.CLalphaPerRad / lowM.CLalphaPerRad;\n\n    assert.ok(actualRatio > 1.15,',
+    code: " $FLTCON NMACH=1.0, MACH(1)=0.6, RNNUB(1)=1.2E7$\n $OPTINS SREF=180.0, CBARR=10.5, BLREF=30.0$\n $HTPLNF CHRDTP=2.5, SSPNE=6.0, CHRDR=6.0, SAVSI=30.0$\nNEXT CASE",
   },
   {
     id: "dicom-rt-example-1",
@@ -562,7 +562,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "DOE-2 BDL",
     lang: "doe2",
     description: "DOE-2 BDL (.inp) starter model",
-    code: ';\n\ndescribe("@modelscript/doe2 — BDL Parser", () => {\n  it("parses complete DOE-2.1E/2.2 BDL deck across LOADS, SYSTEMS, PLANT, and ECONOMICS", () => {\n    const doc = parseDoe2(SAMPLE_BDL, "office.inp");\n\n    assert.equal(doc.parseErrors.length, 0,',
+    code: "INPUT ..\nTITLE LINE-1 *DOE-2 OFFICE BUILDING*\nRUN-PERIOD JAN 1 2025 THRU DEC 31 2025\nBUILD-PARAMETERS\n  AREA = 25000\n  AZIMUTH = 0\n..\nEND ..\nCOMPUTE ..",
   },
   {
     id: "dxf-example-1",
@@ -570,7 +570,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "DXF",
     lang: "dxf",
     description: "DXF (.dxf) starter model",
-    code: ');\n\n      // Verify stadium (2 straight edges + 2 semicircular caps) via computeLwPolylineLength & Area\n      const stadium = {\n        type: "LWPOLYLINE" as const,\n        layer: "0",\n        line: 1,\n        startOffset: 0,\n        endOffset: 1,\n        closed: true,\n        elevation: 0,\n        vertices: [\n          { x: 0, y: 0, bulge: 0 },\n          { x: 30, y: 0, bulge: 1 },\n          { x: 30, y: 10, bulge: 0 },\n          { x: 0, y: 10, bulge: 1 },\n        ],\n      };\n      const expectedStadiumPerim = 2 * 30 + 2 * Math.PI * 5;\n      const expectedStadiumArea = 30 * 10 + Math.PI * 25;\n      assertRelErr(computeLwPolylineLength(stadium), expectedStadiumPerim, tolerance, "stadium.perimeter");\n      assertRelErr(computeLwPolylineArea(stadium), expectedStadiumArea, tolerance, "stadium.area");\n    }\n  });\n\n  it("matches analytical hierarchical nested INSERT transforms (base point, scale, rotation, translation)", () => {\n    const tolerance = 1e-9;\n    // Leaf block',
+    code: "0\nSECTION\n2\nENTITIES\n0\nLINE\n8\n0\n10\n0.0\n20\n0.0\n11\n100.0\n21\n50.0\n0\nCIRCLE\n8\n0\n10\n50.0\n20\n25.0\n40\n15.0\n0\nENDSEC\n0\nEOF",
   },
   {
     id: "dxf-example-2",
@@ -738,7 +738,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "FEA",
     lang: "fea",
     description: "FEA (.fea) starter model",
-    code: '));\n\n      // Parse the deck into canonical FeaModelData\n      const parsed = dialect.parse(materialized);\n      assert.strictEqual(parsed.dialect, "inp");\n      assert.strictEqual(parsed.nodes.size, 12);\n      assert.strictEqual(parsed.elements.size, 2);\n\n      // Verify root element and tip element\n      const rootElem = parsed.elements.get(1);\n      assert.ok(rootElem);\n      assert.strictEqual(rootElem.type, "C3D8R");\n      assert.strictEqual(rootElem.nodes.length, 8);\n\n      const tipElem = parsed.elements.get(2);\n      assert.ok(tipElem);\n      assert.strictEqual(tipElem.type, "C3D8R");\n\n      // Verify material properties\n      const mat = parsed.materials.get(c.material);\n      assert.ok(mat,',
+    code: "*HEADING\nCantilever Beam Static Bending\n*NODE\n1, 0.0, 0.0, 0.0\n2, 1.0, 0.0, 0.0\n*ELEMENT, TYPE=B31, ELSET=BEAM\n1, 1, 2\n*MATERIAL, NAME=STEEL\n*ELASTIC\n210e9, 0.3\n*BOUNDARY\n1, 1, 6\n*STEP\n*STATIC\n*CLOAD\n2, 2, -1000.0\n*END STEP",
   },
   {
     id: "febio-example-1",
@@ -778,7 +778,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "FITS",
     lang: "fits",
     description: "FITS (.fits) starter model",
-    code: ",\n        projection,\n        crpix1: 512.5,\n        crpix2: 512.5,\n        crval1: 210.8023,\n        crval2: 54.3489,\n        cd1_1: -scale * Math.cos(theta),\n        cd1_2: scale * Math.sin(theta),\n        cd2_1: scale * Math.sin(theta),\n        cd2_2: scale * Math.cos(theta),\n        lonpole: 180.0,\n      };\n\n      for (const px of testPixels) {\n        const sky = pixelToWorld(wcs, px);\n        const recovered = worldToPixel(wcs, sky);\n        const relErrX = Math.abs(recovered.x - px.x) / Math.max(1.0, Math.abs(px.x));\n        const relErrY = Math.abs(recovered.y - px.y) / Math.max(1.0, Math.abs(px.y));\n\n        assert.ok(\n          relErrX < 1e-10 && relErrY < 1e-10,",
+    code: "SIMPLE  =                    T / Standard FITS format\nBITPIX  =                  -32 / IEEE single precision float\nNAXIS   =                    2 / 2D image\nNAXIS1  =                  512 / Width\nNAXIS2  =                  512 / Height\nOBJECT  = 'M31_ANDROMEDA'      / Target\nEND",
   },
   {
     id: "fits-example-2",
@@ -786,7 +786,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "FITS",
     lang: "fits",
     description: "FITS (.fits) starter model",
-    code: ',\n        );\n      }\n\n      // Verify exact angular separation at reference point vs 100 pixels North along ARC projection\n      if (projection === "ARC") {\n        const unrotatedArc: FitsWcsParams = {\n          ...wcs,\n          cd1_1: -scale,\n          cd1_2: 0,\n          cd2_1: 0,\n          cd2_2: scale,\n        };\n        const center = pixelToWorld(unrotatedArc, { x: 512.5, y: 512.5 });\n        const north100 = pixelToWorld(unrotatedArc, { x: 512.5, y: 612.5 });\n        const sep = angularSeparationDeg(center, north100);\n        const expectedSep = 100.0 * scale;\n        const sepRelErr = Math.abs(sep - expectedSep) / expectedSep;\n        assert.ok(sepRelErr < 1e-10,',
+    code: "SIMPLE  =                    T / Standard FITS format\nBITPIX  =                   16 / 16-bit integer\nNAXIS   =                    2 / 2D spectrum\nNAXIS1  =                 2048 / Wavelength bins\nNAXIS2  =                    1 / 1D extracted\nCRVAL1  =              4000.00 / Angstroms\nCDELT1  =                 1.25 / Angstroms per pixel\nEND",
   },
   {
     id: "fortran-example-1",
@@ -1146,7 +1146,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "IGES",
     lang: "iges",
     description: "IGES (.igs) starter model",
-    code: 'D1`"));\n    assert.ok(dHover.contents.value.includes("Type',
+    code: "ModelScript IGES 5.3 Example                                            S      1\n1H,,1H;,7HPART_01,10HPART_01.IGS,11HModelScript,3H1.0,32,38,6,308,15,  G      1\n7HPART_01,1.0,2,2HMM,1,0.01,13H20250101.0000,1E-5,100.0,6HAuthor,       G      2\n11HModelScript,11,0,13H20250101.0000;                                G      3\n     110       1       0       0       0       0       0       000000001D      1\n     110       0       0       1       0                               D      2\n110,0.0,0.0,0.0,100.0,50.0,0.0;                                        1P      1\nS      1G      3D      2P      1                                        T      1",
   },
   {
     id: "iges-example-2",
@@ -1154,7 +1154,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "IGES",
     lang: "iges",
     description: "IGES (.igs) starter model",
-    code: '"));\n\n    const pHover = getIgesHover(sampleIges, { line: findLine("P"), character: 5 });\n    assert.ok(pHover && pHover.contents.value.includes("Parameter Data for',
+    code: "ModelScript IGES Circle                                                 S      1\n1H,,1H;,6HCIRCLE,10HCIRCLE.IGS,11HModelScript,3H1.0,32,38,6,308,15,;   G      1\n     100       1       0       0       0       0       0       000000001D      1\n     100       0       0       1       0                               D      2\n100,0.0,0.0,0.0,25.0,0.0,25.0,0.0;                                     1P      1\nS      1G      1D      2P      1                                        T      1",
   },
   {
     id: "igtl-example-1",
@@ -1218,7 +1218,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "IUCr CIF",
     lang: "iucr-cif",
     description: "IUCr CIF (.cif) starter model",
-    code: ');\n    assert.equal(metric.crystalSystem, "triclinic");\n\n    const fract: [number, number, number] = [0.23, 0.67, 0.41];\n    const cart = fractionalToCartesian(metric, fract);\n    const back = cartesianToFractional(metric, cart);\n    const rtErr = Math.hypot(back[0] - fract[0], back[1] - fract[1], back[2] - fract[2]);\n    assert.ok(rtErr < 1e-12,',
+    code: "data_silicon\n_cell_length_a   5.4309\n_cell_length_b   5.4309\n_cell_length_c   5.4309\n_cell_angle_alpha 90.0\n_cell_angle_beta  90.0\n_cell_angle_gamma 90.0\n_symmetry_space_group_name_H-M 'F d -3 m'\nloop_\n_atom_site_label\n_atom_site_fract_x\n_atom_site_fract_y\n_atom_site_fract_z\nSi1 0.0000 0.0000 0.0000",
   },
   {
     id: "jcamp-dx-example-1",
@@ -1258,7 +1258,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "JSBSIM",
     lang: "jsbsim",
     description: "JSBSIM (.jsbsim) starter model",
-    code: ");\n  assert.ok(rep.shortPeriodZeta > 0.4 && rep.shortPeriodZeta < 0.9,",
+    code: '<fdm_config name="C172" version="2.0">\n  <metrics>\n    <wingarea unit="FT2">174.0</wingarea>\n    <wingspan unit="FT">35.8</wingspan>\n    <chord unit="FT">4.9</chord>\n  </metrics>\n  <mass_balance>\n    <emptywt unit="LBS">1500</emptywt>\n  </mass_balance>\n</fdm_config>',
   },
   {
     id: "jsbsim-example-2",
@@ -1266,7 +1266,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "JSBSIM",
     lang: "jsbsim",
     description: "JSBSIM (.jsbsim) starter model",
-    code: ");\n  assert.ok(rep.phugoidOmegaRadSec > 0.05 && rep.phugoidOmegaRadSec < 0.4,",
+    code: '<fdm_config name="F16" version="2.0">\n  <metrics>\n    <wingarea unit="FT2">300.0</wingarea>\n    <wingspan unit="FT">30.0</wingspan>\n    <chord unit="FT">11.32</chord>\n  </metrics>\n  <aerodynamics>\n    <axis name="LIFT" />\n    <axis name="DRAG" />\n  </aerodynamics>\n</fdm_config>',
   },
   {
     id: "kicad-example-1",
@@ -1554,7 +1554,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "NetCDF",
     lang: "netcdf",
     description: "NetCDF (.cdl) starter model",
-    code: ");\n      assert.ok(pressErr.relErr < 1e-12,",
+    code: 'netcdf weather_grid {\ndimensions:\n  lat = 180 ;\n  lon = 360 ;\n  time = UNLIMITED ;\nvariables:\n  float temp(time, lat, lon) ;\n    temp:units = "kelvin" ;\n    temp:long_name = "Air Temperature" ;\n}',
   },
   {
     id: "nifti-example-1",
@@ -1578,7 +1578,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "NMEA 0183",
     lang: "nmea0183",
     description: "NMEA 0183 (.nmea) starter model",
-    code: ");\n      assert.ok(schema.parameters.length >= 2,",
+    code: "$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47\n$GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W*6A",
   },
   {
     id: "nmea0183-example-2",
@@ -1586,7 +1586,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "NMEA 0183",
     lang: "nmea0183",
     description: "NMEA 0183 (.nmea) starter model",
-    code: ');\n    }\n\n    // Lookup by full talker+formatter address\n    const gpgga = lookupNmea0183SentenceSchema("$GPGGA");\n    assert.strictEqual(gpgga?.name, "GGA");\n    const sddbt = lookupNmea0183SentenceSchema("SDDBT");\n    assert.strictEqual(sddbt?.name, "DBT");\n  });\n\n  it("instantiates and steps the compiled AssemblyScript cleanroom runtime.wasm", async () => {\n    const wasmBytes = getNmea0183StdLibWasmBytes();\n    assert.ok(wasmBytes.byteLength > 100, "Expected non-empty compiled runtime.wasm");\n\n    const { instance } = await WebAssembly.instantiate(wasmBytes, {});\n    const exports = instance.exports as {\n      memory: WebAssembly.Memory;\n      nmea0183ModelInit: (archetypeId: number, slotPtr: number, conCount: number) => void;\n      nmea0183ModelStep: (archetypeId: number, t: number, dt: number, slotPtr: number, conCount: number) => void;\n    };\n\n    const slotPtr = 4096;\n    const f64 = new Float64Array(exports.memory.buffer);\n    // Write RMC CON[0]=10 knots, CON[1]=90 deg (due East)\n    f64[(slotPtr + 0x080) >> 3] = 10.0;\n    f64[(slotPtr + 0x088) >> 3] = 90.0;\n\n    exports.nmea0183ModelInit(Nmea0183ArchetypeId.RMC, slotPtr, 2);\n    exports.nmea0183ModelStep(Nmea0183ArchetypeId.RMC, 0.0, 2.0, slotPtr, 2);\n\n    const posE = f64[(slotPtr + 0x580) >> 3]!;\n    const posN = f64[(slotPtr + 0x588) >> 3]!;\n    const sDist = f64[(slotPtr + 0x590) >> 3]!;\n\n    const expectedMeters = 10.0 * 0.5144444444444445 * 2.0;\n    assert.ok(Math.abs(posE - expectedMeters) < 1e-6,',
+    code: "$GPGLL,4916.45,N,12311.12,W,225444,A,*1D\n$GPVTG,054.7,T,034.4,M,005.5,N,010.2,K*48",
   },
   {
     id: "nmodl-example-1",
@@ -1626,7 +1626,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "Wavefront OBJ",
     lang: "obj",
     description: "Wavefront OBJ (.obj) starter model",
-    code: ");\n    assert.equal(metrics.eulerCharacteristic, 2);\n    assert.equal(metrics.isWatertight, true);\n    assert.equal(metrics.boundaryEdgeCount, 0);\n    assert.equal(metrics.nonManifoldEdgeCount, 0);\n\n    const bbox = computeBoundingBox(doc);\n    assert.deepEqual(bbox.min, [0, 0, 0]);\n    assert.deepEqual(bbox.max, [1, 1, 1]);\n    assert.deepEqual(bbox.center, [0.5, 0.5, 0.5]);\n    assert.ok(Math.abs(bbox.diagonal - Math.sqrt(3)) < 1e-12);\n\n    // Smooth vertex normals on cube corners should be unit length and point along (±1, ±1, ±1)/√3\n    const normals = computeSmoothVertexNormals(doc, tris);\n    assert.equal(normals.length, 8);\n    for (const [nx, ny, nz] of normals) {\n      const len = Math.sqrt(nx * nx + ny * ny + nz * nz);\n      assert.ok(Math.abs(len - 1.0) < 1e-12,",
+    code: "# Unit Cube\nv 0.0 0.0 0.0\nv 1.0 0.0 0.0\nv 1.0 1.0 0.0\nv 0.0 1.0 0.0\nv 0.0 0.0 1.0\nv 1.0 0.0 1.0\nv 1.0 1.0 1.0\nv 0.0 1.0 1.0\nf 1 2 3 4\nf 5 6 7 8\nf 1 2 6 5",
   },
   {
     id: "obj-example-2",
@@ -1634,7 +1634,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "Wavefront OBJ",
     lang: "obj",
     description: "Wavefront OBJ (.obj) starter model",
-    code: ');\n    }\n  });\n\n  it("maintains exact parity between positive 1-based and negative relative indexing (relErr < 1e-10, rmse < 1e-10)", () => {\n    const posDoc = parseObj(UNIT_CUBE_POSITIVE);\n    const negDoc = parseObj(UNIT_CUBE_NEGATIVE);\n\n    const posMetrics = computeMeshMetrics(posDoc);\n    const negMetrics = computeMeshMetrics(negDoc);\n\n    const posVec = [\n      posMetrics.surfaceArea,\n      posMetrics.signedVolume,\n      posMetrics.centroid[0],\n      posMetrics.centroid[1],\n      posMetrics.centroid[2],\n      posMetrics.unitDensityInertia.ixx,\n      posMetrics.unitDensityInertia.iyy,\n      posMetrics.unitDensityInertia.izz,\n    ];\n    const negVec = [\n      negMetrics.surfaceArea,\n      negMetrics.signedVolume,\n      negMetrics.centroid[0],\n      negMetrics.centroid[1],\n      negMetrics.centroid[2],\n      negMetrics.unitDensityInertia.ixx,\n      negMetrics.unitDensityInertia.iyy,\n      negMetrics.unitDensityInertia.izz,\n    ];\n\n    let sumSq = 0;\n    for (let i = 0; i < posVec.length; i++) {\n      const diff = Math.abs(posVec[i]! - negVec[i]!);\n      const relErr = diff / Math.max(1e-12, Math.abs(posVec[i]!));\n      assert.ok(relErr < 1e-10,',
+    code: "# Pyramid\nv -1.0 0.0 -1.0\nv 1.0 0.0 -1.0\nv 1.0 0.0 1.0\nv -1.0 0.0 1.0\nv 0.0 1.5 0.0\nf 1 2 3 4\nf 1 2 5\nf 2 3 5\nf 3 4 5\nf 4 1 5",
   },
   {
     id: "ocpp-example-1",
@@ -1802,7 +1802,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "OWL2",
     lang: "owl2",
     description: "OWL2 (.owl) starter model",
-    code: ';\n\n  it("parses valid laparoscopic cholecystectomy workflow with zero lint errors", () => {\n    const proc = parseOntoSpm(VALID_LAP_CHOLE, "file:///lap_chole.xml");\n    assert.equal(proc.id, "LapChole_01");\n    assert.equal(proc.phases.length, 4);\n    assert.equal(proc.steps.length, 4);\n    assert.equal(proc.instruments.length, 4);\n    assert.equal(proc.structures.length, 4);\n    assert.equal(proc.checkpoints.length, 1);\n\n    const diags = lintOntoSpmProcedure(proc);\n    assert.equal(diags.length, 0);\n\n    const summary = analyzeSurgicalWorkflow(proc);\n    assert.equal(summary.totalExpectedDurationSec, 675);\n    assert.equal(summary.verifiedCheckpointCount, 1);\n    assert.equal(summary.maxAutonomyLevel, 3);\n\n    const owlText = ontoSpmToOwl2Functional(proc);\n    assert.ok(owlText.includes("Ontology(<http://ontospm.org/lap/cholecystectomy>"));\n    assert.ok(owlText.includes("ClassAssertion(spm:ClippingAction :S2_ClipDuct)"));\n  });\n\n  it("detects M9901–M9910 surgical workflow safety & ontology diagnostics", () => {\n    const INVALID_PROC =',
+    code: "Prefix(:=<http://example.org/robotics#>)\nOntology(<http://example.org/robotics>\n  Declaration(Class(:Actuator))\n  Declaration(Class(:ServoMotor))\n  SubClassOf(:ServoMotor :Actuator)\n)",
   },
   {
     id: "owl2-example-3",
@@ -1810,7 +1810,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "OWL2",
     lang: "owl2",
     description: "OWL2 (.owl) starter model",
-    code: '#…`) are "extras" that the\n * parser skips. When a comment is preceded by whitespace, skipping must resume from the\n * token start reported by the lexer, otherwise the lexer restarts inside the comment\n * and the rest of the document is corrupted.\n */\n\nimport { createWasmParser } from "@modelscript/dsl/bindings";\nimport assert from "node:assert";\nimport path from "node:path";\nimport { describe, it } from "node:test";\nimport { fileURLToPath } from "node:url";\n\nconst __dirname = path.dirname(fileURLToPath(import.meta.url));\nconst { parser } = await createWasmParser(path.resolve(__dirname, "../dist/parser.wasm"));\n\nconst base =',
+    code: "Prefix(:=<http://example.org/grid#>)\nOntology(<http://example.org/grid>\n  Declaration(Class(:Bus))\n  Declaration(Class(:Generator))\n  Declaration(ObjectProperty(:connectedTo))\n)",
   },
   {
     id: "pdb-example-1",
@@ -1874,7 +1874,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "PLOT3D",
     lang: "plot3d",
     description: "PLOT3D (.xyz) starter model",
-    code: ");\n    assert.ok(res.rmseTotalPressureRatio < 1e-10,",
+    code: "1\n3 2 2\n0.0 1.0 2.0\n0.0 1.0 2.0\n0.0 1.0 2.0\n0.0 0.0 0.0\n1.0 1.0 1.0\n0.0 0.0 0.0\n0.0 0.0 0.0\n0.0 0.0 0.0\n1.0 1.0 1.0\n0.0 0.0 0.0\n1.0 1.0 1.0\n0.0 0.0 0.0",
   },
   {
     id: "plscadd-example-1",
@@ -1930,7 +1930,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "PSCAD",
     lang: "pscad",
     description: "PSCAD (.pscx) starter model",
-    code: ';\n    const project = parsePscx(xml);\n    const diags = lintPscx(project);\n    const codes = new Set(diags.map((d) => d.code));\n\n    for (const expected of ["M6028", "M6032", "M6042", "M6045", "M6047", "M6048", "M6049"]) {\n      assert.ok(codes.has(expected),',
+    code: '<project name="ThreePhaseSource" version="4.6">\n  <settings frequency="60.0" timeStep="50e-6" finishTime="0.5" />\n  <buses>\n    <bus id="1" name="POI_230kV" baseKv="230.0" />\n  </buses>\n  <sources>\n    <source id="S1" bus="1" vPeakKv="187.8" frequency="60.0" rOhm="1.2" lH="0.025" />\n  </sources>\n</project>',
   },
   {
     id: "pscad-example-3",
@@ -1938,7 +1938,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "PSCAD",
     lang: "pscad",
     description: "PSCAD (.pscx) starter model",
-    code: ");\n    for (const cell of nodeCells) {\n      assert.ok(Array.isArray(cell.markup) && cell.markup.length > 0,",
+    code: '<project name="HVDC_Link" version="4.6">\n  <settings frequency="60.0" timeStep="25e-6" finishTime="1.0" />\n  <buses>\n    <bus id="1" name="AC_Rectifier" baseKv="345.0" />\n    <bus id="2" name="AC_Inverter" baseKv="345.0" />\n  </buses>\n</project>',
   },
   {
     id: "pslf-example-1",
@@ -2106,7 +2106,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "SBML",
     lang: "sbml",
     description: "SBML (.sbml) starter model",
-    code: ';\n\n  const doc = parseSbml(advancedSbml);\n  assert.equal(doc.model.functionDefinitions?.size, 1);\n  assert.equal(doc.model.rules?.length, 2);\n  assert.equal(doc.model.events?.length, 1);\n\n  const res = simulateSbmlReactions(doc, {\n    duration: 5.0,\n    timeStep: 0.02,\n    method: "rosenbrock",\n  });\n\n  assert.ok(\n    Math.abs((res.finalConcentrations["Stot"] ?? 0) - 14.0) < 1e-6,',
+    code: '<?xml version="1.0" encoding="UTF-8"?>\n<sbml xmlns="http://www.sbml.org/sbml/level3/version2/core" level="3" version="2">\n  <model id="DecayModel">\n    <listOfCompartments><compartment id="cell" size="1" constant="true"/></listOfCompartments>\n    <listOfSpecies><species id="A" compartment="cell" initialAmount="10" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/></listOfSpecies>\n  </model>\n</sbml>',
   },
   {
     id: "sbml-example-3",
@@ -2114,7 +2114,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "SBML",
     lang: "sbml",
     description: "SBML (.sbml) starter model",
-    code: ',\n  );\n  assert.ok(\n    Math.abs((res.finalConcentrations["X"] ?? 0) - Math.exp(-2.5)) < 0.01,',
+    code: '<?xml version="1.0" encoding="UTF-8"?>\n<sbml xmlns="http://www.sbml.org/sbml/level3/version2/core" level="3" version="2">\n  <model id="EnzymeKinetics">\n    <listOfCompartments><compartment id="c1" size="1" constant="true"/></listOfCompartments>\n    <listOfSpecies><species id="S" compartment="c1" initialConcentration="5.0" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/></listOfSpecies>\n  </model>\n</sbml>',
   },
   {
     id: "sbol-example-1",
@@ -2194,7 +2194,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "SDL-88",
     lang: "sdl",
     description: "SDL-88 (.sdl) starter model",
-    code: ';\n\ndescribe("SDL-88 PR Parser", () => {\n  it("parses SYSTEM, BLOCK, PROCESS, CHANNEL, SIGNALROUTE, CONNECT, SIGNAL, DCL, TIMER, STATE, DECISION", () => {\n    const model = parseSdl(SAMPLE_SDL);\n    assert.strictEqual(model.name, "TelecomABP");\n    assert.strictEqual(model.syntaxErrors.length, 0);\n    assert.strictEqual(model.signals.length, 4);\n    assert.strictEqual(model.channels.length, 1);\n    assert.strictEqual(model.channels[0]?.paths.length, 2);\n    assert.strictEqual(model.blocks.length, 2);\n\n    const sender = model.blocks[0]?.processes[0];\n    assert.ok(sender);\n    assert.strictEqual(sender.name, "Sender");\n    assert.strictEqual(sender.variables.length, 2);\n    assert.strictEqual(sender.timers.length, 1);\n    assert.strictEqual(sender.timers[0]?.name, "T_retx");\n    assert.ok(sender.start);\n    assert.strictEqual(sender.states.length, 2);\n\n    const receiver = model.blocks[1]?.processes[0];\n    assert.ok(receiver);\n    const readyInput = receiver.states[0]?.inputs[0];\n    assert.ok(readyInput);\n    assert.strictEqual(readyInput.transition.actions[0]?.kind, "decision");\n    if (readyInput.transition.actions[0]?.kind === "decision") {\n      assert.strictEqual(readyInput.transition.actions[0].branches.length, 2);\n    }\n  });\n\n  it("handles STOP terminator and /* */ comments", () => {\n    const src =',
+    code: "SYSTEM TrafficController;\n  SIGNAL Tick, Green, Red;\n  BLOCK Controller REFERENCED;\nENDSYSTEM TrafficController;\nPROCESS Controller;\n  START;\n    NEXTSTATE Idle;\n  STATE Idle;\n    INPUT Tick;\n    OUTPUT Green;\n    NEXTSTATE Active;\nENDPROCESS Controller;",
   },
   {
     id: "sedml-example-1",
@@ -2354,7 +2354,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "SMILES",
     lang: "smiles",
     description: "SMILES (.smi) starter model",
-    code: "CCO ethanol\nc1ccccc1 benzene\n`;\n\n  const invalidSource =",
+    code: "CCO ethanol\nc1ccccc1 benzene\nCC(=O)Oc1ccccc1C(=O)O aspirin",
   },
   {
     id: "sparql-example-1",
@@ -2418,7 +2418,7 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     category: "SSP",
     lang: "ssp",
     description: "SSP (.ssp) starter model",
-    code: ';\n\n  const ssvXml = `<?xml version="1.0" encoding="UTF-8"?>\n<ssv:ParameterSet xmlns:ssv="http://ssp-standard.org/SSP1/SystemStructureParameterValues"\n                  version="1.0"\n                  name="DefaultParams">\n  <ssv:Parameters>\n    <ssv:Parameter name="maxTorque">\n      <ssv:Real value="350.0" />\n    </ssv:Parameter>\n    <ssv:Parameter name="enableRegen">\n      <ssv:Boolean value="true" />\n    </ssv:Parameter>\n    <ssv:Parameter name="gearCount">\n      <ssv:Integer value="2" />\n    </ssv:Parameter>\n  </ssv:Parameters>\n</ssv:ParameterSet>',
+    code: '<?xml version="1.0" encoding="UTF-8"?>\n<ssd:SystemStructureDescription xmlns:ssd="http://ssp-standard.org/SSP1/SystemStructureDescription" version="1.0" name="ThermalLoop">\n  <ssd:System name="Root">\n    <ssd:Elements>\n      <ssd:Component name="Heater" type="application/x-fmu-sharedlibrary" source="Heater.fmu" />\n      <ssd:Component name="Sensor" type="application/x-fmu-sharedlibrary" source="Sensor.fmu" />\n    </ssd:Elements>\n  </ssd:System>\n</ssd:SystemStructureDescription>',
   },
   {
     id: "step-example-2",

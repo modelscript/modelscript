@@ -152,18 +152,37 @@ export async function lintPssePscadCrossDomain(
     import("@modelscript/dsl/xml"),
   ]);
 
-  const rawCases = rawEntries.map(([uri, txt]) => ({
-    uri,
-    parsed: getOrParseCached(rawParseCache, uri, txt, parseRaw),
-  }));
-  const dyrRecords = dyrEntries.flatMap(([uri, txt]) => getOrParseCached(dyrParseCache, uri, txt, parseDyr).records);
-  const seqXfmrs = seqEntries.flatMap(([uri, txt]) => getOrParseCached(seqParseCache, uri, txt, parseSeq).transformers);
-  const pscadCases = pscxEntries.map(([uri, txt]) => {
-    const cached = getOrParseCached(pscxParseCache, uri, txt, (t) => {
-      const project = parsePscx(t);
-      return { project, netlist: extractEmtNetlist(project) };
-    });
-    return { uri, project: cached.project, netlist: cached.netlist };
+  const rawCases = rawEntries.flatMap(([uri, txt]) => {
+    try {
+      return [{ uri, parsed: getOrParseCached(rawParseCache, uri, txt, parseRaw) }];
+    } catch {
+      return [];
+    }
+  });
+  const dyrRecords = dyrEntries.flatMap(([uri, txt]) => {
+    try {
+      return getOrParseCached(dyrParseCache, uri, txt, parseDyr).records;
+    } catch {
+      return [];
+    }
+  });
+  const seqXfmrs = seqEntries.flatMap(([uri, txt]) => {
+    try {
+      return getOrParseCached(seqParseCache, uri, txt, parseSeq).transformers;
+    } catch {
+      return [];
+    }
+  });
+  const pscadCases = pscxEntries.flatMap(([uri, txt]) => {
+    try {
+      const cached = getOrParseCached(pscxParseCache, uri, txt, (t) => {
+        const project = parsePscx(t);
+        return { project, netlist: extractEmtNetlist(project) };
+      });
+      return [{ uri, project: cached.project, netlist: cached.netlist }];
+    } catch {
+      return [];
+    }
   });
 
   const diagnostics: WorkspaceLintDiagnostic[] = [];
