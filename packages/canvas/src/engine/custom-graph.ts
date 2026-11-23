@@ -239,6 +239,95 @@ function defaultPolylinePath(
 
 let autoCellCounter = 1;
 
+function resolvePortScalar(raw: unknown, total: number): number | undefined {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (trimmed.endsWith("%")) {
+      const pct = parseFloat(trimmed.slice(0, -1));
+      return Number.isFinite(pct) ? (pct / 100) * total : undefined;
+    }
+    const n = parseFloat(trimmed);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}
+
+function resolvePortsWithGroups(
+  items: UnifiedPortItem[],
+  groups: Record<string, unknown>,
+  width: number,
+  height: number,
+): UnifiedPortItem[] {
+  const countsByGroup = new Map<string, number>();
+  for (const p of items) {
+    const g = p.group ?? "";
+    countsByGroup.set(g, (countsByGroup.get(g) ?? 0) + 1);
+  }
+  const indexByGroup = new Map<string, number>();
+
+  return items.map((raw) => {
+    const p: UnifiedPortItem = { ...raw, args: raw.args ? { ...raw.args } : {} };
+    const grpName = p.group ?? "";
+    const idx = indexByGroup.get(grpName) ?? 0;
+    indexByGroup.set(grpName, idx + 1);
+    const totalInGroup = countsByGroup.get(grpName) ?? 1;
+
+    const grpSpec =
+      grpName && typeof groups[grpName] === "object" && groups[grpName] !== null
+        ? (groups[grpName] as Record<string, unknown>)
+        : null;
+
+    if (!p.markup && grpSpec?.["markup"]) {
+      p.markup = grpSpec["markup"] as DiagramMarkupNode | DiagramMarkupNode[];
+    }
+    if (!p.attrs && grpSpec?.["attrs"]) {
+      p.attrs = grpSpec["attrs"] as Record<string, Record<string, unknown>>;
+    }
+
+    const posSpec = grpSpec?.["position"];
+    const posName =
+      typeof posSpec === "string"
+        ? posSpec
+        : posSpec && typeof posSpec === "object"
+          ? String((posSpec as Record<string, unknown>)["name"] ?? "")
+          : grpName;
+    const posArgs =
+      posSpec && typeof posSpec === "object" && typeof (posSpec as Record<string, unknown>)["args"] === "object"
+        ? ((posSpec as Record<string, unknown>)["args"] as Record<string, unknown>)
+        : undefined;
+
+    const rawX = (p.args as Record<string, unknown> | undefined)?.["x"] ?? posArgs?.["x"];
+    const rawY = (p.args as Record<string, unknown> | undefined)?.["y"] ?? posArgs?.["y"];
+    let x = resolvePortScalar(rawX, width);
+    let y = resolvePortScalar(rawY, height);
+
+    const frac = (idx + 1) / (totalInGroup + 1);
+    if (x === undefined || y === undefined) {
+      if (posName === "left" || posName === "in") {
+        if (x === undefined) x = 0;
+        if (y === undefined) y = height * frac;
+      } else if (posName === "right" || posName === "out") {
+        if (x === undefined) x = width;
+        if (y === undefined) y = height * frac;
+      } else if (posName === "top") {
+        if (x === undefined) x = width * frac;
+        if (y === undefined) y = 0;
+      } else if (posName === "bottom") {
+        if (x === undefined) x = width * frac;
+        if (y === undefined) y = height;
+      }
+    }
+
+    p.args = {
+      ...(p.args ?? {}),
+      x: x ?? 0,
+      y: y ?? 0,
+    };
+    return p;
+  });
+}
+
 /**
  * Unified Cell (Node or Edge) backed by `SoaSceneGraph` and `CompiledGlyph`.
  * Implements the full drop-in API surface previously satisfied by AntV X6 cells.
@@ -313,10 +402,11 @@ export class UnifiedCell {
         | UnifiedPortItem[]
         | undefined;
       if (Array.isArray(rawPorts)) {
-        this.ports = rawPorts.map((p) => ({ ...p }));
+        this.ports = resolvePortsWithGroups(rawPorts, this.portGroups, this.width, this.height);
       } else if (rawPorts && typeof rawPorts === "object") {
-        this.ports = Array.isArray(rawPorts.items) ? rawPorts.items.map((p) => ({ ...p })) : [];
         this.portGroups = rawPorts.groups ? { ...rawPorts.groups } : {};
+        const rawItems = Array.isArray(rawPorts.items) ? rawPorts.items : [];
+        this.ports = resolvePortsWithGroups(rawItems, this.portGroups, this.width, this.height);
       }
       this.compiledGlyph = compileGlyphMarkup(this.markup, this.attrs, this.width, this.height);
     } else {
@@ -555,12 +645,81 @@ export class UnifiedCell {
       if (key === "source/anchor") return this.source?.anchor;
       if (key === "target/anchor") return this.target?.anchor;
       if (key === "zIndex") return this.zIndex;
+      if (key === "ports") return { items: this.ports, groups: this.portGroups };
       return this.customProps.get(key);
     }
     if (key === "source/anchor" && this.source) this.source.anchor = val;
     else if (key === "target/anchor" && this.target) this.target.anchor = val;
     else if (key === "zIndex" && typeof val === "number") this.setZIndex(val);
-    else this.customProps.set(key, val);
+    else if (key === "ports") {
+      if (Array.isArray(val)) {
+        this.ports = resolvePortsWithGroups(val as UnifiedPortItem[], this.portGroups, this.width, this.height);
+      } else if (val && typeof val === "object") {
+        const obj = val as { items?: UnifiedPortItem[] | undefined; groups?: Record<string, unknown> | undefined };
+        if (obj.groups) this.portGroups = { ...obj.groups };
+        const rawItems = Array.isArray(obj.items) ? obj.items : [];
+        this.ports = resolvePortsWithGroups(rawItems, this.portGroups, this.width, this.height);
+      }
+      this.graph?.scene.setNodePorts(
+        this.id,
+        this.ports.map((p) => ({
+          id: p.id,
+          group: p.group,
+          x: p.args?.x ?? 0,
+          y: p.args?.y ?? 0,
+          angle: p.args?.angle,
+        })),
+      );
+      this.graph?.rebuildCellDom(this);
+    } else this.customProps.set(key, val);
+    return this;
+  }
+
+  public setPortProp(portId: string, path: string | string[], val?: unknown): this {
+    const port = this.ports.find((p) => p.id === portId);
+    if (!port) return this;
+    const key = Array.isArray(path) ? path.join("/") : path;
+    if (key === "args" && val && typeof val === "object") {
+      port.args = { ...(port.args ?? {}), ...(val as Record<string, unknown>) };
+    } else if (key.startsWith("args/")) {
+      const sub = key.slice(5);
+      port.args = { ...(port.args ?? {}), [sub]: val };
+    } else if (key === "attrs" && val && typeof val === "object") {
+      port.attrs = { ...(port.attrs ?? {}), ...(val as Record<string, Record<string, unknown>>) };
+    } else if (key.startsWith("attrs/")) {
+      const rest = key.slice(6);
+      const slash = rest.indexOf("/");
+      if (slash > 0) {
+        const sel = rest.slice(0, slash);
+        const attrKey = rest.slice(slash + 1);
+        port.attrs = port.attrs ?? {};
+        port.attrs[sel] = { ...(port.attrs[sel] ?? {}), [attrKey]: val };
+      }
+    } else if (key === "markup") {
+      port.markup = val as DiagramMarkupNode | DiagramMarkupNode[] | undefined;
+    }
+    this.ports = resolvePortsWithGroups(this.ports, this.portGroups, this.width, this.height);
+    this.graph?.scene.setNodePorts(
+      this.id,
+      this.ports.map((p) => ({
+        id: p.id,
+        group: p.group,
+        x: p.args?.x ?? 0,
+        y: p.args?.y ?? 0,
+        angle: p.args?.angle,
+      })),
+    );
+    const updatedPort = this.ports.find((p) => p.id === portId);
+    const containerEl = this.view?.container;
+    const existingPortEl =
+      (key === "args" || key.startsWith("args/")) && containerEl
+        ? containerEl.querySelector(`.x6-port[port-id="${portId}"], .x6-port[port="${portId}"]`)
+        : null;
+    if (existingPortEl && updatedPort) {
+      existingPortEl.setAttribute("transform", `translate(${updatedPort.args?.x ?? 0}, ${updatedPort.args?.y ?? 0})`);
+    } else {
+      this.graph?.rebuildCellDom(this);
+    }
     return this;
   }
 
@@ -896,11 +1055,12 @@ export class UnifiedGraph {
           for (const [id, pt] of Object.entries(moves)) {
             const cell = this.cells.get(id);
             if (!cell) continue;
+            const prev = { x: cell.x, y: cell.y };
             cell.x = pt.x;
             cell.y = pt.y;
             this.syncCellDom(cell);
             this.refreshConnectedEdges(cell);
-            this.emit("node:change:position", { cell, node: cell, current: pt });
+            this.emit("node:change:position", { cell, node: cell, current: pt, previous: prev });
             if (committed) {
               this.emit("node:moved", { cell, node: cell });
             }
@@ -911,6 +1071,7 @@ export class UnifiedGraph {
         onNodeResized: (nodeId, bounds, committed) => {
           const cell = this.cells.get(nodeId);
           if (!cell) return;
+          const prev = { width: cell.width, height: cell.height };
           cell.x = bounds.x;
           cell.y = bounds.y;
           cell.width = bounds.width;
@@ -921,6 +1082,7 @@ export class UnifiedGraph {
             cell,
             node: cell,
             current: { width: bounds.width, height: bounds.height },
+            previous: prev,
           });
           this.emit(committed ? "node:resized" : "node:resizing", { cell, node: cell });
           this.syncSelectionBoxesDom();
@@ -941,6 +1103,12 @@ export class UnifiedGraph {
           const edge = this.options.connecting?.createEdge ? this.options.connecting.createEdge() : this.createEdge({});
           edge.setSource({ cell: sourceNodeId, port: sourcePortId });
           edge.setTarget({ cell: targetNodeId, port: targetPortId });
+          if (!edge.getRouter() && this.options.connecting?.router) {
+            edge.setRouter(this.options.connecting.router);
+          }
+          if (!edge.getConnector() && this.options.connecting?.connector) {
+            edge.setConnector(this.options.connecting.connector);
+          }
           this.addEdge(edge);
           this.emit("edge:connected", { isNew: true, edge, cell: edge });
         },
@@ -971,7 +1139,91 @@ export class UnifiedGraph {
             this.wirePreviewPathEl.setAttribute("d", "");
             return;
           }
-          const d = `M ${preview.sourcePoint.x} ${preview.sourcePoint.y} L ${preview.currentPoint.x} ${preview.currentPoint.y}`;
+          const srcPt = preview.sourcePoint;
+          const tgtPt = preview.snappedTarget
+            ? { x: preview.snappedTarget.x, y: preview.snappedTarget.y }
+            : preview.currentPoint;
+          let routePts: WorldPoint[] = [];
+
+          const srcCell = this.cells.get(preview.sourceNodeId);
+          const tgtCell = preview.snappedTarget ? this.cells.get(preview.snappedTarget.nodeId) : undefined;
+          const mockEdge = {
+            id: "__wiring_preview__",
+            getSource: () => ({ cell: preview.sourceNodeId, port: preview.sourcePortId }),
+            getTarget: () =>
+              preview.snappedTarget
+                ? { cell: preview.snappedTarget.nodeId, port: preview.snappedTarget.portId }
+                : { x: tgtPt.x, y: tgtPt.y },
+            getSourceCell: () => srcCell ?? null,
+            getTargetCell: () => tgtCell ?? null,
+            getSourcePortId: () => preview.sourcePortId,
+            getTargetPortId: () => preview.snappedTarget?.portId,
+            getSourcePoint: () => srcPt,
+            getTargetPoint: () => tgtPt,
+            getVertices: () => [],
+          };
+          const mockView: UnifiedCellView = {
+            cell: mockEdge as unknown as UnifiedCell,
+            graph: this,
+            container: null,
+            sourcePoint: srcPt,
+            targetPoint: tgtPt,
+            routePoints: [],
+            getVertexIndex: () => -1,
+          };
+
+          const routerSpec = this.options.connecting?.router;
+          const routerName =
+            typeof routerSpec === "string"
+              ? routerSpec
+              : routerSpec && typeof routerSpec === "object"
+                ? (routerSpec as { name?: string | undefined }).name
+                : undefined;
+          const routerFn = routerName ? UnifiedGraph.routerRegistry.get(routerName) : undefined;
+          if (routerFn) {
+            try {
+              const routerArgs =
+                routerSpec && typeof routerSpec === "object"
+                  ? ((routerSpec as { args?: Record<string, unknown> | undefined }).args ?? {})
+                  : {};
+              const routed = routerFn([], routerArgs, mockView);
+              if (Array.isArray(routed)) {
+                routePts = routed;
+              }
+            } catch {
+              routePts = [];
+            }
+          }
+
+          if (routePts.length === 0 && Math.abs(tgtPt.x - srcPt.x) > 1 && Math.abs(tgtPt.y - srcPt.y) > 1) {
+            const portWorld = this.scene.getPortWorldPosition(preview.sourceNodeId, preview.sourcePortId);
+            const horiz = portWorld ? Math.abs(portWorld.nx) >= Math.abs(portWorld.ny) : true;
+            routePts = horiz ? [{ x: tgtPt.x, y: srcPt.y }] : [{ x: srcPt.x, y: tgtPt.y }];
+          }
+          mockView.routePoints = routePts;
+
+          const connSpec = this.options.connecting?.connector;
+          const connName =
+            typeof connSpec === "string"
+              ? connSpec
+              : connSpec && typeof connSpec === "object"
+                ? ((connSpec as { name?: string | undefined }).name ?? "rounded")
+                : "rounded";
+          const connArgs =
+            connSpec && typeof connSpec === "object"
+              ? ((connSpec as { args?: Record<string, unknown> | undefined }).args ?? {})
+              : {};
+          const connFn = UnifiedGraph.connectorRegistry.get(connName);
+          let d = "";
+          if (connFn) {
+            try {
+              d = connFn(srcPt, tgtPt, routePts, connArgs, mockView);
+            } catch {
+              d = defaultPolylinePath(srcPt, tgtPt, routePts, connName);
+            }
+          } else {
+            d = defaultPolylinePath(srcPt, tgtPt, routePts, connName);
+          }
           this.wirePreviewPathEl.setAttribute("d", d);
         },
         onNodeInteractiveClick: (nodeId, phase) => {
@@ -993,6 +1245,32 @@ export class UnifiedGraph {
             sourcePort: sPort,
             targetPort: tPort,
           });
+        },
+        validateMagnet: (nodeId, portId) => {
+          const vm = this.options.connecting?.validateMagnet;
+          if (!vm) return true;
+          const cell = this.cells.get(nodeId) ?? null;
+          const view = cell ? this.findViewByCell(cell) : null;
+          const magnet =
+            view?.container?.querySelector?.(`.x6-port[port="${portId}"], .x6-port[port-id="${portId}"]`) ?? null;
+          return vm({ cell, magnet });
+        },
+        canInteract: (cellId) => {
+          const inter = this.options.interacting;
+          if (inter === undefined || inter === true) return true;
+          if (inter === false) return false;
+          const cell = this.cells.get(cellId);
+          if (!cell) return true;
+          return inter({ cell });
+        },
+        selectionFilter: (cellId) => {
+          const selPlugin = this.getPlugin("selection");
+          const filter = selPlugin instanceof UnifiedSelection ? selPlugin.options.filter : undefined;
+          if (!filter) return true;
+          const cell = this.cells.get(cellId);
+          if (!cell) return true;
+          if (typeof filter === "function") return filter(cell);
+          return true;
         },
       },
       { gridSize: this.gridSize },
@@ -1103,8 +1381,9 @@ export class UnifiedGraph {
     const previewPath = document.createElementNS(SVG_NS, "path");
     previewPath.setAttribute("fill", "none");
     previewPath.setAttribute("stroke", "#0891b2");
-    previewPath.setAttribute("stroke-width", "2");
+    previewPath.setAttribute("stroke-width", "1.5");
     previewPath.setAttribute("stroke-dasharray", "5 4");
+    previewPath.setAttribute("vector-effect", "non-scaling-stroke");
     previewPath.setAttribute("pointer-events", "none");
 
     toolsG.appendChild(guidesG);
@@ -1221,6 +1500,21 @@ export class UnifiedGraph {
           return;
         }
       }
+      if (e.button === 0) {
+        (root as { setPointerCapture?: (id: number) => void }).setPointerCapture?.(e.pointerId);
+      }
+      let pointerPortHit: { nodeId: string; portId: string } | null = null;
+      const targetEl = e.target as Element | null;
+      const portEl = targetEl?.closest?.(".x6-port, [data-port], [magnet='true']");
+      if (portEl) {
+        const portId =
+          portEl.getAttribute("port-id") ?? portEl.getAttribute("port") ?? portEl.getAttribute("data-port");
+        const nodeEl = portEl.closest?.("[data-cell-id]");
+        const nodeId = nodeEl?.getAttribute("data-cell-id");
+        if (nodeId && portId) {
+          pointerPortHit = { nodeId, portId };
+        }
+      }
       this.fsm.handleEvent({
         planeId: "primary",
         u,
@@ -1234,6 +1528,7 @@ export class UnifiedGraph {
         metaKey: e.metaKey,
         altKey: e.altKey,
         phase: "down",
+        pointerPortHit,
       });
     };
 
@@ -1281,6 +1576,7 @@ export class UnifiedGraph {
     };
 
     const onPointerUp = (e: PointerEvent) => {
+      (root as { releasePointerCapture?: (id: number) => void }).releasePointerCapture?.(e.pointerId);
       const { u, v, sx, sy } = toLocal(e);
       if (this.activeWidgetInteraction) {
         const finished = this.activeWidgetInteraction;
@@ -2528,6 +2824,7 @@ export class UnifiedGraph {
 
   private applyViewportTransformDom(): void {
     const s = this.camera.getState();
+    this.fsm.setPortSnapRadius(Math.max(4, Math.min(24, 14 / Math.max(0.05, s.zoom))));
     if (this.viewportG) {
       this.viewportG.setAttribute("transform", `matrix(${s.zoom},0,0,${s.zoom},${s.tx},${s.ty})`);
     }
@@ -3099,6 +3396,25 @@ export class UnifiedGraph {
 
   private syncSelectionBoxesDom(): void {
     if (!this.selectionOverlayEl || typeof document === "undefined") return;
+    const mode = this.fsm.mode;
+    if (mode === "resizing" || mode === "rotating") {
+      for (const id of this.selectedIds) {
+        const cell = this.cells.get(id);
+        if (!cell || !cell.isNode()) continue;
+        const existingBox = this.selectionOverlayEl.querySelector(
+          `.x6-widget-selection-box[data-cell-id="${cell.id}"]`,
+        ) as HTMLElement | null;
+        if (existingBox) {
+          const rect = this.coord.localToGraphRect(cell.getBBox());
+          existingBox.style.left = `${rect.x}px`;
+          existingBox.style.top = `${rect.y}px`;
+          existingBox.style.width = `${rect.width}px`;
+          existingBox.style.height = `${rect.height}px`;
+          existingBox.style.transform = cell.angle !== 0 ? `rotate(${cell.angle}deg)` : "";
+        }
+      }
+      return;
+    }
     this.selectionOverlayEl.innerHTML = "";
     const handles: ResizeHandleKind[] = ["nw", "ne", "se", "sw", "rotate"];
 
@@ -3154,6 +3470,7 @@ export class UnifiedGraph {
         }
         dot.addEventListener("pointerdown", (e) => {
           e.stopPropagation();
+          (this.container as { setPointerCapture?: (id: number) => void } | null)?.setPointerCapture?.(e.pointerId);
           const pt = this.clientToLocal(e.clientX, e.clientY);
           this.fsm.startResize(cell.id, h, pt.x, pt.y);
         });
