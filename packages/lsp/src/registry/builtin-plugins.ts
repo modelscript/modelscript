@@ -1002,7 +1002,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     customHandlers: {
       symbols: (treeWrapper: TreeWrapperInput) => {
         const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
-        const uri = typeof treeWrapper?.uri === "string" ? treeWrapper.uri : "model.raw";
+        const uri =
+          typeof treeWrapper !== "string" && typeof treeWrapper?.uri === "string" ? treeWrapper.uri : "model.raw";
         return getPsseDocumentSymbols(text, uri);
       },
       hover: (offset: number, text: string, uri?: string) => {
