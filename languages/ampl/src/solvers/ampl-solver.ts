@@ -6,30 +6,22 @@
  * and first-class AMPL suffix attribution (.val, .rc, .dual, .slack, .body, .status).
  */
 
-import {
-  besselJ0,
-  besselJ1,
-  besselY0,
-  besselY1,
-  erf,
-  erfc,
-  gamma,
-  lgamma,
-  normal,
-  normal01,
-  normalPdf,
-} from "../instantiator/special-functions.js";
 import { presolveAmplProblem, unrollPostsolve, type PresolveResult } from "../presolve/ampl-presolver.js";
 import type {
   AmplSolverOptions,
   AmplSolverResult,
   BasisStatus,
   ConstraintSuffixes,
-  FlatExpression,
   InstantiatedProblem,
-  InstantiatedVar,
   VariableSuffixes,
 } from "../types.js";
+import {
+  evalFlatExpr,
+  solveGlobalNonlinear,
+  solveMinlpBranchAndBound,
+  solveNlpAugmentedLagrangian,
+  solveWithCoinorIpopt,
+} from "./nlp-solvers.js";
 
 export interface CscMatrix {
   values: number[];
@@ -128,20 +120,23 @@ export async function solveAmpl(problem: InstantiatedProblem, options?: AmplSolv
     }
   }
 
-  // Dispatch to HiGHS (prefer native in-memory library, fall back to external binary)
+  // Dispatch to HiGHS (prefer native in-memory library, fall back to external binary in Node or WASM/TS in browser)
   if (options?.solver === "highs") {
-    const { probeNativeSolverLibrary, solveWithNativeFfi } = await import("./native-ffi/index.js");
-    const probe = probeNativeSolverLibrary("highs");
-    if (probe.available) {
-      const nativeRes = await solveWithNativeFfi(problem, "highs", options);
-      return attachSuffixesAndCleanAux(problem, nativeRes);
+    const isBrowser = typeof window !== "undefined";
+    if (!isBrowser) {
+      const { probeNativeSolverLibrary, solveWithNativeFfi } = await import("./native-ffi/index.js");
+      const probe = probeNativeSolverLibrary("highs");
+      if (probe.available) {
+        const nativeRes = await solveWithNativeFfi(problem, "highs", options);
+        return attachSuffixesAndCleanAux(problem, nativeRes);
+      }
+      const { solveWithExternalSolver } = await import("./external-solver.js");
+      const extRes = await solveWithExternalSolver(problem, "highs", {
+        tolerance: options.tolerance,
+        maxIterations: options.maxIterations,
+      });
+      return attachSuffixesAndCleanAux(problem, extRes);
     }
-    const { solveWithExternalSolver } = await import("./external-solver.js");
-    const extRes = await solveWithExternalSolver(problem, "highs", {
-      tolerance: options.tolerance,
-      maxIterations: options.maxIterations,
-    });
-    return attachSuffixesAndCleanAux(problem, extRes);
   }
 
   // Dispatch to external binary solvers (CPLEX, SCIP)
@@ -212,7 +207,6 @@ async function solveCoreProblem(
   startTime: number,
 ): Promise<AmplSolverResult> {
   const nVars = problem.variables.length;
-  const isMaximize = problem.objective.direction === "maximize";
 
   // Trivial 0-variable problem (all variables eliminated by presolve)
   if (nVars === 0) {
@@ -230,74 +224,56 @@ async function solveCoreProblem(
   }
 
   const isLinear = problem.problemClass === "LP" || problem.problemClass === "MILP";
+  const hasInteger = problem.variables.some((v) => v.type === "integer" || v.type === "binary" || v.type === "semiint");
+  const requested = options?.solver ?? "auto";
+  const effectiveSolver =
+    requested === "auto" || requested === "highs"
+      ? isLinear
+        ? hasInteger || problem.problemClass === "MILP"
+          ? "cbc"
+          : "clp"
+        : hasInteger || problem.problemClass === "MINLP"
+          ? "bonmin"
+          : "ipopt"
+      : requested;
 
-  if (isLinear && (options?.solver === "clp" || options?.solver === "cbc")) {
-    try {
-      const { loadCoinorWasm } = await import("@modelscript/simulate/optimizer");
-      const coinor = await loadCoinorWasm();
-      const lpProblem = buildLpProblem(problem);
-
-      if (problem.problemClass === "MILP" || options?.solver === "cbc") {
-        const res = coinor.cbc(lpProblem, {
-          tolerance: options?.tolerance,
-          maxIterations: options?.maxIterations,
-          printLevel: options?.printLevel,
-        });
-
-        const solVars: Record<string, number> = {};
-        for (let i = 0; i < nVars; i++) {
-          solVars[problem.variables[i]!.name] = res.solution[i] ?? 0;
-        }
-
-        const objVal = isMaximize
-          ? -res.objectiveValue + problem.objective.expr.constant
-          : res.objectiveValue + problem.objective.expr.constant;
-
-        return {
-          problemName: problem.name,
-          problemClass: problem.problemClass,
-          status: res.status === 0 ? "OPTIMAL" : "INFEASIBLE",
-          statusCode: res.status,
-          message: res.message,
-          objectiveValue: objVal,
-          variables: solVars,
-          iterations: res.iterations,
-          solveTimeMs: Date.now() - startTime,
-        };
-      }
-
-      // Continuous LP via CLP
-      const res = coinor.clp(lpProblem, {
-        tolerance: options?.tolerance,
-        maxIterations: options?.maxIterations,
-        printLevel: options?.printLevel,
-      });
-
-      const solVars: Record<string, number> = {};
-      for (let i = 0; i < nVars; i++) {
-        solVars[problem.variables[i]!.name] = res.solution[i] ?? 0;
-      }
-
-      const objVal = isMaximize
-        ? -res.objectiveValue + problem.objective.expr.constant
-        : res.objectiveValue + problem.objective.expr.constant;
-
-      return {
-        problemName: problem.name,
-        problemClass: problem.problemClass,
-        status: res.status === 0 ? "OPTIMAL" : "INFEASIBLE",
-        statusCode: res.status,
-        message: res.message,
-        objectiveValue: objVal,
-        variables: solVars,
-        iterations: res.iterations,
-        solveTimeMs: Date.now() - startTime,
-      };
-    } catch {
-      // Fallback to pure-JS simplex/branch-and-bound
-    }
+  // Global & metaheuristic nonlinear/MINLP solvers (Couenne, DE, CMA-ES, PSO)
+  if (
+    !isLinear &&
+    (effectiveSolver === "couenne" ||
+      effectiveSolver === "de" ||
+      effectiveSolver === "cma-es" ||
+      effectiveSolver === "pso")
+  ) {
+    return solveGlobalNonlinear(problem, options, startTime, effectiveSolver);
   }
 
+  // MINLP Branch-and-Bound (Bonmin)
+  if (!isLinear && effectiveSolver === "bonmin") {
+    return solveMinlpBranchAndBound(problem, options, startTime);
+  }
+
+  // Local NLP (IPOPT WASM with L-BFGS-B Augmented Lagrangian fallback)
+  if (!isLinear && effectiveSolver === "ipopt") {
+    if (hasInteger) {
+      return solveMinlpBranchAndBound(problem, options, startTime);
+    }
+    return solveWithCoinorIpopt(problem, options, startTime);
+  }
+
+  // Pure-TS L-BFGS-B Augmented Lagrangian
+  if (!isLinear && effectiveSolver === "lbfgsb") {
+    return solveNlpAugmentedLagrangian(problem, options, startTime);
+  }
+
+  // Fallback for clp/cbc when problem is actually nonlinear
+  if (!isLinear && (effectiveSolver === "clp" || effectiveSolver === "cbc")) {
+    return hasInteger
+      ? solveMinlpBranchAndBound(problem, options, startTime)
+      : solveWithCoinorIpopt(problem, options, startTime);
+  }
+
+  // Linear / MILP: use exact Two-Phase Simplex and Branch-and-Bound
   return solvePureJs(problem, options, startTime);
 }
 
@@ -615,11 +591,11 @@ function roundClean(val: number): number {
 /**
  * Self-contained pure-TypeScript Simplex & Branch-and-Bound solver.
  */
-function solvePureJs(
+async function solvePureJs(
   problem: InstantiatedProblem,
-  _options: AmplSolverOptions | undefined,
+  options: AmplSolverOptions | undefined,
   startTime: number,
-): AmplSolverResult {
+): Promise<AmplSolverResult> {
   const lp = buildLpProblem(problem);
   const n = lp.nVars;
   const isMaximize = problem.objective.direction === "maximize";
@@ -634,7 +610,10 @@ function solvePureJs(
     problem.problemClass === "SOCP" ||
     problem.problemClass === "MISOCP"
   ) {
-    return solveNonlinearSimple(problem, startTime);
+    const hasInt = problem.variables.some((v) => v.type === "integer" || v.type === "binary" || v.type === "semiint");
+    return hasInt
+      ? solveMinlpBranchAndBound(problem, options, startTime)
+      : solveNlpAugmentedLagrangian(problem, options, startTime);
   }
 
   const lpSolution = solveSimplexTableau(lp);
@@ -1045,226 +1024,3 @@ function solveBranchAndBound(
 /**
  * Nonlinear solver fallback for continuous/MPEC problems (e.g. Rosenbrock, Markowitz portfolio).
  */
-function solveNonlinearSimple(problem: InstantiatedProblem, startTime: number): AmplSolverResult {
-  const n = problem.variables.length;
-  let x = problem.variables.map((v) => {
-    if (v.initVal) return v.initVal;
-    if (Number.isFinite(v.lb) && Number.isFinite(v.ub) && v.lb > -1e12 && v.ub < 1e12) {
-      return (v.lb + v.ub) / 2;
-    }
-    return Number.isFinite(v.lb) && v.lb > -1e12 ? v.lb : 0;
-  });
-
-  // Conic variables (t in ||x|| <= t, u and v in RSOC, and affine variables x_i) must start
-  // in the strict interior (t > 0, u > 0, v > 0) to avoid zero-gradient saddle points at the cone apex.
-  if (problem.cones && problem.cones.length > 0) {
-    for (const cone of problem.cones) {
-      if (x[cone.coneVarId] === 0) x[cone.coneVarId] = 1.0;
-      if (cone.rotVarId !== undefined && x[cone.rotVarId] === 0) x[cone.rotVarId] = 1.0;
-      for (const cv of cone.variables) {
-        if (x[cv.varId] === 0) x[cv.varId] = 1.0;
-      }
-    }
-  }
-
-  const evalMerit = (vec: number[], penalty: number): number => {
-    let merit = evalFlatExpr(problem.objective.expr, vec, problem.variables);
-    if (problem.objective.direction === "maximize") merit = -merit;
-    for (const con of problem.constraints) {
-      const val = evalFlatExpr(con.expr, vec, problem.variables);
-      if (con.lb != null && Number.isFinite(con.lb) && val < con.lb) {
-        const viol = con.lb - val;
-        merit += penalty * viol * viol;
-      }
-      if (con.ub != null && Number.isFinite(con.ub) && val > con.ub) {
-        const viol = val - con.ub;
-        merit += penalty * viol * viol;
-      }
-    }
-    return merit;
-  };
-
-  const eps = 1e-6;
-  let totalIter = 0;
-  const stages = problem.constraints.length > 0 ? 4 : 1;
-
-  for (let stage = 0; stage < stages; stage++) {
-    const penalty = Math.pow(10, stage + 1);
-    for (let iter = 0; iter < 1000; iter++) {
-      totalIter++;
-      const f0 = evalMerit(x, penalty);
-      let gradNorm = 0;
-      const grad: number[] = new Array(n).fill(0);
-
-      for (let i = 0; i < n; i++) {
-        const orig = x[i]!;
-        x[i] = orig + eps;
-        const fPlus = evalMerit(x, penalty);
-        x[i] = orig;
-        grad[i] = (fPlus - f0) / eps;
-        gradNorm += grad[i]! * grad[i]!;
-      }
-
-      if (Math.sqrt(gradNorm) < 1e-5) break;
-
-      let stepSize = 0.1 / (1 + 0.1 * penalty);
-      let bestNext = [...x];
-      for (let ls = 0; ls < 12; ls++) {
-        const trial = x.map((xi, i) => {
-          let val = xi - stepSize * grad[i]!;
-          const v = problem.variables[i]!;
-          if (Number.isFinite(v.lb)) val = Math.max(v.lb, val);
-          if (Number.isFinite(v.ub)) val = Math.min(v.ub, val);
-          return val;
-        });
-        if (evalMerit(trial, penalty) < f0) {
-          bestNext = trial;
-          break;
-        }
-        stepSize *= 0.5;
-      }
-      x = bestNext;
-    }
-  }
-
-  const solVars: Record<string, number> = {};
-  for (let i = 0; i < n; i++) {
-    solVars[problem.variables[i]!.name] = Math.round(x[i]! * 1e6) / 1e6;
-  }
-
-  return {
-    problemName: problem.name,
-    problemClass: problem.problemClass,
-    status: "OPTIMAL",
-    statusCode: 0,
-    message: "Optimal nonlinear solution found",
-    objectiveValue: evalFlatExpr(problem.objective.expr, x, problem.variables),
-    variables: solVars,
-    iterations: totalIter,
-    solveTimeMs: Date.now() - startTime,
-  };
-}
-
-function evalFlatExpr(expr: FlatExpression, vec: number[], variables: InstantiatedVar[]): number {
-  let sum = expr.constant;
-  for (const term of expr.linearTerms) {
-    sum += term.coeff * (vec[term.varId] ?? 0);
-  }
-  if (expr.nonlinearTree) {
-    sum += evalTree(expr.nonlinearTree, vec, variables);
-  }
-  return sum;
-}
-
-interface EvalTreeNode {
-  kind: string;
-  value?: number | string;
-  name?: string;
-  indices?: EvalTreeNode[];
-  expr?: EvalTreeNode;
-  op?: string;
-  left?: EvalTreeNode;
-  right?: EvalTreeNode;
-  args?: EvalTreeNode[];
-  fn?: string;
-}
-
-function evalTree(tree: EvalTreeNode | undefined, vec: number[], variables: InstantiatedVar[]): number {
-  if (!tree) return 0;
-  if (tree.kind === "number") return typeof tree.value === "number" ? tree.value : 0;
-  if (tree.kind === "identifier" || tree.kind === "subscript") {
-    const name =
-      tree.kind === "identifier"
-        ? tree.name
-        : `${tree.name}[${(tree.indices ?? []).map((i) => i.value ?? i.name).join(",")}]`;
-    const idx = variables.findIndex((v) => v.name === name);
-    return idx >= 0 ? (vec[idx] ?? 0) : 0;
-  }
-  if (tree.kind === "unary") {
-    const val = evalTree(tree.expr, vec, variables);
-    return tree.op === "-" ? -val : val;
-  }
-  if (tree.kind === "binary") {
-    const l = evalTree(tree.left, vec, variables);
-    const r = evalTree(tree.right, vec, variables);
-    switch (tree.op) {
-      case "+":
-        return l + r;
-      case "-":
-        return l - r;
-      case "*":
-        return l * r;
-      case "/":
-        return r !== 0 ? l / r : 0;
-      case "^":
-      case "**":
-        return Math.pow(l, r);
-    }
-  }
-  if (tree.kind === "call") {
-    const args = (tree.args ?? []).map((a) => evalTree(a, vec, variables));
-    switch (String(tree.fn).toLowerCase()) {
-      case "abs":
-        return Math.abs(args[0] ?? 0);
-      case "sqrt":
-        return Math.sqrt(Math.max(0, args[0] ?? 0));
-      case "exp":
-        return Math.exp(args[0] ?? 0);
-      case "log":
-      case "ln":
-        return Math.log(Math.max(1e-12, args[0] ?? 1));
-      case "log10":
-        return Math.log10(Math.max(1e-12, args[0] ?? 1));
-      case "sin":
-        return Math.sin(args[0] ?? 0);
-      case "cos":
-        return Math.cos(args[0] ?? 0);
-      case "tan":
-        return Math.tan(args[0] ?? 0);
-      case "asin":
-        return Math.asin(args[0] ?? 0);
-      case "acos":
-        return Math.acos(args[0] ?? 0);
-      case "atan":
-        return Math.atan(args[0] ?? 0);
-      case "sinh":
-        return Math.sinh(args[0] ?? 0);
-      case "cosh":
-        return Math.cosh(args[0] ?? 0);
-      case "tanh":
-        return Math.tanh(args[0] ?? 0);
-      case "min":
-        return Math.min(...args);
-      case "max":
-        return Math.max(...args);
-      case "erf":
-        return erf(args[0] ?? 0);
-      case "erfc":
-        return erfc(args[0] ?? 0);
-      case "gamma":
-        return gamma(args[0] ?? 0);
-      case "lgamma":
-        return lgamma(args[0] ?? 0);
-      case "bessel_j0":
-      case "besselj0":
-        return besselJ0(args[0] ?? 0);
-      case "bessel_j1":
-      case "besselj1":
-        return besselJ1(args[0] ?? 0);
-      case "bessel_y0":
-      case "bessely0":
-        return besselY0(args[0] ?? 0);
-      case "bessel_y1":
-      case "bessely1":
-        return besselY1(args[0] ?? 0);
-      case "normal01":
-        return normal01(args[0] ?? 0);
-      case "normal":
-        return normal(args[0] ?? 0, args[1] ?? 0, args[2] ?? 1);
-      case "normal_pdf":
-      case "normalpdf":
-        return normalPdf(args[0] ?? 0, args[1] ?? 0, args[2] ?? 1);
-    }
-  }
-  return 0;
-}

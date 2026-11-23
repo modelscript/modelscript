@@ -661,6 +661,10 @@ export function OptimizationExperimentSettings({
           <option value="ipopt">IPOPT (COIN-OR NLP)</option>
           <option value="bonmin">Bonmin (MINLP)</option>
           <option value="couenne">Couenne (Global MINLP)</option>
+          <option value="lbfgsb">L-BFGS-B (Quasi-Newton NLP)</option>
+          <option value="de">Differential Evolution (Global)</option>
+          <option value="cma-es">CMA-ES (Evolutionary)</option>
+          <option value="pso">Particle Swarm (PSO)</option>
           <option value="highs">HiGHS (LP / MILP)</option>
           <option value="pure-js">Pure-JS (Simplex / B&amp;B)</option>
         </select>
