@@ -83,10 +83,8 @@ export class BrowserFileSystem implements FileSystem {
     const p = this.#norm(path);
     const file = this.#files.get(p);
     if (!file) return "";
-    if (file.content === undefined) {
-      file.content = BrowserFileSystem.#decoder.decode(file.binary);
-    }
-    return file.content;
+    if (file.content !== undefined) return file.content;
+    return BrowserFileSystem.#decoder.decode(file.binary);
   }
   readBinary(path: string): Uint8Array {
     const p = this.#norm(path);

@@ -334,6 +334,19 @@ export function materializeGlyphToSvg(
       }
     }
 
+    if (prim.tagName === "rect") {
+      if (prim.attrs["width"] === undefined && prim.attrs["refWidth"] === undefined) {
+        el.setAttribute("width", String(width));
+      }
+      if (prim.attrs["height"] === undefined && prim.attrs["refHeight"] === undefined) {
+        el.setAttribute("height", String(height));
+      }
+    } else if (prim.tagName === "circle") {
+      if (prim.attrs["cx"] === undefined) el.setAttribute("cx", String(width / 2));
+      if (prim.attrs["cy"] === undefined) el.setAttribute("cy", String(height / 2));
+      if (prim.attrs["r"] === undefined) el.setAttribute("r", String(Math.min(width, height) / 2));
+    }
+
     if (prim.style && Object.keys(prim.style).length > 0) {
       const css = Object.entries(prim.style)
         .map(([sk, sv]) => `${normalizeSvgAttrName(sk)}:${sv}`)

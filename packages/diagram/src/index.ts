@@ -4973,7 +4973,11 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
   // active drag handles, selection states, and focus.
   const existingCells = g.getCells();
   const isFirstRender = existingCells.length === 0;
-  yUpCoordsByGraph.set(g, Boolean(data.coordinateSystem));
+  const csAny = data.coordinateSystem as { extent?: unknown } | null | undefined;
+  const isYUp =
+    Boolean(csAny) &&
+    (data.metadata?.["language"] === "modelica" || (!data.metadata?.["language"] && Array.isArray(csAny?.extent)));
+  yUpCoordsByGraph.set(g, isYUp);
 
   if (!isFirstRender && !moduleChanged && !loadingCompleted) {
     const existingNodeIds = new Set<string>();

@@ -20,7 +20,7 @@ Welcome to **ModelScript**, the open-core **computable digital thread** platform
 
 ## What is the Computable Digital Thread?
 
-Modern cyber-physical systems — from electric vehicles, utility power grids, and satellites to surgical robots, proton therapy nozzles, and subsea flowlines — require tight coordination across **105 documented engineering formats** (**32 Beta, 72 Alpha, 1 Pre-Alpha**) spanning **12 industry verticals**:
+Modern cyber-physical systems — from electric vehicles, utility power grids, and satellites to surgical robots, proton therapy nozzles, and subsea flowlines — require tight coordination across **168 documented engineering formats** (**95 Beta, 72 Alpha, 1 Pre-Alpha**) spanning **12 industry verticals**:
 
 - **System Architecture, Requirements, Security & Ontologies** (`SysML v2`, `KerML`, `ReqIF`, `NIST OSCAL`, `OSLC 3.0`, `OWL2`, `AAS / DDP`)
 - **Multi-Domain Acausal, Optimization & Block-Diagram Simulation** (`Modelica 3.x`, `ModelScript .msx`, `AMPL`, `MATLAB Simulink`, `EASY5`, `FMI 2.0/3.0 FMU`, `SSP 1.0/2.0`)
@@ -59,7 +59,7 @@ flowchart LR
 
 ## Core Pillars of ModelScript
 
-### 1. Code-First Engineering Across 105 Documented Formats (32 Beta, 72 Alpha, 1 Pre-Alpha)
+### 1. Code-First Engineering Across 168 Documented Formats (95 Beta, 72 Alpha, 1 Pre-Alpha)
 
 Every model, schematic, requirement, netlist, and mesh configuration lives as clean text in Git. Engineers diff, review, merge, and gate physical hardware designs using standard pull requests, SARIF code scanning, and reproducible CI/CD pipelines.
 
@@ -2591,7 +2591,7 @@ ModelScript is built on a **data-oriented, WebAssembly-first compiler architectu
 
 ```mermaid
 flowchart TB
-    subgraph Languages["Polyglot Source Languages (105 Documented Formats — 32 Beta, 72 Alpha, 1 Pre-Alpha)"]
+    subgraph Languages["Polyglot Source Languages (168 Documented Formats — 95 Beta, 72 Alpha, 1 Pre-Alpha)"]
         direction TB
         MO[".mo (Modelica 3.x) / .mod (AMPL)"]
         SYS[".sysml / .kerml / .reqif / .oscal.json"]
@@ -6111,7 +6111,7 @@ When `--daemon` is passed, `msx` connects to the local Unix domain socket (`~/.m
 
 ## Complete Command Reference by Category
 
-The `msx` CLI registers **146 commands** organized across **105 documented engineering formats** (32 Beta, 72 Alpha, 1 Pre-Alpha) and six functional domains. See [CLI Commands](./commands.md) for exhaustive flag tables and examples for every command.
+The `msx` CLI registers **146 commands** organized across **168 documented engineering formats** (95 Beta, 72 Alpha, 1 Pre-Alpha) and six functional domains. See [CLI Commands](./commands.md) for exhaustive flag tables and examples for every command.
 
 ### 1. Compilation, Simulation & Optimization
 
@@ -23102,7 +23102,7 @@ ModelScript **Beta**-tier implementation of **Esterel** (Gérard Berry, 1984) �
 
 - **Declarative WASM GLR Parser (`src/language.ts`, `src/parser/`)**: Supports Esterel v5 modules, signal interfaces (`input`, `output`, `inputoutput`, `sensor`, `relation` with `#` exclusion and `=>` implication), local `signal ... in ... end`, `emit`, `sustain`, `present ... then ... else ... end`, `await` / `await immediate`, `pause`, `nothing`, `halt`, `loop ... end`, `loop ... each ...`, `every ... do ... end`, strong & `weak abort ... when ... end`, `suspend ... when ... end`, `trap ... in ... end` / `exit`, `run`, `||` parallel composition, `;` sequential composition, and `%` comments.
 - **Constructive Semantics & Causality Checker (`src/lints/`, `src/errors.ts`)**: Diagnostics `EST1001`–`EST5006` covering syntax errors, duplicate declarations, undeclared signals/traps, relation conflicts, instantaneous infinite loops (`loop` without `pause`/`await`), and constructive causality cycles (`present S else emit S`).
-- **Berry's Constructive Reactive Simulator (`src/solver/`)**: 3-valued constructive fixpoint instant-by-instant execution engine supporting instantaneous broadcast across `||`, strong vs. weak preemption (`abort` / `weak abort`), suspension (`suspend`), hierarchical `trap`/`exit` priority, and `loop ... each`.
+- **Berry's Constructive Reactive Simulator (`src/solver/`)**: 3-valued constructive fixpoint step-by-step execution engine supporting synchronous broadcast across `||`, strong vs. weak preemption (`abort` / `weak abort`), suspension (`suspend`), hierarchical `trap`/`exit` priority, and `loop ... each`.
 - **Mealy FSM / DAE Lowering (`src/dae/`)**: Direct linear-memory lowering of Esterel reactive state registers and signal status equations into `@modelscript/runtime`'s `DAEBuilder`.
 - **Polyglot Projections (`src/projections/`)**: Translates Esterel modules to Modelica 3.3+ clocked synchronous state machines and Lustre v6 synchronous dataflow nodes.
 - **Cleanroom Standard Library (`src/catalog/`, `assets/esterel-std-lib/`)**: Zero-I/O standard library bundle with AssemblyScript WASM runtime and SVG block icons for canonical Esterel reactive patterns (`ABRO`, `Watchdog`, `Debouncer`, `Arbiter`, `Timeout`, `Stopwatch`).

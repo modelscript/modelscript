@@ -38,16 +38,67 @@ import { DocumentManager } from "./document-manager.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 
 export class ParserService {
+  private static readonly MAX_LOADED_PARSERS_BROWSER = 5;
   private parserEntries = new Map<string, { parser: any; facade: any; ready: boolean }>();
+  private parserLru: string[] = [];
   public sharedContext: any = null;
 
   private registeringLangs = new Set<string>();
+
+  private touchParserLru(langId: string): void {
+    const norm = langId.toLowerCase();
+    const idx = this.parserLru.indexOf(norm);
+    if (idx !== -1) {
+      this.parserLru.splice(idx, 1);
+    }
+    this.parserLru.push(norm);
+  }
+
+  private evictUnusedParsersIfNeeded(): void {
+    if (!this.lazyLoadParsers) return;
+    const isNode = typeof process !== "undefined" && Boolean(process.versions?.node);
+    if (isNode) return;
+    const maxLoaded = ParserService.MAX_LOADED_PARSERS_BROWSER;
+    if (this.parserLru.length <= maxLoaded) return;
+
+    const activeLangs = new Set<string>();
+    for (const doc of this.documents.all()) {
+      activeLangs.add(this.resolveNormalizedLanguageId(doc.languageId || doc.uri));
+    }
+
+    for (let i = 0; i < this.parserLru.length && this.parserLru.length > maxLoaded;) {
+      const candidate = this.parserLru[i]!;
+      if (activeLangs.has(candidate)) {
+        i++;
+        continue;
+      }
+      this.parserLru.splice(i, 1);
+      this.parserEntries.delete(candidate);
+      this.loadingParserPromises.delete(candidate);
+      const plugin = globalLanguageRegistry.getPluginById(candidate);
+      if (plugin) {
+        try {
+          plugin.parser = null;
+          plugin.facade = null;
+        } catch {}
+      }
+      if (candidate === "sysml2" || candidate === "sysml") {
+        const alt = candidate === "sysml2" ? "sysml" : "sysml2";
+        this.parserEntries.delete(alt);
+        this.loadingParserPromises.delete(alt);
+      }
+    }
+  }
 
   public registerParser(langId: string, parser: any, facade: any = null): void {
     const norm = langId.toLowerCase();
     const prev = this.parserEntries.get(norm);
     const resolvedFacade = facade ?? prev?.facade ?? null;
     this.parserEntries.set(norm, { parser, facade: resolvedFacade, ready: !!parser });
+    if (parser) {
+      this.touchParserLru(norm);
+      this.evictUnusedParsersIfNeeded();
+    }
     if (this.registeringLangs.has(norm)) return;
     this.registeringLangs.add(norm);
     try {
@@ -1503,7 +1554,8 @@ export class ParserService {
       }
 
       const cacheStore = loaderCtx.cacheStore;
-      const MAX_MEMOS = 2_000_000; // Limit in-memory memos
+      const isNodeRuntime = typeof process !== "undefined" && Boolean(process.versions?.node);
+      const MAX_MEMOS = isNodeRuntime ? 2_000_000 : 200_000; // Limit in-memory memos (tighter in browser)
 
       const createModelicaQE =
         (globalThis as any).createModelicaQueryEngine ?? (globalThis as any).create_modelica_query_engine;

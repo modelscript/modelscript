@@ -1,4 +1,38 @@
 {
+  "acsl": {
+    "keywords": [
+      "ALGORITHM",
+      "ARRAY",
+      "CINTERVAL",
+      "CONSTANT",
+      "DERIVATIVE",
+      "DERIVT",
+      "DISCRETE",
+      "DYNAMIC",
+      "END",
+      "INITIAL",
+      "INTEG",
+      "INTEGER",
+      "INTERVAL",
+      "LOGICAL",
+      "MACRO",
+      "MAXTERVAL",
+      "PROCEDURAL",
+      "PROGRAM",
+      "SCHEDULE",
+      "TABLE",
+      "TERMINAL",
+      "TERMT"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "adams": {
     "keywords": [
       "END",
@@ -31,6 +65,105 @@
       "\\*/"
     ]
   },
+  "apdl": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "!.*$"
+    ]
+  },
+  "apt": {
+    "keywords": [
+      "ARC",
+      "ATANGL",
+      "CCLW",
+      "CENTER",
+      "CIRCLE",
+      "CLW",
+      "COOLNT",
+      "CUTTER",
+      "FEDRAT",
+      "FINI",
+      "FLOOD",
+      "FROM",
+      "GO",
+      "GOBACK",
+      "GODLTA",
+      "GODOWN",
+      "GOFWD",
+      "GOLFT",
+      "GORGT",
+      "GOTO",
+      "GOUP",
+      "INCHES",
+      "INTOF",
+      "INTOL",
+      "LARGE",
+      "LEFT",
+      "LINE",
+      "LINEAR",
+      "MACHIN",
+      "MIST",
+      "MM",
+      "OFF",
+      "ON",
+      "OUTTOL",
+      "PARLEL",
+      "PAST",
+      "PATERN",
+      "PERPTO",
+      "PLANE",
+      "POINT",
+      "RADIUS",
+      "RAPID",
+      "RIGHT",
+      "SMALL",
+      "SPINDL",
+      "TANTO",
+      "TO",
+      "UNITS",
+      "XLARGE",
+      "XSMALL",
+      "YLARGE",
+      "YSMALL"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "arinc429": {
+    "keywords": [
+      "BCD",
+      "BNR",
+      "BUS",
+      "DISCRETE",
+      "ENCODING",
+      "EQUIPMENT",
+      "FRAME",
+      "HIGH",
+      "LABEL",
+      "LOW",
+      "RANGE",
+      "RATE",
+      "RESOLUTION",
+      "SDI",
+      "UNITS",
+      "WORD"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "asm": {
     "keywords": [],
     "types": [],
@@ -42,8 +175,85 @@
       "\\*/"
     ]
   },
+  "asn1": {
+    "keywords": [
+      "ALL",
+      "APPLICATION",
+      "AUTOMATIC",
+      "BEGIN",
+      "BIT",
+      "BOOLEAN",
+      "CHOICE",
+      "DEFAULT",
+      "DEFINITIONS",
+      "END",
+      "ENUMERATED",
+      "EXPLICIT",
+      "EXPORTS",
+      "EXTENSIBILITY",
+      "FROM",
+      "GeneralizedTime",
+      "IA5String",
+      "IDENTIFIER",
+      "IMPLICIT",
+      "IMPLIED",
+      "IMPORTS",
+      "INTEGER",
+      "MAX",
+      "MIN",
+      "NULL",
+      "NumericString",
+      "OBJECT",
+      "OCTET",
+      "OF",
+      "OPTIONAL",
+      "PRIVATE",
+      "PrintableString",
+      "REAL",
+      "SEQUENCE",
+      "SET",
+      "SIZE",
+      "STRING",
+      "TAGS",
+      "UNIVERSAL",
+      "UTCTime",
+      "UTF8String",
+      "VisibleString"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "aspen": {
     "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "atopile": {
+    "keywords": [
+      "assert",
+      "component",
+      "from",
+      "import",
+      "interface",
+      "module",
+      "new",
+      "pin",
+      "signal",
+      "to",
+      "within"
+    ],
     "types": [],
     "lineComments": [
       "//.*$"
@@ -108,6 +318,28 @@
     "types": [],
     "lineComments": [
       "#.*$"
+    ]
+  },
+  "bufr": {
+    "keywords": [
+      "BUFR",
+      "DESCRIPTORS",
+      "EDITION",
+      "FALSE",
+      "NAME",
+      "SECTION",
+      "SUBSET",
+      "TRUE",
+      "false",
+      "true"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
     ]
   },
   "c": {
@@ -204,6 +436,92 @@
       "\\*/"
     ]
   },
+  "cea": {
+    "keywords": [
+      "CASE",
+      "DETON",
+      "END",
+      "EQUILIBRIUM",
+      "FROZEN",
+      "FUEL",
+      "HP",
+      "INSERT",
+      "NAME",
+      "OMIT",
+      "ONLY",
+      "OUTP",
+      "OUTPUT",
+      "OXID",
+      "PROB",
+      "PROBLEM",
+      "REAC",
+      "REACTANTS",
+      "ROCKET",
+      "SHOCK",
+      "SP",
+      "SV",
+      "TP",
+      "TV",
+      "UV",
+      "calories",
+      "case",
+      "det",
+      "deton",
+      "end",
+      "eq",
+      "equilibrium",
+      "fac",
+      "frozen",
+      "fuel",
+      "fz",
+      "hp",
+      "iac",
+      "insert",
+      "mach",
+      "massf",
+      "molef",
+      "moles",
+      "name",
+      "nfz",
+      "omit",
+      "only",
+      "outp",
+      "output",
+      "oxid",
+      "phi",
+      "pip",
+      "plot",
+      "prob",
+      "problem",
+      "reac",
+      "reactants",
+      "rho",
+      "rkt",
+      "rocket",
+      "shock",
+      "short",
+      "siunits",
+      "sp",
+      "subar",
+      "supar",
+      "sv",
+      "tp",
+      "trace",
+      "transport",
+      "tv",
+      "u1",
+      "uv",
+      "wt"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "cellml": {
     "keywords": [],
     "types": [],
@@ -229,8 +547,109 @@
       "-->"
     ]
   },
+  "chemkin": {
+    "keywords": [
+      "ALL",
+      "DUP",
+      "DUPLICATE",
+      "ELEM",
+      "ELEMENTS",
+      "END",
+      "EVOLTS",
+      "KELVINS",
+      "LOW",
+      "MOLECULES",
+      "MOLES",
+      "PLOG",
+      "REAC",
+      "REACTIONS",
+      "REV",
+      "SPEC",
+      "SPECIES",
+      "SRI",
+      "THER",
+      "THERMO",
+      "TROE"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "cif": {
+    "keywords": [
+      "DD",
+      "DF",
+      "DS",
+      "MX",
+      "MY"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "comtrade": {
     "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "cplex-lp": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "csmp": {
+    "keywords": [
+      "CONST",
+      "CONSTANT",
+      "CONTINUE",
+      "DYNAMIC",
+      "END",
+      "ENDJOB",
+      "ENDMAC",
+      "ENDMACRO",
+      "ENDPRO",
+      "ENDPROCEDURE",
+      "FIXED",
+      "FUNCTION",
+      "INCON",
+      "INITIAL",
+      "MACRO",
+      "METHOD",
+      "NOSORT",
+      "PARAM",
+      "PARAMETER",
+      "PRINT",
+      "PROCEDURE",
+      "PRTPLT",
+      "RESET",
+      "SORT",
+      "STOP",
+      "TERMINAL",
+      "TIMER",
+      "TITLE"
+    ],
     "types": [],
     "lineComments": [
       "//.*$"
@@ -264,6 +683,34 @@
       "\\*/"
     ]
   },
+  "datcom": {
+    "keywords": [
+      "BUILD",
+      "CASE",
+      "CASEID",
+      "CM",
+      "DAMP",
+      "DEG",
+      "DERIV",
+      "DIM",
+      "FT",
+      "IN",
+      "NEXT",
+      "PART",
+      "PLOT",
+      "RAD",
+      "SAVE",
+      "TRIM"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "dicom-rt": {
     "keywords": [],
     "types": [],
@@ -277,6 +724,139 @@
   },
   "dnp3": {
     "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "doe2": {
+    "keywords": [
+      "BUILDING-LOCATION",
+      "COMPUTE",
+      "CONSTRUCTION",
+      "DAY-SCHEDULE",
+      "DAY-SCHEDULE-PD",
+      "DOOR",
+      "END",
+      "EXTERIOR-WALL",
+      "GLASS-TYPE",
+      "INPUT",
+      "LAYERS",
+      "MATERIAL",
+      "PLANT-EQUIPMENT",
+      "ROOF",
+      "RUN-PERIOD",
+      "SCHEDULE",
+      "SCHEDULE-PD",
+      "SPACE",
+      "STOP",
+      "SYSTEM",
+      "TITLE",
+      "UNDERGROUND-WALL",
+      "WEEK-SCHEDULE",
+      "WEEK-SCHEDULE-PD",
+      "WINDOW",
+      "ZONE",
+      "building-location",
+      "compute",
+      "construction",
+      "day-schedule",
+      "day-schedule-pd",
+      "door",
+      "end",
+      "exterior-wall",
+      "glass-type",
+      "input",
+      "layers",
+      "material",
+      "plant-equipment",
+      "roof",
+      "run-period",
+      "schedule",
+      "schedule-pd",
+      "space",
+      "stop",
+      "system",
+      "title",
+      "underground-wall",
+      "week-schedule",
+      "week-schedule-pd",
+      "window",
+      "zone"
+    ],
+    "types": [
+      "ECONOMICS",
+      "LOADS",
+      "PLANT",
+      "SYSTEMS",
+      "economics",
+      "loads",
+      "plant",
+      "systems"
+    ],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "dxf": {
+    "keywords": [
+      "ARC",
+      "BLOCK",
+      "BLOCKS",
+      "CIRCLE",
+      "CLASSES",
+      "ELLIPSE",
+      "ENDBLK",
+      "ENDSEC",
+      "ENDTAB",
+      "ENTITIES",
+      "EOF",
+      "HEADER",
+      "INSERT",
+      "LAYER",
+      "LINE",
+      "LWPOLYLINE",
+      "MTEXT",
+      "OBJECTS",
+      "POINT",
+      "POLYLINE",
+      "SECTION",
+      "SEQEND",
+      "SPLINE",
+      "TABLE",
+      "TABLES",
+      "TEXT",
+      "THUMBNAILIMAGE",
+      "VERTEX"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "dynamo": {
+    "keywords": [
+      "DT",
+      "LENGTH",
+      "PLOT",
+      "PLTPER",
+      "PRINT",
+      "PRTPER",
+      "RUN",
+      "SPEC"
+    ],
     "types": [],
     "lineComments": [
       "//.*$"
@@ -324,6 +904,56 @@
       "\\*/"
     ]
   },
+  "edif": {
+    "keywords": [
+      "cell",
+      "cellRef",
+      "cellType",
+      "contents",
+      "design",
+      "direction",
+      "edif",
+      "edifLevel",
+      "edifVersion",
+      "external",
+      "instance",
+      "instanceRef",
+      "interface",
+      "joined",
+      "keywordMap",
+      "library",
+      "libraryRef",
+      "net",
+      "port",
+      "portRef",
+      "property",
+      "rename",
+      "status",
+      "technology",
+      "view",
+      "viewRef",
+      "viewType"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "endf6": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "energyplus": {
     "keywords": [
       "BUILDING",
@@ -357,6 +987,96 @@
       "[;#].*$"
     ]
   },
+  "esl": {
+    "keywords": [
+      "AND",
+      "CONSTANT",
+      "DYNAMIC",
+      "ELSE",
+      "END",
+      "END_IF",
+      "END_MODEL",
+      "END_PACKAGE",
+      "END_SEGMENT",
+      "END_STUDY",
+      "END_SUBMODEL",
+      "END_WHEN",
+      "FALSE",
+      "IF",
+      "IN",
+      "INITIAL",
+      "INOUT",
+      "INTEGER",
+      "LOGICAL",
+      "MODEL",
+      "NOT",
+      "OR",
+      "OUT",
+      "PACKAGE",
+      "REAL",
+      "SEGMENT",
+      "STEP",
+      "STUDY",
+      "SUBMODEL",
+      "TERMINAL",
+      "TERMINATE",
+      "THEN",
+      "TRUE",
+      "WHEN"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "esterel": {
+    "keywords": [
+      "abort",
+      "and",
+      "await",
+      "do",
+      "each",
+      "else",
+      "emit",
+      "end",
+      "every",
+      "exit",
+      "handle",
+      "immediate",
+      "in",
+      "input",
+      "inputoutput",
+      "loop",
+      "module",
+      "not",
+      "or",
+      "output",
+      "present",
+      "relation",
+      "run",
+      "sensor",
+      "signal",
+      "suspend",
+      "sustain",
+      "then",
+      "tick",
+      "trap",
+      "weak",
+      "when"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "fea": {
     "keywords": [],
     "types": [],
@@ -379,6 +1099,48 @@
     "keywords": [],
     "types": [],
     "lineComments": []
+  },
+  "fits": {
+    "keywords": [
+      "BITPIX",
+      "BSCALE",
+      "BZERO",
+      "CD1_1",
+      "CD1_2",
+      "CD2_1",
+      "CD2_2",
+      "CDELT",
+      "CDELT1",
+      "CDELT2",
+      "COMMENT",
+      "CRPIX",
+      "CRPIX1",
+      "CRPIX2",
+      "CRVAL",
+      "CRVAL1",
+      "CRVAL2",
+      "CTYPE",
+      "CTYPE1",
+      "CTYPE2",
+      "EXTEND",
+      "GCOUNT",
+      "HISTORY",
+      "NAXIS",
+      "NAXIS1",
+      "NAXIS2",
+      "PCOUNT",
+      "SIMPLE",
+      "TFIELDS",
+      "XTENSION"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
   },
   "fortran": {
     "keywords": [
@@ -500,6 +1262,175 @@
       "!.*$"
     ]
   },
+  "gams": {
+    "keywords": [
+      "ALIAS",
+      "Alias",
+      "BINARY",
+      "Binary",
+      "DISPLAY",
+      "Display",
+      "EQUATION",
+      "EQUATIONS",
+      "Equation",
+      "Equations",
+      "FREE",
+      "Free",
+      "INTEGER",
+      "Integer",
+      "LP",
+      "MAXIMIZING",
+      "MINIMIZING",
+      "MINLP",
+      "MIP",
+      "MODEL",
+      "MODELS",
+      "Model",
+      "Models",
+      "NEGATIVE",
+      "NLP",
+      "Negative",
+      "PARAMETER",
+      "PARAMETERS",
+      "POSITIVE",
+      "PROD",
+      "Parameter",
+      "Parameters",
+      "Positive",
+      "QCP",
+      "RMIP",
+      "SCALAR",
+      "SCALARS",
+      "SET",
+      "SETS",
+      "SMAX",
+      "SMIN",
+      "SOLVE",
+      "SUM",
+      "Scalar",
+      "Scalars",
+      "Set",
+      "Sets",
+      "Solve",
+      "TABLE",
+      "TABLES",
+      "Table",
+      "Tables",
+      "USING",
+      "Using",
+      "VARIABLE",
+      "VARIABLES",
+      "Variable",
+      "Variables",
+      "alias",
+      "binary",
+      "display",
+      "equation",
+      "equations",
+      "free",
+      "integer",
+      "lp",
+      "max",
+      "maximizing",
+      "min",
+      "minimizing",
+      "minlp",
+      "mip",
+      "model",
+      "models",
+      "negative",
+      "nlp",
+      "parameter",
+      "parameters",
+      "positive",
+      "prod",
+      "qcp",
+      "rmip",
+      "scalar",
+      "scalars",
+      "set",
+      "sets",
+      "smax",
+      "smin",
+      "solve",
+      "sum",
+      "table",
+      "tables",
+      "using",
+      "variable",
+      "variables"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "gaussian": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "gcode": {
+    "keywords": [
+      "MOD"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "gdsii": {
+    "keywords": [
+      "ANGLE",
+      "AREF",
+      "BGNLIB",
+      "BGNSTR",
+      "BOUNDARY",
+      "COLROW",
+      "DATATYPE",
+      "ENDEL",
+      "ENDLIB",
+      "ENDSTR",
+      "HEADER",
+      "LAYER",
+      "LIBNAME",
+      "MAG",
+      "PATH",
+      "PATHTYPE",
+      "SNAME",
+      "SREF",
+      "STRANS",
+      "STRING",
+      "STRNAME",
+      "TEXT",
+      "TEXTTYPE",
+      "UNITS",
+      "WIDTH",
+      "XY"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "genbank": {
     "keywords": [
       "LOCUS"
@@ -546,8 +1477,102 @@
       "\\*/"
     ]
   },
+  "gerber": {
+    "keywords": [
+      "D01",
+      "D02",
+      "D03",
+      "G01",
+      "G02",
+      "G03",
+      "G36",
+      "G37",
+      "G54",
+      "G70",
+      "G71",
+      "G74",
+      "G75",
+      "G90",
+      "G91",
+      "M00",
+      "M01",
+      "M02"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "gproms": {
     "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "gpss": {
+    "keywords": [
+      "ADVANCE",
+      "ASSEMBLE",
+      "ASSIGN",
+      "CLEAR",
+      "DEPART",
+      "END",
+      "ENTER",
+      "EQU",
+      "FUNCTION",
+      "GATE",
+      "GE",
+      "GENERATE",
+      "LE",
+      "LEAVE",
+      "NE",
+      "NU",
+      "QUEUE",
+      "RELEASE",
+      "RESET",
+      "RMULT",
+      "SE",
+      "SEIZE",
+      "SF",
+      "SIMULATE",
+      "SNE",
+      "SNF",
+      "SPLIT",
+      "START",
+      "STORAGE",
+      "TABLE",
+      "TABULATE",
+      "TERMINATE",
+      "TEST",
+      "TRANSFER"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "grib": {
+    "keywords": [
+      "BDS",
+      "BMS",
+      "GDS",
+      "GRIB",
+      "IS",
+      "PDS"
+    ],
     "types": [],
     "lineComments": [
       "//.*$"
@@ -606,6 +1631,31 @@
       "\\*/"
     ]
   },
+  "hdf4": {
+    "keywords": [
+      "ATTR",
+      "DATA",
+      "DIM",
+      "END",
+      "FIELD",
+      "HDF4",
+      "MEMBER",
+      "PALETTE",
+      "RASTER8",
+      "SDS",
+      "TAGREF",
+      "VDATA",
+      "VGROUP"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "hec-hms": {
     "keywords": [],
     "types": [],
@@ -615,6 +1665,77 @@
   },
   "hec-ras": {
     "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "hec1": {
+    "keywords": [
+      "BA",
+      "BF",
+      "HC",
+      "ID",
+      "IN",
+      "IO",
+      "IT",
+      "KK",
+      "KM",
+      "KO",
+      "LE",
+      "LS",
+      "LU",
+      "PB",
+      "PC",
+      "PI",
+      "RD",
+      "RM",
+      "RS",
+      "UC",
+      "UD",
+      "US",
+      "ZW"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "hec2": {
+    "keywords": [
+      "BT",
+      "CI",
+      "EJ",
+      "ER",
+      "GR",
+      "J1",
+      "J2",
+      "J3",
+      "J4",
+      "J5",
+      "J6",
+      "NC",
+      "NH",
+      "NV",
+      "QT",
+      "SB",
+      "T1",
+      "T2",
+      "T3",
+      "X1",
+      "X2",
+      "X3",
+      "X4",
+      "X5"
+    ],
     "types": [],
     "lineComments": [
       "//.*$"
@@ -646,7 +1767,101 @@
       "\\*/"
     ]
   },
+  "ieee-cdf": {
+    "keywords": [
+      "BE",
+      "BQ",
+      "BRANCH",
+      "BS",
+      "BUS",
+      "DATA",
+      "END",
+      "FOLLOWS",
+      "INTERCHANGE",
+      "LINES",
+      "LOSS",
+      "OF",
+      "TIE",
+      "ZONES"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "iges": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "igtl": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "ihex": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "irig106": {
+    "keywords": [
+      "COMMENT"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "iucr-cif": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "jcamp-dx": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "jedec": {
     "keywords": [],
     "types": [],
     "lineComments": [
@@ -664,6 +1879,17 @@
     "blockComment": [
       "<!--",
       "-->"
+    ]
+  },
+  "kicad": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
     ]
   },
   "landgem": {
@@ -697,11 +1923,223 @@
       "\\*/"
     ]
   },
+  "lsdyna": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "lustre": {
+    "keywords": [
+      "and",
+      "assert",
+      "bool",
+      "const",
+      "current",
+      "div",
+      "else",
+      "false",
+      "function",
+      "if",
+      "int",
+      "let",
+      "merge",
+      "mod",
+      "node",
+      "not",
+      "or",
+      "pre",
+      "real",
+      "returns",
+      "tel",
+      "then",
+      "true",
+      "type",
+      "var",
+      "when",
+      "xor"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "magicdraw": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [],
+    "blockComment": [
+      "<!--",
+      "-->"
+    ]
+  },
   "matpower": {
     "keywords": [],
     "types": [],
     "lineComments": [
       "%.*$"
+    ]
+  },
+  "mcnp": {
+    "keywords": [
+      "CEL",
+      "CX",
+      "CY",
+      "CZ",
+      "DIR",
+      "ERG",
+      "FILL",
+      "GQ",
+      "KCODE",
+      "KSRC",
+      "KX",
+      "KY",
+      "KZ",
+      "MODE",
+      "NPS",
+      "PAR",
+      "PHYS",
+      "POS",
+      "PX",
+      "PY",
+      "PZ",
+      "RAD",
+      "RCC",
+      "RPP",
+      "SDEF",
+      "SO",
+      "SPH",
+      "SX",
+      "SY",
+      "SZ",
+      "TMP",
+      "TRCL",
+      "VEC",
+      "VOL",
+      "fill",
+      "kcode",
+      "ksrc",
+      "mode",
+      "nps",
+      "sdef",
+      "tmp",
+      "trcl",
+      "vol"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "melcor": {
+    "keywords": [
+      "CF_ARG",
+      "CF_ID",
+      "CF_INPUT",
+      "CF_LIM",
+      "CF_SAI",
+      "COR_CELL",
+      "COR_INPUT",
+      "COR_LH",
+      "COR_MAT",
+      "COR_OX",
+      "COR_PWR",
+      "COR_RP",
+      "COR_ZDF",
+      "COR_ZP",
+      "CVH_INPUT",
+      "CV_ALT",
+      "CV_ID",
+      "CV_NCG",
+      "CV_PAS",
+      "CV_THR",
+      "CV_TY",
+      "CV_VAT",
+      "CV_VEL",
+      "END",
+      "EXEC_CPULIM",
+      "EXEC_DT",
+      "EXEC_DTMAX",
+      "EXEC_DTMIN",
+      "EXEC_INPUT",
+      "EXEC_TEND",
+      "EXEC_TIME",
+      "EXEC_TITLE",
+      "EXEC_TSTART",
+      "FL_FT",
+      "FL_GEO",
+      "FL_IC",
+      "FL_ID",
+      "FL_INPUT",
+      "FL_SEG",
+      "FL_USL",
+      "FL_VLV",
+      "HS_GD",
+      "HS_ID",
+      "HS_INPUT",
+      "HS_LB",
+      "HS_MAT",
+      "HS_ND",
+      "HS_RB",
+      "HS_SRC",
+      "HS_TEMP",
+      "MELCOR_INPUT",
+      "MELGEN_INPUT",
+      "MP_ID",
+      "MP_INPUT",
+      "MP_MAT",
+      "MP_PROP",
+      "MP_TAB",
+      "NCG_GAS",
+      "NCG_ID",
+      "NCG_INPUT",
+      "RN1_CLS",
+      "RN1_DIM",
+      "RN1_FLT",
+      "RN1_INPUT",
+      "RN1_MS",
+      "RN1_REL",
+      "TF_BND",
+      "TF_ID",
+      "TF_INPUT",
+      "TF_SA",
+      "TF_TAB",
+      "TITLE",
+      "cf_input",
+      "cor_input",
+      "cvh_input",
+      "end",
+      "exec_input",
+      "fl_input",
+      "hs_input",
+      "melcor_input",
+      "melgen_input",
+      "mp_input",
+      "ncg_input",
+      "rn1_input",
+      "tf_input",
+      "title"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
     ]
   },
   "mlxtran": {
@@ -873,10 +2311,162 @@
       "[;#].*$"
     ]
   },
+  "molfile": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "mps": {
+    "keywords": [
+      "BOUNDS",
+      "BV",
+      "COLUMNS",
+      "FR",
+      "FX",
+      "LI",
+      "LO",
+      "MAX",
+      "MAXIMIZE",
+      "MI",
+      "MIN",
+      "MINIMIZE",
+      "NAME",
+      "OBJSENSE",
+      "PL",
+      "QMATRIX",
+      "QUADOBJ",
+      "RANGES",
+      "RHS",
+      "ROWS",
+      "UI",
+      "UP"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "nasa-cdf": {
+    "keywords": [
+      "CDF",
+      "CDF_BYTE",
+      "CDF_CHAR",
+      "CDF_DOUBLE",
+      "CDF_EPOCH",
+      "CDF_EPOCH16",
+      "CDF_FLOAT",
+      "CDF_INT1",
+      "CDF_INT2",
+      "CDF_INT4",
+      "CDF_INT8",
+      "CDF_REAL4",
+      "CDF_REAL8",
+      "CDF_TIME_TT2000",
+      "CDF_UCHAR",
+      "CDF_UINT1",
+      "CDF_UINT2",
+      "CDF_UINT4",
+      "CHECKSUM",
+      "COLUMN_MAJOR",
+      "COMPRESSION",
+      "DATA",
+      "ENCODING",
+      "FILE",
+      "FORMAT",
+      "MAJORITY",
+      "MULTI",
+      "NAME",
+      "ROW_MAJOR",
+      "SINGLE",
+      "VERSION"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "nec2": {
+    "keywords": [
+      "EX",
+      "FR",
+      "GA",
+      "GE",
+      "GH",
+      "GM",
+      "GN",
+      "GR",
+      "GS",
+      "GW",
+      "LD",
+      "NT",
+      "RP",
+      "SM",
+      "SP",
+      "SY",
+      "TL",
+      "XQ"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "netcdf": {
+    "keywords": [
+      "Inf",
+      "NaN",
+      "UNLIMITED",
+      "byte",
+      "char",
+      "double",
+      "float",
+      "int",
+      "long",
+      "netcdf",
+      "short"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "nifti": {
     "keywords": [],
     "types": [],
     "lineComments": []
+  },
+  "nmea0183": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
   },
   "nmodl": {
     "keywords": [
@@ -955,6 +2545,33 @@
       "endif",
       "if",
       "then"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "obj": {
+    "keywords": [
+      "Ka",
+      "Kd",
+      "Ke",
+      "Ks",
+      "Ni",
+      "Ns",
+      "Tr",
+      "illum",
+      "mtllib",
+      "newmtl",
+      "off",
+      "usemtl",
+      "vn",
+      "vp",
+      "vt"
     ],
     "types": [],
     "lineComments": [
@@ -1132,10 +2749,14 @@
   },
   "owl2": {
     "keywords": [
+      "Annotation",
+      "AnnotationAssertion",
+      "AnnotationProperty",
       "AsymmetricObjectProperty",
       "Class",
       "ClassAssertion",
       "DataAllValuesFrom",
+      "DataComplementOf",
       "DataExactCardinality",
       "DataHasValue",
       "DataIntersectionOf",
@@ -1148,15 +2769,20 @@
       "DataPropertyRange",
       "DataSomeValuesFrom",
       "DataUnionOf",
+      "Datatype",
       "DatatypeRestriction",
       "Declaration",
       "DifferentIndividuals",
       "DisjointClasses",
+      "DisjointDataProperties",
       "DisjointObjectProperties",
       "DisjointUnion",
       "EquivalentClasses",
+      "EquivalentDataProperties",
+      "EquivalentObjectProperties",
       "FunctionalDataProperty",
       "FunctionalObjectProperty",
+      "HasKey",
       "Import",
       "InverseFunctionalObjectProperty",
       "InverseObjectProperties",
@@ -1170,6 +2796,7 @@
       "ObjectHasSelf",
       "ObjectHasValue",
       "ObjectIntersectionOf",
+      "ObjectInverseOf",
       "ObjectMaxCardinality",
       "ObjectMinCardinality",
       "ObjectOneOf",
@@ -1285,6 +2912,17 @@
     "blockComment": [
       "<!--",
       "-->"
+    ]
+  },
+  "plot3d": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
     ]
   },
   "plscadd": {
@@ -1422,6 +3060,20 @@
       "-->"
     ]
   },
+  "rinex": {
+    "keywords": [
+      "COMMENT",
+      "INTERVAL"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "rocets": {
     "keywords": [
       "BI",
@@ -1534,6 +3186,76 @@
       "\\*/"
     ]
   },
+  "scale": {
+    "keywords": [
+      "ARRAY",
+      "BOUNDARY",
+      "BOUNDS",
+      "CASE",
+      "CELLDATA",
+      "COMP",
+      "COMPOSITION",
+      "CUBOID",
+      "CYLINDER",
+      "END",
+      "FLUX",
+      "GEOM",
+      "GEOMETRY",
+      "GLOBAL",
+      "HEXPRISM",
+      "HOLE",
+      "LIB",
+      "MAT",
+      "MEDIA",
+      "PARAM",
+      "PARAMETER",
+      "PARAMETERS",
+      "POWER",
+      "READ",
+      "SAVE",
+      "SPHERE",
+      "TIME",
+      "UNIT",
+      "ZCYLINDER",
+      "array",
+      "boundary",
+      "bounds",
+      "case",
+      "celldata",
+      "comp",
+      "composition",
+      "cuboid",
+      "cylinder",
+      "end",
+      "flux",
+      "geom",
+      "geometry",
+      "global",
+      "hexprism",
+      "hole",
+      "lib",
+      "mat",
+      "media",
+      "param",
+      "parameter",
+      "parameters",
+      "power",
+      "read",
+      "save",
+      "sphere",
+      "time",
+      "unit",
+      "zcylinder"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "scl": {
     "keywords": [],
     "types": [],
@@ -1543,6 +3265,56 @@
       "-->"
     ]
   },
+  "sdl": {
+    "keywords": [
+      "AND",
+      "BLOCK",
+      "CHANNEL",
+      "CONNECT",
+      "DCL",
+      "DECISION",
+      "ELSE",
+      "ENDBLOCK",
+      "ENDCHANNEL",
+      "ENDDECISION",
+      "ENDPROCESS",
+      "ENDSTATE",
+      "ENDSYSTEM",
+      "FALSE",
+      "FROM",
+      "INPUT",
+      "MOD",
+      "NEXTSTATE",
+      "NODELAY",
+      "NOT",
+      "NOW",
+      "OR",
+      "OUTPUT",
+      "PROCESS",
+      "RESET",
+      "SET",
+      "SIGNAL",
+      "SIGNALROUTE",
+      "START",
+      "STATE",
+      "STOP",
+      "SYSTEM",
+      "TASK",
+      "TIMER",
+      "TO",
+      "TRUE",
+      "VIA",
+      "WITH"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "sedml": {
     "keywords": [],
     "types": [],
@@ -1550,6 +3322,37 @@
     "blockComment": [
       "<!--",
       "-->"
+    ]
+  },
+  "segy": {
+    "keywords": [
+      "AREA",
+      "CLIENT",
+      "END",
+      "FORMAT",
+      "HEADER",
+      "INTERVAL",
+      "LENGTH",
+      "LINE",
+      "MS",
+      "MSEC",
+      "REV",
+      "REVISION",
+      "SAMPLE",
+      "SEC",
+      "SEG",
+      "TEXTUAL",
+      "TRACE",
+      "US",
+      "USEC"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
     ]
   },
   "sel": {
@@ -1610,6 +3413,85 @@
       "\\*/"
     ]
   },
+  "simscript": {
+    "keywords": [
+      "ACCUMULATE",
+      "ACTIVATE",
+      "ALPHA",
+      "AN",
+      "ARRAY",
+      "AS",
+      "BELONGS",
+      "CREATE",
+      "DAYS",
+      "DEFINE",
+      "DESTROY",
+      "END",
+      "ENTITIES",
+      "EVENT",
+      "EVERY",
+      "FIFO",
+      "FILE",
+      "FIRST",
+      "FROM",
+      "HAS",
+      "HOURS",
+      "IN",
+      "INCLUDE",
+      "INTEGER",
+      "LAST",
+      "LET",
+      "LIFO",
+      "MAIN",
+      "MAX",
+      "MEAN",
+      "MIN",
+      "MINUTES",
+      "NOTICES",
+      "NOW",
+      "NUMBER",
+      "OF",
+      "OWNS",
+      "PERMANENT",
+      "PREAMBLE",
+      "PRIORITY",
+      "PROCESS",
+      "PROCESSES",
+      "RANKED",
+      "REAL",
+      "RELINQUISH",
+      "REMOVE",
+      "REQUEST",
+      "RESOURCES",
+      "ROUTINE",
+      "SCHEDULE",
+      "SECONDS",
+      "SET",
+      "SIMULATION",
+      "START",
+      "SUM",
+      "TALLY",
+      "TEMPORARY",
+      "TEXT",
+      "THE",
+      "THIS",
+      "TO",
+      "UNITS",
+      "VARIABLE",
+      "VARIABLES",
+      "WAIT",
+      "WITH",
+      "WORK"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "simulink": {
     "keywords": [
       "Block",
@@ -1630,7 +3512,85 @@
       "\\*/"
     ]
   },
+  "sinda": {
+    "keywords": [
+      "ARRAY",
+      "CALL",
+      "CALLS",
+      "CONDUCTOR",
+      "CONSTANTS",
+      "DATA",
+      "END",
+      "EXECUTION",
+      "HEADER",
+      "NODE",
+      "OF",
+      "OPTIONS",
+      "OUTPUT",
+      "SOURCE",
+      "TITLE",
+      "VARIABLES"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "slam": {
+    "keywords": [
+      "ACT",
+      "ACTIVITY",
+      "ASSIGN",
+      "ATRIB",
+      "AWAIT",
+      "CLOSE",
+      "COLCT",
+      "CONTINUOUS",
+      "CREATE",
+      "DD",
+      "DETECT",
+      "ENDNETWORK",
+      "FIN",
+      "FREE",
+      "GATE",
+      "GEN",
+      "INITIALIZE",
+      "INTLC",
+      "LIMITS",
+      "NETWORK",
+      "OPEN",
+      "QUEUE",
+      "RESOURCE",
+      "SS",
+      "TERM",
+      "TERMINATE",
+      "XX"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "smiles": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "sparql": {
     "keywords": [],
     "types": [],
     "lineComments": [
@@ -1659,6 +3619,17 @@
       "[;$].*$"
     ]
   },
+  "srec": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "ssp": {
     "keywords": [],
     "types": [],
@@ -1675,6 +3646,27 @@
       "ENDSEC",
       "HEADER",
       "ISO-10303-21"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "stl": {
+    "keywords": [
+      "endfacet",
+      "endloop",
+      "endsolid",
+      "facet",
+      "loop",
+      "normal",
+      "outer",
+      "solid",
+      "vertex"
     ],
     "types": [],
     "lineComments": [
@@ -1880,6 +3872,91 @@
       "[;#].*$"
     ]
   },
+  "trasys": {
+    "keywords": [
+      "ACTIVE",
+      "ALBEDO",
+      "ALTITUDE",
+      "BETA",
+      "BOTH",
+      "BOTTOM",
+      "CALL",
+      "CONE",
+      "CYLINDER",
+      "DATA",
+      "DISK",
+      "END",
+      "FALSE",
+      "FFCAL",
+      "HEADER",
+      "NO",
+      "NODE",
+      "NONE",
+      "OF",
+      "OFF",
+      "ON",
+      "OPERATIONS",
+      "OPTIONS",
+      "ORBIT",
+      "PARABOLOID",
+      "PLANET",
+      "PLANETIR",
+      "POLYGON",
+      "PROP",
+      "QCAL",
+      "RECTANGLE",
+      "RKCAL",
+      "ROTX",
+      "ROTY",
+      "ROTZ",
+      "SHADE",
+      "SOLAR",
+      "SPHERE",
+      "SURFACE",
+      "TOP",
+      "TRUE",
+      "TX",
+      "TY",
+      "TZ",
+      "YES"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "trnsys": {
+    "keywords": [
+      "ASSIGN",
+      "CONSTANTS",
+      "DERIVATIVES",
+      "DFQ",
+      "EQUATIONS",
+      "INPUTS",
+      "LIMITS",
+      "LIST",
+      "NOLIST",
+      "PARAMETERS",
+      "SIMULATION",
+      "TOLERANCES",
+      "TYPE",
+      "UNIT",
+      "VERSION",
+      "WIDTH"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "urdf": {
     "keywords": [],
     "types": [],
@@ -1912,8 +3989,134 @@
       "\\*/"
     ]
   },
+  "usgs-dem": {
+    "keywords": [
+      "TYPE_A",
+      "TYPE_B",
+      "TYPE_C"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "verilog-a": {
     "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "verilog": {
+    "keywords": [
+      "always",
+      "and",
+      "assign",
+      "begin",
+      "buf",
+      "bufif0",
+      "bufif1",
+      "case",
+      "casex",
+      "casez",
+      "default",
+      "else",
+      "end",
+      "endcase",
+      "endmodule",
+      "if",
+      "initial",
+      "inout",
+      "input",
+      "integer",
+      "localparam",
+      "macromodule",
+      "module",
+      "nand",
+      "negedge",
+      "nor",
+      "not",
+      "notif0",
+      "notif1",
+      "or",
+      "output",
+      "parameter",
+      "posedge",
+      "reg",
+      "signed",
+      "tri",
+      "wire",
+      "xnor",
+      "xor"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "vhdl": {
+    "keywords": [
+      "all",
+      "and",
+      "architecture",
+      "begin",
+      "body",
+      "buffer",
+      "case",
+      "component",
+      "constant",
+      "downto",
+      "else",
+      "elsif",
+      "end",
+      "entity",
+      "for",
+      "generic",
+      "if",
+      "in",
+      "inout",
+      "is",
+      "library",
+      "linkage",
+      "loop",
+      "map",
+      "nand",
+      "nor",
+      "not",
+      "null",
+      "of",
+      "or",
+      "others",
+      "out",
+      "package",
+      "port",
+      "process",
+      "range",
+      "select",
+      "signal",
+      "subtype",
+      "then",
+      "to",
+      "type",
+      "use",
+      "variable",
+      "when",
+      "with",
+      "xnor",
+      "xor"
+    ],
     "types": [],
     "lineComments": [
       "//.*$"
@@ -1930,60 +4133,6 @@
     "blockComment": [
       "<!--",
       "-->"
-    ]
-  },
-  "atopile": {
-    "keywords": [
-      "assert",
-      "component",
-      "from",
-      "import",
-      "interface",
-      "module",
-      "new",
-      "pin",
-      "signal",
-      "to",
-      "within"
-    ],
-    "types": [],
-    "lineComments": [
-      "//.*$"
-    ],
-    "blockComment": [
-      "/\\*",
-      "\\*/"
-    ]
-  },
-  "kicad": {
-    "keywords": [],
-    "types": [],
-    "lineComments": [
-      "//.*$"
-    ],
-    "blockComment": [
-      "/\\*",
-      "\\*/"
-    ]
-  },
-  "magicdraw": {
-    "keywords": [],
-    "types": [],
-    "lineComments": [],
-    "blockComment": [
-      "<!--",
-      "-->"
-    ]
-  },
-  "sparql": {
-    "keywords": [],
-    "types": [],
-    "lineComments": [
-      "//.*$"
-    ],
-    "blockComment": [
-      "/\\*",
-      "\\*/"
     ]
   }
 }

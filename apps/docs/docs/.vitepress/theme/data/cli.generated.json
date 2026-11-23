@@ -76,6 +76,37 @@
     "subcommands": []
   },
   {
+    "name": "algo",
+    "specs": [
+      "algo <task> [input]"
+    ],
+    "aliases": [],
+    "describe": "Run advanced algorithm kernels (spectral, vector-fit, mor, fault-tree, ctmc, gr1, cbf-qp, nash, rcpsp, stn, max-flow, partition, topopt, lvs, fba, gibbs, ray-optics, dose)",
+    "positionals": [
+      {
+        "name": "task",
+        "aliases": [],
+        "type": "string",
+        "description": "Algorithm task name"
+      },
+      {
+        "name": "input",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to JSON input specification file"
+      }
+    ],
+    "options": [
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "string",
+        "description": "Inline JSON payload string"
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "align",
     "specs": [
       "align <source> <target>"
@@ -1440,11 +1471,12 @@
         "name": "action",
         "aliases": [],
         "type": "string",
-        "description": "Action to perform (lint, summary, extract-phasor, to-dae, to-cff)",
+        "description": "Action to perform (lint, summary, extract-phasor, ringdown, to-dae, to-cff)",
         "choices": [
           "lint",
           "summary",
           "extract-phasor",
+          "ringdown",
           "to-dae",
           "to-cff"
         ]
@@ -12114,7 +12146,7 @@
         "name": "action",
         "aliases": [],
         "type": "string",
-        "description": "Action to perform (inspect, lint, passivity, to-dae, to-modelica, fit)",
+        "description": "Action to perform (inspect, lint, passivity, to-dae, to-modelica, fit, vector-fit)",
         "choices": [
           "inspect",
           "summary",
@@ -12122,7 +12154,8 @@
           "passivity",
           "to-dae",
           "to-modelica",
-          "fit"
+          "fit",
+          "vector-fit"
         ]
       },
       {

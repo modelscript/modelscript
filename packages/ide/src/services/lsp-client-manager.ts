@@ -104,8 +104,7 @@ export function buildDynamicDocumentSelector(
 ): ({ language: string } | { pattern: string })[] {
   const contributedLanguages =
     (context.extension?.packageJSON?.contributes?.languages as
-      | { id: string; extensions?: string[] | undefined }[]
-      | undefined) || [];
+      { id: string; extensions?: string[] | undefined }[] | undefined) || [];
   const dynamicLanguageSelectors: ({ language: string } | { pattern: string })[] = [];
   const allExts: string[] = [
     "mo",
@@ -390,8 +389,7 @@ export class LspClientManager implements vscode.Disposable {
 
     const contributedLanguages =
       (this.context.extension?.packageJSON?.contributes?.languages as
-        | { id: string; aliases?: string[] | undefined }[]
-        | undefined) || [];
+        { id: string; aliases?: string[] | undefined }[] | undefined) || [];
     const matchedLang = languageId
       ? contributedLanguages.find((l) => l.id.toLowerCase() === languageId.toLowerCase())
       : undefined;
@@ -498,6 +496,8 @@ export class LspClientManager implements vscode.Disposable {
               ? `${location.protocol}//${location.hostname}:3000`
               : "https://api.modelscript.org"),
           useLocalMsl: !(vscode.workspace.getConfiguration("modelscript").get("library.useApiRegistry") ?? false),
+          lazyLoadParsers: true,
+          initialLanguageId: vscode.window.activeTextEditor?.document.languageId || "modelica",
           projectDependencies: await getProjectDependencies(),
         },
         outputChannel: this._outputChannel,

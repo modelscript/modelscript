@@ -880,7 +880,14 @@ export function cellsToDiagramData(graph: { title?: string | undefined; cells: R
         angle: cell.angle ?? 0,
         opacity: cell.opacity ?? 1,
         zIndex: cell.zIndex ?? 1,
-        markup: cell.markup ?? { tagName: cell.shape === "circle" ? "circle" : "rect", selector: "body" },
+        markup: cell.markup ?? [
+          { tagName: cell.shape === "circle" ? "circle" : "rect", selector: "body" },
+          {
+            tagName: "text",
+            selector: "label",
+            attrs: { refX: 0.5, refY: 0.5, "text-anchor": "middle", "dominant-baseline": "central" },
+          },
+        ],
         ports: cell.ports ?? { items: [], groups: {} },
         attrs: {
           body: {

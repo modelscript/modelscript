@@ -3476,7 +3476,7 @@ export class UnifiedGraph {
         }
         dot.addEventListener("pointerdown", (e) => {
           e.stopPropagation();
-          (this.container as { setPointerCapture?: (id: number) => void } | null)?.setPointerCapture?.(e.pointerId);
+          (this.rootEl as { setPointerCapture?: (id: number) => void } | null)?.setPointerCapture?.(e.pointerId);
           const pt = this.clientToLocal(e.clientX, e.clientY);
           this.fsm.startResize(cell.id, h, pt.x, pt.y);
         });

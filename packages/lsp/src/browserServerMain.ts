@@ -3,7 +3,9 @@
 import { createWasmParser } from "@modelscript/dsl/bindings";
 import { BrowserMessageReader, BrowserMessageWriter, createConnection } from "vscode-languageserver/browser.js";
 
-Error.stackTraceLimit = Infinity;
+if ((globalThis as any).__DEBUG_LSP__) {
+  Error.stackTraceLimit = Infinity;
+}
 
 import {
   CodeActionKind,

@@ -2,6 +2,7 @@
 
 import { getDefaultLanguageView, getLanguageInfo, MORSEL_LANGUAGE_MAP } from "@modelscript/editor/workbench/constants";
 import MorselEditor from "@modelscript/editor/workbench/Morsel";
+import { MorselLoadingScreen } from "@modelscript/editor/workbench/MorselLoadingScreen";
 import { getLatestPsseStudySnapshot } from "@modelscript/editor/workbench/panels/inspectors/PowerGridInspector";
 import {
   extractPrimaryModelicaClassName,
@@ -23,9 +24,9 @@ import { useAuth } from "../AuthContext";
 import { analyzeSnippetDiagnostics } from "../components/compose/snippet-diagnostics";
 import { ComposeContext } from "../components/ComposeContext";
 import { ErrorBoundary } from "../components/ErrorBoundary";
-import Spinner from "../components/Spinner";
 import { useToast } from "../components/ToastContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
+import { useTheme } from "../theme";
 import {
   getExtensionForDialect,
   inferDialectFromArtifact,
@@ -119,6 +120,7 @@ export const PlaygroundPage: React.FC = () => {
   const { openCompose } = useContext(ComposeContext);
   const toast = useToast();
   const { user } = useAuth();
+  const { theme } = useTheme();
   const hasIde = useFeatureFlag("heavy_vscode_ide");
 
   const modelParam = searchParams.get("model");
@@ -1675,23 +1677,11 @@ export const PlaygroundPage: React.FC = () => {
 
       <EditorArea>
         {isLoadingArtifact ? (
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 14,
-              backgroundColor: "var(--color-canvas-default)",
-              color: "var(--color-fg-muted)",
-              zIndex: 50,
-            }}
-          >
-            <Spinner size="large" />
-            <div style={{ fontSize: 13, fontWeight: 500 }}>Loading model into Ansatz…</div>
-          </div>
+          <MorselLoadingScreen
+            colorMode={theme === "dark" ? "dark" : "light"}
+            loadingProgress={5}
+            loadingMessage="Loading model into Ansatz…"
+          />
         ) : (
           <ErrorBoundary
             name="Ansatz"

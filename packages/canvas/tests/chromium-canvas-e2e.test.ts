@@ -344,7 +344,7 @@ describe("Real Chromium (Playwright) Unified Canvas Interactive E2E", () => {
       });
       assert.ok(
         afterResize.size.width > 110,
-        `Expected motor width > 110 after SE resize, got ${afterResize.size.width}`,
+        `Expected motor width > 110 after SE resize, got ${afterResize.size.width} (events=${afterResize.events.join(",")})`,
       );
       assert.ok(afterResize.events.includes("resized:motor"));
 

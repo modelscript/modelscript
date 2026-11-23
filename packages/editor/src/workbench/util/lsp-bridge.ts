@@ -98,8 +98,14 @@ export async function didOpen(uri: string, text: string, languageId = "modelica"
   if (existing && existing.text === text && existing.languageId === languageId) {
     return;
   }
+  const languageChanged = Boolean(existing && existing.languageId !== languageId);
   openedDocuments.set(uri, { text, languageId });
   const c = await lsp(languageId);
+  if (languageChanged) {
+    c.sendNotification("textDocument/didClose", {
+      textDocument: { uri },
+    });
+  }
   c.sendNotification("textDocument/didOpen", {
     textDocument: { uri, languageId, version: nextVersion(uri), text },
   });

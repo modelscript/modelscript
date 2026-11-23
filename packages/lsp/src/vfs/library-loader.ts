@@ -1075,13 +1075,17 @@ export async function loadMSL(
       fileEntries = unzipSync(zipData);
 
       // Cache extracted MSL in IndexedDB in the background so it doesn't block startup requests
+      const entriesToCache = fileEntries;
       setTimeout(async () => {
         try {
           const db = await openMSLCache();
           try {
             const serializable: Record<string, ArrayBuffer> = {};
-            for (const [name, data] of Object.entries(fileEntries!)) {
-              serializable[name] = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+            for (const [name, data] of Object.entries(entriesToCache)) {
+              serializable[name] =
+                data.byteOffset === 0 && data.byteLength === data.buffer.byteLength
+                  ? (data.buffer as ArrayBuffer)
+                  : (data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer);
             }
             await idbPut(db, cacheKey, serializable);
             ctx.logger.log("[msl-cache] Cached extracted MSL in IndexedDB");

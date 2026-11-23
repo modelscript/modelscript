@@ -4531,6 +4531,9 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     }
 
     resetGeneration(0);
+    initGSS();
+    setBestDyingHead(0);
+    setBestAcceptingHead(0);
     resetQueryArena();
     clearDiagnostics();
     resetExpectedTokensPool();
@@ -4718,7 +4721,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       }
     }
 
-    let totalNodes = nodeCount;
+    let totalNodes = nodeCount < (MAX_CHILD_NODES as u32) ? nodeCount : (MAX_CHILD_NODES as u32);
     let c_idx = totalNodes;
 
     // Append the unparsed chunk

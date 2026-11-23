@@ -6,6 +6,7 @@ import {
   getInputBuffer as _getInputBuffer,
   allocNode,
   atomicChunkAlloc,
+  atomicChunkFree,
   allocGen0,
   FLAG_GC_MARK,
   FLAG_INVISIBLE,
@@ -609,9 +610,13 @@ function ensureExpectedPoolCapacity(required: u32): void {
   if (required <= t_diagExpectedPoolCapacity) return;
   let newCap: u32 = t_diagExpectedPoolCapacity == 0 ? 8192 : t_diagExpectedPoolCapacity * 2;
   while (newCap < required) newCap *= 2;
+  let oldPtr = changetype<usize>(t_diagExpectedPool);
   let newPtr = atomicChunkAlloc(newCap * 2);
-  if (t_diagExpectedPoolLen > 0 && changetype<usize>(t_diagExpectedPool) != 0) {
-    memory.copy(newPtr, changetype<usize>(t_diagExpectedPool), t_diagExpectedPoolLen * 2);
+  if (oldPtr != 0) {
+    if (t_diagExpectedPoolLen > 0) {
+      memory.copy(newPtr, oldPtr, t_diagExpectedPoolLen * 2);
+    }
+    atomicChunkFree(oldPtr);
   }
   t_diagExpectedPool = changetype<UnmanagedUint16Array>(newPtr);
   t_diagExpectedPoolCapacity = newCap;
@@ -1466,7 +1471,7 @@ function ancestorTableGrow(): void {
   let oldTable = ancestorTable;
   let oldCap = ancestorTableCap;
   let newCap: u32 = oldCap == 0 ? 1 << 16 : oldCap << 1;
-  ancestorTable = heap.alloc(<usize>newCap << 3);
+  ancestorTable = atomicChunkAlloc(newCap << 3);
   memory.fill(ancestorTable, 0, <usize>newCap << 3);
   ancestorTableCap = newCap;
   ancestorTableCount = 0;
@@ -1475,7 +1480,7 @@ function ancestorTableGrow(): void {
     if (k != 0) ancestorTableInsert(k, load<u32>(oldTable + ((<usize>j) << 3) + 4));
   }
   if (oldTable != 0) {
-    // old table intentionally not freed (runtime may use a stub allocator)
+    atomicChunkFree(oldTable);
   }
 }
 
@@ -1529,6 +1534,8 @@ export class AncestorCursor {
   isActive: boolean;
   /** Syntax type filter (`0` or `0xFFFF` matches any ancestor type). */
   filterType: u16;
+  /** Intrusive free-list link when pooled. */
+  nextFree: usize;
   
   /** Populates `pathStack` with the ancestors of `targetNode` up to `rootNode`. */
   @inline init(targetNode: u32, stopAtType: u16, rootNode: u32): void {
@@ -1541,7 +1548,7 @@ export class AncestorCursor {
 
      if (globalCursorDepth >= 0 && cursorNodeStack[globalCursorDepth] == targetNode) {
        let depth = globalCursorDepth;
-       if (depth > 4096) depth = 4096;
+       if (depth > 128) depth = 128;
        let stack = this.pathStack;
        for (let d = 0; d < depth; d++) {
          store<u32>(stack + (d << 2), cursorNodeStack[d]);
@@ -1664,19 +1671,17 @@ export class AncestorCursor {
 }
 
 let ancestorCursorPoolInitialized: boolean = false;
-let ancestorCursorPool: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
-let ancestorCursorPoolDepth: i32 = 0;
+let ancestorCursorFreeHead: usize = 0;
 
 function initAncestorCursorPool(): void {
-  ancestorCursorPool = changetype<UnmanagedUint32Array>(atomicChunkAlloc(16 * 4));
   for (let i = 0; i < 16; i++) {
     let ptr = atomicChunkAlloc(offsetof<AncestorCursor>());
     let cursor = changetype<AncestorCursor>(ptr);
     cursor.isActive = false;
     cursor.pathStack = atomicChunkAlloc(4096 * 4) as usize;
-    ancestorCursorPool[i] = ptr;
+    cursor.nextFree = ancestorCursorFreeHead;
+    ancestorCursorFreeHead = ptr as usize;
   }
-  ancestorCursorPoolDepth = 16;
   ancestorCursorPoolInitialized = true;
 }
 
@@ -1684,25 +1689,25 @@ function initAncestorCursorPool(): void {
 export function getAncestors(node: u32, filterType: u16, rootNode: u32): AncestorCursor {
   if (!ancestorCursorPoolInitialized) initAncestorCursorPool();
   let cursor: AncestorCursor;
-  if (ancestorCursorPoolDepth > 0) {
-    ancestorCursorPoolDepth--;
-    cursor = changetype<AncestorCursor>(ancestorCursorPool[ancestorCursorPoolDepth]);
+  if (ancestorCursorFreeHead != 0) {
+    cursor = changetype<AncestorCursor>(ancestorCursorFreeHead);
+    ancestorCursorFreeHead = cursor.nextFree;
+    cursor.nextFree = 0;
   } else {
     let ptr = atomicChunkAlloc(offsetof<AncestorCursor>());
     cursor = changetype<AncestorCursor>(ptr);
     cursor.pathStack = atomicChunkAlloc(4096 * 4) as usize;
+    cursor.nextFree = 0;
   }
   cursor.init(node, filterType, rootNode);
   return cursor;
 }
 
-/** Releases an `AncestorCursor` back into `ancestorCursorPool`. */
+/** Releases an `AncestorCursor` back into the free-list pool. */
 export function releaseAncestorCursor(cursor: AncestorCursor): void {
   if (!ancestorCursorPoolInitialized) initAncestorCursorPool();
-  if (ancestorCursorPoolDepth < 16) {
-    ancestorCursorPool[ancestorCursorPoolDepth] = changetype<u32>(cursor);
-    ancestorCursorPoolDepth++;
-  }
+  cursor.nextFree = ancestorCursorFreeHead;
+  ancestorCursorFreeHead = changetype<usize>(cursor);
 }
 
 
@@ -1722,6 +1727,8 @@ export class DescendantCursor {
   isActive: boolean;
   /** Syntax type filter (`0` or `0xFFFF` matches all descendant node types). */
   filterType: u16;
+  /** Intrusive free-list link when pooled. */
+  nextFree: usize;
 
   /** Initializes a pre-order descendant traversal starting at the first child of `root`. */
   @inline init(root: u32, filterType: u16): void {
@@ -1786,19 +1793,17 @@ export class DescendantCursor {
 }
 
 let descendantCursorPoolInitialized: boolean = false;
-let descendantCursorPool: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
-let descendantCursorPoolDepth: i32 = 0;
+let descendantCursorFreeHead: usize = 0;
 
 function initDescendantCursorPool(): void {
-  descendantCursorPool = changetype<UnmanagedUint32Array>(atomicChunkAlloc(16 * 4));
   for (let i = 0; i < 16; i++) {
     let ptr = atomicChunkAlloc(offsetof<DescendantCursor>());
     let cursor = changetype<DescendantCursor>(ptr);
     cursor.isActive = false;
     cursor.stack = atomicChunkAlloc(4096 * 4);
-    descendantCursorPool[i] = ptr;
+    cursor.nextFree = descendantCursorFreeHead;
+    descendantCursorFreeHead = ptr as usize;
   }
-  descendantCursorPoolDepth = 16;
   descendantCursorPoolInitialized = true;
 }
 
@@ -1806,25 +1811,25 @@ function initDescendantCursorPool(): void {
 export function getDescendants(node: u32, filterType: u16): DescendantCursor {
   if (!descendantCursorPoolInitialized) initDescendantCursorPool();
   let cursor: DescendantCursor;
-  if (descendantCursorPoolDepth > 0) {
-    descendantCursorPoolDepth--;
-    cursor = changetype<DescendantCursor>(descendantCursorPool[descendantCursorPoolDepth]);
+  if (descendantCursorFreeHead != 0) {
+    cursor = changetype<DescendantCursor>(descendantCursorFreeHead);
+    descendantCursorFreeHead = cursor.nextFree;
+    cursor.nextFree = 0;
   } else {
     let ptr = atomicChunkAlloc(offsetof<DescendantCursor>());
     cursor = changetype<DescendantCursor>(ptr);
     cursor.stack = atomicChunkAlloc(4096 * 4);
+    cursor.nextFree = 0;
   }
   cursor.init(node, filterType);
   return cursor;
 }
 
-/** Releases a `DescendantCursor` back into `descendantCursorPool`. */
+/** Releases a `DescendantCursor` back into the free-list pool. */
 export function releaseDescendantCursor(cursor: DescendantCursor): void {
   if (!descendantCursorPoolInitialized) initDescendantCursorPool();
-  if (descendantCursorPoolDepth < 16) {
-    descendantCursorPool[descendantCursorPoolDepth] = changetype<u32>(cursor);
-    descendantCursorPoolDepth++;
-  }
+  cursor.nextFree = descendantCursorFreeHead;
+  descendantCursorFreeHead = changetype<usize>(cursor);
 }
 
 

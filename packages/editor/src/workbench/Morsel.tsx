@@ -130,11 +130,14 @@ export default function MorselEditor(props: MorselEditorProps) {
   const resolvedInitialDialect = props.initialDialect ?? props.initialLanguage;
   const initialLangInfo = getLanguageInfo(resolvedInitialDialect);
   const [dialect, setDialectState] = useState<string>(initialLangInfo.id);
-  useEffect(() => {
-    if (!props.initialDialect) return;
+  const prevInitialDialectRef = useRef(props.initialDialect);
+  if (props.initialDialect && props.initialDialect !== prevInitialDialectRef.current) {
+    prevInitialDialectRef.current = props.initialDialect;
     const nextInfo = getLanguageInfo(props.initialDialect);
-    setDialectState((prev) => (prev === nextInfo.id ? prev : nextInfo.id));
-  }, [props.initialDialect]);
+    if (dialect !== nextInfo.id) {
+      setDialectState(nextInfo.id);
+    }
+  }
   const [diagramType, setDiagramTypeState] = useState<string>(() => {
     const requested = props.diagramType ?? props.initialDiagramType;
     if (requested) {
@@ -1283,17 +1286,16 @@ export default function MorselEditor(props: MorselEditorProps) {
   useEffect(() => {
     const init = async () => {
       if (isInitialized.current) return;
+      isInitialized.current = true;
       const isEmptyWorkspace =
         props.projectFiles !== undefined && Object.keys(props.projectFiles).length === 0 && !content.trim();
       if (isEmptyWorkspace) {
         setLoadingProgress(100);
         setLoadingMessage("Ready");
-        return;
+      } else {
+        setLoadingProgress(10);
+        setLoadingMessage("Initializing modeling & simulation engine…");
       }
-      isInitialized.current = true;
-
-      setLoadingProgress(10);
-      setLoadingMessage("Initializing modeling & simulation engine…");
 
       try {
         const conn = await startLsp(dialect);
@@ -1317,28 +1319,32 @@ export default function MorselEditor(props: MorselEditorProps) {
         console.error("Failed to start LSP:", e);
       }
 
-      setLoadingProgress(80);
-      setLoadingMessage("Loading modeling workspace…");
+      if (!isEmptyWorkspace) {
+        setLoadingProgress(80);
+        setLoadingMessage("Loading modeling workspace…");
 
-      // Notify LSP of the initial file content and ensure notification is sent before triggering simulation/tree update
-      await didOpen(documentUri, content, dialect);
+        // Notify LSP of the initial file content and ensure notification is sent before triggering simulation/tree update
+        await didOpen(documentUri, content, dialect);
 
-      // Force tree update by bumping version now that LSP is ready
-      setContextVersion((v) => v + 1);
+        // Force tree update by bumping version now that LSP is ready
+        setContextVersion((v) => v + 1);
+      }
 
       setAvailableLanguages(uiLanguages);
 
-      const hideLoading = () => {
-        setLoadingProgress(100);
-        setLoadingMessage("Ready");
-        setTimeout(() => {
-          diagramEditorRef.current?.zoomToFit();
-        }, 80);
-      };
-      if ("requestIdleCallback" in window) {
-        requestIdleCallback(hideLoading, { timeout: 500 });
-      } else {
-        setTimeout(hideLoading, 300);
+      if (!isEmptyWorkspace) {
+        const hideLoading = () => {
+          setLoadingProgress(100);
+          setLoadingMessage("Ready");
+          setTimeout(() => {
+            diagramEditorRef.current?.zoomToFit();
+          }, 80);
+        };
+        if ("requestIdleCallback" in window) {
+          requestIdleCallback(hideLoading, { timeout: 500 });
+        } else {
+          setTimeout(hideLoading, 300);
+        }
       }
     };
     init();

@@ -1271,6 +1271,7 @@
       "lint",
       "summary",
       "extract-phasor",
+      "ringdown",
       "to-dae",
       "to-cff"
     ],
@@ -1949,7 +1950,8 @@
       "passivity",
       "to-dae",
       "to-modelica",
-      "fit"
+      "fit",
+      "vector-fit"
     ],
     "capabilities": {
       "parse": true,
