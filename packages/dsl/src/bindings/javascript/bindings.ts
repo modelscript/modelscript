@@ -6638,7 +6638,7 @@ export async function createWasmParser(
       const bindingsPaths = candidates.filter((p) => p !== wasmUrlOrBytes && !p.endsWith(".wasm"));
       for (const bPath of bindingsPaths) {
         try {
-          const fileUrl = typeof bPath === "string" && bPath.startsWith("/") ? `file://${bPath}` : bPath;
+          const fileUrl = isNode && typeof bPath === "string" && bPath.startsWith("/") ? `file://${bPath}` : bPath;
           const mod = await import(/* @vite-ignore */ fileUrl);
           if (mod) {
             if (!syntaxNames && mod.SYNTAX_NAMES && mod.SYNTAX_NAMES.length > 0) {
