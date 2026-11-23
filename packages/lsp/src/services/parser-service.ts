@@ -428,6 +428,12 @@ export class ParserService {
       getNode: (startOffset: number, endOffset: number, entry?: any): any | null => {
         if (!entry || !entry.resourceId) return null;
         const uri = entry.resourceId;
+        if (
+          typeof uri === "string" &&
+          (uri.startsWith("builtin://") || uri.startsWith("library-bundle:") || uri.startsWith("virtual:"))
+        ) {
+          return null;
+        }
         const normUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///");
         const oneSlashUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:/");
         const docTrees =

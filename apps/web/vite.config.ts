@@ -718,6 +718,7 @@ export default defineConfig({
     dedupe: ["react", "react-dom", "react-router-dom", "styled-components", "@primer/react", "three"],
   },
   optimizeDeps: {
+    holdUntilCrawlEnd: true,
     include: [
       "@antv/layout",
       "@monaco-editor/react",
@@ -725,9 +726,15 @@ export default defineConfig({
       "@primer/react",
       "@react-three/drei",
       "@react-three/fiber",
+      "axios",
+      "dompurify",
+      "fflate",
+      "katex",
+      "lucide-react",
       "pako",
       "recharts",
       "three",
+      "vscode-languageserver-protocol/browser",
     ],
   },
   server: {
