@@ -39,3 +39,9 @@ msx lint model.cdf
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/ieee-cdf test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="ieee-cdf" />

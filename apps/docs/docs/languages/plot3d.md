@@ -30,3 +30,9 @@ msx lint model.xyz
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/plot3d test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="plot3d" />

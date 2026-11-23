@@ -31,3 +31,9 @@ msx lint model.gds
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/gdsii test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="gdsii" />

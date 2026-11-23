@@ -122,3 +122,9 @@ msx lint sample.skt
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/nasa-cdf test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="nasa-cdf" />

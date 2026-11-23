@@ -30,3 +30,9 @@ msx lint model.dck
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/trnsys test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="trnsys" />

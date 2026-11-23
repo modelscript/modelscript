@@ -30,3 +30,9 @@ msx lint model.bdl
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/doe2 test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="doe2" />

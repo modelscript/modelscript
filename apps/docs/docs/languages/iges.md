@@ -47,3 +47,9 @@ msx lint model.igs
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/iges test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="iges" />

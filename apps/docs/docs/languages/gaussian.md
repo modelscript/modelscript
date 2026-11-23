@@ -30,3 +30,9 @@ msx lint model.gjf
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/gaussian test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="gaussian" />

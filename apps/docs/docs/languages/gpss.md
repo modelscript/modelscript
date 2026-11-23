@@ -28,3 +28,9 @@ msx lint model.gps
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/gpss test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="gpss" />

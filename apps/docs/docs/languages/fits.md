@@ -40,3 +40,9 @@ msx lint model.fits
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/fits test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="fits" />

@@ -61,3 +61,9 @@ msx lint sample.bufr
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/bufr test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="bufr" />

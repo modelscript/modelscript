@@ -30,3 +30,9 @@ msx lint model.mol
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/molfile test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="molfile" />

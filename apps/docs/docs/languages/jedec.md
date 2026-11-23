@@ -54,3 +54,9 @@ msx lint sample.jed
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/jedec test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="jedec" />

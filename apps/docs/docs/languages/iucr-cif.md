@@ -60,3 +60,9 @@ msx lint sample.mcif
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/iucr-cif test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="iucr-cif" />

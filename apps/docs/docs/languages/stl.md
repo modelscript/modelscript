@@ -62,3 +62,9 @@ msx lint sample.stl
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/stl test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="stl" />

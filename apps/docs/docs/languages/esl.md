@@ -28,3 +28,9 @@ msx lint model.esl
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/esl test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="esl" />

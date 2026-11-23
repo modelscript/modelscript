@@ -315,3 +315,9 @@ package BrakeCertificationExample {
 - [Polyglot Compiler Linter Rules Reference](/reference/linter-rules#sysml2)
 - [CHC & IC3 Verification Algorithms](/algorithms/verification-chc)
 - [Triple Graph Grammars & Digital Thread](/architecture/tgg)
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="sysml2-lints" />

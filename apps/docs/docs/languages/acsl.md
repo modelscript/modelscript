@@ -28,3 +28,9 @@ msx lint model.csl
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/acsl test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="acsl" />

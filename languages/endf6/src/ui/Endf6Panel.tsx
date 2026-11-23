@@ -243,3 +243,5 @@ export const Endf6Panel: React.FC<LanguagePanelProps> = ({
     </PanelShell>
   );
 };
+
+export default Endf6Panel;

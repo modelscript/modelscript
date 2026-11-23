@@ -267,3 +267,5 @@ export const JcampDxPanel: React.FC<LanguagePanelProps> = ({
     </PanelShell>
   );
 };
+
+export default JcampDxPanel;

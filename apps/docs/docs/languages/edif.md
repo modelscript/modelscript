@@ -57,3 +57,9 @@ msx lint model.edf
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/edif test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="edif" />

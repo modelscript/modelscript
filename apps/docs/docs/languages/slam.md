@@ -28,3 +28,9 @@ msx lint model.slam
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/slam test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="slam" />

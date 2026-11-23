@@ -84,3 +84,9 @@ msx lint sample.obj
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/obj test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="obj" />

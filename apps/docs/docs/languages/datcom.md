@@ -30,3 +30,9 @@ msx lint model.dcm
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/datcom test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="datcom" />

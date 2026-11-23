@@ -39,3 +39,9 @@ msx lint model.ck
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/chemkin test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="chemkin" />

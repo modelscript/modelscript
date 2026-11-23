@@ -9302,6 +9302,10 @@ Every language plugin implements the `LanguageDefinition` interface (`packages/d
 4. **Compiler Lints (`lints`)**: Real-time diagnostics surfaced identically in the CLI (`msx lint`), LSP server, and Studio.
 5. **TGG Rules (`tggRules`)**: Declarative bidirectional synchronization rules linking AST nodes across languages (e.g., `SysMLv2 PartUsage` $\leftrightarrow$ `Modelica Component` $\leftrightarrow$ `STEP Product` $\leftrightarrow$ `ModelScript Struct`).
 
+---
+
+## Verification, Maturity & Benchmarks
+
 ================================================================================
 DOCUMENT: Modelica (.mo) Language Reference
 CANONICAL URL: https://modelscript.org/languages/modelica
@@ -9720,7 +9724,7 @@ The `@modelscript/mcp` server and `@modelscript/modelica` MCP adapter expose 10 
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.31 ms (p95: 0.36 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.24 ms (p95: 0.30 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -9977,7 +9981,7 @@ npm run test:bench --workspace=@modelscript/ampl
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (6/6) | Parse Latency: 0.42 ms (p95: 0.47 ms)
+Tier: `beta` | Pass Rate: 100% (6/6) | Parse Latency: 0.24 ms (p95: 0.27 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -10186,7 +10190,7 @@ CANONICAL URL: https://modelscript.org/languages/sysml2
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.87 ms (p95: 1.46 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.37 ms (p95: 0.41 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -10299,7 +10303,7 @@ msx reqif to-modelica ThermalLimits.reqif --out=ThermalMonitors.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.10 ms (p95: 0.16 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.13 ms (p95: 0.17 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -10353,7 +10357,7 @@ msx magicdraw render VehicleArchitecture.mdzip --diagramKind BDD -o architecture
 
 ## Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -10449,7 +10453,7 @@ msx oscal to-reqif SystemSecurityPlan.oscal.json -o SecurityControls.reqif
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.05 ms (p95: 0.09 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.03 ms (p95: 0.06 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -10568,7 +10572,7 @@ msx cosim optimize PlantModel.ssp --params="kp:0.1:10.0,kd:0.01:1.0" --objective
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.14 ms (p95: 0.17 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.09 ms (p95: 0.17 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -10725,7 +10729,7 @@ msx polyglot verify --strict
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.15 ms (p95: 0.18 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.16 ms (p95: 0.17 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -10917,7 +10921,7 @@ npx msx align chassis.step architecture.sysml
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.27 ms (p95: 0.32 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.24 ms (p95: 0.25 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -11022,7 +11026,7 @@ msx qif to-modelica TurbineBladeInspection.qif -o BladeMetrology.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.16 ms (p95: 0.20 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.10 ms (p95: 0.11 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -11140,7 +11144,7 @@ npx msx csg SatelliteChassis satellite.mo > bracket.scad
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 2.00 ms (p95: 2.09 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.14 ms (p95: 0.16 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -11287,7 +11291,7 @@ SU2 and OpenFOAM are trademarks or registered trademarks of their respective own
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.07 ms (p95: 0.08 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.07 ms (p95: 0.09 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -11442,7 +11446,7 @@ CalculiX, Abaqus, and NASTRAN are trademarks or registered trademarks of their r
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 1.67 ms (p95: 1.99 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 1.20 ms (p95: 2.82 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -11547,7 +11551,7 @@ msx urdf simulate robot.urdf --stop-time=2.0 -o sim.json
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.08 ms (p95: 0.19 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.06 ms (p95: 0.15 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -11625,7 +11629,7 @@ msx simulate CircuitModel.mo --stop-time=1.0 --step-size=0.001 --format=csv -o s
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.08 ms (p95: 0.48 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.08 ms (p95: 0.09 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -11722,7 +11726,7 @@ msx c to-modelica SensorDriver.h -o SensorDriver.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.71 ms (p95: 1.21 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.83 ms (p95: 1.54 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -11825,7 +11829,7 @@ const result = lowerFortranToDae(builder, source.split("\n"));
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.13 ms (p95: 0.66 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.11 ms (p95: 0.12 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -11969,7 +11973,7 @@ msx jsbsim to-modelica Cessna172Skyhawk.xml -o FlightMechanics.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 3.18 ms (p95: 4.27 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.41 ms (p95: 0.60 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -12180,7 +12184,7 @@ The `@modelscript/ide-client` package provides a dedicated dual-mode custom edit
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.48 ms (p95: 0.60 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.63 ms (p95: 0.76 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -12251,7 +12255,7 @@ CANONICAL URL: https://modelscript.org/languages/ccsds
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 1.10 ms (p95: 1.35 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 1.55 ms (p95: 8.77 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -12537,7 +12541,7 @@ msx easy5 diagram controller.ez5 --out=schematic.svg
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.26 ms (p95: 0.49 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.36 ms (p95: 0.63 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -12670,7 +12674,7 @@ const executionLog = rte.runUntil(0.05, 0.01);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.13 ms (p95: 0.15 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.14 ms (p95: 0.15 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -12795,7 +12799,7 @@ console.log(`Variables: ${dae.varCount}, Equations: ${dae.eqCount}`);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.15 ms (p95: 0.27 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.04 ms (p95: 0.13 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -12996,7 +13000,7 @@ CANONICAL URL: https://modelscript.org/languages/opendrive
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.09 ms (p95: 0.12 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.10 ms (p95: 0.14 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -13148,7 +13152,7 @@ msx openscenario to-modelica HighwayCutIn.xosc -o ScenarioSimulation.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.25 ms (p95: 0.37 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.32 ms (p95: 0.47 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -13227,7 +13231,7 @@ CANONICAL URL: https://modelscript.org/languages/gtfs
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.20 ms (p95: 0.24 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.21 ms (p95: 0.22 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -13353,7 +13357,7 @@ AI agents interacting via the ModelScript MCP server have access to:
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.08 ms (p95: 0.09 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.08 ms (p95: 0.10 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -13454,7 +13458,7 @@ AI agents interacting via the ModelScript MCP server have access to:
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.03 ms (p95: 0.04 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.05 ms (p95: 0.07 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -14091,7 +14095,7 @@ Opening any `.raw` file in the ModelScript IDE or VS Code launches the custom du
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.33 ms (p95: 0.57 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.44 ms (p95: 0.54 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -14230,7 +14234,7 @@ msx powerfactory to-modelica grid.pfd --out=GridModel.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.03 ms (p95: 0.06 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.04 ms (p95: 0.06 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -14345,7 +14349,7 @@ msx pslf from-psse wecc_case.raw --dyr=wecc_case.dyr --out=wecc_case.epc
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 1.41 ms (p95: 1.84 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.19 ms (p95: 0.52 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -14582,7 +14586,7 @@ const modelicaSource = cgmesToModelica(model, { packageName: "EntsoeCorridor" })
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 13.62 ms (p95: 32.80 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 12.38 ms (p95: 14.48 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -14716,7 +14720,7 @@ msx opendss to-modelica IEEE13NodeFeeder.dss -o DistributionFeeder.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.14 ms (p95: 0.17 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.13 ms (p95: 0.14 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -14793,7 +14797,7 @@ CANONICAL URL: https://modelscript.org/languages/ocpp
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.04 ms (p95: 0.06 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.02 ms (p95: 0.04 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -14888,7 +14892,7 @@ CANONICAL URL: https://modelscript.org/languages/openadr
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.05 ms (p95: 0.08 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.05 ms (p95: 0.09 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -14998,7 +15002,7 @@ CANONICAL URL: https://modelscript.org/languages/tough
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 5.09 ms (p95: 5.96 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 3.46 ms (p95: 4.01 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -15185,7 +15189,7 @@ const psseCase = matpowerToPsseRaw(mpc);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.18 ms (p95: 2.21 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.16 ms (p95: 0.18 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -15278,7 +15282,7 @@ msx comtrade to-dae fault_record.cfg
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.21 ms (p95: 0.22 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.16 ms (p95: 0.19 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -15372,7 +15376,7 @@ msx scl to-dae substation.scd
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.04 ms (p95: 0.06 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.04 ms (p95: 0.07 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -15461,7 +15465,7 @@ msx atp to-dae lightning_surge.atp
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.07 ms (p95: 0.08 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.10 ms (p95: 0.11 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -15550,7 +15554,7 @@ msx dnp3 to-dae rtu_substation_profile.xml
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.05 ms (p95: 0.19 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.06 ms (p95: 0.09 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -15644,7 +15648,7 @@ msx oneliner to-dae utility_transmission.dxt
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.05 ms (p95: 0.11 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.07 ms (p95: 0.07 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -15738,7 +15742,7 @@ msx sel to-dae sel421_line_protection.txt
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.04 ms (p95: 0.06 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.04 ms (p95: 0.07 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -16621,7 +16625,7 @@ msx olga survey bathymetry_survey.csv \
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.16 ms (p95: 0.37 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.10 ms (p95: 0.27 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -16873,7 +16877,7 @@ msx lps sysml network.lps -o network.sysml
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.25 ms (p95: 4.32 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.22 ms (p95: 0.23 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -17001,7 +17005,7 @@ msx eclipse to-modelica NorthSeaReservoir.data -o ReservoirModel.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.15 ms (p95: 0.17 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.18 ms (p95: 0.19 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -17184,7 +17188,7 @@ msx relap5 to-modelica PwrPrimaryLoop.i -o NuclearLoop.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.20 ms (p95: 0.25 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.15 ms (p95: 0.16 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -17348,7 +17352,7 @@ msx sima to-sysml2 cases/OC4_Semi.inp --out=OC4_Semi.sysml
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.02 ms (p95: 0.06 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.01 ms (p95: 0.01 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -17450,7 +17454,7 @@ msx spice lint SensorFrontEnd.net
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.07 ms (p95: 0.19 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.07 ms (p95: 0.20 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -17679,7 +17683,7 @@ msx verilog-a to-spice MOS_Transistor.va -o MOS_Transistor.sub
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (3/3) | Parse Latency: 0.23 ms (p95: 0.45 ms)
+Tier: `alpha` | Pass Rate: 100% (3/3) | Parse Latency: 0.19 ms (p95: 0.35 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -17797,7 +17801,7 @@ msx ibis to-modelica Ddr4Driver.ibs -o Ddr4Buffer.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.12 ms (p95: 0.14 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.15 ms (p95: 0.18 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -17929,7 +17933,7 @@ msx touchstone to-modelica BandpassFilter.s2p -o FilterModel.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.10 ms (p95: 0.10 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.11 ms (p95: 0.11 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -18049,7 +18053,7 @@ msx optical to-dae network.json --out=optical.dae
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.27 ms (p95: 0.30 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.31 ms (p95: 0.33 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -18171,7 +18175,7 @@ msx ran fresnel --freq=11.0 --dist=15.0
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.13 ms (p95: 0.15 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.13 ms (p95: 0.14 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -18279,7 +18283,7 @@ msx fiber make-ready --prop-height=21
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 2.08 ms (p95: 2.25 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.20 ms (p95: 0.23 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -18404,7 +18408,7 @@ On [Ansatz](https://ansatz.social), `.urdf`, `.sdf`, and `.xacro` artifacts rend
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.32 ms (p95: 0.42 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.32 ms (p95: 0.45 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -18501,7 +18505,7 @@ msx plcopen to-modelica AutomationController.xml -o ControllerBlocks.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.10 ms (p95: 0.26 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.11 ms (p95: 0.29 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -18596,7 +18600,7 @@ msx aml to-modelica RoboticAssemblyCell.aml -o PlantModel.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.15 ms (p95: 0.20 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.13 ms (p95: 0.17 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -18693,7 +18697,7 @@ msx adams mobility ExcavatorMechanism.adm
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.28 ms (p95: 1.24 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.42 ms (p95: 0.53 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -18759,7 +18763,7 @@ CANONICAL URL: https://modelscript.org/languages/energyplus
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.09 ms (p95: 0.10 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.09 ms (p95: 0.11 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -18863,7 +18867,7 @@ CANONICAL URL: https://modelscript.org/languages/epanet
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 4.04 ms (p95: 5.12 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 3.42 ms (p95: 9.78 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -19046,7 +19050,7 @@ msx swmm to-modelica UrbanDrainage.inp -o StormwaterNetwork.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 3.65 ms (p95: 5.12 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 2.42 ms (p95: 3.22 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -19131,7 +19135,7 @@ CANONICAL URL: https://modelscript.org/languages/hec-ras
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.58 ms (p95: 9.42 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.53 ms (p95: 1.13 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -19244,7 +19248,7 @@ CANONICAL URL: https://modelscript.org/languages/modflow
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 4.50 ms (p95: 8.89 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 4.61 ms (p95: 5.46 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -19366,7 +19370,7 @@ CANONICAL URL: https://modelscript.org/languages/landgem
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 4.58 ms (p95: 10.90 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 4.15 ms (p95: 4.43 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -19492,7 +19496,7 @@ AI agents connect to `@modelscript/hec-hms` through dedicated MCP tools:
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 2.15 ms (p95: 6.09 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 2.00 ms (p95: 2.86 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -19588,7 +19592,7 @@ msx waterml to-dae usgs_gauge_01646500.xml
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.53 ms (p95: 0.78 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.06 ms (p95: 0.10 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -19678,7 +19682,7 @@ msx asm to-dae bsm1_plant.asm
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.08 ms (p95: 0.10 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.11 ms (p95: 0.13 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -19802,7 +19806,7 @@ msx aspen to-modelica MethanolWaterPlant.inp -o MethanolPlant.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.13 ms (p95: 0.15 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.18 ms (p95: 0.23 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -19924,7 +19928,7 @@ gPROMS is a registered trademark of Process Systems Enterprise Limited (Siemens 
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.12 ms (p95: 0.13 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.14 ms (p95: 0.15 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -20076,7 +20080,7 @@ const modelicaSource = canteraToModelica(mech);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 1.26 ms (p95: 1.32 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.10 ms (p95: 0.12 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -20227,7 +20231,7 @@ const moCode = phreeqcToModelica(deck);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.07 ms (p95: 0.09 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.07 ms (p95: 0.08 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -20355,7 +20359,7 @@ const modelicaMedia = smilesToModelica(model);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.06 ms (p95: 0.12 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.02 ms (p95: 0.05 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -20484,7 +20488,7 @@ msx sbml to-modelica GlycolyticPathway.sbml -o GlycolysisModel.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (3/3) | Parse Latency: 1.02 ms (p95: 1.13 ms)
+Tier: `alpha` | Pass Rate: 100% (3/3) | Parse Latency: 0.34 ms (p95: 0.52 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -20621,7 +20625,7 @@ const moCode = antimonyToModelica(doc);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.16 ms (p95: 0.21 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.24 ms (p95: 0.26 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -20751,7 +20755,7 @@ const moCode = bnglToModelica(model);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.23 ms (p95: 0.27 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.20 ms (p95: 0.25 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -20877,7 +20881,7 @@ const modelicaCode = sbolToModelica(model);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.40 ms (p95: 0.66 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.31 ms (p95: 0.45 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -21009,7 +21013,7 @@ const modelicaSource = sedmlToModelica(doc);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.22 ms (p95: 6.58 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.20 ms (p95: 0.36 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -21149,7 +21153,7 @@ NONMEM is a registered trademark of ICON plc. PsN and Pirana are trademarks or s
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 2.39 ms (p95: 2.62 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.23 ms (p95: 0.26 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -21273,7 +21277,7 @@ Monolix® and Lixoft® are registered trademarks of Lixoft SAS / Simulations Plu
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (3/3) | Parse Latency: 0.06 ms (p95: 0.10 ms)
+Tier: `alpha` | Pass Rate: 100% (3/3) | Parse Latency: 0.05 ms (p95: 0.13 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -21421,7 +21425,7 @@ const moCode = pdbToModelica(structure);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.12 ms (p95: 0.14 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.11 ms (p95: 0.19 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -21572,7 +21576,7 @@ const moCode = genbankToModelica(record);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.14 ms (p95: 0.18 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.15 ms (p95: 0.16 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -21684,7 +21688,7 @@ const sbmlXml = cellmlToSbml(model);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (3/3) | Parse Latency: 0.37 ms (p95: 0.48 ms)
+Tier: `alpha` | Pass Rate: 100% (3/3) | Parse Latency: 0.32 ms (p95: 0.57 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -21793,7 +21797,7 @@ const modelicaCode = nmodlToModelica(doc);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (3/3) | Parse Latency: 0.10 ms (p95: 0.12 ms)
+Tier: `alpha` | Pass Rate: 100% (3/3) | Parse Latency: 0.10 ms (p95: 0.24 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -21910,7 +21914,7 @@ const urdfXml = openSimToUrdf(model);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.09 ms (p95: 0.11 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.10 ms (p95: 0.10 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -22027,7 +22031,7 @@ const modelicaCode = febioToModelica(model);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 2.50 ms (p95: 5.59 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.46 ms (p95: 0.95 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -22157,7 +22161,7 @@ const sysmlPkg = dicomRtToSysML2(plan);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.02 ms (p95: 0.06 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.02 ms (p95: 0.07 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -22275,7 +22279,7 @@ const modelicaCode = topasToModelica(model);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.09 ms (p95: 0.27 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.09 ms (p95: 0.16 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -22501,7 +22505,7 @@ const scadCode = threeMfToScad(model);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.08 ms (p95: 0.11 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.09 ms (p95: 0.12 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -22637,6 +22641,7 @@ CANONICAL URL: https://modelscript.org/languages/acsl
 ModelScript Beta-tier language package for **ACSL** (Advanced Continuous Simulation Language, 1975).
 
 ## Features
+
 - Native WebAssembly GLR parser (`@modelscript/dsl` → `dist/parser.wasm`) with linear-memory CST access.
 - Comprehensive diagnostics (`ACSL1001`–`ACSL5006`) for section placement, integrator initialization, algebraic loops, and `SCHEDULE` targets.
 - Direct `DAEBuilder` linear-memory lowering, RK4/Dormand-Prince hybrid ODE/event solver, and Modelica 3.x projection.
@@ -22655,6 +22660,18 @@ msx lint model.csl
 pnpm --filter @modelscript/acsl test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=acsl`
+
 ================================================================================
 DOCUMENT: CSMP / CSSL-67 (.csmp) Language Reference
 CANONICAL URL: https://modelscript.org/languages/csmp
@@ -22667,6 +22684,7 @@ CANONICAL URL: https://modelscript.org/languages/csmp
 ModelScript Beta-tier language package for **CSMP/360 & CSSL-67** (IBM Continuous System Modeling Program, 1967).
 
 ## Features
+
 - Native WebAssembly GLR parser (`@modelscript/dsl` → `dist/parser.wasm`) supporting `INITIAL`/`DYNAMIC`/`TERMINAL`, `SORT`/`NOSORT`, `MACRO`/`ENDMAC`, `PROCEDURE`/`ENDPRO`, `FUNCTION` tables, and `INTGRL`.
 - Diagnostics (`CSMP1001`–`CSMP5006`) including topological `SORT` algebraic-loop detection, `TIMER`, and `METHOD` validation.
 - Direct `DAEBuilder` lowering, RK4/Milne/Adams/Trapezoidal integrators, and Modelica 3.x projection.
@@ -22685,6 +22703,18 @@ msx lint model.csmp
 pnpm --filter @modelscript/csmp test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=csmp`
+
 ================================================================================
 DOCUMENT: DYNAMO (.dyn) Language Reference
 CANONICAL URL: https://modelscript.org/languages/dynamo
@@ -22697,6 +22727,7 @@ CANONICAL URL: https://modelscript.org/languages/dynamo
 ModelScript Beta-tier language package for **DYNAMO** (MIT System Dynamics Language, 1959–1960s).
 
 ## Features
+
 - Native WebAssembly GLR parser (`@modelscript/dsl` → `dist/parser.wasm`) supporting `L`/`R`/`A`/`N`/`C`/`T`/`S` equations, `.K`/`.J`/`.JK`/`.KL` time subscripts, `SPEC`, and `TABLE` definitions.
 - Diagnostics (`DYN1001`–`DYN5006`) for missing initial equations, invalid time subscripts, simultaneous auxiliary cycles, and `SPEC` bounds.
 - Direct `DAEBuilder` lowering, Euler/RK2 system-dynamics solver, and Modelica projection.
@@ -22715,6 +22746,18 @@ msx lint model.dyn
 pnpm --filter @modelscript/dynamo test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=dynamo`
+
 ================================================================================
 DOCUMENT: ESL (.esl) Language Reference
 CANONICAL URL: https://modelscript.org/languages/esl
@@ -22727,6 +22770,7 @@ CANONICAL URL: https://modelscript.org/languages/esl
 ModelScript Beta-tier language package for **ESL** (European Space Agency Simulation Language, 1980s).
 
 ## Features
+
 - Native WebAssembly GLR parser (`@modelscript/dsl` → `dist/parser.wasm`) supporting `STUDY`, `MODEL`, `SUBMODEL`, `SEGMENT`, `PACKAGE`, `INITIAL`/`DYNAMIC`/`STEP`/`TERMINAL`, prime derivatives `x'`, and `WHEN` discontinuities.
 - Diagnostics (`ESL1001`–`ESL5006`) for duplicate/undefined symbols, derivative targets, block mismatches, `WHEN` predicates, and submodel arity.
 - Direct `DAEBuilder` lowering, hybrid RK4 + bisection zero-crossing event solver, and Modelica projection.
@@ -22745,6 +22789,18 @@ msx lint model.esl
 pnpm --filter @modelscript/esl test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=esl`
+
 ================================================================================
 DOCUMENT: GPSS (.gps) Language Reference
 CANONICAL URL: https://modelscript.org/languages/gpss
@@ -22757,6 +22813,7 @@ CANONICAL URL: https://modelscript.org/languages/gpss
 ModelScript Beta-tier language package for **GPSS** (General Purpose Simulation System, 1961).
 
 ## Features
+
 - Native WebAssembly GLR parser (`@modelscript/dsl` → `dist/parser.wasm`) supporting GPSS transaction-flow blocks (`GENERATE`, `SEIZE`, `RELEASE`, `ADVANCE`, `QUEUE`, `DEPART`, `ENTER`, `LEAVE`, `TRANSFER`, `SPLIT`, `ASSEMBLE`, `TERMINATE`, `STORAGE`, `TABLE`, `START`).
 - Diagnostics (`GPSS1001`–`GPSS5006`) for unmatched `SEIZE`/`RELEASE`, `QUEUE`/`DEPART`, `ENTER`/`LEAVE`, undefined targets, and invalid capacities.
 - Direct `DAEBuilder` fluid/balance lowering, deterministic seeded discrete-event simulator with Erlang-C / Little's Law parity, and Modelica projection.
@@ -22775,6 +22832,18 @@ msx lint model.gps
 pnpm --filter @modelscript/gpss test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=gpss`
+
 ================================================================================
 DOCUMENT: SIMSCRIPT II.5 (.sim) Language Reference
 CANONICAL URL: https://modelscript.org/languages/simscript
@@ -22787,6 +22856,7 @@ CANONICAL URL: https://modelscript.org/languages/simscript
 ModelScript Beta-tier language package for **SIMSCRIPT II.5** (RAND Discrete-Event Simulation Language, 1962–1968).
 
 ## Features
+
 - Native WebAssembly GLR parser (`@modelscript/dsl` → `dist/parser.wasm`) supporting `PREAMBLE`, `TEMPORARY`/`PERMANENT ENTITIES`, `PROCESSES`, `RESOURCES`, `EVENT NOTICES`, `TALLY`/`ACCUMULATE`, `ACTIVATE`, `WORK`, `WAIT`, `REQUEST`/`RELINQUISH`, and `FILE`/`REMOVE`.
 - Diagnostics (`SIMS1001`–`SIMS5006`) for duplicate/undefined entities, resources, sets, mismatched `REQUEST`/`RELINQUISH`, and missing `START SIMULATION`.
 - Direct `DAEBuilder` balance lowering, seeded process-oriented DES engine with Erlang-C / Little's Law parity, and Modelica projection.
@@ -22805,6 +22875,18 @@ msx lint model.sim
 pnpm --filter @modelscript/simscript test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=simscript`
+
 ================================================================================
 DOCUMENT: SLAM II (.slam) Language Reference
 CANONICAL URL: https://modelscript.org/languages/slam
@@ -22817,6 +22899,7 @@ CANONICAL URL: https://modelscript.org/languages/slam
 ModelScript Beta-tier language package for **SLAM II** (Simulation Language for Alternative Modeling, 1979).
 
 ## Features
+
 - Native WebAssembly GLR parser (`@modelscript/dsl` → `dist/parser.wasm`) supporting `GEN`, `LIMITS`, `CONTINUOUS`, `INTLC`, `NETWORK`/`ENDNETWORK`, `CREATE`, `QUEUE`, `ACTIVITY`, `AWAIT`, `FREE`, `DETECT`, `COLCT`, `TERMINATE`, and `DD(i)`/`SS(i)` equations.
 - Diagnostics (`SLAM1001`–`SLAM5006`) for undefined resources/gates/labels, `CONTINUOUS` bounds, `DETECT` crossings, and unmatched blocks.
 - Combined discrete-continuous `DAEBuilder` lowering, hybrid RK4 + DES event-queue + `DETECT` threshold-crossing solver, and Modelica projection.
@@ -22834,6 +22917,18 @@ msx lint model.slam
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/slam test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=slam`
 
 ================================================================================
 DOCUMENT: VHDL (IEEE 1076) (.vhd) Language Reference
@@ -22877,6 +22972,18 @@ msx lint model.vhd
 pnpm --filter @modelscript/vhdl test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=vhdl`
+
 ================================================================================
 DOCUMENT: Verilog (IEEE 1364) (.v) Language Reference
 CANONICAL URL: https://modelscript.org/languages/verilog
@@ -22909,6 +23016,18 @@ msx lint model.v
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/verilog test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=verilog`
 
 ================================================================================
 DOCUMENT: Lustre (.lus) Language Reference
@@ -22956,6 +23075,18 @@ msx lint model.lus
 pnpm --filter @modelscript/lustre test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=lustre`
+
 ================================================================================
 DOCUMENT: Esterel (.strl) Language Reference
 CANONICAL URL: https://modelscript.org/languages/esterel
@@ -23002,13 +23133,7 @@ end module
 
 const program = parseEsterel(abro);
 const diagnostics = lintEsterel(program);
-const trace = simulateEsterelTrace(program, [
-  [],
-  ["A"],
-  ["B"],
-  ["R"],
-  ["A", "B"],
-]);
+const trace = simulateEsterelTrace(program, [[], ["A"], ["B"], ["R"], ["A", "B"]]);
 ```
 
 ---
@@ -23022,6 +23147,18 @@ msx lint model.strl
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/esterel test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=esterel`
 
 ================================================================================
 DOCUMENT: SDL-88 (.sdl) Language Reference
@@ -23057,6 +23194,18 @@ msx lint model.sdl
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/sdl test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=sdl`
 
 ================================================================================
 DOCUMENT: EDIF 2.0.0 (.edf) Language Reference
@@ -23118,6 +23267,18 @@ msx lint model.edf
 pnpm --filter @modelscript/edif test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=edif`
+
 ================================================================================
 DOCUMENT: GDSII (.gds) Language Reference
 CANONICAL URL: https://modelscript.org/languages/gdsii
@@ -23151,6 +23312,18 @@ msx lint model.gds
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/gdsii test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=gdsii`
 
 ================================================================================
 DOCUMENT: CIF 2.0 (.cif) Language Reference
@@ -23194,6 +23367,18 @@ msx lint model.cif
 pnpm --filter @modelscript/cif test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=cif`
+
 ================================================================================
 DOCUMENT: Gerber RS-274-D/X (.gbr) Language Reference
 CANONICAL URL: https://modelscript.org/languages/gerber
@@ -23227,6 +23412,18 @@ msx lint model.gbr
 pnpm --filter @modelscript/gerber test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=gerber`
+
 ================================================================================
 DOCUMENT: MCNP (.mcnp) Language Reference
 CANONICAL URL: https://modelscript.org/languages/mcnp
@@ -23259,6 +23456,18 @@ msx lint model.mcnp
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/mcnp test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=mcnp`
 
 ================================================================================
 DOCUMENT: MELCOR (.mel) Language Reference
@@ -23321,6 +23530,18 @@ msx lint model.mel
 pnpm --filter @modelscript/melcor test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=melcor`
+
 ================================================================================
 DOCUMENT: SCALE / KENO / ORIGEN (.scale) Language Reference
 CANONICAL URL: https://modelscript.org/languages/scale
@@ -23361,6 +23582,18 @@ msx lint model.scale
 pnpm --filter @modelscript/scale test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=scale`
+
 ================================================================================
 DOCUMENT: SINDA / FLUINT (.sin) Language Reference
 CANONICAL URL: https://modelscript.org/languages/sinda
@@ -23396,6 +23629,18 @@ msx lint model.sin
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/sinda test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=sinda`
 
 ================================================================================
 DOCUMENT: TRASYS (.tra) Language Reference
@@ -23440,6 +23685,18 @@ msx lint model.tra
 pnpm --filter @modelscript/trasys test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=trasys`
+
 ================================================================================
 DOCUMENT: NEC-2 (.nec) Language Reference
 CANONICAL URL: https://modelscript.org/languages/nec2
@@ -23472,6 +23729,18 @@ msx lint model.nec
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/nec2 test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=nec2`
 
 ================================================================================
 DOCUMENT: USAF Digital DATCOM (.dcm) Language Reference
@@ -23506,6 +23775,18 @@ msx lint model.dcm
 pnpm --filter @modelscript/datcom test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=datcom`
+
 ================================================================================
 DOCUMENT: NASA CEA (.cea) Language Reference
 CANONICAL URL: https://modelscript.org/languages/cea
@@ -23515,7 +23796,7 @@ CANONICAL URL: https://modelscript.org/languages/cea
 
 **Package:** `@modelscript/cea` · **Maturity:** `Beta` · **Extensions:** `.cea`
 
-NASA **CEA** (*Chemical Equilibrium with Applications*, Gordon & McBride / NASA RP-1311) language frontend, WebAssembly GLR parser, Gibbs free-energy minimization solver, 1D isentropic rocket nozzle & CJ detonation analyzer, linear-memory DAE lowering, cleanroom NASA-7/NASA-9 standard library, and polyglot projections for ModelScript.
+NASA **CEA** (_Chemical Equilibrium with Applications_, Gordon & McBride / NASA RP-1311) language frontend, WebAssembly GLR parser, Gibbs free-energy minimization solver, 1D isentropic rocket nozzle & CJ detonation analyzer, linear-memory DAE lowering, cleanroom NASA-7/NASA-9 standard library, and polyglot projections for ModelScript.
 
 ## Features
 
@@ -23550,6 +23831,18 @@ msx lint model.cea
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/cea test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=cea`
 
 ================================================================================
 DOCUMENT: GAMS (.gms) Language Reference
@@ -23628,6 +23921,18 @@ msx lint model.gms
 pnpm --filter @modelscript/gams test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=gams`
+
 ================================================================================
 DOCUMENT: IBM MPS (.mps) Language Reference
 CANONICAL URL: https://modelscript.org/languages/mps
@@ -23697,6 +24002,18 @@ msx lint model.mps
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/mps test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=mps`
 
 ================================================================================
 DOCUMENT: CPLEX LP / LINDO (.lp) Language Reference
@@ -23770,6 +24087,18 @@ msx lint model.lp
 pnpm --filter @modelscript/cplex-lp test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=cplex-lp`
+
 ================================================================================
 DOCUMENT: IGES 5.3 (.igs) Language Reference
 CANONICAL URL: https://modelscript.org/languages/iges
@@ -23820,6 +24149,18 @@ msx lint model.igs
 pnpm --filter @modelscript/iges test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=iges`
+
 ================================================================================
 DOCUMENT: AutoCAD DXF (.dxf) Language Reference
 CANONICAL URL: https://modelscript.org/languages/dxf
@@ -23865,6 +24206,18 @@ msx lint model.dxf
 pnpm --filter @modelscript/dxf test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=dxf`
+
 ================================================================================
 DOCUMENT: G-code / RS-274 (.gcode) Language Reference
 CANONICAL URL: https://modelscript.org/languages/gcode
@@ -23898,6 +24251,18 @@ msx lint model.gcode
 pnpm --filter @modelscript/gcode test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=gcode`
+
 ================================================================================
 DOCUMENT: APT (ISO 4342) (.apt) Language Reference
 CANONICAL URL: https://modelscript.org/languages/apt
@@ -23907,7 +24272,7 @@ CANONICAL URL: https://modelscript.org/languages/apt
 
 **Package:** `@modelscript/apt` · **Maturity:** `Beta` · **Extensions:** `.apt`
 
-ModelScript **Beta** language package for **APT** (*Automatically Programmed Tools*, MIT Servomechanisms Laboratory 1957–1960s / ISO 4342 CNC part programming language).
+ModelScript **Beta** language package for **APT** (_Automatically Programmed Tools_, MIT Servomechanisms Laboratory 1957–1960s / ISO 4342 CNC part programming language).
 
 ## Features
 
@@ -23939,6 +24304,18 @@ msx lint model.apt
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/apt test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=apt`
 
 ================================================================================
 DOCUMENT: LS-DYNA / DYNA3D (.k) Language Reference
@@ -23983,6 +24360,18 @@ msx lint model.k
 pnpm --filter @modelscript/lsdyna test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=lsdyna`
+
 ================================================================================
 DOCUMENT: ANSYS APDL (.apdl) Language Reference
 CANONICAL URL: https://modelscript.org/languages/apdl
@@ -24024,6 +24413,18 @@ msx lint model.apdl
 pnpm --filter @modelscript/apdl test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=apdl`
+
 ================================================================================
 DOCUMENT: NASA PLOT3D (.xyz) Language Reference
 CANONICAL URL: https://modelscript.org/languages/plot3d
@@ -24056,6 +24457,18 @@ msx lint model.xyz
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/plot3d test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=plot3d`
 
 ================================================================================
 DOCUMENT: TRNSYS (.dck) Language Reference
@@ -24090,6 +24503,18 @@ msx lint model.dck
 pnpm --filter @modelscript/trnsys test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=trnsys`
+
 ================================================================================
 DOCUMENT: DOE-2 BDL (.bdl) Language Reference
 CANONICAL URL: https://modelscript.org/languages/doe2
@@ -24122,6 +24547,18 @@ msx lint model.bdl
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/doe2 test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=doe2`
 
 ================================================================================
 DOCUMENT: CHEMKIN (.ck) Language Reference
@@ -24165,6 +24602,18 @@ msx lint model.ck
 pnpm --filter @modelscript/chemkin test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=chemkin`
+
 ================================================================================
 DOCUMENT: MDL Molfile / SDF (.mol) Language Reference
 CANONICAL URL: https://modelscript.org/languages/molfile
@@ -24198,6 +24647,18 @@ msx lint model.mol
 pnpm --filter @modelscript/molfile test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=molfile`
+
 ================================================================================
 DOCUMENT: Gaussian Input (.gjf) Language Reference
 CANONICAL URL: https://modelscript.org/languages/gaussian
@@ -24230,6 +24691,18 @@ msx lint model.gjf
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/gaussian test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=gaussian`
 
 ================================================================================
 DOCUMENT: IEEE CDF & BPA IPF (.cdf) Language Reference
@@ -24273,6 +24746,18 @@ msx lint model.cdf
 pnpm --filter @modelscript/ieee-cdf test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=ieee-cdf`
+
 ================================================================================
 DOCUMENT: USACE HEC-1 (.hc1) Language Reference
 CANONICAL URL: https://modelscript.org/languages/hec1
@@ -24310,6 +24795,18 @@ msx lint model.hc1
 pnpm --filter @modelscript/hec1 test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=hec1`
+
 ================================================================================
 DOCUMENT: USACE HEC-2 (.hc2) Language Reference
 CANONICAL URL: https://modelscript.org/languages/hec2
@@ -24319,7 +24816,7 @@ CANONICAL URL: https://modelscript.org/languages/hec2
 
 **Package:** `@modelscript/hec2` · **Maturity:** `Beta` · **Extensions:** `.hc2`
 
-US Army Corps of Engineers **HEC-2** (*Water Surface Profiles*, Hydrologic Engineering Center, 1960s–1970s) open-channel hydraulics card-deck language package for ModelScript (**Beta** tier).
+US Army Corps of Engineers **HEC-2** (_Water Surface Profiles_, Hydrologic Engineering Center, 1960s–1970s) open-channel hydraulics card-deck language package for ModelScript (**Beta** tier).
 
 ## Capabilities
 
@@ -24349,6 +24846,18 @@ msx lint model.hc2
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/hec2 test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=hec2`
 
 ================================================================================
 DOCUMENT: SEG-Y (.sgy) Language Reference
@@ -24386,6 +24895,18 @@ msx lint model.sgy
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/segy test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=segy`
 
 ================================================================================
 DOCUMENT: FITS 4.0 (.fits) Language Reference
@@ -24430,6 +24951,18 @@ msx lint model.fits
 pnpm --filter @modelscript/fits test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=fits`
+
 ================================================================================
 DOCUMENT: NetCDF Classic / CDL (.cdl) Language Reference
 CANONICAL URL: https://modelscript.org/languages/netcdf
@@ -24468,23 +25001,23 @@ Native **Unidata NetCDF Classic v1/v2 (CDF1 / CDF2) & CDL (Common Data form Lang
 
 ## Package Structure
 
-| Path                                  | Description                                                                        |
-| :------------------------------------ | :--------------------------------------------------------------------------------- |
-| `src/index.ts`                        | Public package exports                                                             |
-| `src/language.ts`                     | `netcdfLanguage` DSL grammar, file extensions, and UI panel registration           |
-| `src/types.ts`                        | Core TypeScript interfaces (`NetcdfDataset`, `NetcdfVariable`, `NetcdfDimension`)  |
-| `src/errors.ts`                       | Diagnostic error codes (`NC1001`–`NC5006`)                                         |
-| `src/parser/cdl-parser.ts`            | CDL ASCII parser (`parseCdl`) and serializer (`formatCdl`)                         |
-| `src/parser/binary-codec.ts`          | NetCDF Classic CDF1/CDF2 big-endian binary codec                                   |
-| `src/lints/index.ts`                  | `lintNetcdf` structural and CF-1.x validator                                       |
-| `src/solver/field-ops.ts`             | Array slicing, field statistics, RMSE, and 2D bilinear interpolation               |
-| `src/dae/lowering.ts`                 | `lowerNetcdfToDae` linear-memory `IDaeBuilder` lowering                            |
-| `src/projections/`                    | Projections to CSV, NASA PLOT3D, and Modelica 3.x                                  |
-| `src/catalog/netcdf-std-schemas.ts`   | Cleanroom CF-1.x & NetCDF Classic data type schemas                                |
-| `src/diagram/heatmap-svg.ts`          | Pure SVG 2D heatmap & contour slice visualizer (`renderNetcdfHeatmapSvg`)          |
-| `src/ui/NetcdfPanel.tsx`              | Interactive React viewer/editor panel for VS Code, Morsel, and Artifacts           |
-| `src/indexing.ts`                     | Declarative `UnifiedWorkspace` symbol indexing                                     |
-| `src/lsp.ts`                          | LSP diagnostics, document symbols, hover, and completions                          |
+| Path                                | Description                                                                       |
+| :---------------------------------- | :-------------------------------------------------------------------------------- |
+| `src/index.ts`                      | Public package exports                                                            |
+| `src/language.ts`                   | `netcdfLanguage` DSL grammar, file extensions, and UI panel registration          |
+| `src/types.ts`                      | Core TypeScript interfaces (`NetcdfDataset`, `NetcdfVariable`, `NetcdfDimension`) |
+| `src/errors.ts`                     | Diagnostic error codes (`NC1001`–`NC5006`)                                        |
+| `src/parser/cdl-parser.ts`          | CDL ASCII parser (`parseCdl`) and serializer (`formatCdl`)                        |
+| `src/parser/binary-codec.ts`        | NetCDF Classic CDF1/CDF2 big-endian binary codec                                  |
+| `src/lints/index.ts`                | `lintNetcdf` structural and CF-1.x validator                                      |
+| `src/solver/field-ops.ts`           | Array slicing, field statistics, RMSE, and 2D bilinear interpolation              |
+| `src/dae/lowering.ts`               | `lowerNetcdfToDae` linear-memory `IDaeBuilder` lowering                           |
+| `src/projections/`                  | Projections to CSV, NASA PLOT3D, and Modelica 3.x                                 |
+| `src/catalog/netcdf-std-schemas.ts` | Cleanroom CF-1.x & NetCDF Classic data type schemas                               |
+| `src/diagram/heatmap-svg.ts`        | Pure SVG 2D heatmap & contour slice visualizer (`renderNetcdfHeatmapSvg`)         |
+| `src/ui/NetcdfPanel.tsx`            | Interactive React viewer/editor panel for VS Code, Morsel, and Artifacts          |
+| `src/indexing.ts`                   | Declarative `UnifiedWorkspace` symbol indexing                                    |
+| `src/lsp.ts`                        | LSP diagnostics, document symbols, hover, and completions                         |
 
 ---
 
@@ -24497,6 +25030,18 @@ msx lint sample.cdl
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/netcdf test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=netcdf`
 
 ================================================================================
 DOCUMENT: NASA CDF (.skt) Language Reference
@@ -24527,51 +25072,51 @@ Native **NASA Common Data Format (CDF v2/v3 & Skeleton Table `.skt`, 1985)** spa
 
 ## Package Structure
 
-| Path                                    | Description                                                                        |
-| :-------------------------------------- | :--------------------------------------------------------------------------------- |
-| `src/index.ts`                          | Public package exports                                                             |
-| `src/language.ts`                       | `nasaCdfLanguage` WASM GLR grammar, UI panel registration, and language actions    |
-| `src/types.ts`                          | Core TypeScript types (`CdfDocument`, `CdfHeader`, `CdfVariable`, `CdfDataType`)   |
-| `src/errors.ts`                         | `NasaCdfErrorCode` diagnostic definitions (`NCDF1001`–`NCDF5006`)                  |
-| `src/parser/skt-parser.ts`              | `.skt` Skeleton Table ASCII parser and formatter                                   |
-| `src/parser/binary-codec.ts`            | Binary CDF v2/v3 magic & CDR/GDR/ADR/VDR/VXR/VVR record encoder and decoder        |
-| `src/lints/index.ts`                    | `lintNasaCdf` ISTP/SPDF and structural validator                                   |
-| `src/solver/epoch.ts`                   | `CDF_EPOCH` / J2000 / `CDF_TIME_TT2000` time conversion utilities                  |
-| `src/solver/statistics.ts`              | Channel statistics, $|B|$ vector norm, plasma $\beta$, and Alfvén speed            |
-| `src/dae/cdf-to-dae.ts`                 | `lowerNasaCdfToDae` continuous space-physics DAE arena lowering                    |
-| `src/projections/`                      | `nasaCdfToCsv`, `nasaCdfToFits`, and `nasaCdfToCcsds` exporters                    |
-| `src/catalog/nasa-cdf-std-schemas.ts`   | Cleanroom ISTP/SPDF standard attributes & magnetometer/plasma telemetry schemas    |
-| `assets/nasa-cdf-std-lib/src/models.ts` | Zero-GC AssemblyScript WASM runtime kernel for `@modelscript/nasa-cdf-std-lib`     |
-| `src/diagram/strip-chart.ts`            | `renderNasaCdfStripChartSvg` pure SVG multi-channel strip-chart generator          |
-| `src/ui/NasaCdfPanel.tsx`               | Interactive React viewer/editor panel using `@modelscript/design-tokens/panel`     |
-| `src/indexing.ts`                       | `nasaCdfIndexing` workspace symbol indexer                                         |
-| `src/lsp.ts`                            | `validateNasaCdf`, `getNasaCdfDocumentSymbols`, `getNasaCdfHover`, completions     |
+| Path                                    | Description                                                                      |
+| :-------------------------------------- | :------------------------------------------------------------------------------- |
+| `src/index.ts`                          | Public package exports                                                           |
+| `src/language.ts`                       | `nasaCdfLanguage` WASM GLR grammar, UI panel registration, and language actions  |
+| `src/types.ts`                          | Core TypeScript types (`CdfDocument`, `CdfHeader`, `CdfVariable`, `CdfDataType`) |
+| `src/errors.ts`                         | `NasaCdfErrorCode` diagnostic definitions (`NCDF1001`–`NCDF5006`)                |
+| `src/parser/skt-parser.ts`              | `.skt` Skeleton Table ASCII parser and formatter                                 |
+| `src/parser/binary-codec.ts`            | Binary CDF v2/v3 magic & CDR/GDR/ADR/VDR/VXR/VVR record encoder and decoder      |
+| `src/lints/index.ts`                    | `lintNasaCdf` ISTP/SPDF and structural validator                                 |
+| `src/solver/epoch.ts`                   | `CDF_EPOCH` / J2000 / `CDF_TIME_TT2000` time conversion utilities                |
+| `src/solver/statistics.ts`              | Channel statistics, $                                                            | B   | $ vector norm, plasma $\beta$, and Alfvén speed |
+| `src/dae/cdf-to-dae.ts`                 | `lowerNasaCdfToDae` continuous space-physics DAE arena lowering                  |
+| `src/projections/`                      | `nasaCdfToCsv`, `nasaCdfToFits`, and `nasaCdfToCcsds` exporters                  |
+| `src/catalog/nasa-cdf-std-schemas.ts`   | Cleanroom ISTP/SPDF standard attributes & magnetometer/plasma telemetry schemas  |
+| `assets/nasa-cdf-std-lib/src/models.ts` | Zero-GC AssemblyScript WASM runtime kernel for `@modelscript/nasa-cdf-std-lib`   |
+| `src/diagram/strip-chart.ts`            | `renderNasaCdfStripChartSvg` pure SVG multi-channel strip-chart generator        |
+| `src/ui/NasaCdfPanel.tsx`               | Interactive React viewer/editor panel using `@modelscript/design-tokens/panel`   |
+| `src/indexing.ts`                       | `nasaCdfIndexing` workspace symbol indexer                                       |
+| `src/lsp.ts`                            | `validateNasaCdf`, `getNasaCdfDocumentSymbols`, `getNasaCdfHover`, completions   |
 
 ---
 
 ## Diagnostic Codes (`NCDF1001`–`NCDF5006`)
 
-| Code       | Rule                             | Severity  | Description                                                               |
-| :--------- | :------------------------------- | :-------- | :------------------------------------------------------------------------ |
-| `NCDF1001` | `syntax-error`                   | `error`   | Syntax error or malformed skeleton table statement                        |
-| `NCDF1002` | `invalid-magic-number`           | `error`   | Invalid binary CDF magic header (expected v3 `0xCDF30001` or v2)          |
-| `NCDF1003` | `corrupt-record-structure`       | `error`   | Corrupt binary CDF CDR/GDR/VDR/VXR/VVR record length or offset            |
-| `NCDF2001` | `missing-header-section`         | `error`   | Skeleton table is missing the mandatory `#header` section                 |
-| `NCDF2002` | `missing-end-section`            | `error`   | Skeleton table is missing the mandatory `#end` terminator                 |
-| `NCDF2003` | `duplicate-variable`             | `error`   | Duplicate variable name declared in `#variables`                          |
-| `NCDF2004` | `duplicate-attribute`            | `error`   | Duplicate global or variable attribute name                               |
-| `NCDF3001` | `invalid-cdf-data-type`          | `error`   | Unrecognized or unsupported CDF data type                                 |
-| `NCDF3002` | `dimension-mismatch`             | `error`   | Variable `numDims` disagrees with `dimSizes` or `dimVariances`            |
-| `NCDF4001` | `istp-missing-depend-0`          | `warning` | ISTP data variable is missing `DEPEND_0` referencing a time variable      |
-| `NCDF4002` | `istp-missing-units`             | `warning` | ISTP data variable is missing `UNITS` attribute                           |
-| `NCDF4003` | `istp-missing-valid-bounds`      | `warning` | ISTP data variable is missing `VALIDMIN` or `VALIDMAX`                    |
-| `NCDF4004` | `istp-invalid-depend-0-target`   | `error`   | `DEPEND_0` references an undefined or non-time variable                   |
-| `NCDF5001` | `invalid-valid-bounds`           | `error`   | `VALIDMIN` is strictly greater than `VALIDMAX`                            |
-| `NCDF5002` | `value-out-of-valid-range`       | `warning` | Sample value falls outside `[VALIDMIN, VALIDMAX]`                         |
-| `NCDF5003` | `non-monotonic-epoch`            | `error`   | `CDF_EPOCH` or `CDF_TIME_TT2000` timestamps are not strictly monotonic    |
-| `NCDF5004` | `missing-istp-global-attributes` | `info`    | Missing recommended ISTP global attributes (`Project`, `Source_name`...)  |
-| `NCDF5005` | `fillval-mismatch`               | `warning` | `FILLVAL` lies inside `[VALIDMIN, VALIDMAX]`                              |
-| `NCDF5006` | `empty-data-records`             | `info`    | Record-varying variable contains zero data records                        |
+| Code       | Rule                             | Severity  | Description                                                              |
+| :--------- | :------------------------------- | :-------- | :----------------------------------------------------------------------- |
+| `NCDF1001` | `syntax-error`                   | `error`   | Syntax error or malformed skeleton table statement                       |
+| `NCDF1002` | `invalid-magic-number`           | `error`   | Invalid binary CDF magic header (expected v3 `0xCDF30001` or v2)         |
+| `NCDF1003` | `corrupt-record-structure`       | `error`   | Corrupt binary CDF CDR/GDR/VDR/VXR/VVR record length or offset           |
+| `NCDF2001` | `missing-header-section`         | `error`   | Skeleton table is missing the mandatory `#header` section                |
+| `NCDF2002` | `missing-end-section`            | `error`   | Skeleton table is missing the mandatory `#end` terminator                |
+| `NCDF2003` | `duplicate-variable`             | `error`   | Duplicate variable name declared in `#variables`                         |
+| `NCDF2004` | `duplicate-attribute`            | `error`   | Duplicate global or variable attribute name                              |
+| `NCDF3001` | `invalid-cdf-data-type`          | `error`   | Unrecognized or unsupported CDF data type                                |
+| `NCDF3002` | `dimension-mismatch`             | `error`   | Variable `numDims` disagrees with `dimSizes` or `dimVariances`           |
+| `NCDF4001` | `istp-missing-depend-0`          | `warning` | ISTP data variable is missing `DEPEND_0` referencing a time variable     |
+| `NCDF4002` | `istp-missing-units`             | `warning` | ISTP data variable is missing `UNITS` attribute                          |
+| `NCDF4003` | `istp-missing-valid-bounds`      | `warning` | ISTP data variable is missing `VALIDMIN` or `VALIDMAX`                   |
+| `NCDF4004` | `istp-invalid-depend-0-target`   | `error`   | `DEPEND_0` references an undefined or non-time variable                  |
+| `NCDF5001` | `invalid-valid-bounds`           | `error`   | `VALIDMIN` is strictly greater than `VALIDMAX`                           |
+| `NCDF5002` | `value-out-of-valid-range`       | `warning` | Sample value falls outside `[VALIDMIN, VALIDMAX]`                        |
+| `NCDF5003` | `non-monotonic-epoch`            | `error`   | `CDF_EPOCH` or `CDF_TIME_TT2000` timestamps are not strictly monotonic   |
+| `NCDF5004` | `missing-istp-global-attributes` | `info`    | Missing recommended ISTP global attributes (`Project`, `Source_name`...) |
+| `NCDF5005` | `fillval-mismatch`               | `warning` | `FILLVAL` lies inside `[VALIDMIN, VALIDMAX]`                             |
+| `NCDF5006` | `empty-data-records`             | `info`    | Record-varying variable contains zero data records                       |
 
 ---
 
@@ -24603,13 +25148,13 @@ const svg = renderNasaCdfStripChartSvg(doc);
 
 ## Scripts
 
-| Command             | Description                                                    |
-| :------------------ | :------------------------------------------------------------- |
+| Command             | Description                                                     |
+| :------------------ | :-------------------------------------------------------------- |
 | `npm run build`     | Build WASM GLR parser, cleanroom stdlib, and TypeScript (`tsc`) |
-| `npm run clean`     | Remove `dist/` build artifacts (`rimraf dist`)                 |
-| `npm run lint`      | Run ESLint across `src/` and `tests/`                          |
-| `npm test`          | Run unit and integration test suite via `test-runner.js`       |
-| `npm run typecheck` | Run TypeScript type checking without emitting (`tsc --noEmit`) |
+| `npm run clean`     | Remove `dist/` build artifacts (`rimraf dist`)                  |
+| `npm run lint`      | Run ESLint across `src/` and `tests/`                           |
+| `npm test`          | Run unit and integration test suite via `test-runner.js`        |
+| `npm run typecheck` | Run TypeScript type checking without emitting (`tsc --noEmit`)  |
 
 ---
 
@@ -24622,6 +25167,18 @@ msx lint sample.skt
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/nasa-cdf test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=nasa-cdf`
 
 ================================================================================
 DOCUMENT: WMO GRIB Ed. 1 (.grb) Language Reference
@@ -24659,50 +25216,50 @@ Native **WMO GRIB Edition 1 (FM 92-VIII Ext. GRIB, 1985)** Gridded Binary Meteor
 
 ## Package Structure
 
-| Path | Description |
-| :--- | :--- |
-| `src/index.ts` | Public package exports |
-| `src/language.ts` | `gribLanguage` WASM GLR grammar, UI panel registration, and language actions |
-| `src/types.ts` | Core GRIB Edition 1 TypeScript interfaces (`GribDocument`, `GribMessage`, `PDS`, `GDS`, `BMS`, `BDS`) |
-| `src/errors.ts` | `GribErrorCode` diagnostic definitions (`GRIB1001`–`GRIB5006`) |
-| `src/parser/text-parser.ts` | Textual GRIB1 descriptor dump parser and formatter |
-| `src/parser/binary-codec.ts` | Binary GRIB1 stream encoder/decoder with IBM 32-bit float and bit-packing |
-| `src/lints/index.ts` | `lintGribDocument` domain validator (`GRIB1001`–`GRIB5006`) |
-| `src/solver/packing.ts` | GRIB1 bit-packing/unpacking and field statistics |
-| `src/solver/meteorology.ts` | Hypsometric thickness, geostrophic wind, and area-weighted global mean |
-| `src/dae/grib-to-dae.ts` | `lowerGribToDae` atmospheric primitive-equation balance DAE arena lowering |
-| `src/projections/grib-to-cdl.ts` | `gribToNetCdfCdl` NetCDF CDL projection |
-| `src/projections/grib-to-csv.ts` | `gribToCsv` lat/lon CSV projection |
-| `src/diagram/grib-map.ts` | `renderGribMapSvg` pure SVG geographic heatmap + isobar/wind-barb renderer |
-| `src/ui/GribPanel.tsx` | Interactive React + SVG viewer/editor panel (`@modelscript/design-tokens/panel`) |
-| `src/catalog/grib-std-schemas.ts` | Cleanroom WMO Table 2 parameters & Table 3 level schemas |
-| `assets/grib-std-lib/src/models.ts` | AssemblyScript WASM runtime kernel for GRIB1 unpacking & meteorology |
-| `src/indexing.ts` | Multi-file `UnifiedWorkspace` symbol indexer |
-| `src/lsp.ts` | LSP diagnostics, document symbols, hover, and completions |
+| Path                                | Description                                                                                           |
+| :---------------------------------- | :---------------------------------------------------------------------------------------------------- |
+| `src/index.ts`                      | Public package exports                                                                                |
+| `src/language.ts`                   | `gribLanguage` WASM GLR grammar, UI panel registration, and language actions                          |
+| `src/types.ts`                      | Core GRIB Edition 1 TypeScript interfaces (`GribDocument`, `GribMessage`, `PDS`, `GDS`, `BMS`, `BDS`) |
+| `src/errors.ts`                     | `GribErrorCode` diagnostic definitions (`GRIB1001`–`GRIB5006`)                                        |
+| `src/parser/text-parser.ts`         | Textual GRIB1 descriptor dump parser and formatter                                                    |
+| `src/parser/binary-codec.ts`        | Binary GRIB1 stream encoder/decoder with IBM 32-bit float and bit-packing                             |
+| `src/lints/index.ts`                | `lintGribDocument` domain validator (`GRIB1001`–`GRIB5006`)                                           |
+| `src/solver/packing.ts`             | GRIB1 bit-packing/unpacking and field statistics                                                      |
+| `src/solver/meteorology.ts`         | Hypsometric thickness, geostrophic wind, and area-weighted global mean                                |
+| `src/dae/grib-to-dae.ts`            | `lowerGribToDae` atmospheric primitive-equation balance DAE arena lowering                            |
+| `src/projections/grib-to-cdl.ts`    | `gribToNetCdfCdl` NetCDF CDL projection                                                               |
+| `src/projections/grib-to-csv.ts`    | `gribToCsv` lat/lon CSV projection                                                                    |
+| `src/diagram/grib-map.ts`           | `renderGribMapSvg` pure SVG geographic heatmap + isobar/wind-barb renderer                            |
+| `src/ui/GribPanel.tsx`              | Interactive React + SVG viewer/editor panel (`@modelscript/design-tokens/panel`)                      |
+| `src/catalog/grib-std-schemas.ts`   | Cleanroom WMO Table 2 parameters & Table 3 level schemas                                              |
+| `assets/grib-std-lib/src/models.ts` | AssemblyScript WASM runtime kernel for GRIB1 unpacking & meteorology                                  |
+| `src/indexing.ts`                   | Multi-file `UnifiedWorkspace` symbol indexer                                                          |
+| `src/lsp.ts`                        | LSP diagnostics, document symbols, hover, and completions                                             |
 
 ---
 
 ## Diagnostic Rules (`GRIB1001`–`GRIB5006`)
 
-| Code | Rule | Severity | Description |
-| :--- | :--- | :--- | :--- |
-| `GRIB1001` | `invalid-magic` | `error` | Missing or invalid `GRIB` Indicator Section magic header or syntax error. |
-| `GRIB1002` | `missing-trailer` | `error` | Missing mandatory `7777` End Section trailer. |
-| `GRIB1003` | `unsupported-edition` | `error` | Unsupported GRIB edition number (only Edition 1 is supported). |
-| `GRIB2001` | `invalid-pds-date` | `error` | Invalid PDS reference date/time field (month, day, hour, or minute out of range). |
-| `GRIB2002` | `invalid-parameter-code` | `error` | Parameter indicator outside valid WMO Table 2 range (`1..254`). |
-| `GRIB2003` | `invalid-level-type` | `warning` | Unrecognized WMO Table 3 level/layer type indicator. |
-| `GRIB3001` | `gds-bds-dimension-mismatch` | `error` | GDS grid dimensions (`ni * nj` or BMS active points) do not match BDS value count. |
-| `GRIB3002` | `invalid-lat-lon-bounds` | `error` | Geographic latitude outside `[-90, 90]` or longitude outside `[-180, 360]`. |
-| `GRIB3003` | `bms-length-mismatch` | `error` | BMS bitmap length does not match GDS grid point count `ni * nj`. |
-| `GRIB4001` | `invalid-bit-width` | `error` | BDS bit-width per value is negative or exceeds 32 bits. |
-| `GRIB4002` | `invalid-scale-factor` | `warning` | Extreme binary (`|E| > 64`) or decimal (`|D| > 16`) scale factor. |
-| `GRIB5001` | `missing-pds` | `error` | GRIB message is missing the mandatory Product Definition Section (PDS). |
-| `GRIB5002` | `missing-bds` | `error` | GRIB message is missing the mandatory Binary Data Section (BDS). |
-| `GRIB5003` | `non-finite-data` | `error` | BDS data array contains non-finite (`NaN` or `Infinity`) values. |
-| `GRIB5004` | `truncated-binary-message` | `error` | Binary GRIB1 message is truncated before its declared total length. |
-| `GRIB5005` | `invalid-grid-increment` | `warning` | Non-positive grid increment (`di <= 0` or `dj <= 0`) on a regular lat/lon grid. |
-| `GRIB5006` | `physical-range-warning` | `warning` | Unpacked values fall outside expected meteorological physical bounds. |
+| Code       | Rule                         | Severity  | Description                                                                        |
+| :--------- | :--------------------------- | :-------- | :--------------------------------------------------------------------------------- |
+| `GRIB1001` | `invalid-magic`              | `error`   | Missing or invalid `GRIB` Indicator Section magic header or syntax error.          |
+| `GRIB1002` | `missing-trailer`            | `error`   | Missing mandatory `7777` End Section trailer.                                      |
+| `GRIB1003` | `unsupported-edition`        | `error`   | Unsupported GRIB edition number (only Edition 1 is supported).                     |
+| `GRIB2001` | `invalid-pds-date`           | `error`   | Invalid PDS reference date/time field (month, day, hour, or minute out of range).  |
+| `GRIB2002` | `invalid-parameter-code`     | `error`   | Parameter indicator outside valid WMO Table 2 range (`1..254`).                    |
+| `GRIB2003` | `invalid-level-type`         | `warning` | Unrecognized WMO Table 3 level/layer type indicator.                               |
+| `GRIB3001` | `gds-bds-dimension-mismatch` | `error`   | GDS grid dimensions (`ni * nj` or BMS active points) do not match BDS value count. |
+| `GRIB3002` | `invalid-lat-lon-bounds`     | `error`   | Geographic latitude outside `[-90, 90]` or longitude outside `[-180, 360]`.        |
+| `GRIB3003` | `bms-length-mismatch`        | `error`   | BMS bitmap length does not match GDS grid point count `ni * nj`.                   |
+| `GRIB4001` | `invalid-bit-width`          | `error`   | BDS bit-width per value is negative or exceeds 32 bits.                            |
+| `GRIB4002` | `invalid-scale-factor`       | `warning` | Extreme binary (`                                                                  | E   | > 64`) or decimal (` | D   | > 16`) scale factor. |
+| `GRIB5001` | `missing-pds`                | `error`   | GRIB message is missing the mandatory Product Definition Section (PDS).            |
+| `GRIB5002` | `missing-bds`                | `error`   | GRIB message is missing the mandatory Binary Data Section (BDS).                   |
+| `GRIB5003` | `non-finite-data`            | `error`   | BDS data array contains non-finite (`NaN` or `Infinity`) values.                   |
+| `GRIB5004` | `truncated-binary-message`   | `error`   | Binary GRIB1 message is truncated before its declared total length.                |
+| `GRIB5005` | `invalid-grid-increment`     | `warning` | Non-positive grid increment (`di <= 0` or `dj <= 0`) on a regular lat/lon grid.    |
+| `GRIB5006` | `physical-range-warning`     | `warning` | Unpacked values fall outside expected meteorological physical bounds.              |
 
 ---
 
@@ -24715,6 +25272,18 @@ msx lint sample.grb
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/grib test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=grib`
 
 ================================================================================
 DOCUMENT: WMO BUFR (.bufr) Language Reference
@@ -24745,28 +25314,28 @@ Native **WMO FM 94 BUFR (Binary Universal Form for the Representation of Meteoro
 
 ## Package Structure
 
-| Path                                   | Description                                                                        |
-| :------------------------------------- | :--------------------------------------------------------------------------------- |
-| `src/index.ts`                         | Public package exports                                                             |
-| `src/language.ts`                      | `bufrLanguage` WASM GLR grammar, extensions, and `BufrPanel` UI registration       |
-| `src/types.ts`                         | Core WMO BUFR TypeScript interfaces                                                |
-| `src/errors.ts`                        | `BufrErrorCode` (`BUFR1001`–`BUFR5006`)                                            |
-| `src/parser/text-parser.ts`            | `parseBufrText` textual BUFR message parser                                        |
-| `src/parser/binary-codec.ts`           | `encodeBufrBinary`, `decodeBufrBinary`, `BitWriter`, `BitReader` (Ed. 3 & 4)       |
-| `src/catalog/wmo-tables.ts`            | Built-in WMO Master Table 0 Table B & Table D descriptors                          |
-| `src/catalog/bufr-std-schemas.ts`      | Cleanroom `@modelscript/bufr-std-lib` schemas and SVG block icons                  |
-| `src/catalog/library-package-adapter.ts` | Zero-I/O `globalLibraryRegistry` registration for `@modelscript/bufr-std-lib`    |
-| `src/solver/descriptor-tree.ts`        | `expandBufrDescriptors` Table B/D/C & replication expander                         |
-| `src/solver/meteo-qa.ts`               | Magnus-Tetens thermodynamics, ISA altitude, hypsometric sounding QA                |
-| `src/dae/lowering.ts`                  | `lowerBufrToDae` and `bufrToDae` linear-memory DAE arena lowering                  |
-| `src/projections/bufrToCsv.ts`         | `bufrToCsv` RFC-4180 CSV projection                                                |
-| `src/projections/bufrToEpw.ts`         | `bufrToEpw` EnergyPlus EPW weather projection                                      |
-| `src/diagram/sounding-diagram.ts`      | `renderBufrSoundingSvg` and `buildBufrSoundingData`                                |
-| `src/ui/BufrPanel.tsx`                 | Interactive React viewer panel (`@modelscript/design-tokens/panel`)                |
-| `src/indexing.ts`                      | `bufrIndexing` UnifiedWorkspace indexer                                            |
-| `src/lsp.ts`                           | `validateBufr`, `getBufrDocumentSymbols`, `getBufrHover`, `getBufrCompletions`     |
-| `assets/bufr-std-lib/src/models.ts`    | Cleanroom AssemblyScript meteorological WASM runtime                               |
-| `scripts/build-stdlib.js`              | Cleanroom stdlib builder (`cleanroomSchemasToLibraryPayloads` + `buildCleanroomStdLib`) |
+| Path                                     | Description                                                                             |
+| :--------------------------------------- | :-------------------------------------------------------------------------------------- |
+| `src/index.ts`                           | Public package exports                                                                  |
+| `src/language.ts`                        | `bufrLanguage` WASM GLR grammar, extensions, and `BufrPanel` UI registration            |
+| `src/types.ts`                           | Core WMO BUFR TypeScript interfaces                                                     |
+| `src/errors.ts`                          | `BufrErrorCode` (`BUFR1001`–`BUFR5006`)                                                 |
+| `src/parser/text-parser.ts`              | `parseBufrText` textual BUFR message parser                                             |
+| `src/parser/binary-codec.ts`             | `encodeBufrBinary`, `decodeBufrBinary`, `BitWriter`, `BitReader` (Ed. 3 & 4)            |
+| `src/catalog/wmo-tables.ts`              | Built-in WMO Master Table 0 Table B & Table D descriptors                               |
+| `src/catalog/bufr-std-schemas.ts`        | Cleanroom `@modelscript/bufr-std-lib` schemas and SVG block icons                       |
+| `src/catalog/library-package-adapter.ts` | Zero-I/O `globalLibraryRegistry` registration for `@modelscript/bufr-std-lib`           |
+| `src/solver/descriptor-tree.ts`          | `expandBufrDescriptors` Table B/D/C & replication expander                              |
+| `src/solver/meteo-qa.ts`                 | Magnus-Tetens thermodynamics, ISA altitude, hypsometric sounding QA                     |
+| `src/dae/lowering.ts`                    | `lowerBufrToDae` and `bufrToDae` linear-memory DAE arena lowering                       |
+| `src/projections/bufrToCsv.ts`           | `bufrToCsv` RFC-4180 CSV projection                                                     |
+| `src/projections/bufrToEpw.ts`           | `bufrToEpw` EnergyPlus EPW weather projection                                           |
+| `src/diagram/sounding-diagram.ts`        | `renderBufrSoundingSvg` and `buildBufrSoundingData`                                     |
+| `src/ui/BufrPanel.tsx`                   | Interactive React viewer panel (`@modelscript/design-tokens/panel`)                     |
+| `src/indexing.ts`                        | `bufrIndexing` UnifiedWorkspace indexer                                                 |
+| `src/lsp.ts`                             | `validateBufr`, `getBufrDocumentSymbols`, `getBufrHover`, `getBufrCompletions`          |
+| `assets/bufr-std-lib/src/models.ts`      | Cleanroom AssemblyScript meteorological WASM runtime                                    |
+| `scripts/build-stdlib.js`                | Cleanroom stdlib builder (`cleanroomSchemasToLibraryPayloads` + `buildCleanroomStdLib`) |
 
 ---
 
@@ -24779,6 +25348,18 @@ msx lint sample.bufr
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/bufr test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=bufr`
 
 ================================================================================
 DOCUMENT: USGS DEM (.dem) Language Reference
@@ -24814,23 +25395,23 @@ Native **USGS Digital Elevation Model (DEM)** ASCII Terrain Format (1970s–1980
 
 ## Package Structure
 
-| Path                                  | Description                                                                   |
-| :------------------------------------ | :---------------------------------------------------------------------------- |
-| `src/index.ts`                        | Public package exports                                                        |
-| `src/language.ts`                     | `usgsDemLanguage` WASM GLR grammar and UI panel registration                  |
-| `src/types.ts`                        | Core TypeScript interfaces (`UsgsDemModel`, `UsgsDemHeader`, `UsgsDemGrid`)   |
-| `src/errors.ts`                       | `UsgsDemErrorCode` (`DEM1001`–`DEM5006`)                                      |
-| `src/parser/dem-parser.ts`            | `parseUsgsDem` and `serializeUsgsDem` (fixed 1024-byte & free-format)         |
-| `src/lints/index.ts`                  | `lintUsgsDem` structural and semantic validator                               |
-| `src/cad/terrain-mesh.ts`             | `buildTerrainMesh` and `lowerUsgsDemToCadSolid` (`@modelscript/cad`)          |
-| `src/solver/topography.ts`            | Bilinear interpolation, Horn slope/aspect, D8 flow, hypsometric integral      |
-| `src/dae/lowering.ts`                 | `lowerUsgsDemToDae` and `usgsDemToDae` (Manning kinematic-wave runoff)        |
-| `src/projections/index.ts`            | `usgsDemToStl`, `usgsDemToObj`, and `usgsDemToHec1`                           |
-| `src/catalog/usgs-dem-std-schemas.ts` | Cleanroom datum, projection, and synthetic terrain benchmark schemas          |
-| `src/diagram/elevation-map.ts`        | `renderUsgsDemMapSvg` hypsometric map, contour lines, and transect profile    |
-| `src/ui/UsgsDemPanel.tsx`             | Interactive React + SVG elevation map viewer & inspector panel                |
-| `src/indexing.ts`                     | `usgsDemIndexing` UnifiedWorkspace indexer                                    |
-| `src/lsp.ts`                          | `validateUsgsDem`, `getUsgsDemDocumentSymbols`, `getUsgsDemHover`, completions|
+| Path                                  | Description                                                                    |
+| :------------------------------------ | :----------------------------------------------------------------------------- |
+| `src/index.ts`                        | Public package exports                                                         |
+| `src/language.ts`                     | `usgsDemLanguage` WASM GLR grammar and UI panel registration                   |
+| `src/types.ts`                        | Core TypeScript interfaces (`UsgsDemModel`, `UsgsDemHeader`, `UsgsDemGrid`)    |
+| `src/errors.ts`                       | `UsgsDemErrorCode` (`DEM1001`–`DEM5006`)                                       |
+| `src/parser/dem-parser.ts`            | `parseUsgsDem` and `serializeUsgsDem` (fixed 1024-byte & free-format)          |
+| `src/lints/index.ts`                  | `lintUsgsDem` structural and semantic validator                                |
+| `src/cad/terrain-mesh.ts`             | `buildTerrainMesh` and `lowerUsgsDemToCadSolid` (`@modelscript/cad`)           |
+| `src/solver/topography.ts`            | Bilinear interpolation, Horn slope/aspect, D8 flow, hypsometric integral       |
+| `src/dae/lowering.ts`                 | `lowerUsgsDemToDae` and `usgsDemToDae` (Manning kinematic-wave runoff)         |
+| `src/projections/index.ts`            | `usgsDemToStl`, `usgsDemToObj`, and `usgsDemToHec1`                            |
+| `src/catalog/usgs-dem-std-schemas.ts` | Cleanroom datum, projection, and synthetic terrain benchmark schemas           |
+| `src/diagram/elevation-map.ts`        | `renderUsgsDemMapSvg` hypsometric map, contour lines, and transect profile     |
+| `src/ui/UsgsDemPanel.tsx`             | Interactive React + SVG elevation map viewer & inspector panel                 |
+| `src/indexing.ts`                     | `usgsDemIndexing` UnifiedWorkspace indexer                                     |
+| `src/lsp.ts`                          | `validateUsgsDem`, `getUsgsDemDocumentSymbols`, `getUsgsDemHover`, completions |
 
 ---
 
@@ -24843,6 +25424,18 @@ msx lint sample.dem
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/usgs-dem test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=usgs-dem`
 
 ================================================================================
 DOCUMENT: NCSA HDF4 (.hdf) Language Reference
@@ -24881,23 +25474,23 @@ Native **NCSA HDF4 (Hierarchical Data Format v4, 1987)** scientific data contain
 
 ## Package Structure
 
-| Path | Description |
-| :--- | :--- |
-| `src/index.ts` | Public package exports |
-| `src/language.ts` | `hdf4Language` WASM GLR grammar, extension registration, and `Hdf4Panel` UI descriptor |
-| `src/types.ts` | Core HDF4 tag/datatype constants and TypeScript interfaces |
-| `src/errors.ts` | `Hdf4ErrorCode` (`HDF1001`–`HDF5006`) diagnostic definitions |
-| `src/parser/ddl-parser.ts` | Textual HDF4 DDL parser and formatter |
-| `src/parser/binary-codec.ts` | Big-endian HDF4 binary DDH/DD stream encoder & decoder |
-| `src/lints/index.ts` | Semantic and binary structural linter (`lintHdf4`, `lintHdf4Binary`) |
-| `src/solver/index.ts` | Vgroup traversal, N-D SDS slicing, and array statistics |
-| `src/dae/index.ts` | `DAEBuilder` scientific dataset balance lowering |
-| `src/projections/index.ts` | NetCDF CDL and CSV projections |
-| `src/catalog/hdf4-std-schemas.ts` | Cleanroom HDF4 object & NASA EOS-HDF archetype schemas |
-| `src/diagram/index.ts` | Pure SVG Vgroup/SDS hierarchy & 2D SDS heatmap renderer |
-| `src/ui/Hdf4Panel.tsx` | Interactive React + SVG viewer/editor panel |
-| `src/indexing.ts` | UnifiedWorkspace symbol indexing |
-| `src/lsp.ts` | LSP validation, document symbols, hover, and completions |
+| Path                              | Description                                                                            |
+| :-------------------------------- | :------------------------------------------------------------------------------------- |
+| `src/index.ts`                    | Public package exports                                                                 |
+| `src/language.ts`                 | `hdf4Language` WASM GLR grammar, extension registration, and `Hdf4Panel` UI descriptor |
+| `src/types.ts`                    | Core HDF4 tag/datatype constants and TypeScript interfaces                             |
+| `src/errors.ts`                   | `Hdf4ErrorCode` (`HDF1001`–`HDF5006`) diagnostic definitions                           |
+| `src/parser/ddl-parser.ts`        | Textual HDF4 DDL parser and formatter                                                  |
+| `src/parser/binary-codec.ts`      | Big-endian HDF4 binary DDH/DD stream encoder & decoder                                 |
+| `src/lints/index.ts`              | Semantic and binary structural linter (`lintHdf4`, `lintHdf4Binary`)                   |
+| `src/solver/index.ts`             | Vgroup traversal, N-D SDS slicing, and array statistics                                |
+| `src/dae/index.ts`                | `DAEBuilder` scientific dataset balance lowering                                       |
+| `src/projections/index.ts`        | NetCDF CDL and CSV projections                                                         |
+| `src/catalog/hdf4-std-schemas.ts` | Cleanroom HDF4 object & NASA EOS-HDF archetype schemas                                 |
+| `src/diagram/index.ts`            | Pure SVG Vgroup/SDS hierarchy & 2D SDS heatmap renderer                                |
+| `src/ui/Hdf4Panel.tsx`            | Interactive React + SVG viewer/editor panel                                            |
+| `src/indexing.ts`                 | UnifiedWorkspace symbol indexing                                                       |
+| `src/lsp.ts`                      | LSP validation, document symbols, hover, and completions                               |
 
 ---
 
@@ -24910,6 +25503,18 @@ msx lint sample.hdf
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/hdf4 test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=hdf4`
 
 ================================================================================
 DOCUMENT: ARINC 429 (.a429) Language Reference
@@ -24957,21 +25562,21 @@ Native **ARINC 429 (Mark 33 Digital Information Transfer System, 1977)** commerc
 
 ## Diagnostic Codes (`A4291001`–`A4295006`)
 
-| Code       | Rule                     | Severity  | Description                                                      |
-| :--------- | :----------------------- | :-------- | :--------------------------------------------------------------- |
-| `A4291001` | `syntax-error`           | `error`   | Syntax error in ARINC 429 bus schema or trace file.              |
-| `A4292001` | `invalid-octal-label`    | `error`   | Label is not a valid 3-digit octal identifier in `001`–`377`.    |
-| `A4292002` | `duplicate-label`        | `error`   | Duplicate label/SDI definition on the same bus.                  |
-| `A4293001` | `parity-error`           | `error`   | 32-bit ARINC 429 word violates odd-parity check (bit 32).        |
-| `A4293002` | `invalid-bcd-nibble`     | `error`   | BCD data field contains a nibble greater than 9 (`0xA`–`0xF`).   |
-| `A4294001` | `ssm-failure-warning`    | `warning` | SSM indicates Failure Warning (`00` BNR / `11` DISCRETE).        |
-| `A4294002` | `ssm-no-computed-data`   | `warning` | SSM indicates No Computed Data (`01`).                           |
-| `A4295001` | `bus-bandwidth-exceeded` | `error`   | Scheduled bus bandwidth exceeds 100% of bus capacity.            |
-| `A4295002` | `bus-bandwidth-high`     | `warning` | Scheduled bus bandwidth exceeds 80% engineering safety margin.   |
-| `A4295003` | `unknown-word-label`     | `warning` | Trace word references a label not declared in the bus schema.    |
-| `A4295004` | `range-exceeded`         | `warning` | Decoded value exceeds declared label engineering range.          |
-| `A4295005` | `invalid-sdi`            | `error`   | SDI value is outside the valid 2-bit range (`0`–`3`).            |
-| `A4295006` | `missing-bus-rate`       | `warning` | Bus rate not specified; defaulting to `LOW` (12.5 kbps).         |
+| Code       | Rule                     | Severity  | Description                                                    |
+| :--------- | :----------------------- | :-------- | :------------------------------------------------------------- |
+| `A4291001` | `syntax-error`           | `error`   | Syntax error in ARINC 429 bus schema or trace file.            |
+| `A4292001` | `invalid-octal-label`    | `error`   | Label is not a valid 3-digit octal identifier in `001`–`377`.  |
+| `A4292002` | `duplicate-label`        | `error`   | Duplicate label/SDI definition on the same bus.                |
+| `A4293001` | `parity-error`           | `error`   | 32-bit ARINC 429 word violates odd-parity check (bit 32).      |
+| `A4293002` | `invalid-bcd-nibble`     | `error`   | BCD data field contains a nibble greater than 9 (`0xA`–`0xF`). |
+| `A4294001` | `ssm-failure-warning`    | `warning` | SSM indicates Failure Warning (`00` BNR / `11` DISCRETE).      |
+| `A4294002` | `ssm-no-computed-data`   | `warning` | SSM indicates No Computed Data (`01`).                         |
+| `A4295001` | `bus-bandwidth-exceeded` | `error`   | Scheduled bus bandwidth exceeds 100% of bus capacity.          |
+| `A4295002` | `bus-bandwidth-high`     | `warning` | Scheduled bus bandwidth exceeds 80% engineering safety margin. |
+| `A4295003` | `unknown-word-label`     | `warning` | Trace word references a label not declared in the bus schema.  |
+| `A4295004` | `range-exceeded`         | `warning` | Decoded value exceeds declared label engineering range.        |
+| `A4295005` | `invalid-sdi`            | `error`   | SDI value is outside the valid 2-bit range (`0`–`3`).          |
+| `A4295006` | `missing-bus-rate`       | `warning` | Bus rate not specified; defaulting to `LOW` (12.5 kbps).       |
 
 ---
 
@@ -25015,6 +25620,18 @@ msx lint sample.a429
 pnpm --filter @modelscript/arinc429 test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=arinc429`
+
 ================================================================================
 DOCUMENT: NMEA 0183 (.nmea) Language Reference
 CANONICAL URL: https://modelscript.org/languages/nmea0183
@@ -25044,43 +25661,43 @@ Native **NMEA 0183 (National Marine Electronics Association 0183, 1983)** ASCII 
 
 ## Package Structure
 
-| Path                                  | Description                                                                        |
-| :------------------------------------ | :--------------------------------------------------------------------------------- |
-| `src/index.ts`                        | Public package exports                                                             |
-| `src/language.ts`                     | `nmea0183Language` WASM GLR grammar, file extensions, and UI panel registration    |
-| `src/types.ts`                        | Core TypeScript interfaces (`Nmea0183Document`, `NmeaSentence`, `NmeaTrackEpoch`)  |
-| `src/errors.ts`                       | `Nmea0183ErrorCode` (`NMEA1001`–`NMEA5006`) diagnostic definitions                 |
-| `src/parser/index.ts`                 | `parseNmea0183`, `computeNmeaChecksum`, `ddmmToDecimalDegrees`, `parseUtcTime`     |
-| `src/lints/index.ts`                  | `lintNmea0183` telemetry integrity linter                                          |
-| `src/solver/index.ts`                 | WGS-84 Vincenty, Haversine, ECEF, ENU, and `solveNmeaTrack` kinematics solver      |
-| `src/dae/lowering.ts`                 | `lowerNmea0183ToDae` and `nmea0183ToDae` continuous DAE arena lowering             |
-| `src/projections/index.ts`            | `nmea0183ToCsv`, `nmea0183ToGpx`, `nmea0183ToOpenDrive`                            |
-| `src/catalog/nmea0183-std-schemas.ts` | Cleanroom schemas and parametric SVG icons for standard NMEA 0183 formatters       |
-| `src/diagram/index.ts`                | `renderNmea0183Svg`, `renderNmea0183TrackSvg`, `renderNmea0183SkyplotSvg`          |
-| `src/ui/Nmea0183Panel.tsx`            | Interactive React viewer/editor panel using `@modelscript/design-tokens/panel`     |
-| `src/indexing.ts`                     | Declarative `UnifiedWorkspace` symbol indexing                                     |
-| `src/lsp.ts`                          | `validateNmea0183`, `getNmea0183DocumentSymbols`, `getNmea0183Hover`, completions  |
+| Path                                  | Description                                                                       |
+| :------------------------------------ | :-------------------------------------------------------------------------------- |
+| `src/index.ts`                        | Public package exports                                                            |
+| `src/language.ts`                     | `nmea0183Language` WASM GLR grammar, file extensions, and UI panel registration   |
+| `src/types.ts`                        | Core TypeScript interfaces (`Nmea0183Document`, `NmeaSentence`, `NmeaTrackEpoch`) |
+| `src/errors.ts`                       | `Nmea0183ErrorCode` (`NMEA1001`–`NMEA5006`) diagnostic definitions                |
+| `src/parser/index.ts`                 | `parseNmea0183`, `computeNmeaChecksum`, `ddmmToDecimalDegrees`, `parseUtcTime`    |
+| `src/lints/index.ts`                  | `lintNmea0183` telemetry integrity linter                                         |
+| `src/solver/index.ts`                 | WGS-84 Vincenty, Haversine, ECEF, ENU, and `solveNmeaTrack` kinematics solver     |
+| `src/dae/lowering.ts`                 | `lowerNmea0183ToDae` and `nmea0183ToDae` continuous DAE arena lowering            |
+| `src/projections/index.ts`            | `nmea0183ToCsv`, `nmea0183ToGpx`, `nmea0183ToOpenDrive`                           |
+| `src/catalog/nmea0183-std-schemas.ts` | Cleanroom schemas and parametric SVG icons for standard NMEA 0183 formatters      |
+| `src/diagram/index.ts`                | `renderNmea0183Svg`, `renderNmea0183TrackSvg`, `renderNmea0183SkyplotSvg`         |
+| `src/ui/Nmea0183Panel.tsx`            | Interactive React viewer/editor panel using `@modelscript/design-tokens/panel`    |
+| `src/indexing.ts`                     | Declarative `UnifiedWorkspace` symbol indexing                                    |
+| `src/lsp.ts`                          | `validateNmea0183`, `getNmea0183DocumentSymbols`, `getNmea0183Hover`, completions |
 
 ---
 
 ## Diagnostic Codes (`NMEA1001`–`NMEA5006`)
 
-| Code       | Rule                          | Severity | Description                                                        |
-| :--------- | :---------------------------- | :------- | :----------------------------------------------------------------- |
-| `NMEA1001` | `syntax-error`                | Error    | Malformed NMEA 0183 sentence structure                             |
-| `NMEA1002` | `missing-checksum`            | Warning  | Sentence is missing `*XX` hex XOR checksum                         |
-| `NMEA2001` | `checksum-mismatch`           | Error    | Computed XOR checksum does not match `*XX`                         |
-| `NMEA2002` | `sentence-too-long`           | Warning  | Sentence exceeds the 82-character NMEA 0183 maximum length         |
-| `NMEA3001` | `invalid-latitude`            | Error    | Latitude `ddmm.mmmm` out of `[-90, 90]` or minutes `>= 60`         |
-| `NMEA3002` | `invalid-longitude`           | Error    | Longitude `dddmm.mmmm` out of `[-180, 180]` or minutes `>= 60`     |
-| `NMEA4001` | `unknown-talker`              | Warning  | Unrecognized 2-character NMEA 0183 talker ID                       |
-| `NMEA4002` | `unknown-formatter`           | Warning  | Unrecognized 3-character NMEA 0183 sentence formatter              |
-| `NMEA5001` | `void-gps-fix`                | Warning  | Void/invalid GPS fix (`RMC` status `V` or `GGA` fix quality `0`)   |
-| `NMEA5002` | `high-hdop`                   | Warning  | High HDOP (`> 5.0`) indicating degraded positioning accuracy       |
-| `NMEA5003` | `non-monotonic-timestamp`     | Warning  | UTC timestamp moved backwards relative to previous epoch           |
-| `NMEA5004` | `invalid-field-count`         | Error    | Unexpected field count for a standard NMEA 0183 formatter          |
-| `NMEA5005` | `invalid-satellite-geometry`  | Warning  | Satellite azimuth/elevation out of physical bounds                 |
-| `NMEA5006` | `unrealistic-speed`           | Warning  | Speed over ground exceeds plausible marine/surface threshold       |
+| Code       | Rule                         | Severity | Description                                                      |
+| :--------- | :--------------------------- | :------- | :--------------------------------------------------------------- |
+| `NMEA1001` | `syntax-error`               | Error    | Malformed NMEA 0183 sentence structure                           |
+| `NMEA1002` | `missing-checksum`           | Warning  | Sentence is missing `*XX` hex XOR checksum                       |
+| `NMEA2001` | `checksum-mismatch`          | Error    | Computed XOR checksum does not match `*XX`                       |
+| `NMEA2002` | `sentence-too-long`          | Warning  | Sentence exceeds the 82-character NMEA 0183 maximum length       |
+| `NMEA3001` | `invalid-latitude`           | Error    | Latitude `ddmm.mmmm` out of `[-90, 90]` or minutes `>= 60`       |
+| `NMEA3002` | `invalid-longitude`          | Error    | Longitude `dddmm.mmmm` out of `[-180, 180]` or minutes `>= 60`   |
+| `NMEA4001` | `unknown-talker`             | Warning  | Unrecognized 2-character NMEA 0183 talker ID                     |
+| `NMEA4002` | `unknown-formatter`          | Warning  | Unrecognized 3-character NMEA 0183 sentence formatter            |
+| `NMEA5001` | `void-gps-fix`               | Warning  | Void/invalid GPS fix (`RMC` status `V` or `GGA` fix quality `0`) |
+| `NMEA5002` | `high-hdop`                  | Warning  | High HDOP (`> 5.0`) indicating degraded positioning accuracy     |
+| `NMEA5003` | `non-monotonic-timestamp`    | Warning  | UTC timestamp moved backwards relative to previous epoch         |
+| `NMEA5004` | `invalid-field-count`        | Error    | Unexpected field count for a standard NMEA 0183 formatter        |
+| `NMEA5005` | `invalid-satellite-geometry` | Warning  | Satellite azimuth/elevation out of physical bounds               |
+| `NMEA5006` | `unrealistic-speed`          | Warning  | Speed over ground exceeds plausible marine/surface threshold     |
 
 ---
 
@@ -25093,6 +25710,18 @@ msx lint sample.nmea
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/nmea0183 test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=nmea0183`
 
 ================================================================================
 DOCUMENT: RINEX v2 (.obs) Language Reference
@@ -25131,23 +25760,23 @@ Native **RINEX v2 (Receiver Independent Exchange Format, Gurtner et al. 1989)** 
 
 ## Package Structure
 
-| Path                                  | Description                                                                        |
-| :------------------------------------ | :--------------------------------------------------------------------------------- |
-| `src/index.ts`                        | Public package exports                                                             |
-| `src/language.ts`                     | `rinexLanguage` WASM GLR grammar & UI panel registration                           |
-| `src/types.ts`                        | Core RINEX v2 OBS, NAV, ECEF, DOP, and solution interfaces                         |
-| `src/errors.ts`                       | `RinexErrorCode` (`RNX1001`–`RNX5006`) diagnostic definitions                      |
-| `src/parser/index.ts`                 | Fixed-column RINEX v2 OBS & NAV parser                                             |
-| `src/lints/index.ts`                  | `lintRinex` semantic and physical bounds linter                                    |
-| `src/solver/index.ts`                 | ICD-GPS-200 Keplerian ECEF propagator, Gauss-Newton 3D fix, WGS-84 & DOP solver    |
-| `src/dae/index.ts`                    | `lowerRinexToDae` & `rinexToDae` linear-memory DAE arena lowering                  |
-| `src/projections/index.ts`            | `rinexToNmea`, `rinexToCcsdsOem`, and `rinexToCsv` projections                     |
-| `src/diagram/index.ts`                | `renderRinexSkyplotSvg` polar skyplot + residual bar chart generator               |
-| `src/ui/RinexPanel.tsx`               | Interactive React viewer panel using `@modelscript/design-tokens/panel`            |
-| `src/catalog/rinex-std-schemas.ts`    | Cleanroom RINEX observation types (`C1`, `P1`, `P2`, `L1`, `L2`, `D1`, `S1`) & WGS-84 schemas |
-| `assets/rinex-std-lib/src/models.ts`  | Cleanroom AssemblyScript WASM runtime for GNSS constants & range kernels           |
-| `src/indexing.ts`                     | Declarative `UnifiedWorkspace` symbol indexing                                     |
-| `src/lsp.ts`                          | `validateRinex`, `getRinexDocumentSymbols`, `getRinexHover`, `getRinexCompletions` |
+| Path                                 | Description                                                                                   |
+| :----------------------------------- | :-------------------------------------------------------------------------------------------- |
+| `src/index.ts`                       | Public package exports                                                                        |
+| `src/language.ts`                    | `rinexLanguage` WASM GLR grammar & UI panel registration                                      |
+| `src/types.ts`                       | Core RINEX v2 OBS, NAV, ECEF, DOP, and solution interfaces                                    |
+| `src/errors.ts`                      | `RinexErrorCode` (`RNX1001`–`RNX5006`) diagnostic definitions                                 |
+| `src/parser/index.ts`                | Fixed-column RINEX v2 OBS & NAV parser                                                        |
+| `src/lints/index.ts`                 | `lintRinex` semantic and physical bounds linter                                               |
+| `src/solver/index.ts`                | ICD-GPS-200 Keplerian ECEF propagator, Gauss-Newton 3D fix, WGS-84 & DOP solver               |
+| `src/dae/index.ts`                   | `lowerRinexToDae` & `rinexToDae` linear-memory DAE arena lowering                             |
+| `src/projections/index.ts`           | `rinexToNmea`, `rinexToCcsdsOem`, and `rinexToCsv` projections                                |
+| `src/diagram/index.ts`               | `renderRinexSkyplotSvg` polar skyplot + residual bar chart generator                          |
+| `src/ui/RinexPanel.tsx`              | Interactive React viewer panel using `@modelscript/design-tokens/panel`                       |
+| `src/catalog/rinex-std-schemas.ts`   | Cleanroom RINEX observation types (`C1`, `P1`, `P2`, `L1`, `L2`, `D1`, `S1`) & WGS-84 schemas |
+| `assets/rinex-std-lib/src/models.ts` | Cleanroom AssemblyScript WASM runtime for GNSS constants & range kernels                      |
+| `src/indexing.ts`                    | Declarative `UnifiedWorkspace` symbol indexing                                                |
+| `src/lsp.ts`                         | `validateRinex`, `getRinexDocumentSymbols`, `getRinexHover`, `getRinexCompletions`            |
 
 ---
 
@@ -25160,6 +25789,18 @@ msx lint sample.obs
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/rinex test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=rinex`
 
 ================================================================================
 DOCUMENT: IRIG 106 / TMATS (.tmats) Language Reference
@@ -25194,41 +25835,41 @@ Native **IRIG 106 Chapter 9 TMATS (Telemetry Attributes Transfer Standard)** com
 
 ## Package Structure
 
-| Path | Description |
-| :--- | :--- |
-| `src/index.ts` | Public package exports |
-| `src/language.ts` | `irig106Language` WASM GLR grammar & UI panel registration (`.tmats`, `.tmt`, `.tma`) |
-| `src/types.ts` | TMATS Chapter 9 domain model interfaces (`TmatsModel`, `TmatsPcmFormatGroup`, `TmatsMeasurement`, `TmatsConversionGroup`) |
-| `src/errors.ts` | `Irig106ErrorCode` (`IRIG1001`–`IRIG5006`) diagnostic definitions |
-| `src/parser/tmats-parser.ts` | `parseIrig106` and `serializeIrig106` Chapter 9 attribute parser/serializer |
-| `src/lints/index.ts` | `lintIrig106` static semantic & frame-integrity validator |
-| `src/solver/commutator.ts` | PCM major/minor frame commutator grid builder, sample-rate/bandwidth solver, polynomial EU calibration |
-| `src/dae/lowering.ts` | `lowerIrig106ToDae` linear-memory `DAEBuilder` lowering |
-| `src/projections/irig106ToXtce.ts` | CCSDS XTCE XML projection |
-| `src/projections/irig106ToCsv.ts` | CSV commutator & calibration table projection |
-| `src/catalog/irig106-std-schemas.ts` | Cleanroom TMATS group & IRIG-106 standard sync word schemas |
-| `src/diagram/commutator-svg.ts` | `renderIrig106CommutatorSvg` pure SVG PCM commutator visualizer |
-| `src/ui/Irig106Panel.tsx` | Interactive React viewer/editor panel (`@modelscript/design-tokens/panel`) |
-| `src/indexing.ts` | `irig106Indexing` UnifiedWorkspace symbol indexing |
-| `src/lsp.ts` | LSP validation, document symbols, hover, and completions |
+| Path                                 | Description                                                                                                               |
+| :----------------------------------- | :------------------------------------------------------------------------------------------------------------------------ |
+| `src/index.ts`                       | Public package exports                                                                                                    |
+| `src/language.ts`                    | `irig106Language` WASM GLR grammar & UI panel registration (`.tmats`, `.tmt`, `.tma`)                                     |
+| `src/types.ts`                       | TMATS Chapter 9 domain model interfaces (`TmatsModel`, `TmatsPcmFormatGroup`, `TmatsMeasurement`, `TmatsConversionGroup`) |
+| `src/errors.ts`                      | `Irig106ErrorCode` (`IRIG1001`–`IRIG5006`) diagnostic definitions                                                         |
+| `src/parser/tmats-parser.ts`         | `parseIrig106` and `serializeIrig106` Chapter 9 attribute parser/serializer                                               |
+| `src/lints/index.ts`                 | `lintIrig106` static semantic & frame-integrity validator                                                                 |
+| `src/solver/commutator.ts`           | PCM major/minor frame commutator grid builder, sample-rate/bandwidth solver, polynomial EU calibration                    |
+| `src/dae/lowering.ts`                | `lowerIrig106ToDae` linear-memory `DAEBuilder` lowering                                                                   |
+| `src/projections/irig106ToXtce.ts`   | CCSDS XTCE XML projection                                                                                                 |
+| `src/projections/irig106ToCsv.ts`    | CSV commutator & calibration table projection                                                                             |
+| `src/catalog/irig106-std-schemas.ts` | Cleanroom TMATS group & IRIG-106 standard sync word schemas                                                               |
+| `src/diagram/commutator-svg.ts`      | `renderIrig106CommutatorSvg` pure SVG PCM commutator visualizer                                                           |
+| `src/ui/Irig106Panel.tsx`            | Interactive React viewer/editor panel (`@modelscript/design-tokens/panel`)                                                |
+| `src/indexing.ts`                    | `irig106Indexing` UnifiedWorkspace symbol indexing                                                                        |
+| `src/lsp.ts`                         | LSP validation, document symbols, hover, and completions                                                                  |
 
 ---
 
 ## Lint Rules (`IRIG1001`–`IRIG5006`)
 
-| Code | Rule | Severity | Description |
-| :--- | :--- | :--- | :--- |
-| `IRIG1001` | `syntax-error` | `error` | Syntax error or missing `;` terminator on a TMATS attribute line. |
-| `IRIG2001` | `duplicate-attribute-code` | `error` | Duplicate TMATS attribute code declared multiple times in the file. |
-| `IRIG3001` | `word-position-out-of-bounds` | `error` | PCM measurement word position (`WP`) is outside minor frame bounds `[1, MF1]`. |
-| `IRIG3002` | `overlapping-pcm-allocation` | `error` | Two PCM measurements overlap in the same minor frame, word position, and bit range. |
-| `IRIG4001` | `undefined-conversion-ref` | `error` | `D-x` measurement references an undefined `C-x` data conversion (`DCN`). |
-| `IRIG5001` | `bit-rate-frame-mismatch` | `error` | PCM bit rate (`D1`), minor frame bits (`MF2`), or word budget (`MF1 * F1 + syncBits`) are inconsistent. |
-| `IRIG5002` | `missing-sync-pattern` | `error` | PCM format group is missing minor frame synchronization pattern (`P-x\MF4`). |
-| `IRIG5003` | `invalid-word-length` | `error` | PCM common word length (`P-x\F1`) is outside the valid IRIG 106 range (`4`–`64` bits). |
-| `IRIG5004` | `invalid-frame-position` | `error` | Measurement subcommutation frame position (`FP`) exceeds major frame depth (`MF\N`). |
-| `IRIG5005` | `missing-polynomial-coefficients` | `warning` | `C-x` conversion of type `COE` has no polynomial coefficients (`CO-n`) defined. |
-| `IRIG5006` | `sync-pattern-length-mismatch` | `warning` | Sync pattern bit length does not match standard IRIG-106 widths or minor frame sync bit budget. |
+| Code       | Rule                              | Severity  | Description                                                                                             |
+| :--------- | :-------------------------------- | :-------- | :------------------------------------------------------------------------------------------------------ |
+| `IRIG1001` | `syntax-error`                    | `error`   | Syntax error or missing `;` terminator on a TMATS attribute line.                                       |
+| `IRIG2001` | `duplicate-attribute-code`        | `error`   | Duplicate TMATS attribute code declared multiple times in the file.                                     |
+| `IRIG3001` | `word-position-out-of-bounds`     | `error`   | PCM measurement word position (`WP`) is outside minor frame bounds `[1, MF1]`.                          |
+| `IRIG3002` | `overlapping-pcm-allocation`      | `error`   | Two PCM measurements overlap in the same minor frame, word position, and bit range.                     |
+| `IRIG4001` | `undefined-conversion-ref`        | `error`   | `D-x` measurement references an undefined `C-x` data conversion (`DCN`).                                |
+| `IRIG5001` | `bit-rate-frame-mismatch`         | `error`   | PCM bit rate (`D1`), minor frame bits (`MF2`), or word budget (`MF1 * F1 + syncBits`) are inconsistent. |
+| `IRIG5002` | `missing-sync-pattern`            | `error`   | PCM format group is missing minor frame synchronization pattern (`P-x\MF4`).                            |
+| `IRIG5003` | `invalid-word-length`             | `error`   | PCM common word length (`P-x\F1`) is outside the valid IRIG 106 range (`4`–`64` bits).                  |
+| `IRIG5004` | `invalid-frame-position`          | `error`   | Measurement subcommutation frame position (`FP`) exceeds major frame depth (`MF\N`).                    |
+| `IRIG5005` | `missing-polynomial-coefficients` | `warning` | `C-x` conversion of type `COE` has no polynomial coefficients (`CO-n`) defined.                         |
+| `IRIG5006` | `sync-pattern-length-mismatch`    | `warning` | Sync pattern bit length does not match standard IRIG-106 widths or minor frame sync bit budget.         |
 
 ---
 
@@ -25285,6 +25926,18 @@ msx lint sample.tmats
 pnpm --filter @modelscript/irig106 test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=irig106`
+
 ================================================================================
 DOCUMENT: ENDF-6 (.endf) Language Reference
 CANONICAL URL: https://modelscript.org/languages/endf6
@@ -25322,22 +25975,22 @@ Native **ENDF-6 (Evaluated Nuclear Data File Format, BNL/NNDC 1968–1980s+)** e
 
 ## Package Structure
 
-| Path | Description |
-| :--- | :--- |
-| `src/index.ts` | Public package exports |
-| `src/language.ts` | `endf6Language` WASM GLR grammar and UI panel registration |
-| `src/types.ts` | Core TypeScript interfaces (`Endf6Tape`, `Endf6Material`, `Endf6Tab1Record`, etc.) |
-| `src/parser/` | 11-char ENDF float parser/formatter and 80-column `HEAD`/`CONT`/`TAB1`/`LIST` tape parser |
-| `src/errors.ts` | `Endf6ErrorCode` (`ENDF1001`–`ENDF5006`) diagnostic catalog |
-| `src/lints/index.ts` | ENDF-6 structural, monotonicity, positivity, and consistency linter |
-| `src/solver/` | `INT=1..5` interpolation, SLBW resonance evaluator, and multigroup collapse |
-| `src/dae/` | Direct `DAEBuilder` lowering for multigroup neutron balance & reaction rates |
-| `src/projections/` | MCNP material card, SCALE composition, and CSV projections |
-| `src/catalog/` | Cleanroom ENDF-6 `MF`/`MT` schemas and reference nuclides (`H-1`, `B-10`, `U-235`, `U-238`, `Pu-239`) |
-| `src/diagram/` | Pure SVG log-log neutron cross-section plotter (`renderEndf6CrossSectionSvg`) |
-| `src/ui/Endf6Panel.tsx` | Interactive React cross-section viewer/editor panel |
-| `src/indexing.ts` | UnifiedWorkspace symbol indexing |
-| `src/lsp.ts` | LSP diagnostics, document symbols, hover, and completions |
+| Path                    | Description                                                                                           |
+| :---------------------- | :---------------------------------------------------------------------------------------------------- |
+| `src/index.ts`          | Public package exports                                                                                |
+| `src/language.ts`       | `endf6Language` WASM GLR grammar and UI panel registration                                            |
+| `src/types.ts`          | Core TypeScript interfaces (`Endf6Tape`, `Endf6Material`, `Endf6Tab1Record`, etc.)                    |
+| `src/parser/`           | 11-char ENDF float parser/formatter and 80-column `HEAD`/`CONT`/`TAB1`/`LIST` tape parser             |
+| `src/errors.ts`         | `Endf6ErrorCode` (`ENDF1001`–`ENDF5006`) diagnostic catalog                                           |
+| `src/lints/index.ts`    | ENDF-6 structural, monotonicity, positivity, and consistency linter                                   |
+| `src/solver/`           | `INT=1..5` interpolation, SLBW resonance evaluator, and multigroup collapse                           |
+| `src/dae/`              | Direct `DAEBuilder` lowering for multigroup neutron balance & reaction rates                          |
+| `src/projections/`      | MCNP material card, SCALE composition, and CSV projections                                            |
+| `src/catalog/`          | Cleanroom ENDF-6 `MF`/`MT` schemas and reference nuclides (`H-1`, `B-10`, `U-235`, `U-238`, `Pu-239`) |
+| `src/diagram/`          | Pure SVG log-log neutron cross-section plotter (`renderEndf6CrossSectionSvg`)                         |
+| `src/ui/Endf6Panel.tsx` | Interactive React cross-section viewer/editor panel                                                   |
+| `src/indexing.ts`       | UnifiedWorkspace symbol indexing                                                                      |
+| `src/lsp.ts`            | LSP diagnostics, document symbols, hover, and completions                                             |
 
 ---
 
@@ -25350,6 +26003,18 @@ msx lint sample.endf
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/endf6 test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=endf6`
 
 ================================================================================
 DOCUMENT: JCAMP-DX (.jdx) Language Reference
@@ -25408,6 +26073,18 @@ msx lint sample.jdx
 pnpm --filter @modelscript/jcamp-dx test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=jcamp-dx`
+
 ================================================================================
 DOCUMENT: IUCr Crystallographic CIF (.mcif) Language Reference
 CANONICAL URL: https://modelscript.org/languages/iucr-cif
@@ -25440,23 +26117,23 @@ Native **IUCr Crystallographic Information File (CIF / STAR 1.1)** crystal-struc
 
 ## Package Structure
 
-| Path                                    | Description                                                                        |
-| :-------------------------------------- | :--------------------------------------------------------------------------------- |
-| `src/index.ts`                          | Public package exports                                                             |
-| `src/language.ts`                       | `iucrCifLanguage` WASM GLR grammar and UI panel registration (`.cif`, `.mcif`, `.star`) |
-| `src/types.ts`                          | STAR/CIF AST and crystallographic domain types                                     |
-| `src/errors.ts`                         | `IucrCifErrorCode` (`ICIF1001`–`ICIF5006`) diagnostic definitions                   |
-| `src/parser/cif-parser.ts`              | STAR/CIF 1.1 lexer, parser, standard-uncertainty parser, and structure extractor   |
-| `src/lints/index.ts`                    | `lintIucrCif` syntactic, structural, metric, and steric-overlap validator          |
-| `src/solver/crystallography.ts`         | Metric tensor, orthogonalization, Wyckoff expansion, periodic bonds, and density   |
-| `src/solver/xrd.ts`                     | Cu-$K\alpha$ Bragg powder XRD structure-factor and profile simulator               |
-| `src/dae/lowering.ts`                   | `lowerCifToDae` and `cifToDae` direct `DAEBuilder` lowering                        |
-| `src/projections/`                      | `cifToPdb`, `cifToXyz`, and `cifToMolfile` structural projections                  |
-| `src/catalog/iucr-cif-std-schemas.ts`   | Cleanroom CIF dictionary & canonical crystal schemas + SVG icons                   |
-| `assets/iucr-cif-std-lib/src/models.ts` | AssemblyScript WASM crystallography & Bragg diffraction runtime                    |
-| `src/diagram/crystal-svg.ts`            | `renderIucrCifSvg` 3D-projected crystal lattice & powder XRD SVG renderer          |
-| `src/ui/IucrCifPanel.tsx`               | Interactive React crystal lattice & powder XRD viewer/editor panel                 |
-| `src/indexing.ts`                       | `iucrCifIndexing` UnifiedWorkspace indexer                                         |
+| Path                                    | Description                                                                                |
+| :-------------------------------------- | :----------------------------------------------------------------------------------------- |
+| `src/index.ts`                          | Public package exports                                                                     |
+| `src/language.ts`                       | `iucrCifLanguage` WASM GLR grammar and UI panel registration (`.cif`, `.mcif`, `.star`)    |
+| `src/types.ts`                          | STAR/CIF AST and crystallographic domain types                                             |
+| `src/errors.ts`                         | `IucrCifErrorCode` (`ICIF1001`–`ICIF5006`) diagnostic definitions                          |
+| `src/parser/cif-parser.ts`              | STAR/CIF 1.1 lexer, parser, standard-uncertainty parser, and structure extractor           |
+| `src/lints/index.ts`                    | `lintIucrCif` syntactic, structural, metric, and steric-overlap validator                  |
+| `src/solver/crystallography.ts`         | Metric tensor, orthogonalization, Wyckoff expansion, periodic bonds, and density           |
+| `src/solver/xrd.ts`                     | Cu-$K\alpha$ Bragg powder XRD structure-factor and profile simulator                       |
+| `src/dae/lowering.ts`                   | `lowerCifToDae` and `cifToDae` direct `DAEBuilder` lowering                                |
+| `src/projections/`                      | `cifToPdb`, `cifToXyz`, and `cifToMolfile` structural projections                          |
+| `src/catalog/iucr-cif-std-schemas.ts`   | Cleanroom CIF dictionary & canonical crystal schemas + SVG icons                           |
+| `assets/iucr-cif-std-lib/src/models.ts` | AssemblyScript WASM crystallography & Bragg diffraction runtime                            |
+| `src/diagram/crystal-svg.ts`            | `renderIucrCifSvg` 3D-projected crystal lattice & powder XRD SVG renderer                  |
+| `src/ui/IucrCifPanel.tsx`               | Interactive React crystal lattice & powder XRD viewer/editor panel                         |
+| `src/indexing.ts`                       | `iucrCifIndexing` UnifiedWorkspace indexer                                                 |
 | `src/lsp.ts`                            | `validateIucrCif`, `getIucrCifDocumentSymbols`, `getIucrCifHover`, `getIucrCifCompletions` |
 
 ---
@@ -25470,6 +26147,18 @@ msx lint sample.mcif
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/iucr-cif test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=iucr-cif`
 
 ================================================================================
 DOCUMENT: 3D Systems STL (.stl) Language Reference
@@ -25506,23 +26195,23 @@ Native **3D Systems STL (Stereolithography ASCII & Binary Mesh Format, 1987)** c
 
 ## Package Structure
 
-| Path                                  | Description                                                                        |
-| :------------------------------------ | :--------------------------------------------------------------------------------- |
-| `src/index.ts`                        | Public package exports                                                             |
-| `src/language.ts`                     | `stlLanguage` `@modelscript/dsl` grammar, file extensions (`.stl`), and UI panel   |
-| `src/types.ts`                        | Core TypeScript interfaces (`StlMeshDocument`, `StlSolid`, `StlFacet`, etc.)       |
-| `src/errors.ts`                       | `StlErrorCode` (`STL1001`–`STL5006`) diagnostic catalog                            |
-| `src/parser/index.ts`                 | Unified ASCII & Binary STL parser and encoder                                      |
-| `src/lints/index.ts`                  | Manifold, watertightness, normal-consistency, and geometry linter                  |
-| `src/solver/index.ts`                 | Exact tetrahedral volume, area, centroid, 3×3 inertia tensor, and Euler topology   |
-| `src/cad/index.ts`                    | `@modelscript/cad` `PolyhedronSolid` lowering                                      |
-| `src/dae/index.ts`                    | Rigid-body mass/inertia lowering to `@modelscript/runtime` `DAEBuilder`            |
-| `src/projections/index.ts`            | Projections to Wavefront OBJ, ISO 10303-21 STEP, and SVG                           |
-| `src/diagram/index.ts`                | Painter's-algorithm isometric/orthographic shaded 3D SVG mesh renderer             |
-| `src/ui/StlPanel.tsx`                 | Interactive React 3D STL viewer, mass-property inspector, and diagnostic panel     |
-| `src/catalog/stl-std-schemas.ts`      | Cleanroom standard library schemas and analytical STL primitive generators         |
-| `src/indexing.ts`                     | Declarative `UnifiedWorkspace` symbol indexing                                     |
-| `src/lsp.ts`                          | LSP diagnostics, document symbols, hover, and completions                          |
+| Path                             | Description                                                                      |
+| :------------------------------- | :------------------------------------------------------------------------------- |
+| `src/index.ts`                   | Public package exports                                                           |
+| `src/language.ts`                | `stlLanguage` `@modelscript/dsl` grammar, file extensions (`.stl`), and UI panel |
+| `src/types.ts`                   | Core TypeScript interfaces (`StlMeshDocument`, `StlSolid`, `StlFacet`, etc.)     |
+| `src/errors.ts`                  | `StlErrorCode` (`STL1001`–`STL5006`) diagnostic catalog                          |
+| `src/parser/index.ts`            | Unified ASCII & Binary STL parser and encoder                                    |
+| `src/lints/index.ts`             | Manifold, watertightness, normal-consistency, and geometry linter                |
+| `src/solver/index.ts`            | Exact tetrahedral volume, area, centroid, 3×3 inertia tensor, and Euler topology |
+| `src/cad/index.ts`               | `@modelscript/cad` `PolyhedronSolid` lowering                                    |
+| `src/dae/index.ts`               | Rigid-body mass/inertia lowering to `@modelscript/runtime` `DAEBuilder`          |
+| `src/projections/index.ts`       | Projections to Wavefront OBJ, ISO 10303-21 STEP, and SVG                         |
+| `src/diagram/index.ts`           | Painter's-algorithm isometric/orthographic shaded 3D SVG mesh renderer           |
+| `src/ui/StlPanel.tsx`            | Interactive React 3D STL viewer, mass-property inspector, and diagnostic panel   |
+| `src/catalog/stl-std-schemas.ts` | Cleanroom standard library schemas and analytical STL primitive generators       |
+| `src/indexing.ts`                | Declarative `UnifiedWorkspace` symbol indexing                                   |
+| `src/lsp.ts`                     | LSP diagnostics, document symbols, hover, and completions                        |
 
 ---
 
@@ -25535,6 +26224,18 @@ msx lint sample.stl
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/stl test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=stl`
 
 ================================================================================
 DOCUMENT: Wavefront OBJ / MTL (.obj) Language Reference
@@ -25575,41 +26276,41 @@ Native **Wavefront OBJ & MTL** (1980s Wavefront Technologies Advanced Visualizer
 
 ## Package Structure
 
-| Path                                  | Description                                                                   |
-| :------------------------------------ | :---------------------------------------------------------------------------- |
-| `src/index.ts`                        | Public package exports                                                        |
-| `src/language.ts`                     | `objLanguage` WASM GLR grammar, file extensions (`.obj`, `.mtl`), UI panel    |
-| `src/types.ts`                        | Core TypeScript interfaces (`ObjDocument`, `MtlDocument`, `ObjFace`, etc.)    |
-| `src/errors.ts`                       | `ObjErrorCode` (`OBJ1001`–`OBJ5006`) diagnostic definitions                   |
-| `src/parser/`                         | `parseObj`, `parseMtl`, `parseObjWithMtl` parsers                             |
-| `src/lints/index.ts`                  | `lintObj`, `lintMtl` mesh topology & material linter                          |
-| `src/solver/index.ts`                 | Fan triangulation, smooth normals, bounding box, area, signed volume, Euler   |
-| `src/cad/index.ts`                    | `lowerObjToCad` to `@modelscript/cad` `PolyhedronSolid` & `Assembly`          |
-| `src/dae/index.ts`                    | `lowerObjToDae`, `objToDae` rigid-body inertia lowering to `DAEBuilder`       |
-| `src/projections/index.ts`            | `objToAsciiStl`, `objToBinaryStl`, `objToStep`, `objToUsd`                    |
-| `src/catalog/obj-std-schemas.ts`      | Cleanroom OBJ primitive & MTL material schemas                                |
-| `assets/obj-std-lib/src/models.ts`    | AssemblyScript WASM geometry & shading kernel                                 |
-| `src/diagram/index.ts`                | `renderObjMeshSvg` pure SVG shaded 3D mesh renderer                           |
-| `src/ui/ObjPanel.tsx`                 | Interactive React + SVG 3D mesh & material viewer/editor panel                |
-| `src/indexing.ts`                     | `objIndexing` UnifiedWorkspace indexer                                        |
-| `src/lsp.ts`                          | `validateObj`, `getObjDocumentSymbols`, `getObjHover`, `getObjCompletions`    |
+| Path                               | Description                                                                 |
+| :--------------------------------- | :-------------------------------------------------------------------------- |
+| `src/index.ts`                     | Public package exports                                                      |
+| `src/language.ts`                  | `objLanguage` WASM GLR grammar, file extensions (`.obj`, `.mtl`), UI panel  |
+| `src/types.ts`                     | Core TypeScript interfaces (`ObjDocument`, `MtlDocument`, `ObjFace`, etc.)  |
+| `src/errors.ts`                    | `ObjErrorCode` (`OBJ1001`–`OBJ5006`) diagnostic definitions                 |
+| `src/parser/`                      | `parseObj`, `parseMtl`, `parseObjWithMtl` parsers                           |
+| `src/lints/index.ts`               | `lintObj`, `lintMtl` mesh topology & material linter                        |
+| `src/solver/index.ts`              | Fan triangulation, smooth normals, bounding box, area, signed volume, Euler |
+| `src/cad/index.ts`                 | `lowerObjToCad` to `@modelscript/cad` `PolyhedronSolid` & `Assembly`        |
+| `src/dae/index.ts`                 | `lowerObjToDae`, `objToDae` rigid-body inertia lowering to `DAEBuilder`     |
+| `src/projections/index.ts`         | `objToAsciiStl`, `objToBinaryStl`, `objToStep`, `objToUsd`                  |
+| `src/catalog/obj-std-schemas.ts`   | Cleanroom OBJ primitive & MTL material schemas                              |
+| `assets/obj-std-lib/src/models.ts` | AssemblyScript WASM geometry & shading kernel                               |
+| `src/diagram/index.ts`             | `renderObjMeshSvg` pure SVG shaded 3D mesh renderer                         |
+| `src/ui/ObjPanel.tsx`              | Interactive React + SVG 3D mesh & material viewer/editor panel              |
+| `src/indexing.ts`                  | `objIndexing` UnifiedWorkspace indexer                                      |
+| `src/lsp.ts`                       | `validateObj`, `getObjDocumentSymbols`, `getObjHover`, `getObjCompletions`  |
 
 ---
 
 ## Lint Rules
 
-| Code    | Rule                         | Severity | Description                                                        |
-| :------ | :--------------------------- | :------- | :----------------------------------------------------------------- |
-| OBJ1001 | `syntax-error`               | error    | Malformed Wavefront OBJ or MTL directive                           |
-| OBJ2001 | `zero-index`                 | error    | Zero index used in face/line/point (Wavefront OBJ is 1-based)      |
-| OBJ2002 | `vertex-index-out-of-range`  | error    | Vertex index `v` in `f` references a non-existent vertex           |
-| OBJ2003 | `texcoord-index-out-of-range`| error    | Texture coordinate index `vt` in `f` references a non-existent UV  |
-| OBJ2004 | `normal-index-out-of-range`  | error    | Vertex normal index `vn` in `f` references a non-existent normal   |
-| OBJ3001 | `face-too-few-vertices`      | error    | Face directive `f` has fewer than 3 vertices                       |
-| OBJ3002 | `degenerate-face`            | warning  | Degenerate face with zero surface area                             |
-| OBJ4001 | `undefined-material`         | warning  | `usemtl` references a material not defined in the provided MTL     |
-| OBJ4002 | `mtl-color-out-of-range`     | warning  | MTL color component (`Ka`, `Kd`, `Ks`, `Ke`) outside `[0, 1]`      |
-| OBJ5006 | `non-manifold-edge`          | warning  | Edge shared by more than 2 faces (non-manifold mesh topology)      |
+| Code    | Rule                          | Severity | Description                                                       |
+| :------ | :---------------------------- | :------- | :---------------------------------------------------------------- |
+| OBJ1001 | `syntax-error`                | error    | Malformed Wavefront OBJ or MTL directive                          |
+| OBJ2001 | `zero-index`                  | error    | Zero index used in face/line/point (Wavefront OBJ is 1-based)     |
+| OBJ2002 | `vertex-index-out-of-range`   | error    | Vertex index `v` in `f` references a non-existent vertex          |
+| OBJ2003 | `texcoord-index-out-of-range` | error    | Texture coordinate index `vt` in `f` references a non-existent UV |
+| OBJ2004 | `normal-index-out-of-range`   | error    | Vertex normal index `vn` in `f` references a non-existent normal  |
+| OBJ3001 | `face-too-few-vertices`       | error    | Face directive `f` has fewer than 3 vertices                      |
+| OBJ3002 | `degenerate-face`             | warning  | Degenerate face with zero surface area                            |
+| OBJ4001 | `undefined-material`          | warning  | `usemtl` references a material not defined in the provided MTL    |
+| OBJ4002 | `mtl-color-out-of-range`      | warning  | MTL color component (`Ka`, `Kd`, `Ks`, `Ke`) outside `[0, 1]`     |
+| OBJ5006 | `non-manifold-edge`           | warning  | Edge shared by more than 2 faces (non-manifold mesh topology)     |
 
 ---
 
@@ -25622,6 +26323,18 @@ msx lint sample.obj
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/obj test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=obj`
 
 ================================================================================
 DOCUMENT: Intel HEX (.hex) Language Reference
@@ -25727,6 +26440,18 @@ msx lint sample.hex
 pnpm --filter @modelscript/ihex test
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=ihex`
+
 ================================================================================
 DOCUMENT: Motorola S-Record (.srec) Language Reference
 CANONICAL URL: https://modelscript.org/languages/srec
@@ -25756,22 +26481,22 @@ Native **Motorola S-Record (SREC)** firmware memory image format parser, encoder
 
 ## Package Structure
 
-| Path | Description |
-| :--- | :--- |
-| `src/index.ts` | Public package exports |
-| `src/language.ts` | `srecLanguage` WASM GLR grammar, extensions, and `SrecPanel` UI registration |
-| `src/types.ts` | Core TypeScript interfaces (`SrecFile`, `SrecRecord`, `SrecMemoryRegion`, `SrecBinaryImage`) |
-| `src/errors.ts` | Diagnostic catalog `SrecErrorCode` (`SREC1001`–`SREC5006`) |
-| `src/parser/index.ts` | `parseSrec`, `encodeSrec`, `computeSrecChecksum`, `decodeHeaderAscii` |
-| `src/lints/index.ts` | `lintSrec` firmware integrity checker |
-| `src/solver/index.ts` | Contiguous region coalescer, binary image builder, IEEE CRC-32 & entry-point validator |
-| `src/dae/index.ts` | `lowerSrecToDae` and `srecToDae` linear-memory DAE arena lowering |
-| `src/projections/index.ts` | `srecToIntelHex`, `srecToVerilogReadmemh`, `srecToCArray` |
-| `src/catalog/srec-std-schemas.ts` | Cleanroom schemas for `S0`–`S9` record types & Motorola 6800/68000/ColdFire/PowerPC presets |
-| `src/diagram/index.ts` | `renderSrecMemoryMapSvg` and `buildSrecDiagramData` |
-| `src/ui/SrecPanel.tsx` | Interactive React + SVG memory-region & hex dump viewer panel |
-| `src/indexing.ts` | UnifiedWorkspace declarative indexer (`srecIndexing`) |
-| `src/lsp.ts` | `validateSrec`, `getSrecDocumentSymbols`, `getSrecHover`, `getSrecCompletions` |
+| Path                              | Description                                                                                  |
+| :-------------------------------- | :------------------------------------------------------------------------------------------- |
+| `src/index.ts`                    | Public package exports                                                                       |
+| `src/language.ts`                 | `srecLanguage` WASM GLR grammar, extensions, and `SrecPanel` UI registration                 |
+| `src/types.ts`                    | Core TypeScript interfaces (`SrecFile`, `SrecRecord`, `SrecMemoryRegion`, `SrecBinaryImage`) |
+| `src/errors.ts`                   | Diagnostic catalog `SrecErrorCode` (`SREC1001`–`SREC5006`)                                   |
+| `src/parser/index.ts`             | `parseSrec`, `encodeSrec`, `computeSrecChecksum`, `decodeHeaderAscii`                        |
+| `src/lints/index.ts`              | `lintSrec` firmware integrity checker                                                        |
+| `src/solver/index.ts`             | Contiguous region coalescer, binary image builder, IEEE CRC-32 & entry-point validator       |
+| `src/dae/index.ts`                | `lowerSrecToDae` and `srecToDae` linear-memory DAE arena lowering                            |
+| `src/projections/index.ts`        | `srecToIntelHex`, `srecToVerilogReadmemh`, `srecToCArray`                                    |
+| `src/catalog/srec-std-schemas.ts` | Cleanroom schemas for `S0`–`S9` record types & Motorola 6800/68000/ColdFire/PowerPC presets  |
+| `src/diagram/index.ts`            | `renderSrecMemoryMapSvg` and `buildSrecDiagramData`                                          |
+| `src/ui/SrecPanel.tsx`            | Interactive React + SVG memory-region & hex dump viewer panel                                |
+| `src/indexing.ts`                 | UnifiedWorkspace declarative indexer (`srecIndexing`)                                        |
+| `src/lsp.ts`                      | `validateSrec`, `getSrecDocumentSymbols`, `getSrecHover`, `getSrecCompletions`               |
 
 ---
 
@@ -25784,6 +26509,18 @@ msx lint sample.srec
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/srec test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=srec`
 
 ================================================================================
 DOCUMENT: JEDEC JESD3 (.jed) Language Reference
@@ -25813,22 +26550,22 @@ Native **JEDEC Standard 3 (JESD3)** Programmable Logic Device (PLD) fuse-map and
 
 ## Package Structure
 
-| Path | Description |
-| :--- | :--- |
-| `src/index.ts` | Public package exports |
-| `src/language.ts` | `jedecLanguage` WASM GLR grammar, file extensions (`.jed`, `.jedec`), and UI panel metadata |
-| `src/types.ts` | Core JESD3 document, fuse-map, test-vector, device-profile, and solver interfaces |
-| `src/errors.ts` | `JedecErrorCode` (`JED1001`–`JED5006`) diagnostic definitions |
-| `src/parser/` | `parseJedec`, `serializeJedec`, `computeJedecFuseChecksum`, `computeJedecTransmissionChecksum` |
-| `src/lints/index.ts` | `lintJedec` structural, checksum, bounds, and test-vector linter |
-| `src/solver/` | PAL/GAL device profiles, SOP Boolean extractor, and JESD3 `V` test-vector simulator |
-| `src/dae/` | `lowerJedecToDae` direct Boolean DAE arena lowering |
-| `src/projections/` | `jedecToVerilog` and `jedecToVhdl` synthesizable HDL projections |
-| `src/diagram/` | `renderJedecFuseMatrixSvg` pure SVG fuse-matrix grid renderer |
-| `src/ui/JedecPanel.tsx` | Interactive React panel using `@modelscript/design-tokens/panel` |
-| `src/catalog/` | Cleanroom PLD & JESD3 stdlib schemas and zero-I/O registry adapter |
-| `src/indexing.ts` | UnifiedWorkspace symbol indexing (`jedecIndexing`) |
-| `src/lsp.ts` | Diagnostics, document symbols, hover docs, and completions |
+| Path                    | Description                                                                                    |
+| :---------------------- | :--------------------------------------------------------------------------------------------- |
+| `src/index.ts`          | Public package exports                                                                         |
+| `src/language.ts`       | `jedecLanguage` WASM GLR grammar, file extensions (`.jed`, `.jedec`), and UI panel metadata    |
+| `src/types.ts`          | Core JESD3 document, fuse-map, test-vector, device-profile, and solver interfaces              |
+| `src/errors.ts`         | `JedecErrorCode` (`JED1001`–`JED5006`) diagnostic definitions                                  |
+| `src/parser/`           | `parseJedec`, `serializeJedec`, `computeJedecFuseChecksum`, `computeJedecTransmissionChecksum` |
+| `src/lints/index.ts`    | `lintJedec` structural, checksum, bounds, and test-vector linter                               |
+| `src/solver/`           | PAL/GAL device profiles, SOP Boolean extractor, and JESD3 `V` test-vector simulator            |
+| `src/dae/`              | `lowerJedecToDae` direct Boolean DAE arena lowering                                            |
+| `src/projections/`      | `jedecToVerilog` and `jedecToVhdl` synthesizable HDL projections                               |
+| `src/diagram/`          | `renderJedecFuseMatrixSvg` pure SVG fuse-matrix grid renderer                                  |
+| `src/ui/JedecPanel.tsx` | Interactive React panel using `@modelscript/design-tokens/panel`                               |
+| `src/catalog/`          | Cleanroom PLD & JESD3 stdlib schemas and zero-I/O registry adapter                             |
+| `src/indexing.ts`       | UnifiedWorkspace symbol indexing (`jedecIndexing`)                                             |
+| `src/lsp.ts`            | Diagnostics, document symbols, hover docs, and completions                                     |
 
 ---
 
@@ -25841,6 +26578,18 @@ msx lint sample.jed
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/jedec test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=jedec`
 
 ================================================================================
 DOCUMENT: ASN.1 (X.208 / X.680) (.asn1) Language Reference
@@ -25871,25 +26620,25 @@ Native **ASN.1 (ISO/ITU-T X.208 / X.680 Abstract Syntax Notation One + X.690 BER
 
 ## Semantic & Wire Lint Rules (`ASN11001`–`ASN15006`)
 
-| Code       | Rule                        | Severity  | Description                                                                   |
-| :--------- | :-------------------------- | :-------- | :---------------------------------------------------------------------------- |
-| `ASN11001` | `syntax-error`              | `error`   | Syntax error in ASN.1 module.                                                 |
-| `ASN11002` | `unterminated-module`       | `error`   | Missing `BEGIN` or `END` delimiter in ASN.1 module.                           |
-| `ASN12001` | `duplicate-type-definition` | `error`   | Duplicate type assignment in module scope.                                    |
-| `ASN12002` | `duplicate-field-name`      | `error`   | Duplicate field name in `SEQUENCE`/`SET`/`CHOICE`.                            |
-| `ASN12003` | `duplicate-enum-value`      | `error`   | Duplicate `ENUMERATED` or named-number name/integer value.                    |
-| `ASN12004` | `undefined-type-reference`  | `error`   | Reference to an undefined ASN.1 type.                                         |
-| `ASN13001` | `cyclic-type-dependency`    | `error`   | Cyclic non-optional type dependency causing infinite wire size.               |
-| `ASN13002` | `duplicate-context-tag`     | `error`   | Duplicate tag `[n]` in `CHOICE`/`SET`/`SEQUENCE` causing decoding ambiguity.  |
-| `ASN13003` | `ambiguous-optional-fields` | `warning` | Consecutive untagged `OPTIONAL` fields with identical outer tag.              |
-| `ASN14001` | `invalid-size-constraint`   | `error`   | Invalid `SIZE` constraint (`min > max` or negative bound).                    |
-| `ASN14002` | `invalid-integer-range`     | `error`   | Invalid integer range (`min > max`).                                          |
-| `ASN15001` | `non-canonical-der-length`  | `error`   | Non-canonical DER length (indefinite `0x80` or non-minimal long form).        |
-| `ASN15002` | `non-canonical-der-boolean` | `error`   | Non-canonical DER `BOOLEAN` byte (must be `0x00` or `0xFF`).                  |
-| `ASN15003` | `non-canonical-der-integer` | `error`   | Non-canonical DER `INTEGER` (redundant leading sign octet).                   |
-| `ASN15004` | `invalid-oid-arcs`          | `error`   | Invalid `OBJECT IDENTIFIER` root arcs (`arc0 > 2` or `arc0 < 2 && arc1 > 39`).|
-| `ASN15005` | `truncated-tlv`             | `error`   | Truncated BER/DER TLV payload exceeding available buffer.                     |
-| `ASN15006` | `trailing-tlv-bytes`        | `warning` | Trailing unparsed bytes after top-level BER/DER TLV.                          |
+| Code       | Rule                        | Severity  | Description                                                                    |
+| :--------- | :-------------------------- | :-------- | :----------------------------------------------------------------------------- |
+| `ASN11001` | `syntax-error`              | `error`   | Syntax error in ASN.1 module.                                                  |
+| `ASN11002` | `unterminated-module`       | `error`   | Missing `BEGIN` or `END` delimiter in ASN.1 module.                            |
+| `ASN12001` | `duplicate-type-definition` | `error`   | Duplicate type assignment in module scope.                                     |
+| `ASN12002` | `duplicate-field-name`      | `error`   | Duplicate field name in `SEQUENCE`/`SET`/`CHOICE`.                             |
+| `ASN12003` | `duplicate-enum-value`      | `error`   | Duplicate `ENUMERATED` or named-number name/integer value.                     |
+| `ASN12004` | `undefined-type-reference`  | `error`   | Reference to an undefined ASN.1 type.                                          |
+| `ASN13001` | `cyclic-type-dependency`    | `error`   | Cyclic non-optional type dependency causing infinite wire size.                |
+| `ASN13002` | `duplicate-context-tag`     | `error`   | Duplicate tag `[n]` in `CHOICE`/`SET`/`SEQUENCE` causing decoding ambiguity.   |
+| `ASN13003` | `ambiguous-optional-fields` | `warning` | Consecutive untagged `OPTIONAL` fields with identical outer tag.               |
+| `ASN14001` | `invalid-size-constraint`   | `error`   | Invalid `SIZE` constraint (`min > max` or negative bound).                     |
+| `ASN14002` | `invalid-integer-range`     | `error`   | Invalid integer range (`min > max`).                                           |
+| `ASN15001` | `non-canonical-der-length`  | `error`   | Non-canonical DER length (indefinite `0x80` or non-minimal long form).         |
+| `ASN15002` | `non-canonical-der-boolean` | `error`   | Non-canonical DER `BOOLEAN` byte (must be `0x00` or `0xFF`).                   |
+| `ASN15003` | `non-canonical-der-integer` | `error`   | Non-canonical DER `INTEGER` (redundant leading sign octet).                    |
+| `ASN15004` | `invalid-oid-arcs`          | `error`   | Invalid `OBJECT IDENTIFIER` root arcs (`arc0 > 2` or `arc0 < 2 && arc1 > 39`). |
+| `ASN15005` | `truncated-tlv`             | `error`   | Truncated BER/DER TLV payload exceeding available buffer.                      |
+| `ASN15006` | `trailing-tlv-bytes`        | `warning` | Trailing unparsed bytes after top-level BER/DER TLV.                           |
 
 ---
 
@@ -25912,10 +26661,7 @@ import {
 
 const der = encodeDer({
   kind: "sequence",
-  items: [
-    { kind: "oid", value: "1.2.840.113549.1.1.1" },
-    { kind: "null" },
-  ],
+  items: [{ kind: "oid", value: "1.2.840.113549.1.1.1" }, { kind: "null" }],
 });
 console.log(bytesToHex(der)); // 30 0D 06 09 2A 86 48 86 F7 0D 01 01 01 05 00
 ```
@@ -25931,6 +26677,18 @@ msx lint sample.asn1
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/asn1 test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: N/A
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=asn1`
 
 ================================================================================
 DOCUMENT: Industries Solutions

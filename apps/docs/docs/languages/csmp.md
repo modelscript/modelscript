@@ -28,3 +28,9 @@ msx lint model.csmp
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/csmp test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="csmp" />

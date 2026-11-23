@@ -34,3 +34,9 @@ msx lint model.hc1
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/hec1 test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="hec1" />

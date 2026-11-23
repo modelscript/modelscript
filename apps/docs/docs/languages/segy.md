@@ -34,3 +34,9 @@ msx lint model.sgy
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/segy test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="segy" />

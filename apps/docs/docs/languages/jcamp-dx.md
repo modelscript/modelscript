@@ -54,3 +54,9 @@ msx lint sample.jdx
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/jcamp-dx test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="jcamp-dx" />

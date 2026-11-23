@@ -42,3 +42,9 @@ msx lint model.cea
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/cea test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="cea" />

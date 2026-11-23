@@ -241,3 +241,5 @@ export const JedecPanel: React.FC<LanguagePanelProps> = ({
     </PanelShell>
   );
 };
+
+export default JedecPanel;

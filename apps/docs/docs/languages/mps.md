@@ -67,3 +67,9 @@ msx lint model.mps
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/mps test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="mps" />

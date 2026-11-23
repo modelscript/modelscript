@@ -58,3 +58,9 @@ msx lint model.mel
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/melcor test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="melcor" />

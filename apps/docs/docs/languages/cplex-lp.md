@@ -69,3 +69,9 @@ msx lint model.lp
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/cplex-lp test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="cplex-lp" />

@@ -64,3 +64,9 @@ msx lint sample.hdf
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/hdf4 test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="hdf4" />

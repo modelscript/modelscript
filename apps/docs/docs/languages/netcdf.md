@@ -65,3 +65,9 @@ msx lint sample.cdl
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/netcdf test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="netcdf" />

@@ -37,3 +37,9 @@ msx lint model.scale
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/scale test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="scale" />

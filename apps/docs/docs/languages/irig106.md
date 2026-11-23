@@ -121,3 +121,9 @@ msx lint sample.tmats
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/irig106 test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="irig106" />

@@ -40,3 +40,9 @@ msx lint model.tra
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/trasys test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="trasys" />

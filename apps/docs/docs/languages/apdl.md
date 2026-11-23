@@ -38,3 +38,9 @@ msx lint model.apdl
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/apdl test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="apdl" />

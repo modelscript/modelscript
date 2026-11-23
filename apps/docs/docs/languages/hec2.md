@@ -37,3 +37,9 @@ msx lint model.hc2
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/hec2 test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="hec2" />

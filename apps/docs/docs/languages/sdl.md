@@ -32,3 +32,9 @@ msx lint model.sdl
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/sdl test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="sdl" />

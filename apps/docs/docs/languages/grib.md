@@ -90,3 +90,9 @@ msx lint sample.grb
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/grib test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="grib" />

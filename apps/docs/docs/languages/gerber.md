@@ -30,3 +30,9 @@ msx lint model.gbr
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/gerber test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="gerber" />

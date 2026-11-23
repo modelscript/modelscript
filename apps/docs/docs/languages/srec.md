@@ -55,3 +55,9 @@ msx lint sample.srec
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/srec test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="srec" />

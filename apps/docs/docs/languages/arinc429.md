@@ -101,3 +101,9 @@ msx lint sample.a429
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/arinc429 test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="arinc429" />

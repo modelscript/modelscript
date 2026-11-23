@@ -28,3 +28,9 @@ msx lint model.sim
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/simscript test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="simscript" />

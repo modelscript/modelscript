@@ -30,3 +30,9 @@ msx lint model.nec
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/nec2 test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="nec2" />

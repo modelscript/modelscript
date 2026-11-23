@@ -42,3 +42,9 @@ msx lint model.dxf
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/dxf test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="dxf" />

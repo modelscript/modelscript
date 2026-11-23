@@ -40,3 +40,9 @@ msx lint model.k
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/lsdyna test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="lsdyna" />

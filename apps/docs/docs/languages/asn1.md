@@ -84,3 +84,9 @@ msx lint sample.asn1
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/asn1 test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="asn1" />

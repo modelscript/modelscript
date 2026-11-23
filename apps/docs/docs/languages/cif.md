@@ -39,3 +39,9 @@ msx lint model.cif
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/cif test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="cif" />

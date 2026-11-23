@@ -63,3 +63,9 @@ msx lint sample.endf
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/endf6 test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="endf6" />

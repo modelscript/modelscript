@@ -30,3 +30,9 @@ msx lint model.mcnp
 # Run package test suite (8 suites, Beta maturity)
 pnpm --filter @modelscript/mcnp test
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="mcnp" />
