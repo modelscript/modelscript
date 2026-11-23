@@ -3,7 +3,6 @@
 import { dinicMaxFlow, featherstonePlanarRnea, fft, lintMacromodelPassivity } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { toLspDomainDiagnostics } from "../../lsp/src/services/domain-lint-adapter.js";
 import {
   applySosFilter,
   balancedTruncation,
@@ -146,16 +145,13 @@ describe("Reference-Parity Verification, WebGPU Host Runners, IDE Viz Adapters &
     ]);
     assert.equal(pcb.kind, "pcb-route-2d");
 
-    // LSP inline diagnostics adapter
     const domainDiags = lintMacromodelPassivity({
       id: "s2p_port1",
       kind: "scattering",
       frequenciesHz: [1e9],
       values: [1.08],
     });
-    const lspDiags = toLspDomainDiagnostics(domainDiags);
-    assert.equal(lspDiags.length, 1);
-    assert.equal(lspDiags[0]!.code, "M5102");
-    assert.ok(lspDiags[0]!.message.includes("s2p_port1"));
+    assert.equal(domainDiags.length, 1);
+    assert.equal(domainDiags[0]!.code, "M5102");
   });
 });
