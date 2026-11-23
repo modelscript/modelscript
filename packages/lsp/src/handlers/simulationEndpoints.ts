@@ -311,6 +311,23 @@ export function registerSimulationEndpoints(context: LspContext) {
               ? (context.documents.get(targetUri)?.getText() ?? context.state.sharedContext?.fs?.read?.(targetUri))
               : undefined;
 
+          if (
+            polyglotPlan.kind === "psse-pscad" ||
+            polyglotPlan.kind === "psse-pscad-modelica" ||
+            polyglotPlan.kind === "modelica-pscad"
+          ) {
+            if (typeof context.documents?.all === "function") {
+              const { registerPscadFortranSource, registerPscadSource } = await import("@modelscript/pscad");
+              for (const openDoc of context.documents.all()) {
+                if (/\.(pscx|pslx|pswx|psmx)($|\?|#)/i.test(openDoc.uri)) {
+                  registerPscadSource(openDoc.uri, openDoc.getText());
+                } else if (/\.(f90|f95|f03|f08|f77|for|f)($|\?|#)/i.test(openDoc.uri)) {
+                  registerPscadFortranSource(openDoc.uri, openDoc.getText());
+                }
+              }
+            }
+          }
+
           if (polyglotPlan.kind === "psse-pscad" || polyglotPlan.kind === "psse-pscad-modelica") {
             const { getMergedPsseCase, parseRaw } = await import("@modelscript/psse");
             const psseUri = polyglotPlan.psseUri ?? params.uri;
@@ -424,6 +441,7 @@ export function registerSimulationEndpoints(context: LspContext) {
           const {
             applySplices,
             planPscadEdits,
+            registerPscadFortranSource,
             registerPscadSource,
             runPscadSimulationPipeline,
             serializePscadSnapshot,
@@ -448,6 +466,8 @@ export function registerSimulationEndpoints(context: LspContext) {
             for (const openDoc of context.documents.all()) {
               if (/\.(pscx|pslx|pswx|psmx)($|\?|#)/i.test(openDoc.uri)) {
                 registerPscadSource(openDoc.uri, openDoc.getText());
+              } else if (/\.(f90|f95|f03|f08|f77|for|f)($|\?|#)/i.test(openDoc.uri)) {
+                registerPscadFortranSource(openDoc.uri, openDoc.getText());
               }
             }
           }

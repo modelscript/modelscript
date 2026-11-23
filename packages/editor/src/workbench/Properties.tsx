@@ -939,24 +939,45 @@ function SchemaFieldRow({
               })}
             </select>
           ) : field.kind === "color" ? (
-            <input
-              type="color"
-              value={localVal || "#000000"}
-              disabled={!isEnabled}
-              onChange={(e) => {
-                setLocalVal(e.target.value);
-                onParameterChange?.(field.key, e.target.value);
-              }}
-              style={{
-                width: 40,
-                height: 26,
-                padding: 2,
-                borderRadius: "var(--ms-radius-sm, 4px)",
-                border: "1px solid var(--color-border-default, var(--ms-border))",
-                background: "transparent",
-                cursor: isEnabled ? "pointer" : "not-allowed",
-              }}
-            />
+            (() => {
+              const raw = String(localVal || "").trim();
+              const tupleMatch = /^\{\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\}$/.exec(raw);
+              const hexVal = /^#[0-9a-fA-F]{6}$/.test(raw)
+                ? raw
+                : tupleMatch
+                  ? `#${[tupleMatch[1], tupleMatch[2], tupleMatch[3]]
+                      .map((n) =>
+                        Math.max(0, Math.min(255, Number(n)))
+                          .toString(16)
+                          .padStart(2, "0"),
+                      )
+                      .join("")}`
+                  : "#000000";
+              return (
+                <input
+                  type="color"
+                  value={hexVal}
+                  disabled={!isEnabled}
+                  onChange={(e) => {
+                    const hex = e.target.value;
+                    const outVal = tupleMatch
+                      ? `{${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)}}`
+                      : hex;
+                    setLocalVal(outVal);
+                    onParameterChange?.(field.key, outVal);
+                  }}
+                  style={{
+                    width: 40,
+                    height: 26,
+                    padding: 2,
+                    borderRadius: "var(--ms-radius-sm, 4px)",
+                    border: "1px solid var(--color-border-default, var(--ms-border))",
+                    background: "transparent",
+                    cursor: isEnabled ? "pointer" : "not-allowed",
+                  }}
+                />
+              );
+            })()
           ) : field.kind === "codeBlock" ? (
             <pre
               style={{

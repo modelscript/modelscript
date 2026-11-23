@@ -722,7 +722,7 @@ export function applyNodeFlipVisuals(
   } else {
     const children = Array.from(container.children || []);
     bodyEl =
-      children.find((c) => !c.classList?.contains("x6-port") && !c.classList?.contains("x6-widget-selection")) || null;
+      children.find((c) => !c.classList?.contains("ms-port") && !c.classList?.contains("ms-widget-selection")) || null;
   }
 
   if (bodyEl && bodyEl !== container) {
@@ -751,8 +751,7 @@ export function applyNodeFlipVisuals(
   // 2. Flip the ports in DOM
   const curData = (typeof node.getData === "function" ? node.getData() : {}) || {};
   let basePorts = curData["basePorts"] as
-    | { id: string; group?: string | undefined; args?: { x?: number; y?: number; angle?: number } }[]
-    | undefined;
+    { id: string; group?: string | undefined; args?: { x?: number; y?: number; angle?: number } }[] | undefined;
 
   if (!basePorts) {
     const rawPorts = typeof node.getPorts === "function" ? node.getPorts() : [];

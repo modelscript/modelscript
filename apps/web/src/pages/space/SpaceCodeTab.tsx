@@ -19,7 +19,7 @@ import {
   TerminalIcon,
   XIcon,
 } from "@primer/octicons-react";
-import { ActionList, ActionMenu, Button, Heading, Label, Spinner, Text, TextInput } from "@primer/react";
+import { ActionList, ActionMenu, Button, Heading, Label, Text, TextInput } from "@primer/react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import styled from "styled-components";
@@ -37,6 +37,7 @@ import {
 } from "../../api";
 import Box from "../../components/Box";
 import { PostMarkdownContent } from "../../components/post/PostMarkdownContent";
+import Spinner from "../../components/Spinner";
 import { useToast } from "../../components/ToastContext";
 import { useTheme } from "../../theme";
 import { ensureMonacoThemesDefined, getMonacoThemeName } from "../../util/monaco-theme";

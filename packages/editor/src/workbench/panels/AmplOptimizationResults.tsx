@@ -63,15 +63,18 @@ export const AmplOptimizationResults: React.FC<AmplOptimizationResultsProps> = (
       return;
     }
     let cancelled = false;
-    executeLspAction("ampl_inspect_geometry", "ampl", documentUri, { documentText })
-      .then((geo) => {
-        if (!cancelled && geo) setGeometry(geo);
-      })
-      .catch(() => {
-        if (!cancelled) setGeometry(null);
-      });
+    const timer = setTimeout(() => {
+      executeLspAction("ampl_inspect_geometry", "ampl", documentUri, { documentText })
+        .then((geo) => {
+          if (!cancelled && geo) setGeometry(geo);
+        })
+        .catch(() => {
+          if (!cancelled) setGeometry(null);
+        });
+    }, 400);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [result, documentUri, documentText]);
   const borderCol = "var(--color-border-default, var(--ms-border, rgba(148, 163, 184, 0.18)))";

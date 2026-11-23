@@ -80,6 +80,10 @@ jobs:
           if [ ! -d "data/libraries/Modelica/4.1.0/extracted/Modelica" ]; then
             node scripts/build/download-msl.cjs --version=4.1.0 --extract --outDir=data/libraries/Modelica/4.1.0/extracted
           fi
+          if [ ! -f "apps/api/data/libraries/MINLPLib/1.0.0.zip" ]; then
+            mkdir -p apps/api/data/libraries/MINLPLib
+            npx tsx scripts/tools/publish-minlplib.ts --download --limit 100 --dry-run --out apps/api/data/libraries/MINLPLib/1.0.0.zip || true
+          fi
       - name: Build
         run: npm run build
       - name: Verify Dist & Exports Integrity

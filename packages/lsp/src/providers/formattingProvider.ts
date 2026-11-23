@@ -27,6 +27,37 @@ export function registerFormattingProvider(
       });
       if (Array.isArray(edits)) return edits;
     }
+    const facade = plugin?.facade as
+      | {
+          formatDocument?: (rootPtr: number, indentSize?: number) => string | TextEdit[] | null;
+          loadSource?: (src: string) => void;
+        }
+      | undefined;
+    if (facade && typeof facade.formatDocument === "function") {
+      try {
+        const cached = getDocumentTree(params.textDocument.uri);
+        const tree = cached?.tree ?? cached;
+        const rootPtr = tree?.rootNode?.id ?? tree?.rootNode?.ptr ?? tree?.rootPtr ?? 0;
+        if (rootPtr) {
+          facade.loadSource?.(document.getText());
+          const formatted = facade.formatDocument(rootPtr, params.options?.tabSize ?? 2);
+          if (Array.isArray(formatted)) return formatted;
+          if (typeof formatted === "string" && formatted.length > 0 && formatted !== document.getText()) {
+            return [
+              {
+                range: {
+                  start: { line: 0, character: 0 },
+                  end: document.positionAt(document.getText().length),
+                },
+                newText: formatted,
+              },
+            ];
+          }
+        }
+      } catch {
+        // Ignore WASM formatting fallback errors
+      }
+    }
     return [];
   });
 

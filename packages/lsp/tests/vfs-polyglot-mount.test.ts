@@ -190,4 +190,61 @@ describe("Polyglot VFS Library Mount", () => {
     assert.ok(spiceIdx?.byName?.has("Q2N2222"), "Expected Q2N2222 BJT model to be indexed");
     assert.ok(spiceIdx?.byName?.has("LM741"), "Expected LM741 op-amp subcircuit to be indexed");
   });
+
+  it("suppresses warnings when quietIfMissing is true for optional catalog archives", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vfs-mount-quiet-test-"));
+    const warnings: string[] = [];
+    const errors: unknown[] = [];
+    const loaderCtx: LoaderContext = {
+      connectionState: { sendNotification: () => {} },
+      logger: {
+        log: () => {},
+        warn: (m: string) => warnings.push(m),
+        error: (...args: unknown[]) => errors.push(args),
+      },
+      sharedFs: new BrowserFileSystem(),
+      sharedContext: null,
+      globalWorkspaceIndex: new LanguageWorkspaceIndex(),
+      sysml2WorkspaceIndex: null,
+      documentTrees: new Map(),
+      sysml2Parser: null,
+      federatedEndpoints: [],
+    };
+
+    const ok = await mountPolyglotLibrary(`file://${tmpDir}`, loaderCtx, {
+      packageName: "GENSYS-Profiles",
+      version: "1.0.0",
+      filename: "GENSYS-Profiles-1.0.0.zip",
+      language: "gensys",
+      quietIfMissing: true,
+    });
+
+    assert.equal(ok, false);
+    assert.equal(
+      warnings.some((w) => w.includes("Library archive")),
+      false,
+    );
+    assert.equal(errors.length, 0);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("registers all built-in cleanroom stdlibs in globalLibraryRegistry when builtin plugins load", async () => {
+    const { globalLibraryRegistry } = await import("@modelscript/runtime");
+    await import("../src/registry/builtin-plugins.js");
+
+    const repoRoot = fs.existsSync(path.resolve(process.cwd(), "languages"))
+      ? process.cwd()
+      : path.resolve(process.cwd(), "../..");
+    const languagesDir = path.join(repoRoot, "languages");
+    const stdlibLangs = fs
+      .readdirSync(languagesDir)
+      .filter((d) => fs.existsSync(path.join(languagesDir, d, "assets", `${d}-std-lib`)));
+
+    assert.ok(stdlibLangs.length >= 90, `Expected >= 90 cleanroom stdlib languages, found ${stdlibLangs.length}`);
+    for (const lang of stdlibLangs) {
+      const pkgs = globalLibraryRegistry.getPackagesForLanguage(lang);
+      assert.ok(pkgs.length > 0, `Built-in cleanroom stdlib for '${lang}' should be registered`);
+      assert.ok(pkgs[0]!.symbols.length > 0, `Built-in cleanroom stdlib for '${lang}' should have symbols`);
+    }
+  });
 });

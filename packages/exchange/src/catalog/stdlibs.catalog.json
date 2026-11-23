@@ -20,6 +20,23 @@
       "minExpectedClasses": 6000
     },
     {
+      "id": "minlplib-1.0.0",
+      "language": "ampl",
+      "packageName": "MINLPLib",
+      "version": "1.0.0",
+      "description": "MINLPLib mixed-integer nonlinear programming benchmark library (hybrid AMPL/GAMS/CPLEX-LP/NL)",
+      "license": "CC-BY-4.0",
+      "tier": "tier1_core",
+      "domain": "general",
+      "pack": "core",
+      "filename": "MINLPLib-1.0.0.zip",
+      "upstream": {
+        "url": "https://www.minlplib.org/instancedata.csv",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 10
+    },
+    {
       "id": "modelica-msl-4.0.0",
       "language": "modelica",
       "packageName": "Modelica",

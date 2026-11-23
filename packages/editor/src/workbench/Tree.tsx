@@ -23,6 +23,7 @@ import { NavList, useTheme } from "@primer/react";
 import DOMPurify from "dompurify";
 import React from "react";
 import { getKindBadgeStyle } from "../internal/kind-badge";
+import Spinner from "../internal/Spinner";
 import { getSemanticKindIcon } from "./ComponentList";
 import { clearPlacement, startPlacement } from "./placement";
 import {
@@ -68,27 +69,7 @@ function getFallbackTreeIcon(className: string, classKind?: string, nodeId?: str
   const id = (nodeId || "").toLowerCase();
 
   if (k === "loading-package") {
-    return (
-      <svg
-        className="animate-spin"
-        style={{
-          width: 16,
-          height: 16,
-          animation: "spin 1s linear infinite",
-          color: "#06b6d4",
-          flexShrink: 0,
-        }}
-        viewBox="0 0 24 24"
-        fill="none"
-      >
-        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" style={{ opacity: 0.25 }} />
-        <path
-          fill="currentColor"
-          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-          style={{ opacity: 0.75 }}
-        />
-      </svg>
-    );
+    return <Spinner size={16} srText="Loading library..." />;
   }
   if (k === "owl2-folder" || k === "ontology-folder") {
     return <FileDirectoryIcon size={16} style={{ color: "#f59e0b", flexShrink: 0 }} />;
@@ -484,17 +465,7 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
               }}
             >
               {loading ? (
-                <span
-                  style={{
-                    display: "inline-block",
-                    width: 12,
-                    height: 12,
-                    border: "2px solid var(--fgColor-muted, rgba(125, 133, 144, 0.4))",
-                    borderTopColor: "var(--fgColor-default, var(--color-fg-default))",
-                    borderRadius: "50%",
-                    animation: "tree-spinner 0.6s linear infinite",
-                  }}
-                />
+                <Spinner size={12} srText="Loading children..." />
               ) : expanded ? (
                 <ChevronDownIcon size={12} />
               ) : (
@@ -779,17 +750,7 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
             gap: 8,
           }}
         >
-          <span
-            style={{
-              display: "inline-block",
-              width: 12,
-              height: 12,
-              border: "2px solid var(--fgColor-muted, rgba(125, 133, 144, 0.4))",
-              borderTopColor: "var(--fgColor-default, var(--color-fg-default))",
-              borderRadius: "50%",
-              animation: "tree-spinner 0.6s linear infinite",
-            }}
-          />
+          <Spinner size={14} srText="Searching..." />
           Searching…
         </li>,
       );

@@ -18,6 +18,7 @@ import {
   type DiagramPort,
 } from "@modelscript/diagram/protocol";
 import pako from "pako";
+import { ALL_MORSEL_LANGUAGES } from "../constants";
 import {
   createHttpLspTransport,
   getActiveLspTransport,
@@ -33,8 +34,38 @@ export type { DiagramApplyEditsResult, DiagramData, DiagramEdge, DiagramEditActi
 // Helpers
 // ────────────────────────────────────────────────────────────────────
 
+let preferredInitialLanguageId: string | undefined;
+
+/** Set the preferred initial language ID before the LSP worker is spawned. */
+export function setPreferredLspLanguageId(languageId?: string): void {
+  if (languageId && languageId.trim()) {
+    preferredInitialLanguageId = languageId.trim().toLowerCase();
+  }
+}
+
+const EXTENSION_TO_LANGUAGE_ID: Map<string, string> = (() => {
+  const map = new Map<string, string>();
+  for (const lang of ALL_MORSEL_LANGUAGES) {
+    for (const rawExt of lang.extensions) {
+      const ext = rawExt.toLowerCase();
+      if (!map.has(ext)) {
+        map.set(ext, lang.id);
+      }
+    }
+  }
+  return map;
+})();
+
+function inferLanguageIdFromUri(uri?: string): string | undefined {
+  if (!uri) return undefined;
+  const clean = uri.split(/[?#]/)[0]?.toLowerCase() ?? "";
+  const dotIdx = clean.lastIndexOf(".");
+  if (dotIdx === -1) return undefined;
+  return EXTENSION_TO_LANGUAGE_ID.get(clean.slice(dotIdx));
+}
+
 async function lsp(initialLanguageId?: string): Promise<MorselLspTransport> {
-  return getActiveLspTransport(initialLanguageId);
+  return getActiveLspTransport(initialLanguageId ?? preferredInitialLanguageId);
 }
 
 /** Version counter for incremental didChange notifications. */
@@ -114,12 +145,13 @@ export async function didOpen(uri: string, text: string, languageId = "modelica"
 /** Notify the LSP that the full content of a document changed. */
 export async function didChange(uri: string, text: string): Promise<void> {
   const existing = openedDocuments.get(uri);
+  const langId = existing?.languageId ?? inferLanguageIdFromUri(uri);
   if (existing) {
     openedDocuments.set(uri, { ...existing, text });
   } else {
-    openedDocuments.set(uri, { text, languageId: "modelica" });
+    openedDocuments.set(uri, { text, languageId: langId ?? "modelica" });
   }
-  const c = await lsp();
+  const c = await lsp(langId);
   c.sendNotification("textDocument/didChange", {
     textDocument: { uri, version: nextVersion(uri) },
     contentChanges: [{ text }],
@@ -264,7 +296,7 @@ export async function getDiagramData(
   documentText?: string,
   psseOptions?: DiagramGetDataParams["psseOptions"],
 ): Promise<DiagramData | null> {
-  return (await lsp()).sendRequest(DiagramMethods.getData, {
+  return (await lsp(inferLanguageIdFromUri(uri))).sendRequest(DiagramMethods.getData, {
     uri,
     className,
     diagramType,
@@ -524,7 +556,11 @@ export async function getCadComponents(
     sourceMetadata?: Record<string, unknown> | undefined;
   }[]
 > {
-  return (await lsp()).sendRequest("modelscript/getCadComponents", { uri, className, documentText });
+  return (await lsp(inferLanguageIdFromUri(uri))).sendRequest("modelscript/getCadComponents", {
+    uri,
+    className,
+    documentText,
+  });
 }
 
 export interface DiagramPreviewRequestItem {
@@ -780,7 +816,8 @@ function extractZipTextFiles(zipBytes: Uint8Array): Record<string, string> {
       cdOffset += 46 + nameLen + extraLen + commentLen;
 
       if (name.endsWith("/") || localHeaderOffset + 30 > zipBytes.byteLength) continue;
-      if (!/\.(mo|msim|msx|sysml|sysml2|kerml|owl|step|stp|scad|cir|sp|dss|raw|inp|cfg|urdf)$/i.test(name)) {
+      const dotIdx = name.lastIndexOf(".");
+      if (dotIdx === -1 || !EXTENSION_TO_LANGUAGE_ID.has(name.slice(dotIdx).toLowerCase())) {
         continue;
       }
 
@@ -962,7 +999,9 @@ export { applyLspTextEditsToString } from "./text-edits";
 export interface CalibrateParams {
   uri: string;
   className?: string | undefined; // Target model to calibrate
-  csvData: string; // Raw CSV text
+  csvData?: string | undefined; // Raw CSV text
+  comtradeData?: string | undefined; // Raw IEEE COMTRADE (.cff) text
+  comtradeMode?: "raw" | "phasor" | undefined; // Raw samples or fundamental RMS phasor extraction
   timeColumn?: string | undefined;
   columnMapping?: Record<string, string> | undefined; // e.g., { "csvVar": "modelVar" }
   parameters: string[]; // List of parameters to optimize
@@ -982,6 +1021,7 @@ export interface CalibrateResult {
     y: number[][];
     states: string[];
   };
+  measured?: Record<string, { t: number[]; y: number[] }> | undefined;
   costHistory: number[];
   error?: string | undefined;
 }
@@ -1033,9 +1073,7 @@ export async function getSemanticDiff(
   oldText: string,
   newText: string,
 ): Promise<{ diffs: FlatSemanticEdit[] }> {
-  const isSysml = uri.endsWith(".sysml") || uri.endsWith(".sysml2");
-  const langId = isSysml ? "sysml2" : "modelica";
-  const c = await lsp(langId);
+  const c = await lsp(inferLanguageIdFromUri(uri));
   return c.sendRequest<{ diffs: FlatSemanticEdit[] }>("modelscript/getSemanticDiff", {
     uri,
     oldText,

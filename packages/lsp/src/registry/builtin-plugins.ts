@@ -14,6 +14,7 @@ import {
   amplLanguage,
   getAmplDocumentSymbols,
   getAmplHover,
+  getAmplSemanticTokens,
   validateAmpl,
 } from "@modelscript/ampl";
 import {
@@ -46,7 +47,7 @@ import {
   validateAutosar,
 } from "@modelscript/autosar";
 import { bnglLanguage, getBnglDocumentSymbols, getBnglHover, validateBngl } from "@modelscript/bngl";
-import { cActionHandlers, cLanguage } from "@modelscript/c";
+import { cActionHandlers, cLanguage, getCCompletions, getCDocumentSymbols, getCHover } from "@modelscript/c";
 import { c37118Language, getC37118Diagnostics, getC37118DocumentSymbols } from "@modelscript/c37118";
 import {
   canteraLanguage,
@@ -72,7 +73,14 @@ import {
   getCfdHover,
   validateCfd,
 } from "@modelscript/cfd";
-import { cgmesLanguage, lintCgmesModel, parseCgmesRdf } from "@modelscript/cgmes";
+import {
+  cgmesLanguage,
+  getCgmesCompletions,
+  getCgmesDocumentSymbols,
+  getCgmesHover,
+  lintCgmesModel,
+  parseCgmesRdf,
+} from "@modelscript/cgmes";
 import { comtradeLanguage, getComtradeDiagnostics, getComtradeDocumentSymbols } from "@modelscript/comtrade";
 import csvLangFallback from "@modelscript/csv/language";
 import { cymeLanguage, getCymeDiagnostics, getCymeDocumentSymbols } from "@modelscript/cyme";
@@ -117,7 +125,14 @@ import {
 } from "@modelscript/fea";
 import { febioLanguage, getFebioDocumentSymbols, getFebioHover, validateFebio } from "@modelscript/febio";
 import { fiberLanguage } from "@modelscript/fiber";
-import { computeFortranSemanticTokensData, fortranActionHandlers, fortranLanguage } from "@modelscript/fortran";
+import {
+  computeFortranSemanticTokensData,
+  fortranActionHandlers,
+  fortranLanguage,
+  getFortranCompletions,
+  getFortranDocumentSymbols,
+  getFortranHover,
+} from "@modelscript/fortran";
 import { genbankLanguage, getGenbankDocumentSymbols, getGenbankHover, validateGenbank } from "@modelscript/genbank";
 import {
   createGensysActionHandlers,
@@ -198,6 +213,13 @@ import modelicaLangFallback from "@modelscript/modelica/language";
 import modelscriptLangFallback from "@modelscript/modelscript/language";
 import { getModflowDocumentSymbols, getModflowHover, modflowLanguage, validateModflow } from "@modelscript/modflow";
 import { getNiftiDocumentSymbols, getNiftiHover, niftiLanguage, validateNifti } from "@modelscript/nifti";
+import {
+  getNmodlDocumentSymbols,
+  getNmodlHover,
+  nmodlLanguage,
+  provideNmodlCompletions,
+  validateNmodl,
+} from "@modelscript/nmodl";
 import { getNmtranDocumentSymbols, getNmtranHover, nmtranLanguage, validateNmtran } from "@modelscript/nmtran";
 import { getOcppDocumentSymbols, getOcppHover, ocppLanguage, validateOcpp } from "@modelscript/ocpp";
 import {
@@ -248,7 +270,14 @@ import {
   validatePlcopen,
 } from "@modelscript/plcopen";
 import { getPlsCaddDiagnostics, getPlsCaddDocumentSymbols, plscaddLanguage } from "@modelscript/plscadd";
-import { lintPowerFactoryModel, parsePowerFactoryXml, powerFactoryLanguage } from "@modelscript/powerfactory";
+import {
+  getPowerFactoryCompletions,
+  getPowerFactoryDocumentSymbols,
+  getPowerFactoryHover,
+  lintPowerFactoryModel,
+  parsePowerFactoryXml,
+  powerFactoryLanguage,
+} from "@modelscript/powerfactory";
 import { getPowerWorldDiagnostics, getPowerWorldDocumentSymbols, powerworldLanguage } from "@modelscript/powerworld";
 import {
   createPscadActionHandlers,
@@ -264,7 +293,16 @@ import {
   getPscadRenameEdits,
   pscadLanguage,
 } from "@modelscript/pscad";
-import { lintPslfDyd, lintPslfEpc, parsePslfDyd, parsePslfEpc, pslfLanguage } from "@modelscript/pslf";
+import {
+  getPslfCompletions,
+  getPslfDocumentSymbols,
+  getPslfHover,
+  lintPslfDyd,
+  lintPslfEpc,
+  parsePslfDyd,
+  parsePslfEpc,
+  pslfLanguage,
+} from "@modelscript/pslf";
 import {
   createPsseActionHandlers,
   extractPsseTheoryConstraints,
@@ -349,6 +387,7 @@ import {
   validateSimulink,
 } from "@modelscript/simulink";
 import { getSmilesDocumentSymbols, getSmilesHover, smilesLanguage, validateSmiles } from "@modelscript/smiles";
+import { lintSparqlDocument, sparqlLanguage } from "@modelscript/sparql";
 import {
   extractSpiceTheoryConstraints,
   getSpiceDocumentSymbols,
@@ -378,7 +417,13 @@ import {
 import { computeSysML2SemanticTokensData, formatSysmlSource, getSysml2CodeLenses } from "@modelscript/sysml2";
 import { createSysML2QueryEngine } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
-import { getThreeMfDocumentSymbols, getThreeMfHover, threeMfLanguage, validateThreeMf } from "@modelscript/three-mf";
+import {
+  extractThreeMfCadComponents,
+  getThreeMfDocumentSymbols,
+  getThreeMfHover,
+  threeMfLanguage,
+  validateThreeMf,
+} from "@modelscript/three-mf";
 import { getTopasDocumentSymbols, getTopasHover, topasLanguage, validateTopas } from "@modelscript/topas";
 import {
   getTouchstoneDocumentSymbols,
@@ -423,12 +468,21 @@ export interface BuiltinPluginsOptions {
     | undefined;
 }
 
-function docText(doc: any): string {
+type DocInput = string | { getText?: () => string } | null | undefined;
+type TreeWrapperInput = string | { text?: string; rootNode?: { text?: string }; uri?: string } | null | undefined;
+type CadHandlerContext =
+  | { documentManager?: { documents?: { get?: (uri: string) => { getText?: () => string } | undefined } } }
+  | null
+  | undefined;
+type CadHandlerParams = { documentText?: string; text?: string; uri?: string } | null | undefined;
+
+function docText(doc: DocInput): string {
   return typeof doc === "string" ? doc : typeof doc?.getText === "function" ? doc.getText() : String(doc ?? "");
 }
 
-function treeText(treeWrapper: any): string {
-  return typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+function treeText(treeWrapper: TreeWrapperInput, fallbackText?: string): string {
+  if (typeof treeWrapper === "string") return treeWrapper;
+  return treeWrapper?.text ?? treeWrapper?.rootNode?.text ?? fallbackText ?? "";
 }
 
 function offsetToPos(text: string, offset: number): { line: number; character: number } {
@@ -467,7 +521,7 @@ function registerStandardPlugin(spec: StandardPluginSpec): void {
   const customHandlers: Record<string, any> = {};
   if (spec.symbols) {
     const fn = spec.symbols;
-    customHandlers["symbols"] = (treeWrapper: any) => fn(treeText(treeWrapper));
+    customHandlers["symbols"] = (treeWrapper: TreeWrapperInput, text?: string) => fn(treeText(treeWrapper, text));
   }
   if (spec.hoverPos) {
     const fn = spec.hoverPos;
@@ -848,7 +902,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     extensions: [".pscx", ".pslx", ".pswx", ".psmx"],
     languageDef: pscadLanguage,
     customHandlers: {
-      symbols: (treeWrapper: any, textArg?: string) => {
+      symbols: (treeWrapper: TreeWrapperInput, textArg?: string) => {
         const text = textArg ?? (typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? ""));
         return getPscadDocumentSymbols(text);
       },
@@ -946,7 +1000,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     },
     extractTheoryConstraints: extractPsseTheoryConstraints,
     customHandlers: {
-      symbols: (treeWrapper: any) => {
+      symbols: (treeWrapper: TreeWrapperInput) => {
         const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
         const uri = typeof treeWrapper?.uri === "string" ? treeWrapper.uri : "model.raw";
         return getPsseDocumentSymbols(text, uri);
@@ -1083,6 +1137,9 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     hoverPos: getAmplHover,
     validate: validateAmpl,
     actionHandlers: amplActionHandlers,
+    customHandlers: {
+      semanticTokens: (doc: any) => getAmplSemanticTokens(docText(doc)),
+    },
   });
 
   // 9. Touchstone
@@ -1292,11 +1349,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     validateWithTree: validateUrdf,
     actionHandlers: urdfActionHandlers,
     handlers: {
-      "modelscript/getCadComponents": async (context: any, params: any) => {
+      "modelscript/getCadComponents": async (context: CadHandlerContext, params: CadHandlerParams) => {
         const text =
           params?.documentText ??
           params?.text ??
-          context?.documentManager?.documents?.get(params?.uri)?.getText() ??
+          context?.documentManager?.documents?.get?.(params?.uri ?? "")?.getText?.() ??
           "";
         if (typeof text !== "string" || !text.trim()) return [];
         const [{ parseUrdf, urdfToCadShapes }, cad] = await Promise.all([
@@ -1526,6 +1583,9 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         const { validateFortran } = await import("@modelscript/fortran");
         return validateFortran(text);
       },
+      symbols: (treeWrapper: TreeWrapperInput) => getFortranDocumentSymbols(treeText(treeWrapper)),
+      hover: (offset: number, text: string) => getFortranHover(text, offsetToPos(text, offset)),
+      complete: (offset: number, text: string) => getFortranCompletions(text, offsetToPos(text, offset)),
       semanticTokens: (doc: any, tree?: any) => {
         const text = typeof doc?.getText === "function" ? doc.getText() : String(doc ?? "");
         return computeFortranSemanticTokensData(text, tree);
@@ -1547,6 +1607,9 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         const { lintC } = await import("@modelscript/c");
         return lintC(text);
       },
+      symbols: (treeWrapper: TreeWrapperInput) => getCDocumentSymbols(treeText(treeWrapper)),
+      hover: (offset: number, text: string) => getCHover(text, offsetToPos(text, offset)),
+      complete: (offset: number, text: string) => getCCompletions(text, offsetToPos(text, offset)),
     },
     actionHandlers: cActionHandlers,
     disposables: [],
@@ -1789,6 +1852,9 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         const model = parseCgmesRdf(text);
         return lintCgmesModel(model);
       },
+      symbols: (treeWrapper: TreeWrapperInput) => getCgmesDocumentSymbols(treeText(treeWrapper)),
+      hover: (offset: number, text: string) => getCgmesHover(text, offsetToPos(text, offset)),
+      complete: (offset: number, text: string) => getCgmesCompletions(text, offsetToPos(text, offset)),
     },
     disposables: [],
   });
@@ -1999,6 +2065,9 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         }
         return [];
       },
+      symbols: (treeWrapper: TreeWrapperInput) => getPowerFactoryDocumentSymbols(treeText(treeWrapper)),
+      hover: (offset: number, text: string) => getPowerFactoryHover(text, offsetToPos(text, offset)),
+      complete: (offset: number, text: string) => getPowerFactoryCompletions(text, offsetToPos(text, offset)),
     },
     disposables: [],
   });
@@ -2018,6 +2087,9 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         }
         return lintPslfEpc(parsePslfEpc(text));
       },
+      symbols: (treeWrapper: TreeWrapperInput) => getPslfDocumentSymbols(treeText(treeWrapper)),
+      hover: (offset: number, text: string) => getPslfHover(text, offsetToPos(text, offset)),
+      complete: (offset: number, text: string) => getPslfCompletions(text, offsetToPos(text, offset)),
     },
     disposables: [],
   });
@@ -2104,6 +2176,16 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     symbols: getThreeMfDocumentSymbols,
     hoverOffset: getThreeMfHover,
     validateWithTree: validateThreeMf,
+    handlers: {
+      "modelscript/getCadComponents": (context: CadHandlerContext, params: CadHandlerParams) => {
+        const text =
+          params?.documentText ??
+          params?.text ??
+          context?.documentManager?.documents?.get?.(params?.uri ?? "")?.getText?.() ??
+          "";
+        return typeof text === "string" && text.trim() ? extractThreeMfCadComponents(text) : [];
+      },
+    },
   });
 
   // 72. TOPAS
@@ -2125,17 +2207,17 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     extensions: [".usda", ".usd", ".usdc", ".usdz"],
     languageDef: usdLanguage,
     customHandlers: {
-      symbols: (treeWrapper: any) =>
+      symbols: (treeWrapper: TreeWrapperInput) =>
         usdLspService.getDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => usdLspService.getHover(text, offsetToPosition(text, offset)),
       validate: (doc: any) => usdLspService.validate(docText(doc)),
     },
     handlers: {
-      "modelscript/getCadComponents": (context: any, params: any) => {
+      "modelscript/getCadComponents": (context: CadHandlerContext, params: CadHandlerParams) => {
         const text =
           params?.documentText ??
           params?.text ??
-          context?.documentManager?.documents?.get(params?.uri)?.getText() ??
+          context?.documentManager?.documents?.get?.(params?.uri ?? "")?.getText?.() ??
           "";
         return typeof text === "string" && text.trim() ? extractUsdCadComponents(text) : [];
       },
@@ -2388,6 +2470,30 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     customHandlers: {
       hover: (offset: number, text: string) => getMlxtranHover(text, offsetToPosition(text, offset)),
     },
+  });
+
+  // NMODL (.mod, .nmodl)
+  registerStandardPlugin({
+    id: "nmodl",
+    name: "NMODL",
+    extensions: [".nmodl", ".mod"],
+    languageDef: nmodlLanguage,
+    symbols: getNmodlDocumentSymbols,
+    hoverPos: getNmodlHover,
+    validate: validateNmodl,
+    customHandlers: {
+      complete: (offset: number, text: string) => provideNmodlCompletions(text, offsetToPos(text, offset)),
+    },
+  });
+
+  // SPARQL 1.1 (.rq, .sparql)
+  registerStandardPlugin({
+    id: "sparql",
+    name: "SPARQL 1.1",
+    extensions: [".rq", ".sparql"],
+    languageDef: sparqlLanguage,
+    validateWithTree: (text: string, tree?: { rootNode?: Parameters<typeof lintSparqlDocument>[0] }) =>
+      tree?.rootNode ? lintSparqlDocument(tree.rootNode, text) : [],
   });
 
   // 93–136. Heritage 1960s–1980s Beta Engineering Languages (44 packages)

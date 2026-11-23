@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef } from "react";
 import styledImport from "styled-components";
+import Spinner from "../../Spinner";
 import { allBlockingIssues, clampStepIndex, stepIssues, visibleSteps } from "./engine";
 import { IssueList, SummaryChips } from "./Primitives";
 import type { AttachFlow } from "./useAttachFlow";
@@ -156,24 +157,6 @@ const Progress = styled.div`
   color: var(--ms-text-2);
 `;
 
-const Spinner = styled.span`
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 2px solid var(--ms-divider);
-  border-top-color: var(--ms-brand);
-  animation: attach-spin 0.8s linear infinite;
-
-  @keyframes attach-spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    animation-duration: 2.4s;
-  }
-`;
-
 /**
  * Inline, per-language attach wizard. Renders nothing while idle. Esc cancels, Enter advances
  * (when focus is not on an interactive control), and focus moves to the step title on each step.
@@ -193,7 +176,7 @@ export const AttachWizard: React.FC<{ flow: AttachFlow }> = ({ flow }) => {
     return (
       <Shell aria-label="Attaching file">
         <Progress role="status" aria-live="polite">
-          <Spinner aria-hidden="true" />
+          <Spinner size={14} aria-hidden="true" />
           <span>
             {state.phase === "analyzing" ? "Reading" : "Attaching"} <strong>{state.fileName}</strong>
             {flow.queued > 0 ? ` (${flow.queued} more queued)` : ""}…

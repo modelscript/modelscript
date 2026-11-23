@@ -13,11 +13,13 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
   it("verifies Playground styles provide responsive icon-only collapse without abruptly hiding workbench view switcher", () => {
     const stylesContent = fs.readFileSync(stylesPath, "utf-8");
 
-    // Must have responsive collapse between 600px and 1160px
+    // Must have responsive collapse (1440px active-only text, 1100px icon-only)
     assert.ok(
-      (stylesContent.includes("@media (max-width: 1280px)") || stylesContent.includes("@media (max-width: 1160px)")) &&
+      (stylesContent.includes("@media (max-width: 1100px)") ||
+        stylesContent.includes("@media (max-width: 1280px)") ||
+        stylesContent.includes("@media (max-width: 1160px)")) &&
         stylesContent.includes("display: none !important"),
-      "SegmentedControl must collapse button labels to icon-only mode between 640px and 1280px",
+      "SegmentedControl must collapse button labels to icon-only mode on narrower viewports",
     );
     // Must NOT hide at 960px
     assert.ok(
@@ -46,20 +48,28 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
 
   it("verifies PlaygroundNavbar uses design tokens for primary run CTA, fork badges, and title editing", () => {
     const navbarContent = fs.readFileSync(navbarPath, "utf-8");
+    const sidebarPath = path.resolve(
+      import.meta.dirname,
+      "../../../packages/editor/src/workbench/panels/MorselLeftSidebar.tsx",
+    );
+    const sidebarContent = fs.readFileSync(sidebarPath, "utf-8");
 
-    // Run CTA uses design token gradient and spinner animation
+    // Run CTA uses design brand token and spinner animation
     assert.ok(
-      navbarContent.includes("var(--ms-accent-teal") && navbarContent.includes("var(--ms-brand"),
-      "Run button must use ModelScript teal-to-brand gradient tokens",
+      navbarContent.includes("var(--ms-brand") && navbarContent.includes("var(--ms-brand-active"),
+      "Run button must use ModelScript brand tokens",
     );
     assert.ok(
       navbarContent.includes('animation: "spin') || navbarContent.includes("Running…"),
       "Run button must show running indicator animation during simulation",
     );
 
-    // Title editing and unsaved changes dot use brand and warning tokens
-    assert.ok(navbarContent.includes("var(--ms-warning"), "Unsaved dirty state must use --ms-warning token");
-    assert.ok(navbarContent.includes("var(--ms-brand"), "Title input must use --ms-brand token");
+    // Unsaved changes dot in Files sidebar uses warning token
+    assert.ok(
+      sidebarContent.includes("var(--ms-warning"),
+      "Unsaved dirty dot in Files sidebar must use --ms-warning token",
+    );
+    assert.ok(navbarContent.includes("var(--ms-brand"), "Navbar language pill must use --ms-brand token");
 
     // Fork badge uses WCAG AA compliant status-warn tokens
     assert.ok(

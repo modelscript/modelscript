@@ -89,6 +89,26 @@ function isLoadableGltfUrl(uri: string | undefined): uri is string {
 function GltfArtifactModel({ uri }: { uri: string }): React.ReactElement {
   const { scene } = useGLTF(uri);
   const clonedScene = useMemo(() => scene.clone(true), [scene]);
+  useEffect(() => {
+    return () => {
+      if (!uri.startsWith("data:") && !uri.startsWith("blob:")) return;
+      scene.traverse((child) => {
+        const mesh = child as THREE.Mesh;
+        if (mesh.geometry) mesh.geometry.dispose();
+        const mats = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
+        for (const mat of mats) {
+          if (!mat) continue;
+          for (const val of Object.values(mat)) {
+            if (val && typeof val === "object" && (val as THREE.Texture).isTexture) {
+              (val as THREE.Texture).dispose();
+            }
+          }
+          mat.dispose();
+        }
+      });
+      useGLTF.clear(uri);
+    };
+  }, [uri, scene, clonedScene]);
   return <primitive object={clonedScene} />;
 }
 

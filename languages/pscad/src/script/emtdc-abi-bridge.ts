@@ -31,6 +31,7 @@ import {
 } from "@modelscript/exchange";
 import { ensureBuiltInPscadLibraryRegistered } from "../catalog/library-package-adapter.js";
 import { type CleanRoomEmtdcWasmRuntime, createCleanRoomEmtdcWasmRuntime } from "../catalog/wasm-companion-loader.js";
+import { invokeRegisteredFortranUnit } from "../model/workspace-registry.js";
 import { extractEmtNetlist } from "../netlist/emt-netlist.js";
 import { parsePscx } from "../parser/pscx-parser.js";
 import { EmtSolver, type EmtSolverResult } from "../solver/emt-solver.js";
@@ -196,15 +197,22 @@ export class EmtdcHostBridge {
    * Wraps an `EmtCustomFortranBlock` compiled by `@modelscript/pscad` into the EMTDC ABI bridge.
    */
   public registerCustomFortranBlock(block: EmtCustomFortranBlock): EmtdcRegisteredUdm {
-    const makeDispatcher = (state: EmtdcCommonBlockState) =>
-      this.wasmRuntime
-        ? (subName: string, args: number[]): number | undefined => {
-            if (!this.wasmRuntime!.hasSubroutine(subName)) return undefined;
-            this.wasmRuntime!.setContext(state.TIME, state.DELT, state.TIMEZERO, state.FIRSTSTEP, state.LASTSTEP);
-            this.wasmRuntime!.setCursors(state.NSTORF, state.NSTORI, state.NSTORL, state.NSTORC);
-            return this.wasmRuntime!.callSubroutine(subName, args);
-          }
-        : undefined;
+    const makeDispatcher =
+      (state: EmtdcCommonBlockState) =>
+      (subName: string, args: number[]): number | undefined => {
+        if (this.wasmRuntime && this.wasmRuntime.hasSubroutine(subName)) {
+          this.wasmRuntime.setContext(state.TIME, state.DELT, state.TIMEZERO, state.FIRSTSTEP, state.LASTSTEP);
+          this.wasmRuntime.setCursors(state.NSTORF, state.NSTORI, state.NSTORL, state.NSTORC);
+          return this.wasmRuntime.callSubroutine(subName, args);
+        }
+        return invokeRegisteredFortranUnit(subName, args, {
+          time: state.TIME,
+          dt: state.DELT,
+          firstStep: state.FIRSTSTEP,
+          storf: state.STORF.subarray(state.NSTORF),
+          stori: state.STORI.subarray(state.NSTORI),
+        });
+      };
 
     return this.registerUdm({
       id: block.id,

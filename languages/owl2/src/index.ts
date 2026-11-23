@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "./actions.js";
 export * from "./cst-lowering.js";
 export * from "./diagram/index.js";
 export * from "./errors.js";
@@ -13,5 +14,6 @@ export * from "./parser/index.js";
 export * from "./profiles/ontospm.js";
 export * from "./reasoner/tableau.js";
 export * from "./semantic-tokens.js";
+export * from "./sparql-kb.js";
 export * from "./tree-utils.js";
 export { getShortLabel } from "./tree-utils.js";

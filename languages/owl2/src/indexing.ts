@@ -1,8 +1,164 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { DslIndexFileContext } from "@modelscript/dsl";
+import type { DslIndexFileContext, SyntaxNode } from "@modelscript/dsl";
 import type { SymbolEntry, SymbolIndex, UnifiedWorkspace } from "@modelscript/runtime";
 import { detectOwl2Format, parseOwlXmlToAxioms, parseTurtleToOwl2Axioms } from "./parser/index.js";
+
+type Owl2CstNodeLike = Omit<SyntaxNode, "hasError"> & { hasError?: boolean | (() => boolean) };
+
+interface PendingOwl2Entity {
+  shortName: string;
+  kind: "Class" | "ObjectProperty" | "DataProperty" | "Individual";
+  fullIri: string;
+  rawIri: string;
+  startOffset: number;
+  endOffset: number;
+  nameStartOffset?: number | undefined;
+  nameEndOffset?: number | undefined;
+}
+
+function extractValidCstRoot(tree: unknown): SyntaxNode | null {
+  if (!tree || typeof tree !== "object") return null;
+  const candidate = ("rootNode" in tree ? (tree as { rootNode?: unknown }).rootNode : tree) as
+    Owl2CstNodeLike | undefined;
+  if (!candidate || typeof candidate !== "object" || typeof candidate.type !== "string") return null;
+  const hasErr = typeof candidate.hasError === "function" ? candidate.hasError() : Boolean(candidate.hasError);
+  if (hasErr || candidate.isError) return null;
+  return candidate as SyntaxNode;
+}
+
+function cstNodeText(node: SyntaxNode, source: string): string {
+  if (typeof node.text === "string" && node.text.length > 0) return node.text;
+  if (typeof node.startIndex === "number" && typeof node.endIndex === "number" && node.endIndex >= node.startIndex) {
+    return source.slice(node.startIndex, node.endIndex);
+  }
+  return "";
+}
+
+function fieldChild(node: SyntaxNode, fieldName: string): SyntaxNode | null {
+  return typeof node.childForFieldName === "function" ? node.childForFieldName(fieldName) : null;
+}
+
+function extractOwl2FromCst(
+  rootNode: SyntaxNode,
+  text: string,
+  prefixes: Map<string, string>,
+  imports: string[],
+  pendingEntities: PendingOwl2Entity[],
+): {
+  ontologyIri?: string | undefined;
+  ontologyNameRange?: { startOffset: number; endOffset: number } | undefined;
+} {
+  let ontologyIri: string | undefined;
+  let ontologyNameRange: { startOffset: number; endOffset: number } | undefined;
+
+  const stack: SyntaxNode[] = [rootNode];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    const type = node.type;
+
+    if (type === "PrefixDeclaration") {
+      const nameNode =
+        fieldChild(node, "name") ??
+        (node.namedChildren ?? node.children ?? []).find((c) => c.type === "PrefixName") ??
+        null;
+      const iriNode =
+        fieldChild(node, "iri") ??
+        (node.namedChildren ?? node.children ?? []).find((c) => c.type === "FullIRI" || c.type === "IRI") ??
+        null;
+      if (iriNode) {
+        const pfx = nameNode ? cstNodeText(nameNode, text).trim() : ":";
+        const val = extractIri(cstNodeText(iriNode, text));
+        if (val) {
+          prefixes.set(pfx.endsWith(":") ? pfx : `${pfx}:`, val);
+        }
+      }
+      continue;
+    }
+
+    if (type === "Ontology") {
+      const iriNode = fieldChild(node, "iri");
+      if (iriNode) {
+        const extracted = extractIri(cstNodeText(iriNode, text));
+        if (extracted) {
+          ontologyIri = extracted;
+          ontologyNameRange = { startOffset: iriNode.startIndex, endOffset: iriNode.endIndex };
+        }
+      }
+      const kids = node.namedChildren ?? node.children ?? [];
+      for (let i = kids.length - 1; i >= 0; i--) {
+        stack.push(kids[i]!);
+      }
+      continue;
+    }
+
+    if (type === "ImportDeclaration") {
+      const iriNode =
+        fieldChild(node, "iri") ??
+        (node.namedChildren ?? node.children ?? []).find(
+          (c) => c.type === "IRI" || c.type === "FullIRI" || c.type === "AbbreviatedIRI",
+        ) ??
+        null;
+      if (iriNode) {
+        const target = extractIri(cstNodeText(iriNode, text));
+        if (target) imports.push(target);
+      }
+      continue;
+    }
+
+    if (type === "Declaration") {
+      const entityNode =
+        fieldChild(node, "entity") ??
+        (node.namedChildren ?? node.children ?? []).find(
+          (c) =>
+            c.type === "ClassEntity" ||
+            c.type === "ObjectPropertyEntity" ||
+            c.type === "DataPropertyEntity" ||
+            c.type === "NamedIndividualEntity",
+        ) ??
+        null;
+      if (entityNode) {
+        let kind: PendingOwl2Entity["kind"] | null = null;
+        if (entityNode.type === "ClassEntity") kind = "Class";
+        else if (entityNode.type === "ObjectPropertyEntity") kind = "ObjectProperty";
+        else if (entityNode.type === "DataPropertyEntity") kind = "DataProperty";
+        else if (entityNode.type === "NamedIndividualEntity") kind = "Individual";
+
+        if (kind) {
+          const iriNode =
+            fieldChild(entityNode, "iri") ??
+            (entityNode.namedChildren ?? entityNode.children ?? []).find(
+              (c) => c.type === "IRI" || c.type === "FullIRI" || c.type === "AbbreviatedIRI",
+            ) ??
+            null;
+          if (iriNode) {
+            const rawIri = extractIri(cstNodeText(iriNode, text));
+            if (rawIri) {
+              pendingEntities.push({
+                shortName: getShortName(rawIri),
+                kind,
+                fullIri: expandIri(rawIri, prefixes),
+                rawIri,
+                startOffset: node.startIndex,
+                endOffset: node.endIndex,
+                nameStartOffset: iriNode.startIndex,
+                nameEndOffset: iriNode.endIndex,
+              });
+            }
+          }
+        }
+      }
+      continue;
+    }
+
+    const kids = node.namedChildren ?? node.children ?? [];
+    for (let i = kids.length - 1; i >= 0; i--) {
+      stack.push(kids[i]!);
+    }
+  }
+
+  return { ontologyIri, ontologyNameRange };
+}
 
 export interface Owl2FileInfo {
   uri: string;
@@ -19,6 +175,9 @@ export interface Owl2FileInfo {
 /**
  * Declarative DSL `indexing.indexFile` hook for OWL 2 Functional-Style (`.ofn`),
  * Turtle (`.ttl`), and OWL/XML or RDF/XML (`.owx` / `.owl` / `.rdf`) ontologies.
+ *
+ * Uses CST-first indexing when a valid compiled WASM `SyntaxNode` tree is provided via `ctx.tree`
+ * for Functional-Style Syntax documents, falling back gracefully to format-specific parsers/scanners.
  */
 export function indexOwl2Document(ctx: DslIndexFileContext): void {
   const { uri, text } = ctx;
@@ -37,19 +196,21 @@ export function indexOwl2Document(ctx: DslIndexFileContext): void {
   const individuals = new Map<string, SymbolEntry>();
   const imports: string[] = [];
   let ontologyIri: string | undefined;
+  let ontologyNameRange: { startOffset: number; endOffset: number } | undefined;
 
   const fileName = uri.split("/").pop() || uri;
-  const pendingEntities: {
-    shortName: string;
-    kind: "Class" | "ObjectProperty" | "DataProperty" | "Individual";
-    fullIri: string;
-    rawIri: string;
-    startOffset: number;
-    endOffset: number;
-  }[] = [];
+  const pendingEntities: PendingOwl2Entity[] = [];
 
   const format = detectOwl2Format(text, uri);
-  if (format === "ttl" || format === "owx") {
+  const cstRoot = format === "ofn" ? extractValidCstRoot(ctx.tree) : null;
+  let usedCst = false;
+
+  if (cstRoot) {
+    const extracted = extractOwl2FromCst(cstRoot, text, prefixes, imports, pendingEntities);
+    ontologyIri = extracted.ontologyIri;
+    ontologyNameRange = extracted.ontologyNameRange;
+    usedCst = true;
+  } else if (format === "ttl" || format === "owx") {
     if (format === "ttl") {
       const pfxRegex = /(?:@prefix|PREFIX)\s+([A-Za-z0-9_-]*:)\s*<([^>\s<]+)>/gi;
       let m: RegExpExecArray | null;
@@ -99,7 +260,7 @@ export function indexOwl2Document(ctx: DslIndexFileContext): void {
     }
   }
 
-  let i = format === "ofn" ? 0 : text.length;
+  let i = !usedCst && format === "ofn" ? 0 : text.length;
   const len = text.length;
 
   while (i < len) {
@@ -188,6 +349,7 @@ export function indexOwl2Document(ctx: DslIndexFileContext): void {
       ruleName: "owl2_ontology",
       namePath: ontologyIri || fileName,
       ...(ontologyIri ? { aliases: [ontologyIri] } : {}),
+      ...(ontologyNameRange ? { fieldRanges: { name: ontologyNameRange } } : {}),
     },
   );
 
@@ -203,6 +365,9 @@ export function indexOwl2Document(ctx: DslIndexFileContext): void {
         ruleName: `owl2_${ent.kind.toLowerCase()}`,
         namePath: ent.fullIri,
         aliases: [ent.fullIri, ent.rawIri],
+        ...(ent.nameStartOffset !== undefined && ent.nameEndOffset !== undefined
+          ? { fieldRanges: { name: { startOffset: ent.nameStartOffset, endOffset: ent.nameEndOffset } } }
+          : {}),
       },
     );
     const entry = fileIndex.symbols.get(symId);

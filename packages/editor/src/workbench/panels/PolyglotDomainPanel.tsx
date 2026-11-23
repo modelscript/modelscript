@@ -2574,7 +2574,26 @@ export function computeInspectorSubTabs(
 }
 
 export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = (props) => {
+  const isVisible = props.isVisible !== false;
   const normalizedDialect = (props.dialect || "").toLowerCase();
+  const [debouncedCode, setDebouncedCode] = useState(props.code);
+
+  useEffect(() => {
+    if (!isVisible) return;
+    if (props.code === debouncedCode) return;
+    const timer = setTimeout(() => {
+      setDebouncedCode(props.code);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [props.code, isVisible, debouncedCode]);
+
+  // Sync immediately when panel becomes visible or dialect switches
+  useEffect(() => {
+    if (isVisible) {
+      setDebouncedCode(props.code);
+    }
+  }, [isVisible, normalizedDialect]);
+
   const dslHost = useMemo(
     () => ({
       onCodeChange: props.onCodeChange,
@@ -2585,12 +2604,16 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = (props) =
     [props.onCodeChange, props.onRevealLine, props.onUpdateProjectFile],
   );
 
+  if (!isVisible) {
+    return null;
+  }
+
   if (hasMorselLanguagePanel(normalizedDialect)) {
     return (
       <DslLanguagePanelMount
         registry="morsel"
         lookupKey={normalizedDialect}
-        code={props.code}
+        code={debouncedCode}
         dialect={normalizedDialect}
         colorMode={props.colorMode}
         mode="inspector"
@@ -2601,7 +2624,7 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = (props) =
     );
   }
 
-  return <LegacyPolyglotDomainPanel {...props} />;
+  return <LegacyPolyglotDomainPanel {...props} code={debouncedCode} />;
 };
 
 const LegacyPolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({

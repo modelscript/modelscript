@@ -1381,6 +1381,8 @@ export interface MountPolyglotOptions {
   filename: string;
   language?: string | undefined;
   cacheKey?: string | undefined;
+  /** When true, missing archive responses (404 / ENOENT) return false without warning logs. */
+  quietIfMissing?: boolean | undefined;
 }
 
 /**
@@ -1444,13 +1446,23 @@ export async function mountPolyglotLibrary(
           : serverDistBase;
         const zipPath = `${filePath}/${options.filename}`;
         const nodeFs = await import("node:fs");
+        if (!nodeFs.existsSync(zipPath)) {
+          loadingLibraryState.delete(normName);
+          ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
+          if (!options.quietIfMissing) {
+            ctx.logger.warn(`[vfs-mount] Library archive not found at ${zipPath}`);
+          }
+          return false;
+        }
         zipData = nodeFs.readFileSync(zipPath);
       } else {
         const response = await fetch(`${serverDistBase}/${options.filename}`);
         if (!response.ok) {
           loadingLibraryState.delete(normName);
           ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
-          ctx.logger.warn(`[vfs-mount] Library archive not found at ${serverDistBase}/${options.filename}`);
+          if (!options.quietIfMissing) {
+            ctx.logger.warn(`[vfs-mount] Library archive not found at ${serverDistBase}/${options.filename}`);
+          }
           return false;
         }
         ctx.connectionState.sendNotification("modelscript/status", {
@@ -1463,9 +1475,11 @@ export async function mountPolyglotLibrary(
       if (zipData.length < 4 || zipData[0] !== 0x50 || zipData[1] !== 0x4b) {
         loadingLibraryState.delete(normName);
         ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
-        ctx.logger.warn(
-          `[vfs-mount] Library archive at ${serverDistBase}/${options.filename} is not a valid ZIP file (${zipData.length} bytes)`,
-        );
+        if (!options.quietIfMissing) {
+          ctx.logger.warn(
+            `[vfs-mount] Library archive at ${serverDistBase}/${options.filename} is not a valid ZIP file (${zipData.length} bytes)`,
+          );
+        }
         return false;
       }
       fileEntries = unzipSync(zipData);

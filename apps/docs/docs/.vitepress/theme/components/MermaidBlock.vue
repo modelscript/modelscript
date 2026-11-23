@@ -104,7 +104,14 @@ watch(isDark, () => {
   <div class="mermaid-diagram-card" ref="containerRef">
     <div v-if="svg" class="mermaid-svg-container" v-html="svg"></div>
     <div v-else-if="loading" class="mermaid-loading-placeholder">
-      <div class="mermaid-spinner"></div>
+      <svg class="ms-spinner mermaid-spinner" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" style="opacity: 0.25" />
+        <path
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          style="opacity: 0.75"
+        />
+      </svg>
       <span>Rendering diagram...</span>
     </div>
     <div v-else-if="error" class="mermaid-error-fallback">
@@ -153,16 +160,8 @@ watch(isDark, () => {
 .mermaid-spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid var(--vp-c-divider, #30363d);
-  border-top-color: var(--vp-c-brand-1, #388bfd);
-  border-radius: 50%;
-  animation: mermaid-spin 0.8s linear infinite;
-}
-
-@keyframes mermaid-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  color: var(--ms-spinner-color, #06b6d4);
+  flex-shrink: 0;
 }
 
 .mermaid-error-fallback {

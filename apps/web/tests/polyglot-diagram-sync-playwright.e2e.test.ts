@@ -134,7 +134,7 @@ function Harness(): React.ReactElement {
     getDomSummary: () => {
       const nodeEls = Array.from(document.querySelectorAll(".ms-nodes-layer > g[data-cell-id]"));
       const edgeEls = Array.from(document.querySelectorAll(".ms-edges-layer > g[data-cell-id]"));
-      const selBoxes = Array.from(document.querySelectorAll(".x6-widget-selection-box[data-cell-id]"));
+      const selBoxes = Array.from(document.querySelectorAll(".ms-selection-box[data-cell-id]"));
       return {
         nodeCount: nodeEls.length,
         edgeCount: edgeEls.length,

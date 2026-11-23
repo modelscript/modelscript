@@ -26,7 +26,7 @@ flowchart TD
 ```
 
 1. **Resource-Aware Nx Orchestration (`nx-coordinator.js`, `test-coordinator.js`)**: Dynamically bounds parallelism from CPU cores and live available RAM (`/proc/meminfo` on Linux) so builds and tests do not OOM on laptops or GitHub runners.
-2. **Balanced CI Sharding (`test-coordinator.js`, `test-durations.json`, `sync-test-durations.js`)**: Uses Longest Processing Time (LPT) bin-packing over empirical per-package durations to split tests evenly across the 8 CI shards.
+2. **Balanced CI Sharding (`test-coordinator.js`, `test-durations.json`, `sync-test-durations.js`)**: Uses Longest Processing Time (LPT) bin-packing over empirical per-package durations to split tests evenly across the 12 CI shards.
 3. **Standardized Package Execution (`test-runner.js`, `node-test-ctrf-reporter.cjs`)**: Invoked by 125 workspace `package.json` manifests (enforced by `scripts/lint/lint-package-manifests.ts`) to run `tsx --test` with AssemblyScript WASM caching, CTRF JSON output, and repo-relative LCOV coverage.
 4. **Consolidation, Local CI & Security (`consolidate-test-reports.ts`, `consolidate-coverage.ts`, `ci-local.sh`, `run-act.sh`, `codeql-scan.sh`, `summarize-sarif.cjs`)**: Merges sharded outputs into GitHub step summaries and interactive HTML dashboards, emulates CI locally, and runs CodeQL scans.
 
@@ -73,7 +73,7 @@ flowchart TD
 ### [`test-coordinator.js`](./test-coordinator.js)
 
 - **Purpose:** Two-tier resource allocator and LPT shard balancer for running package `test` targets through Nx.
-- **When to use:** Automatically invoked by `npm test`, `npm run test:all`, `ci-local.sh`, and the 8-shard `test` matrix in `.github/workflows/ci.yml`.
+- **When to use:** Automatically invoked by `npm test`, `npm run test:all`, `ci-local.sh`, and the 12-shard `test` matrix in `.github/workflows/ci.yml`.
 - **How it works:**
   - **Two-tier budgeting (`computeOptimalAllocation`):** Assumes `750 MB` per `tsx` + V8 + WASM test worker and reserves `clamp(freeMem * 0.15, 500 MB, 2 GB)`. Splits the total worker budget into Nx concurrent packages `P` (`--parallel`) and per-package `node:test` workers `W` (`TEST_CONCURRENCY`) such that `P * W <= totalBudget` (single-package runs use `P = 1, W = min(totalBudget, 12)`).
   - **LPT shard bin-packing (`partitionProjectsIntoShards`):** When `--shard=K/N` is passed, looks up each project's duration in [`test-durations.json`](./test-durations.json) (falling back to `4s * testFileCount`), sorts heaviest-first, and greedily assigns projects to the lightest shard. Rewrites the Nx invocation to `run-many --projects=<shardProjects>`.
@@ -86,7 +86,7 @@ flowchart TD
   - Pass-through Nx flags: `--projects=`, `-p=`, `--base=`, `--head=`, `--exclude=`, `--output-style=`.
   - Env vars: `TEST_PARALLEL_TASKS`, `TEST_CONCURRENCY`, `NX_BASE`, `NX_HEAD`, `NODE_ENV`, `NODE_OPTIONS`.
 - **Exit codes:** `0` on success, empty shard, or `--dry-run`; `1` on invalid `--shard` syntax; otherwise mirrors the Nx exit code.
-- **Callers:** `.github/workflows/ci.yml` (`test` matrix shards `1..8`), root `package.json` (`test`, `test:all`, `test:fast`, `test:compiler`, `test:platform`), `ci-local.sh`. Exported helpers are also imported by `test-runner.js` and `test-coordinator.test.mjs`.
+- **Callers:** `.github/workflows/ci.yml` (`test` matrix shards `1..12`), root `package.json` (`test`, `test:all`, `test:fast`, `test:compiler`, `test:platform`), `ci-local.sh`. Exported helpers are also imported by `test-runner.js` and `test-coordinator.test.mjs`.
 
 ---
 

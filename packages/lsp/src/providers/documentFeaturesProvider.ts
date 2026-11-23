@@ -173,22 +173,23 @@ export function registerDocumentFeaturesProvider(
             tree = parser.parse(text);
             const langId = plugin?.id ?? "modelica";
             const ws = plugin?.workspaceIndex ?? wm?.getWorkspaceIndex(langId);
-            if (!ws) return [];
-            ws.register(params.textDocument.uri, () => tree.rootNode);
-            ws.getFileIndex(params.textDocument.uri);
-            const unified =
-              wm?.unifiedWorkspace?.getIndex?.() ?? (typeof ws.getIndex === "function" ? ws.getIndex() : ws);
-            const realEngine = plugin?.queryEngine ?? wm?.getQueryEngine(langId);
-            const engine = realEngine ?? {
-              toQueryDB: () => ({ index: unified }),
-              index: unified,
-            };
-            bridge = new LSPBridge(unified as any, engine as any, new PositionIndex(text), params.textDocument.uri, {
-              documentLSPBridges,
-              documents: { get: (u: string) => getDoc(u) },
-            });
-            if (realEngine) {
-              documentLSPBridges.set(params.textDocument.uri, bridge);
+            if (ws) {
+              ws.register(params.textDocument.uri, () => tree.rootNode);
+              ws.getFileIndex(params.textDocument.uri);
+              const unified =
+                wm?.unifiedWorkspace?.getIndex?.() ?? (typeof ws.getIndex === "function" ? ws.getIndex() : ws);
+              const realEngine = plugin?.queryEngine ?? wm?.getQueryEngine(langId);
+              const engine = realEngine ?? {
+                toQueryDB: () => ({ index: unified }),
+                index: unified,
+              };
+              bridge = new LSPBridge(unified as any, engine as any, new PositionIndex(text), params.textDocument.uri, {
+                documentLSPBridges,
+                documents: { get: (u: string) => getDoc(u) },
+              });
+              if (realEngine) {
+                documentLSPBridges.set(params.textDocument.uri, bridge);
+              }
             }
           } catch (fastErr) {
             connection.console.warn(`[onDocumentSymbol] Fast bridge build error: ${fastErr}`);
@@ -216,9 +217,9 @@ export function registerDocumentFeaturesProvider(
       if (!bridge) {
         if (plugin) {
           if (plugin.customHandlers?.symbols) {
-            const treeOrText =
-              getDocumentTree(params.textDocument.uri) ?? getDoc(params.textDocument.uri)?.getText() ?? "";
-            return sanitizeDocumentSymbols(plugin.customHandlers.symbols(treeOrText));
+            const docText = getDoc(params.textDocument.uri)?.getText() ?? "";
+            const treeOrText = getDocumentTree(params.textDocument.uri) ?? docText;
+            return sanitizeDocumentSymbols(plugin.customHandlers.symbols(treeOrText, docText, params.textDocument.uri));
           }
           if (plugin.facade?.getDocumentSymbols && parser) {
             try {
@@ -240,11 +241,12 @@ export function registerDocumentFeaturesProvider(
           }
           // Generic GraalVM-style SemanticCstTag fallback for any language without custom outline handlers
           const cachedTree = getDocumentTree(params.textDocument.uri);
-          if (cachedTree) {
+          const rootNode = cachedTree?.tree?.rootNode ?? cachedTree?.rootNode ?? cachedTree;
+          if (rootNode && (typeof rootNode.type === "string" || typeof rootNode.kindId === "number")) {
             const explicitTags = (plugin.languageDef?.lsp as { semanticTags?: Record<string, number> } | undefined)
               ?.semanticTags;
             const tagTable = explicitTags ? buildSemanticTagTable([], explicitTags) : undefined;
-            const tagSymbols = extractDocumentSymbolsByTags(cachedTree, tagTable);
+            const tagSymbols = extractDocumentSymbolsByTags(rootNode, tagTable);
             if (tagSymbols.length > 0) return sanitizeDocumentSymbols(tagSymbols);
           }
         }
@@ -634,7 +636,6 @@ export function registerDocumentFeaturesProvider(
 
   /* Document Highlights — highlights all occurrences of the symbol under cursor */
   connection.onDocumentHighlight((params) => {
-    if (!isParserReady()) return [];
     const document = documents.get(params.textDocument.uri);
     if (!document) return [];
 

@@ -242,7 +242,7 @@ describe("Real Chromium (Playwright) Unified Canvas Interactive E2E", () => {
         const markerEnd = document
           .querySelector('[data-cell-id="wire_1"] path[data-selector="line"]')
           ?.getAttribute("marker-end");
-        const labelText = document.querySelector(".x6-edge-label text")?.textContent;
+        const labelText = document.querySelector(".ms-edge-label text")?.textContent;
         const segHandles = document.querySelectorAll(".ms-segment-handle").length;
         const removeBtns = document.querySelectorAll(".ms-edge-remove-btn").length;
         const widgetCanvas = document.querySelector(".ms-widgets-canvas") as HTMLCanvasElement | null;
@@ -315,20 +315,37 @@ describe("Real Chromium (Playwright) Unified Canvas Interactive E2E", () => {
       await page.mouse.up();
       await page.keyboard.up("Shift");
 
-      const selectionBoxCount = await page.evaluate(() => document.querySelectorAll(".x6-widget-selection-box").length);
+      const selectionBoxCount = await page.evaluate(() => document.querySelectorAll(".ms-selection-box").length);
       assert.ok(selectionBoxCount >= 2, `Expected >= 2 selection boxes after marquee, got ${selectionBoxCount}`);
 
-      // 3b. Real mouse drag on SE resize handle + rotate handle of `motor`
+      // 3b. Verify all 8 angle-aware resize handle cursors + real mouse drag on SE resize & rotate handles of `motor`
       const handleCoords = await page.evaluate(() => {
-        const box = document.querySelector('.x6-widget-selection-box[data-cell-id="motor"]');
+        const box = document.querySelector('.ms-selection-box[data-cell-id="motor"]');
         const se = box?.querySelector(".ms-handle-se")?.getBoundingClientRect();
         const rot = box?.querySelector(".ms-handle-rotate")?.getBoundingClientRect();
+        const cursors: Record<string, string | null> = {};
+        for (const h of ["nw", "n", "ne", "e", "se", "s", "sw", "w"] as const) {
+          const el = box?.querySelector(`.ms-handle-${h}`) as HTMLElement | null;
+          cursors[h] = el?.style.cursor ?? null;
+        }
         return {
           se: se ? { cx: se.left + se.width / 2, cy: se.top + se.height / 2 } : null,
           rot: rot ? { cx: rot.left + rot.width / 2, cy: rot.top + rot.height / 2 } : null,
+          cursors,
         };
       });
       assert.ok(handleCoords.se && handleCoords.rot, "Resize and rotate handles should render with valid bounds");
+      assert.equal(handleCoords.cursors["nw"], "nwse-resize");
+      assert.equal(handleCoords.cursors["ne"], "nesw-resize");
+      assert.equal(handleCoords.cursors["n"], "ns-resize");
+      assert.equal(handleCoords.cursors["w"], "ew-resize");
+      assert.equal(
+        handleCoords.cursors["e"],
+        null,
+        "East midpoint handle must be omitted so it never occludes motor.out port",
+      );
+      assert.equal(handleCoords.cursors["se"], "nwse-resize");
+      assert.equal(handleCoords.cursors["sw"], "nesw-resize");
       await page.mouse.move(handleCoords.se.cx, handleCoords.se.cy);
       await page.mouse.down();
       await page.mouse.move(handleCoords.se.cx + 30, handleCoords.se.cy + 20, { steps: 4 });
@@ -340,17 +357,26 @@ describe("Real Chromium (Playwright) Unified Canvas Interactive E2E", () => {
             __TEST_API__: { motor: { getSize: () => { width: number; height: number } }; events: string[] };
           }
         ).__TEST_API__;
-        return { size: api.motor.getSize(), events: [...api.events] };
+        const bodyRect = document.querySelector('[data-cell-id="motor"] rect[data-selector="body"]');
+        return {
+          size: api.motor.getSize(),
+          bodyRectWidth: bodyRect ? Number(bodyRect.getAttribute("width")) : 0,
+          events: [...api.events],
+        };
       });
       assert.ok(
         afterResize.size.width > 110,
         `Expected motor width > 110 after SE resize, got ${afterResize.size.width} (events=${afterResize.events.join(",")})`,
       );
+      assert.ok(
+        afterResize.bodyRectWidth > 110,
+        `Expected motor SVG body rect width > 110 after SE resize, got ${afterResize.bodyRectWidth}`,
+      );
       assert.ok(afterResize.events.includes("resized:motor"));
 
       const rotBox = await page.evaluate(() => {
         const rot = document
-          .querySelector('.x6-widget-selection-box[data-cell-id="motor"] .ms-handle-rotate')
+          .querySelector('.ms-selection-box[data-cell-id="motor"] .ms-handle-rotate')
           ?.getBoundingClientRect();
         return rot ? { cx: rot.left + rot.width / 2, cy: rot.top + rot.height / 2 } : null;
       });
@@ -373,10 +399,10 @@ describe("Real Chromium (Playwright) Unified Canvas Interactive E2E", () => {
       await page.mouse.down();
       await page.mouse.move(596, 150, { steps: 6 });
       const magnetState = await page.evaluate(() => ({
-        available: document.querySelectorAll(".x6-magnet-available").length,
-        adsorbed: document.querySelectorAll(".x6-magnet-adsorbed").length,
+        available: document.querySelectorAll(".ms-magnet-available").length,
+        adsorbed: document.querySelectorAll(".ms-magnet-adsorbed").length,
       }));
-      assert.ok(magnetState.adsorbed >= 1, "Target port should adsorb with .x6-magnet-adsorbed class");
+      assert.ok(magnetState.adsorbed >= 1, "Target port should adsorb with .ms-magnet-adsorbed class");
       await page.mouse.up();
 
       const afterConnect = await page.evaluate(() => {
@@ -421,6 +447,35 @@ describe("Real Chromium (Playwright) Unified Canvas Interactive E2E", () => {
       assert.equal(afterSegDrag.srcPort, "out");
       assert.equal(afterSegDrag.tgtPort, "in");
       assert.ok(afterSegDrag.vertexCount >= 2, "Segment drag should insert orthogonal vertices");
+
+      // 5b. Verify SVG grid pattern moves and zooms in lockstep with camera pan & zoom
+      const gridSync = await page.evaluate(() => {
+        const g = (
+          window as unknown as {
+            __TEST_API__: {
+              graph: {
+                translate: (tx: number, ty: number) => void;
+                zoomTo: (z: number) => void;
+              };
+            };
+          }
+        ).__TEST_API__.graph;
+        const pat = document.querySelector("defs pattern[id^='ms-grid-']");
+        const beforeW = Number(pat?.getAttribute("width") ?? 0);
+        g.translate(45, 30);
+        g.zoomTo(2);
+        const afterW = Number(pat?.getAttribute("width") ?? 0);
+        const afterTransform = pat?.getAttribute("patternTransform") ?? "";
+        g.translate(0, 0);
+        g.zoomTo(1);
+        return { beforeW, afterW, afterTransform };
+      });
+      assert.ok(gridSync.beforeW > 0, "Grid pattern must have positive width");
+      assert.equal(gridSync.afterW, gridSync.beforeW * 2, "Grid spacing must double when zooming to 2x");
+      assert.ok(
+        gridSync.afterTransform.includes("translate("),
+        `Grid patternTransform must track pan, got ${gridSync.afterTransform}`,
+      );
 
       // 6. Real Chromium high-scale automatic Canvas2D switch at 2,000 nodes
       const highScaleCheck = await page.evaluate(async () => {

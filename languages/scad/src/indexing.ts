@@ -1,7 +1,376 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { DslIndexFileContext } from "@modelscript/dsl";
+import type { DslIndexFileContext, SyntaxNode } from "@modelscript/dsl";
 import type { SymbolEntry, SymbolIndex, UnifiedWorkspace } from "@modelscript/runtime";
+
+type CstNodeLike = Omit<SyntaxNode, "hasError"> & { hasError?: boolean | (() => boolean) };
+
+function extractValidCstRoot(tree: unknown): SyntaxNode | null {
+  if (!tree || typeof tree !== "object") return null;
+  const candidate = ("rootNode" in tree ? (tree as { rootNode?: unknown }).rootNode : tree) as CstNodeLike | undefined;
+  if (!candidate || typeof candidate !== "object" || typeof candidate.type !== "string") return null;
+  const hasErr = typeof candidate.hasError === "function" ? candidate.hasError() : Boolean(candidate.hasError);
+  if (hasErr || candidate.isError) return null;
+  return candidate as SyntaxNode;
+}
+
+function cstNodeText(node: SyntaxNode, source: string): string {
+  if (typeof node.text === "string" && node.text.length > 0) return node.text;
+  if (typeof node.startIndex === "number" && typeof node.endIndex === "number" && node.endIndex >= node.startIndex) {
+    return source.slice(node.startIndex, node.endIndex);
+  }
+  return "";
+}
+
+function findChildByFieldOrType(node: SyntaxNode, fieldName: string, fallbackTypes: string[]): SyntaxNode | null {
+  const byField = typeof node.childForFieldName === "function" ? node.childForFieldName(fieldName) : null;
+  if (byField) return byField;
+  const kids = node.namedChildren ?? node.children ?? [];
+  for (const child of kids) {
+    if (fallbackTypes.includes(child.type)) return child;
+  }
+  return null;
+}
+
+function extractFirstScadTagPortArg(
+  argsNode: SyntaxNode | null,
+  source: string,
+): { name: string; startOffset: number; endOffset: number } | null {
+  if (!argsNode) return null;
+  const stack: SyntaxNode[] = [argsNode];
+  while (stack.length > 0) {
+    const cur = stack.shift()!;
+    if (cur.type === "STRING") {
+      const raw = cstNodeText(cur, source).trim();
+      if (
+        raw.length >= 2 &&
+        ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'")))
+      ) {
+        const name = raw.slice(1, -1).trim();
+        if (name) {
+          return { name, startOffset: cur.startIndex + 1, endOffset: cur.endIndex - 1 };
+        }
+      }
+    }
+    const kids = cur.namedChildren ?? cur.children ?? [];
+    for (const child of kids) stack.push(child);
+  }
+  const rawArgs = cstNodeText(argsNode, source).trim();
+  const qMatch = /^["']([^"']+)["']/.exec(rawArgs);
+  const portName = qMatch ? qMatch[1]!.trim() : (rawArgs.split(",")[0]?.trim() ?? "");
+  if (!portName) return null;
+  return { name: portName, startOffset: argsNode.startIndex, endOffset: argsNode.endIndex };
+}
+
+function indexScadFromCst(
+  ctx: DslIndexFileContext,
+  rootNode: SyntaxNode,
+  fileIndex: SymbolIndex,
+  fileName: string,
+  rootId: number,
+  modules: Map<string, SymbolEntry>,
+  functions: Map<string, SymbolEntry>,
+  variables: Map<string, SymbolEntry>,
+  dependencies: ScadDependency[],
+): void {
+  const { uri, text } = ctx;
+
+  const walk = (node: SyntaxNode, currentModuleId: number | null): void => {
+    const type = node.type;
+
+    if (
+      type === "IncludeStatement" ||
+      type === "UseStatement" ||
+      type === "INCLUDE_DIRECTIVE" ||
+      type === "USE_DIRECTIVE"
+    ) {
+      const raw = cstNodeText(node, text);
+      const depType: "include" | "use" =
+        type === "IncludeStatement" || type === "INCLUDE_DIRECTIVE" ? "include" : "use";
+      const openAngle = raw.indexOf("<");
+      const closeAngle = openAngle !== -1 ? raw.indexOf(">", openAngle) : -1;
+      if (openAngle !== -1 && closeAngle !== -1) {
+        const target = raw.slice(openAngle + 1, closeAngle).trim();
+        if (target) {
+          dependencies.push({
+            type: depType,
+            targetPath: target,
+            startOffset: node.startIndex,
+            endOffset: node.endIndex,
+          });
+          ctx.addSymbol(
+            target,
+            "Import",
+            rootId,
+            node.startIndex,
+            node.endIndex,
+            { dependencyType: depType, targetPath: target, language: "scad" },
+            {
+              ruleName: "scad_import",
+              namePath: target,
+              resourceId: uri,
+              fieldRanges: {
+                name: {
+                  startOffset: node.startIndex + openAngle + 1,
+                  endOffset: node.startIndex + closeAngle,
+                },
+              },
+            },
+          );
+        }
+      }
+      return;
+    }
+
+    if (type === "ModuleDeclaration") {
+      const nameNode = findChildByFieldOrType(node, "name", ["IDENTIFIER"]);
+      const modName = nameNode ? cstNodeText(nameNode, text).trim() : "";
+      let modSymId: number | null = currentModuleId;
+      if (modName && nameNode) {
+        const symId = ctx.addSymbol(
+          modName,
+          "Module",
+          rootId,
+          node.startIndex,
+          node.endIndex,
+          { language: "scad" },
+          {
+            ruleName: "module_declaration",
+            namePath: `${fileName}.${modName}`,
+            resourceId: uri,
+            fieldRanges: { name: { startOffset: nameNode.startIndex, endOffset: nameNode.endIndex } },
+          },
+        );
+        const entry = fileIndex.symbols.get(symId);
+        if (entry) modules.set(modName, entry);
+        modSymId = symId;
+      }
+      const paramsNode = typeof node.childForFieldName === "function" ? node.childForFieldName("parameters") : null;
+      if (paramsNode) walk(paramsNode, modSymId);
+      const bodyNode = typeof node.childForFieldName === "function" ? node.childForFieldName("body") : null;
+      if (bodyNode) {
+        walk(bodyNode, modSymId);
+      } else {
+        for (const child of node.namedChildren ?? node.children ?? []) {
+          if (child !== nameNode && child !== paramsNode) walk(child, modSymId);
+        }
+      }
+      return;
+    }
+
+    if (type === "FunctionDeclaration") {
+      const nameNode = findChildByFieldOrType(node, "name", ["IDENTIFIER"]);
+      const fnName = nameNode ? cstNodeText(nameNode, text).trim() : "";
+      if (fnName && nameNode) {
+        const symId = ctx.addSymbol(
+          fnName,
+          "Function",
+          rootId,
+          node.startIndex,
+          node.endIndex,
+          { language: "scad" },
+          {
+            ruleName: "function_declaration",
+            namePath: `${fileName}.${fnName}`,
+            resourceId: uri,
+            fieldRanges: { name: { startOffset: nameNode.startIndex, endOffset: nameNode.endIndex } },
+          },
+        );
+        const entry = fileIndex.symbols.get(symId);
+        if (entry) functions.set(fnName, entry);
+      }
+      const paramsNode = typeof node.childForFieldName === "function" ? node.childForFieldName("parameters") : null;
+      if (paramsNode) walk(paramsNode, currentModuleId);
+      const bodyNode = typeof node.childForFieldName === "function" ? node.childForFieldName("body") : null;
+      if (bodyNode) {
+        walk(bodyNode, currentModuleId);
+      } else {
+        for (const child of node.namedChildren ?? node.children ?? []) {
+          if (child !== nameNode && child !== paramsNode) walk(child, currentModuleId);
+        }
+      }
+      return;
+    }
+
+    if (type === "VariableDeclaration") {
+      const nameNode = findChildByFieldOrType(node, "name", ["IDENTIFIER"]);
+      const varName = nameNode ? cstNodeText(nameNode, text).trim() : "";
+      if (varName && nameNode) {
+        const ownerId = currentModuleId ?? rootId;
+        const symId = ctx.addSymbol(
+          varName,
+          "Variable",
+          ownerId,
+          node.startIndex,
+          node.endIndex,
+          { language: "scad" },
+          {
+            ruleName: "variable_declaration",
+            namePath: `${fileName}.${varName}`,
+            resourceId: uri,
+            fieldRanges: { name: { startOffset: nameNode.startIndex, endOffset: nameNode.endIndex } },
+          },
+        );
+        const entry = fileIndex.symbols.get(symId);
+        if (entry && currentModuleId === null) variables.set(varName, entry);
+      }
+      const valueNode = typeof node.childForFieldName === "function" ? node.childForFieldName("value") : null;
+      if (valueNode) {
+        walk(valueNode, currentModuleId);
+      } else {
+        for (const child of node.namedChildren ?? node.children ?? []) {
+          if (child !== nameNode) walk(child, currentModuleId);
+        }
+      }
+      return;
+    }
+
+    if (type === "TagPortOp") {
+      const argsNode = findChildByFieldOrType(node, "args", ["ArgumentList"]);
+      const extracted = extractFirstScadTagPortArg(argsNode, text);
+      if (extracted) {
+        ctx.addSymbol(
+          extracted.name,
+          "TaggedPort",
+          currentModuleId ?? rootId,
+          node.startIndex,
+          node.endIndex,
+          { isTaggedPort: true, isConnectorPort: true, language: "scad" },
+          {
+            ruleName: "TagPortOp",
+            namePath: `${fileName}.${extracted.name}`,
+            resourceId: uri,
+            fieldRanges: { name: { startOffset: extracted.startOffset, endOffset: extracted.endOffset } },
+          },
+        );
+      }
+      return;
+    }
+
+    if (type === "ModuleInstantiation") {
+      const nameNode = findChildByFieldOrType(node, "name", ["IDENTIFIER"]);
+      const calleeName = nameNode ? cstNodeText(nameNode, text).trim() : "";
+      if (calleeName && nameNode && !SCAD_BUILTIN_NAMES.has(calleeName) && !calleeName.startsWith("$")) {
+        ctx.addSymbol(
+          calleeName,
+          "Reference",
+          currentModuleId ?? rootId,
+          nameNode.startIndex,
+          nameNode.endIndex,
+          { isCall: true, language: "scad" },
+          {
+            ruleName: "ModuleInstantiation",
+            namePath: calleeName,
+            resourceId: uri,
+            fieldRanges: { name: { startOffset: nameNode.startIndex, endOffset: nameNode.endIndex } },
+          },
+        );
+      }
+      const argsNode = typeof node.childForFieldName === "function" ? node.childForFieldName("args") : null;
+      if (argsNode) {
+        walk(argsNode, currentModuleId);
+      } else {
+        for (const child of node.namedChildren ?? node.children ?? []) {
+          if (child !== nameNode) walk(child, currentModuleId);
+        }
+      }
+      return;
+    }
+
+    if (type === "PostfixExpression") {
+      const fnNode = typeof node.childForFieldName === "function" ? node.childForFieldName("function") : null;
+      const argsNode = typeof node.childForFieldName === "function" ? node.childForFieldName("arguments") : null;
+      if (fnNode) {
+        let identNode: SyntaxNode | null = fnNode.type === "IDENTIFIER" ? fnNode : null;
+        if (!identNode && fnNode.type === "PrimaryExpression") {
+          const kids = fnNode.namedChildren ?? fnNode.children ?? [];
+          if (kids.length === 1 && kids[0]?.type === "IDENTIFIER") identNode = kids[0];
+        }
+        if (identNode) {
+          const calleeName = cstNodeText(identNode, text).trim();
+          if (calleeName && !SCAD_BUILTIN_NAMES.has(calleeName) && !calleeName.startsWith("$")) {
+            ctx.addSymbol(
+              calleeName,
+              "Reference",
+              currentModuleId ?? rootId,
+              identNode.startIndex,
+              identNode.endIndex,
+              { isCall: true, language: "scad" },
+              {
+                ruleName: "ModuleInstantiation",
+                namePath: calleeName,
+                resourceId: uri,
+                fieldRanges: { name: { startOffset: identNode.startIndex, endOffset: identNode.endIndex } },
+              },
+            );
+          }
+          if (argsNode) walk(argsNode, currentModuleId);
+          return;
+        }
+      }
+    }
+
+    if (type === "Parameter") {
+      const defaultNode = typeof node.childForFieldName === "function" ? node.childForFieldName("default") : null;
+      if (defaultNode) walk(defaultNode, currentModuleId);
+      return;
+    }
+
+    if (type === "Argument") {
+      const valueNode = typeof node.childForFieldName === "function" ? node.childForFieldName("value") : null;
+      if (valueNode) {
+        walk(valueNode, currentModuleId);
+      } else {
+        const nameNode = typeof node.childForFieldName === "function" ? node.childForFieldName("name") : null;
+        for (const child of node.namedChildren ?? node.children ?? []) {
+          if (child !== nameNode) walk(child, currentModuleId);
+        }
+      }
+      return;
+    }
+
+    if (type === "ForStatement" || type === "ListComprehension") {
+      const varNode = typeof node.childForFieldName === "function" ? node.childForFieldName("var") : null;
+      for (const child of node.namedChildren ?? node.children ?? []) {
+        if (child !== varNode) walk(child, currentModuleId);
+      }
+      return;
+    }
+
+    if (type === "MethodCall") {
+      const argsNode = typeof node.childForFieldName === "function" ? node.childForFieldName("args") : null;
+      if (argsNode) walk(argsNode, currentModuleId);
+      return;
+    }
+
+    if (type === "IDENTIFIER") {
+      const identName = cstNodeText(node, text).trim();
+      if (identName && !SCAD_BUILTIN_NAMES.has(identName) && !identName.startsWith("$")) {
+        ctx.addSymbol(
+          identName,
+          "Reference",
+          currentModuleId ?? rootId,
+          node.startIndex,
+          node.endIndex,
+          { isCall: false, language: "scad" },
+          {
+            ruleName: "IdentifierRef",
+            namePath: identName,
+            resourceId: uri,
+            fieldRanges: { name: { startOffset: node.startIndex, endOffset: node.endIndex } },
+          },
+        );
+      }
+      return;
+    }
+
+    for (const child of node.namedChildren ?? node.children ?? []) {
+      walk(child, currentModuleId);
+    }
+  };
+
+  walk(rootNode, null);
+}
 
 export interface ScadDependency {
   type: "include" | "use";
@@ -113,8 +482,9 @@ const SCAD_BUILTIN_NAMES = new Set([
 /**
  * Declarative `indexing.indexFile` hook for OpenSCAD (`.scad`) models.
  *
- * Scans modules, functions, variables, `tag_port(...)` boundary ports, `include <...>` / `use <...>`
- * directives, and module/identifier references, storing per-file `ScadFileInfo` in `UnifiedWorkspace`.
+ * Uses CST-first indexing when a valid compiled WASM `SyntaxNode` tree is provided via `ctx.tree`,
+ * falling back gracefully to the single-pass scanner when only raw source text is available
+ * or when the CST contains parse errors.
  */
 export function indexScadDocument(ctx: DslIndexFileContext): void {
   const { uri, text } = ctx;
@@ -139,6 +509,22 @@ export function indexScadDocument(ctx: DslIndexFileContext): void {
       resourceId: uri,
     },
   );
+
+  const cstRoot = extractValidCstRoot(ctx.tree);
+  if (cstRoot) {
+    indexScadFromCst(ctx, cstRoot, fileIndex, fileName, rootId, modules, functions, variables, dependencies);
+    const info: ScadFileInfo = {
+      uri,
+      sourceText: text,
+      index: fileIndex,
+      modules,
+      functions,
+      variables,
+      dependencies,
+    };
+    ctx.setParsedModel(info, SCAD_INFO_KEY);
+    return;
+  }
 
   let i = 0;
   const len = text.length;

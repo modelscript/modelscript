@@ -8,6 +8,7 @@
  */
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { registerBuiltInDoe2LibrarySync } from "./catalog/library-package-adapter.js";
 import { lowerDoe2ToDae } from "./dae/index.js";
 import { doe2Grammar } from "./grammar/doe2-grammar.js";
 import { canIndexDoe2, indexDoe2Document } from "./indexing.js";
@@ -79,5 +80,7 @@ export const doe2Language = language({
     },
   ],
 });
+
+registerBuiltInDoe2LibrarySync();
 
 export default doe2Language;

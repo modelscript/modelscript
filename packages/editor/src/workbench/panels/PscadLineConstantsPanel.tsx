@@ -214,32 +214,50 @@ export const PscadLineConstantsPanel: React.FC<PscadLineConstantsPanelProps> = (
 
   const lineName = activeLine?.id || (mode === "tower" ? "Tower_500kV" : "XLPE_Cable");
 
-  const result =
-    mode === "tower"
-      ? LineConstantsSolver.solveTower(
-          {
-            name: lineName,
-            earthResistivityOhmMeter: rhoOhmM,
-            conductors,
-          },
-          { lengthKm },
-        )
-      : LineConstantsSolver.solveCable(
-          {
-            name: lineName,
-            earthResistivityOhmMeter: rhoOhmM,
-            burialDepthMeters: Math.max(0.2, burialDepthM),
-            coreRadiusMeters: safeCoreM,
-            coreRdcOhmPerKm: Math.max(0.001, coreRdc),
-            insulationRadiusMeters: safeInsulM,
-            insulationRelativePermittivity: Math.max(1.0, insulEpsR),
-            sheathRadiusMeters: safeSheathM,
-            sheathRdcOhmPerKm: Math.max(0.01, sheathRdc),
-            jacketRadiusMeters: safeJacketM,
-            jacketRelativePermittivity: Math.max(1.0, jacketEpsR),
-          },
-          { lengthKm },
-        );
+  const result = useMemo(
+    () =>
+      mode === "tower"
+        ? LineConstantsSolver.solveTower(
+            {
+              name: lineName,
+              earthResistivityOhmMeter: rhoOhmM,
+              conductors,
+            },
+            { lengthKm },
+          )
+        : LineConstantsSolver.solveCable(
+            {
+              name: lineName,
+              earthResistivityOhmMeter: rhoOhmM,
+              burialDepthMeters: Math.max(0.2, burialDepthM),
+              coreRadiusMeters: safeCoreM,
+              coreRdcOhmPerKm: Math.max(0.001, coreRdc),
+              insulationRadiusMeters: safeInsulM,
+              insulationRelativePermittivity: Math.max(1.0, insulEpsR),
+              sheathRadiusMeters: safeSheathM,
+              sheathRdcOhmPerKm: Math.max(0.01, sheathRdc),
+              jacketRadiusMeters: safeJacketM,
+              jacketRelativePermittivity: Math.max(1.0, jacketEpsR),
+            },
+            { lengthKm },
+          ),
+    [
+      mode,
+      lineName,
+      rhoOhmM,
+      conductors,
+      lengthKm,
+      burialDepthM,
+      safeCoreM,
+      coreRdc,
+      safeInsulM,
+      insulEpsR,
+      safeSheathM,
+      sheathRdc,
+      safeJacketM,
+      jacketEpsR,
+    ],
+  );
 
   const maxX = Math.max(12, spacingM + 4);
   const maxY = Math.max(36, heightM + 10);

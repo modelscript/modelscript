@@ -156,7 +156,7 @@ export interface PointerFsmOptions {
  * 100% DOM-free Unified Interaction State Machine.
  *
  * Powers Desktop 2D schematics, `.mscanvas` spatial boards, and 3D / WebXR VR
- * editing from a single state machine with zero AntV X6 tool monkey-patches.
+ * editing from a single state machine with zero external graph-engine monkey-patches.
  */
 export class CanvasPointerFSM {
   public mode: PointerFsmMode = "idle";

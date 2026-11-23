@@ -2,6 +2,7 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import semver from "semver";
@@ -223,13 +224,184 @@ export async function seedExamplePackages(
 }
 
 import { getStdlibsByPack, type StdlibEntry, type StdlibPackId } from "@modelscript/exchange/catalog";
+import { MINLPLIB_CURATED_FILES } from "./minlplib-fallback.js";
+
+async function buildMinlplibZipToBuffer(version: string, repoRoot?: string): Promise<Buffer | null> {
+  const formats = ["mod", "gms", "lp", "nl"] as const;
+  const zipfile = new yazl.ZipFile();
+  const chunks: Buffer[] = [];
+  const done = new Promise<Buffer>((resolve, reject) => {
+    zipfile.outputStream.on("data", (chunk: Buffer) => chunks.push(chunk));
+    zipfile.outputStream.on("end", () => resolve(Buffer.concat(chunks)));
+    zipfile.outputStream.on("error", reject);
+  });
+
+  let added = 0;
+
+  const limitEnv = Number(process.env["MINLPLIB_SEED_LIMIT"]);
+  const limit = Number.isFinite(limitEnv) && limitEnv > 0 ? limitEnv : 150;
+
+  // 1. Prefer local .cache/minlplib/minlplib_<fmt>.zip archives (no network requests)
+  const cacheDir = process.env["MINLPLIB_CACHE_DIR"] || (repoRoot ? path.resolve(repoRoot, ".cache/minlplib") : null);
+  if (cacheDir && fs.existsSync(cacheDir)) {
+    const tmpExtract = fs.mkdtempSync(path.join(os.tmpdir(), "minlplib-cache-"));
+    try {
+      const { execFileSync } = await import("node:child_process");
+      for (const fmt of formats) {
+        const archivePath = path.join(cacheDir, `minlplib_${fmt}.zip`);
+        if (!fs.existsSync(archivePath)) continue;
+        execFileSync("unzip", ["-oq", archivePath, "-d", tmpExtract]);
+        const fmtDir = fs.existsSync(path.join(tmpExtract, "minlplib", fmt))
+          ? path.join(tmpExtract, "minlplib", fmt)
+          : path.join(tmpExtract, fmt);
+        if (!fs.existsSync(fmtDir)) continue;
+        const files = fs
+          .readdirSync(fmtDir)
+          .filter((f) => f.toLowerCase().endsWith(`.${fmt}`))
+          .sort()
+          .slice(0, limit);
+        for (const file of files) {
+          zipfile.addFile(path.join(fmtDir, file), `${fmt}/${file}`);
+          added++;
+        }
+      }
+      if (added > 0) {
+        console.log(`[Seed] Packaged ${added} MINLPLib files from local cache (${cacheDir}).`);
+      }
+    } catch (err) {
+      console.warn("[Seed] Failed to read .cache/minlplib:", err instanceof Error ? err.message : err);
+    } finally {
+      fs.rmSync(tmpExtract, { recursive: true, force: true });
+    }
+  }
+
+  // 2. Only hit minlplib.org if local cache was not present
+  if (added === 0)
+    try {
+      const csvRes = await fetch("https://www.minlplib.org/instancedata.csv", { signal: AbortSignal.timeout(5000) });
+      if (csvRes.ok) {
+        const csvText = await csvRes.text();
+        const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
+        if (lines.length >= 2) {
+          const splitCsv = (line: string) => {
+            const out: string[] = [];
+            let cur = "";
+            let inQ = false;
+            for (const ch of line) {
+              if (ch === '"') inQ = !inQ;
+              else if ((ch === "," || ch === ";") && !inQ) {
+                out.push(cur.trim());
+                cur = "";
+              } else cur += ch;
+            }
+            out.push(cur.trim());
+            return out;
+          };
+
+          const headers = splitCsv(lines[0]!);
+          const propMap = new Map<string, Record<string, string>>();
+          for (let i = 1; i < lines.length; i++) {
+            const cols = splitCsv(lines[i]!);
+            const name = cols[0];
+            if (!name) continue;
+            const props: Record<string, string> = {};
+            for (let c = 1; c < headers.length; c++) {
+              if (headers[c] && cols[c]) props[headers[c]!] = cols[c]!;
+            }
+            propMap.set(name, props);
+          }
+
+          const limitEnv = Number(process.env["MINLPLIB_SEED_LIMIT"]);
+          const limit = Number.isFinite(limitEnv) && limitEnv > 0 ? limitEnv : 75;
+          const names = Array.from(propMap.keys()).sort().slice(0, limit);
+
+          const CONCURRENCY = 10;
+          for (let i = 0; i < names.length; i += CONCURRENCY) {
+            const batch = names.slice(i, i + CONCURRENCY);
+            await Promise.all(
+              batch.flatMap((modelName) =>
+                formats.map(async (fmt) => {
+                  try {
+                    const res = await fetch(`https://www.minlplib.org/${fmt}/${modelName}.${fmt}`, {
+                      signal: AbortSignal.timeout(5000),
+                    });
+                    if (!res.ok) return;
+                    const raw = await res.text();
+                    const props = propMap.get(modelName) ?? {};
+                    const prefix = fmt === "lp" ? "\\ " : fmt === "gms" ? "* " : "# ";
+                    const headerLines = [
+                      ["Model", modelName],
+                      ["Problem type", props["probtype"] ?? props["type"] ?? props["problemtype"]],
+                      ["Convexity", props["convex"] ?? props["convexity"]],
+                      ["Variables", props["nvars"]],
+                      ["Binary variables", props["nbinvars"]],
+                      ["Integer variables", props["nintvars"]],
+                      ["Equations", props["ncons"] ?? props["nequ"]],
+                      ["Best primal bound", props["primalbound"] ?? props["bestprimal"]],
+                      ["Best dual bound", props["dualbound"] ?? props["bestdual"]],
+                      ["Source", props["source"]],
+                      ["Reference", `https://www.minlplib.org/${modelName}.html`],
+                    ]
+                      .filter(([, v]) => Boolean(v))
+                      .map(([k, v]) => `${prefix}${k}: ${v}`);
+                    const body = headerLines.length > 0 ? `${headerLines.join("\n")}\n\n${raw}` : raw;
+                    zipfile.addBuffer(Buffer.from(body, "utf-8"), `${fmt}/${modelName}.${fmt}`);
+                    added++;
+                  } catch {
+                    // ignore individual fetch failure
+                  }
+                }),
+              ),
+            );
+          }
+        }
+      }
+    } catch {
+      // minlplib.org unreachable; fall back to built-in curated suite below
+    }
+
+  if (added === 0) {
+    console.log("[Seed] minlplib.org unreachable; using built-in curated MINLPLib benchmark suite.");
+    for (const f of MINLPLIB_CURATED_FILES) {
+      zipfile.addBuffer(Buffer.from(f.content, "utf-8"), f.path);
+      added++;
+    }
+  }
+
+  zipfile.addBuffer(
+    Buffer.from(
+      JSON.stringify(
+        {
+          name: "MINLPLib",
+          version,
+          description: "MINLPLib mixed-integer nonlinear programming benchmark library (hybrid AMPL/GAMS/CPLEX-LP/NL)",
+          license: "CC-BY-4.0",
+          modelscript: { packageKind: "hybrid", defaultTab: "optimization", formats: [...formats] },
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    ),
+    "package.json",
+  );
+  zipfile.addBuffer(
+    Buffer.from(
+      `# MINLPLib (${version})\n\nHybrid optimization benchmark package sourced from [MINLPLib](https://www.minlplib.org/) (\`.mod\`, \`.gms\`, \`.lp\`, \`.nl\`).\n\nOpen any model and switch to the **Optimization** tab to solve interactively in the browser.\n`,
+      "utf-8",
+    ),
+    "README.md",
+  );
+  zipfile.end();
+  return await done;
+}
 
 export async function seedPrepackagedLibraries(
   storage: LibraryStorage,
   database: LibraryDatabase,
   jobQueue: JobQueue,
 ): Promise<void> {
-  const defaultPacks = "modelica";
+  const defaultPacks = "modelica,minlplib";
   const requestedPacks = (process.env["STDLIB_PACKS"] || defaultPacks)
     .split(",")
     .map((p) => p.trim())
@@ -401,6 +573,23 @@ export async function seedPrepackagedLibraries(
     if (pkg.name === "SysML" && fs.existsSync(stdlibDir) && !fs.existsSync(existingStorageZip)) {
       zipBuffer = await zipSysmlStdlibToBuffer(stdlibDir, pkg.version);
       resolvedZipPath = path.resolve(repoRoot, "scripts", pkg.filename);
+    } else if (pkg.name === "MINLPLib" && !fs.existsSync(existingStorageZip)) {
+      for (const cand of candidateZipPaths) {
+        if (fs.existsSync(cand)) {
+          resolvedZipPath = cand;
+          zipBuffer = fs.readFileSync(cand);
+          break;
+        }
+      }
+      if (!zipBuffer) {
+        console.log(`[Seed] Building MINLPLib@${pkg.version} hybrid package...`);
+        zipBuffer = await buildMinlplibZipToBuffer(pkg.version, repoRoot);
+        if (zipBuffer) {
+          fs.mkdirSync(path.dirname(existingStorageZip), { recursive: true });
+          fs.writeFileSync(existingStorageZip, zipBuffer);
+          resolvedZipPath = existingStorageZip;
+        }
+      }
     } else {
       for (const cand of candidateZipPaths) {
         if (fs.existsSync(cand)) {

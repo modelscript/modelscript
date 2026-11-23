@@ -3,7 +3,9 @@
 import { EmtSolver, type EmtCircuitDefinition } from "@modelscript/simulate";
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
+import { clearPscadFortranSources, registerPscadFortranSource } from "../src/model/workspace-registry.js";
 import { extractEmtNetlist, netlistToEmtCircuit } from "../src/netlist/emt-netlist.js";
+import { EmtdcHostBridge } from "../src/script/emtdc-abi-bridge.js";
 import { compileFortranSegment } from "../src/script/fortran-codegen.js";
 import type { PscxProject } from "../src/types.js";
 
@@ -250,5 +252,62 @@ $PF_out = PF
     const pfSignal = result.controlSignals.get("PF_Meter");
     assert.ok(pfSignal !== undefined);
     assert.equal(pfSignal.length, result.metrics.totalSteps);
+  });
+
+  test("Workspace .f90 integration: PSCAD Fortran block calls external SUBROUTINE and FUNCTION from .f90 file", () => {
+    clearPscadFortranSources();
+    try {
+      registerPscadFortranSource(
+        "file:///workspace/GridDroopControl.f90",
+        `
+REAL FUNCTION DROOP_GAIN(V_ERR, K_GAIN)
+  REAL, INTENT(IN) :: V_ERR, K_GAIN
+  DROOP_GAIN = V_ERR * K_GAIN
+END FUNCTION DROOP_GAIN
+
+SUBROUTINE RIDE_THROUGH_CLAMP(Q_RAW, Q_MAX, Q_OUT)
+  REAL, INTENT(IN) :: Q_RAW, Q_MAX
+  REAL, INTENT(OUT) :: Q_OUT
+  IF (Q_RAW > Q_MAX) THEN
+    Q_OUT = Q_MAX
+  ELSE IF (Q_RAW < -Q_MAX) THEN
+    Q_OUT = -Q_MAX
+  ELSE
+    Q_OUT = Q_RAW
+  END IF
+END SUBROUTINE RIDE_THROUGH_CLAMP
+`,
+      );
+
+      const inlineScript = `
+#LOCAL REAL q_raw, q_clamped
+q_raw = DROOP_GAIN($V_err, 5.0)
+CALL RIDE_THROUGH_CLAMP(q_raw, 1.2, q_clamped)
+$Q_cmd = q_clamped
+`;
+      const compiled = compileFortranSegment(inlineScript, {}, {});
+      const bridge = new EmtdcHostBridge({ timeStepSec: 50e-6, maxNodes: 8 });
+      const udm = bridge.registerCustomFortranBlock({
+        id: "IBR_VoltVar",
+        name: "IBR_VoltVar",
+        referencedPorts: ["V_err"],
+        assignedPorts: ["Q_cmd"],
+        numRealStates: compiled.numRealStates,
+        numIntStates: compiled.numIntStates,
+        step: compiled.step,
+      });
+
+      // Within linear range: 0.1 * 5.0 = 0.5 (below 1.2 clamp)
+      udm.ports["V_err"] = 0.1;
+      bridge.stepDsdyn(0.0, true, false);
+      assert.ok(Math.abs((udm.ports["Q_cmd"] ?? 0) - 0.5) < 1e-6, `Expected 0.5, got ${udm.ports["Q_cmd"]}`);
+
+      // Above clamp: 0.4 * 5.0 = 2.0 -> clamped to 1.2
+      udm.ports["V_err"] = 0.4;
+      bridge.stepDsdyn(50e-6, false, false);
+      assert.ok(Math.abs((udm.ports["Q_cmd"] ?? 0) - 1.2) < 1e-6, `Expected 1.2, got ${udm.ports["Q_cmd"]}`);
+    } finally {
+      clearPscadFortranSources();
+    }
   });
 });

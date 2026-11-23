@@ -240,12 +240,12 @@ export function registerWorkspaceFeaturesProvider(
   getUnifiedIndex: (isSysML2: boolean) => Promise<any>,
   getResolverOrIndex?: any,
   getGlobalWorkspaceIndex?: () => any,
+  workspaceManager?: any,
 ) {
   const getWorkspaceIndex =
     typeof getResolverOrIndex === "function" && getGlobalWorkspaceIndex === undefined
       ? getResolverOrIndex
       : getGlobalWorkspaceIndex || (() => null);
-  void getWorkspaceIndex;
 
   type SymbolEntryLike = {
     id: number;
@@ -314,15 +314,30 @@ export function registerWorkspaceFeaturesProvider(
     const offset = document.offsetAt(params.position);
     const text = document.getText();
 
-    const { globalLanguageRegistry } = await import("../registry/LanguageRegistry.js");
-    const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri, text);
-    if (plugin?.customHandlers?.references) {
-      const refs = plugin.customHandlers.references(offset, text, params.textDocument.uri);
+    const refPlugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri, text);
+    if (refPlugin?.customHandlers?.references) {
+      const refs = refPlugin.customHandlers.references(offset, text, params.textDocument.uri);
       if (refs && refs.length > 0) return refs;
     }
 
-    const isSysML2 = params.textDocument.uri.endsWith(".sysml");
-    const unifiedIndex = isSysML2 ? await getUnifiedIndex(true) : await getUnifiedIndex(false);
+    const lowerUri = params.textDocument.uri.toLowerCase();
+    const isSysML2 = lowerUri.endsWith(".sysml") || lowerUri.endsWith(".sysml2") || lowerUri.endsWith(".kerml");
+    let unifiedIndex: any = null;
+    if (refPlugin?.id && refPlugin.id !== "modelica" && !isSysML2) {
+      const pluginWsIdx = refPlugin.workspaceIndex ?? workspaceManager?.getWorkspaceIndex?.(refPlugin.id);
+      if (pluginWsIdx) {
+        unifiedIndex =
+          typeof pluginWsIdx.getIndexAsync === "function"
+            ? await pluginWsIdx.getIndexAsync()
+            : typeof pluginWsIdx.getIndex === "function"
+              ? pluginWsIdx.getIndex()
+              : pluginWsIdx;
+      }
+    }
+    if (!unifiedIndex) {
+      unifiedIndex = isSysML2 ? await getUnifiedIndex(true) : await getUnifiedIndex(false);
+    }
+    if (!unifiedIndex?.symbols) return [];
     let adjOffset = offset;
     if (
       adjOffset > 0 &&
@@ -446,6 +461,28 @@ export function registerWorkspaceFeaturesProvider(
     return results;
   });
 
+  connection.onPrepareRename((params) => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return null;
+    const text = document.getText();
+    const offset = document.offsetAt(params.position);
+    let start = offset;
+    let end = offset;
+    const isIdent = (ch: string) => /[A-Za-z0-9_$]/.test(ch);
+    while (start > 0 && isIdent(text[start - 1]!)) start--;
+    while (end < text.length && isIdent(text[end]!)) end++;
+    if (end <= start) return null;
+    const placeholder = text.slice(start, end);
+    if (/^\d+$/.test(placeholder)) return null;
+    return {
+      range: {
+        start: document.positionAt(start),
+        end: document.positionAt(end),
+      },
+      placeholder,
+    };
+  });
+
   connection.onRenameRequest(async (params) => {
     const document = documents.get(params.textDocument.uri);
     if (!document) return null;
@@ -458,7 +495,7 @@ export function registerWorkspaceFeaturesProvider(
       if (customRename) return customRename;
     }
 
-    const isSysML2 = params.textDocument.uri.endsWith(".sysml");
+    const isSysML2 = /\.(sysml|sysml2|kerml)$/i.test(params.textDocument.uri);
     const unifiedIndex = isSysML2 ? await getUnifiedIndex(true) : await getUnifiedIndex(false);
     let targetEntry: SymbolEntryLike | null = null;
 
@@ -827,11 +864,9 @@ export function registerWorkspaceFeaturesProvider(
                   getBuiltinModule?: (id: string) => Record<string, (...a: string[]) => unknown>;
                 };
                 const nodeFs = procBuiltin.getBuiltinModule?.("node:fs") as
-                  | { existsSync: (p: string) => boolean; readFileSync: (p: string, enc: string) => string }
-                  | undefined;
+                  { existsSync: (p: string) => boolean; readFileSync: (p: string, enc: string) => string } | undefined;
                 const nodeUrl = procBuiltin.getBuiltinModule?.("node:url") as
-                  | { fileURLToPath: (u: string) => string }
-                  | undefined;
+                  { fileURLToPath: (u: string) => string } | undefined;
                 if (nodeFs && nodeUrl) {
                   const fsPath = nodeUrl.fileURLToPath(se.uri);
                   if (nodeFs.existsSync(fsPath)) {
@@ -1191,8 +1226,7 @@ export function registerWorkspaceFeaturesProvider(
             const clauseLabel = data?.standardClause ? ` (${data.standardClause})` : "";
             const varLabel = typeof data?.varName === "string" && data.varName ? data.varName : "parameter";
             let editRange:
-              | { start: { line: number; character: number }; end: { line: number; character: number } }
-              | undefined;
+              { start: { line: number; character: number }; end: { line: number; character: number } } | undefined;
 
             if (numMatch) {
               editRange = {
@@ -1730,17 +1764,43 @@ export function registerWorkspaceFeaturesProvider(
     }[] = [];
     const MAX_RESULTS = 100;
 
-    // Search using the global unified workspace index
-    const globalWsIdx = getGlobalWorkspaceIndex?.();
-    if (globalWsIdx) {
-      const unifiedIndex = globalWsIdx.getIndex({ eager: true });
+    // Collect all registered workspace indices (deduplicated)
+    const wsIndices = new Set<any>();
+    const addIndex = (idx: any) => {
+      if (!idx) return;
+      if (Array.isArray(idx)) {
+        for (const item of idx) {
+          if (item) wsIndices.add(item);
+        }
+      } else {
+        wsIndices.add(idx);
+      }
+    };
+
+    addIndex(getWorkspaceIndex?.());
+    if (workspaceManager?.allWorkspaceIndices) {
+      for (const idx of workspaceManager.allWorkspaceIndices.values()) {
+        addIndex(idx);
+      }
+    }
+    for (const plugin of globalLanguageRegistry.getAllPlugins()) {
+      if (plugin.workspaceIndex) {
+        addIndex(plugin.workspaceIndex);
+      }
+    }
+
+    const seenKeys = new Set<string>();
+    for (const wsIdx of wsIndices) {
+      if (symbols.length >= MAX_RESULTS) break;
+      const unifiedIndex = typeof wsIdx.getIndex === "function" ? wsIdx.getIndex({ eager: true }) : wsIdx;
+      if (!unifiedIndex?.symbols) continue;
       for (const entry of unifiedIndex.symbols.values()) {
         if (symbols.length >= MAX_RESULTS) break;
         if (!entry.name || entry.name.startsWith("<")) continue;
 
         let fqn = entry.name;
         let curr = entry.parentId;
-        while (curr !== null) {
+        while (curr !== null && curr !== undefined) {
           const p = unifiedIndex.symbols.get(curr);
           if (p) {
             fqn = p.name + "." + fqn;
@@ -1751,12 +1811,16 @@ export function registerWorkspaceFeaturesProvider(
         }
 
         if (fqn && fqn.toLowerCase().includes(query)) {
+          const uri = entry.resourceId || "modelica:/lib";
+          const dedupKey = `${uri}#${fqn}#${entry.startOffset ?? 0}`;
+          if (seenKeys.has(dedupKey)) continue;
+          seenKeys.add(dedupKey);
           // Fallback to startOffset/endOffset if line numbers aren't computed
           symbols.push({
             name: fqn,
             kind: SymbolKind.Class,
             location: {
-              uri: entry.resourceId || "modelica:/lib",
+              uri,
               range: {
                 start: { line: 0, character: 0 },
                 end: { line: 0, character: 0 },

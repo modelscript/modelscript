@@ -88,7 +88,14 @@ watch(isDark, (dark) => {
     </div>
     <div class="embed-body" :style="{ height }">
       <div v-if="!loaded" class="embed-skeleton" aria-hidden="true">
-        <div class="skeleton-shimmer" />
+        <svg class="ms-spinner skeleton-spinner" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" style="opacity: 0.25" />
+          <path
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            style="opacity: 0.75"
+          />
+        </svg>
         <span class="skeleton-label">Loading interactive WebAssembly model…</span>
       </div>
       <iframe
@@ -204,25 +211,17 @@ watch(isDark, (dark) => {
   z-index: 1;
 }
 
-.skeleton-shimmer {
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
-  border: 2px solid color-mix(in srgb, var(--vp-c-brand-1) 35%, transparent);
-  border-top-color: var(--vp-c-brand-1);
-  animation: ms-embed-spin 0.9s linear infinite;
+.skeleton-spinner {
+  width: 32px;
+  height: 32px;
+  color: var(--ms-spinner-color, #06b6d4);
+  flex-shrink: 0;
 }
 
 .skeleton-label {
   font-size: 12px;
   font-family: var(--vp-font-family-mono);
   color: var(--vp-c-text-3);
-}
-
-@keyframes ms-embed-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 </style>
 

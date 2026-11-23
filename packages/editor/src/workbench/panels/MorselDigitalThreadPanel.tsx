@@ -252,12 +252,61 @@ export const MorselDigitalThreadPanel: React.FC<MorselDigitalThreadPanelProps> =
           .split("/")
           .pop() ?? "Target";
       const otherSym = moFile === dstFile ? srcSymbol : dstSymbol;
-      const updated = moContent.replace(
-        new RegExp(`(\\b${sym}\\b[^;\\n]*)(;)`),
-        `$1 annotation(twin = "${otherStem}::${otherSym}")$2`,
-      );
-      if (updated !== moContent) {
-        onUpdateProjectFile(moFile, updated);
+      const escapedSym = sym.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const symRegex = new RegExp(`(?<![A-Za-z0-9_])${escapedSym}(?![A-Za-z0-9_])`);
+      const lines = moContent.split("\n");
+      let inBlockComment = false;
+      let replaced = false;
+      for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+        const line = lines[lineIdx]!;
+        let masked = "";
+        let inString = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i]!;
+          const next = line[i + 1];
+          if (inBlockComment) {
+            if (ch === "*" && next === "/") {
+              masked += "  ";
+              inBlockComment = false;
+              i++;
+            } else {
+              masked += " ";
+            }
+          } else if (inString) {
+            if (ch === "\\" && next !== undefined) {
+              masked += "  ";
+              i++;
+            } else {
+              masked += " ";
+              if (ch === '"') inString = false;
+            }
+          } else if (ch === "/" && next === "/") {
+            masked += " ".repeat(line.length - i);
+            break;
+          } else if (ch === "/" && next === "*") {
+            masked += "  ";
+            inBlockComment = true;
+            i++;
+          } else if (ch === '"') {
+            masked += " ";
+            inString = true;
+          } else {
+            masked += ch;
+          }
+        }
+        const match = symRegex.exec(masked);
+        if (match) {
+          const semiIdx = masked.indexOf(";", match.index + match[0].length);
+          if (semiIdx !== -1) {
+            lines[lineIdx] =
+              `${line.slice(0, semiIdx)} annotation(twin = "${otherStem}::${otherSym}")${line.slice(semiIdx)}`;
+            replaced = true;
+            break;
+          }
+        }
+      }
+      if (replaced) {
+        onUpdateProjectFile(moFile, lines.join("\n"));
       } else {
         onUpdateProjectFile(moFile, `// @twin: ${sym} <-> ${otherStem}::${otherSym}\n` + moContent);
       }

@@ -634,7 +634,7 @@ Solve
     name: "COMTRADE / Oscillography",
     tier: "alpha",
     ext: "cfg",
-    extensions: [".cfg", ".dat", ".c37"],
+    extensions: [".cfg", ".dat", ".cff", ".c37"],
     family: "ini",
     defaultCode: `Station,Device,2013
 4,3A,1D

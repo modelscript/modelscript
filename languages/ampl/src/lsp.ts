@@ -13,6 +13,7 @@ import {
   LspSymbolKind,
 } from "@modelscript/runtime";
 import { lintAmpl } from "./lints/index.js";
+import { AmplLexer } from "./parser/ampl-lexer.js";
 import { parseAmplModel, parseAmplModelWithDiagnostics } from "./parser/ampl-mod-parser.js";
 import type { AmplModel, SourceRange } from "./types.js";
 
@@ -190,4 +191,217 @@ export function getAmplHover(documentText: string, pos: LspPosition): LspHover |
     // Ignore parse errors on hover
   }
   return null;
+}
+
+const AMPL_TYPE_KEYWORDS = new Set(["binary", "integer", "semicont", "semiint", "symbolic", "ordered", "circular"]);
+
+const AMPL_AGGREGATE_KEYWORDS = new Set(["sum", "prod", "min", "max", "forall", "exists", "count", "numberof"]);
+
+const AMPL_BUILTIN_FUNCTIONS = new Set([
+  "abs",
+  "sqrt",
+  "exp",
+  "log",
+  "ln",
+  "log10",
+  "sin",
+  "cos",
+  "tan",
+  "asin",
+  "acos",
+  "atan",
+  "sinh",
+  "cosh",
+  "tanh",
+  "ceil",
+  "floor",
+  "round",
+  "trunc",
+  "erf",
+  "erfc",
+  "gamma",
+  "lgamma",
+  "bessel_j0",
+  "bessel_j1",
+  "bessel_y0",
+  "bessel_y1",
+  "normal",
+  "normal01",
+  "normal_pdf",
+]);
+
+// Matches packages/lsp/src/providers/semanticTokensProvider.ts legend:
+// ["keyword", "type", "class", "variable", "parameter", "function", "string", "number", "operator", "comment"]
+const SEM_KEYWORD = 0;
+const SEM_TYPE = 1;
+const SEM_CLASS = 2;
+const SEM_VARIABLE = 3;
+const SEM_PARAMETER = 4;
+const SEM_FUNCTION = 5;
+const SEM_STRING = 6;
+const SEM_NUMBER = 7;
+const SEM_OPERATOR = 8;
+const SEM_COMMENT = 9;
+
+const MOD_DECLARATION = 1;
+const MOD_READONLY = 2;
+
+/**
+ * Computes LSP semantic tokens (`[deltaLine, deltaChar, length, tokenType, tokenModifiers]`)
+ * for AMPL `.mod`, `.dat`, and `.ampl` documents.
+ */
+export function getAmplSemanticTokens(documentText: string): number[] {
+  if (!documentText) return [];
+
+  let model: AmplModel | null = null;
+  try {
+    model = parseAmplModelWithDiagnostics(documentText).model;
+  } catch {
+    model = null;
+  }
+
+  const rawTokens: { line: number; char: number; length: number; type: number; mod: number }[] = [];
+
+  // 1. Collect # line comments and /* ... */ block comments
+  const lines = documentText.split(/\r?\n/);
+  let inBlockComment = false;
+  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+    const line = lines[lineIdx]!;
+    let col = 0;
+    while (col < line.length) {
+      if (inBlockComment) {
+        const closeIdx = line.indexOf("*/", col);
+        if (closeIdx === -1) {
+          if (line.length - col > 0) {
+            rawTokens.push({ line: lineIdx, char: col, length: line.length - col, type: SEM_COMMENT, mod: 0 });
+          }
+          col = line.length;
+        } else {
+          const end = closeIdx + 2;
+          rawTokens.push({ line: lineIdx, char: col, length: end - col, type: SEM_COMMENT, mod: 0 });
+          inBlockComment = false;
+          col = end;
+        }
+        continue;
+      }
+      const ch = line[col]!;
+      if (ch === '"' || ch === "'") {
+        const quote = ch;
+        col++;
+        while (col < line.length) {
+          if (line[col] === "\\" && col + 1 < line.length) {
+            col += 2;
+          } else if (line[col] === quote) {
+            col++;
+            break;
+          } else {
+            col++;
+          }
+        }
+        continue;
+      }
+      if (ch === "#") {
+        rawTokens.push({ line: lineIdx, char: col, length: line.length - col, type: SEM_COMMENT, mod: 0 });
+        break;
+      }
+      if (ch === "/" && line[col + 1] === "*") {
+        const closeIdx = line.indexOf("*/", col + 2);
+        if (closeIdx === -1) {
+          rawTokens.push({ line: lineIdx, char: col, length: line.length - col, type: SEM_COMMENT, mod: 0 });
+          inBlockComment = true;
+          break;
+        } else {
+          const end = closeIdx + 2;
+          rawTokens.push({ line: lineIdx, char: col, length: end - col, type: SEM_COMMENT, mod: 0 });
+          col = end;
+          continue;
+        }
+      }
+      col++;
+    }
+  }
+
+  // 2. Collect lexer tokens with semantic classification from parsed symbol tables
+  try {
+    const tokens = new AmplLexer(documentText).tokenize();
+    for (const tok of tokens) {
+      if (tok.type === "EOF" || tok.type === "PUNCTUATION") continue;
+      const line = Math.max(0, tok.range.start.line - 1);
+      const char = Math.max(0, tok.range.start.column - 1);
+      const length = Math.max(1, tok.range.end.column - tok.range.start.column);
+      if (tok.range.start.line !== tok.range.end.line) continue;
+
+      let type = SEM_VARIABLE;
+      let mod = 0;
+
+      if (tok.type === "KEYWORD") {
+        const lower = tok.value.toLowerCase();
+        if (AMPL_TYPE_KEYWORDS.has(lower)) {
+          type = SEM_TYPE;
+        } else if (AMPL_AGGREGATE_KEYWORDS.has(lower)) {
+          type = SEM_FUNCTION;
+        } else {
+          type = SEM_KEYWORD;
+        }
+      } else if (tok.type === "NUMBER") {
+        type = SEM_NUMBER;
+      } else if (tok.type === "STRING") {
+        type = SEM_STRING;
+      } else if (tok.type === "OPERATOR") {
+        type = SEM_OPERATOR;
+      } else if (tok.type === "IDENTIFIER") {
+        const name = tok.value;
+        if (model?.vars.has(name)) {
+          type = SEM_VARIABLE;
+          const decl = model.vars.get(name);
+          if (decl?.range && decl.range.start.line - 1 === line) mod = MOD_DECLARATION;
+        } else if (model?.params.has(name)) {
+          type = SEM_PARAMETER;
+          mod = MOD_READONLY;
+          const decl = model.params.get(name);
+          if (decl?.range && decl.range.start.line - 1 === line) mod |= MOD_DECLARATION;
+        } else if (model?.sets.has(name)) {
+          type = SEM_TYPE;
+          const decl = model.sets.get(name);
+          if (decl?.range && decl.range.start.line - 1 === line) mod = MOD_DECLARATION;
+        } else if (
+          model?.objectives.has(name) ||
+          model?.functions?.has(name) ||
+          AMPL_BUILTIN_FUNCTIONS.has(name.toLowerCase())
+        ) {
+          type = SEM_FUNCTION;
+          const decl = model?.objectives.get(name) ?? model?.functions?.get(name);
+          if (decl?.range && decl.range.start.line - 1 === line) mod = MOD_DECLARATION;
+        } else if (model?.constraints.has(name)) {
+          type = SEM_CLASS;
+          const decl = model.constraints.get(name);
+          if (decl?.range && decl.range.start.line - 1 === line) mod = MOD_DECLARATION;
+        } else {
+          type = SEM_VARIABLE;
+        }
+      }
+
+      rawTokens.push({ line, char, length, type, mod });
+    }
+  } catch {
+    // Return comment tokens if lexer fails
+  }
+
+  rawTokens.sort((a, b) => (a.line !== b.line ? a.line - b.line : a.char - b.char));
+
+  const data: number[] = [];
+  let prevLine = 0;
+  let prevChar = 0;
+  for (const t of rawTokens) {
+    // Skip overlapping tokens on the same line
+    if (t.line === prevLine && t.char < prevChar && data.length > 0) continue;
+    const deltaLine = t.line - prevLine;
+    const deltaChar = deltaLine === 0 ? t.char - prevChar : t.char;
+    if (deltaLine < 0 || deltaChar < 0) continue;
+    data.push(deltaLine, deltaChar, t.length, t.type, t.mod);
+    prevLine = t.line;
+    prevChar = t.char;
+  }
+
+  return data;
 }

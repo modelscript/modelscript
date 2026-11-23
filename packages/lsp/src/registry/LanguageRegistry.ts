@@ -54,6 +54,7 @@ export interface PluginCustomHandlers {
   complete?: ((offset: number, text: string, uri?: string) => CompletionItem[] | any[]) | undefined;
   hover?: ((offset: number, text: string, uri?: string) => Hover | any | null) | undefined;
   definition?: ((offset: number, text: string, uri?: string) => Location | Location[] | any | null) | undefined;
+  typeDefinition?: ((offset: number, text: string, uri?: string) => Location | Location[] | any | null) | undefined;
   references?: ((offset: number, text: string, uri?: string) => Location[] | any[]) | undefined;
   symbols?: ((tree: any, text?: string, uri?: string) => DocumentSymbol[] | any[]) | undefined;
   folding?: ((tree: any, text?: string, uri?: string) => any[]) | undefined;

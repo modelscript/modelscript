@@ -54,6 +54,8 @@ function InstancedCadCluster({
   const instancedMeshRefs = useRef<(THREE.InstancedMesh | null)[]>([]);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
+  const scratchMatrixRef = useRef(new THREE.Matrix4());
+
   // Extract all sub-meshes from the loaded GLTF model template
   const templateMeshes = useMemo(() => {
     const meshes: { geometry: THREE.BufferGeometry; material: THREE.Material }[] = [];
@@ -62,7 +64,7 @@ function InstancedCadCluster({
         // Clone material so instances can share without mutating source asset
         const mat = child.material
           ? Array.isArray(child.material)
-            ? child.material.map((m) => m.clone())[0]
+            ? child.material[0]!.clone()
             : child.material.clone()
           : new THREE.MeshStandardMaterial({ color: "#cccccc" });
         meshes.push({
@@ -74,6 +76,20 @@ function InstancedCadCluster({
     return meshes;
   }, [scene]);
 
+  useEffect(() => {
+    return () => {
+      for (const m of templateMeshes) {
+        m.material.dispose();
+      }
+      if (url.startsWith("data:") || url.startsWith("blob:")) {
+        for (const m of templateMeshes) {
+          m.geometry.dispose();
+        }
+        useGLTF.clear(url);
+      }
+    };
+  }, [templateMeshes, url]);
+
   // Initial matrix and color buffer upload to GPU InstancedMesh
   useEffect(() => {
     const selectedIdx = selectedName ? cluster.instanceNames.indexOf(selectedName) : -1;
@@ -83,7 +99,7 @@ function InstancedCadCluster({
 
       // Populate instance matrices
       const count = cluster.count;
-      const mat = new THREE.Matrix4();
+      const mat = scratchMatrixRef.current;
       for (let i = 0; i < count; i++) {
         mat.fromArray(cluster.batchBuffer.matrixBuffer, i * 16);
         mesh.setMatrixAt(i, mat);
@@ -130,7 +146,7 @@ function InstancedCadCluster({
     }
 
     if (hasUpdate) {
-      const mat = new THREE.Matrix4();
+      const mat = scratchMatrixRef.current;
       for (const mesh of instancedMeshRefs.current) {
         if (!mesh) continue;
         for (let i = 0; i < count; i++) {

@@ -86,6 +86,7 @@ export interface MorselLeftSidebarProps {
   onRenameProjectFile?: ((oldName: string, newName: string) => void) | undefined;
   onMoveProjectFile?: ((fileName: string, targetDir: string) => void) | undefined;
   fileDiagnosticCounts?: Record<string, { errors: number; warnings: number }> | undefined;
+  dirtyFiles?: string[] | Set<string> | undefined;
 }
 
 export type MobileSidebarSection = "parameters" | "variables" | "components" | "libraries" | "solver";
@@ -145,6 +146,7 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
   onRenameProjectFile,
   onMoveProjectFile,
   fileDiagnosticCounts,
+  dirtyFiles,
 }) => {
   const { hasCapability } = useCapabilities();
   const isCaeComputeEnabled = hasCapability("caeCompute");
@@ -603,6 +605,24 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                             >
                               {baseName}
                             </span>
+                            {(Array.isArray(dirtyFiles)
+                              ? dirtyFiles.includes(fileName)
+                              : dirtyFiles?.has(fileName)) && (
+                              <span
+                                data-testid={`file-dirty-dot-${fileName}`}
+                                title="Unsaved changes"
+                                aria-label="Unsaved changes"
+                                style={{
+                                  display: "inline-block",
+                                  width: 6,
+                                  height: 6,
+                                  borderRadius: "50%",
+                                  backgroundColor: "var(--ms-warning, #d97706)",
+                                  boxShadow: "0 0 4px var(--ms-warning, #d97706)",
+                                  flexShrink: 0,
+                                }}
+                              />
+                            )}
                             {(() => {
                               const counts = fileDiagnosticCounts?.[fileName];
                               if (!counts || (counts.errors === 0 && counts.warnings === 0)) return null;

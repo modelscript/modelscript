@@ -252,30 +252,38 @@ function resolveRefNumeric(
 }
 
 /**
- * Sets SVG `<text>` content, splitting multi-line strings on `\n` into vertically centered `<tspan>` elements.
+ * Sets SVG `<text>` content, splitting multi-line strings on `\n` into `<tspan>` elements
+ * aligned according to the element's `dominant-baseline` (`hanging` -> top-aligned,
+ * `alphabetic` -> bottom-aligned, otherwise vertically centered).
  */
 export function setSvgTextContent(el: Element, text: string, doc: Document): void {
-  if (!text.includes("\n")) {
-    el.textContent = text;
+  const normalized = text.replace(/\r\n?/g, "\n");
+  if (!normalized.includes("\n")) {
+    el.textContent = normalized;
     return;
   }
-  const lines = text.split("\n");
+  const lines = normalized.split("\n");
   const xAttr = el.getAttribute("x") ?? "0";
   const lineHeightEm = 1.25;
-  const firstDy = `${-((lines.length - 1) * lineHeightEm) / 2}em`;
+  const baseline = (el.getAttribute("dominant-baseline") ?? "").toLowerCase();
+  const firstDy =
+    baseline === "hanging" || baseline === "text-before-edge"
+      ? "0"
+      : baseline === "alphabetic" || baseline === "text-after-edge"
+        ? `${-(lines.length - 1) * lineHeightEm}em`
+        : `${-((lines.length - 1) * lineHeightEm) / 2}em`;
   el.textContent = "";
   for (let i = 0; i < lines.length; i++) {
     const tspan = doc.createElementNS(SVG_NS, "tspan");
     tspan.setAttribute("x", xAttr);
     tspan.setAttribute("dy", i === 0 ? firstDy : `${lineHeightEm}em`);
-    tspan.textContent = lines[i]!;
+    tspan.textContent = lines[i]!.length > 0 ? lines[i]! : "\u00A0";
     el.appendChild(tspan);
   }
 }
 
 /**
- * Materializes a `CompiledGlyph` into live SVG DOM nodes with safe TextNode handling
- * (immune to AntV X6's `TextNode.tagName.toUpperCase()` crash).
+ * Materializes a `CompiledGlyph` into live SVG DOM nodes with safe TextNode handling.
  */
 export function materializeGlyphToSvg(
   glyph: CompiledGlyph,
@@ -306,6 +314,7 @@ export function materializeGlyphToSvg(
       el.setAttribute("class", prim.className);
     }
 
+    let deferredTextAttr: string | undefined;
     for (const [k, v] of Object.entries(prim.attrs)) {
       if (k === "refWidth") {
         const val = resolveRefNumeric(v, width);
@@ -325,13 +334,16 @@ export function materializeGlyphToSvg(
         el.setAttribute("dominant-baseline", baseline);
       } else if (k === "text" && prim.tagName === "text") {
         if (prim.textContent === undefined) {
-          setSvgTextContent(el, String(v), doc);
+          deferredTextAttr = String(v);
         }
       } else if (k === "xlink:href") {
         el.setAttributeNS(XLINK_NS, "xlink:href", String(v));
       } else {
         el.setAttribute(normalizeSvgAttrName(k), String(v));
       }
+    }
+    if (deferredTextAttr !== undefined) {
+      setSvgTextContent(el, deferredTextAttr, doc);
     }
 
     if (prim.tagName === "rect") {
@@ -580,7 +592,7 @@ export function paintGlyphToCanvas2D(
         if (hasStroke) ctx.stroke(p2d);
       }
     } else if (tag === "text") {
-      const text = prim.textContent ?? prim.children.map((c) => c.textContent ?? "").join("");
+      const text = (prim.textContent ?? prim.children.map((c) => c.textContent ?? "").join("")).replace(/\r\n?/g, "\n");
       if (text.length > 0) {
         const tx = resolveRefNumeric(attrs["x"] ?? attrs["refX"], refW) ?? 0;
         const ty = resolveRefNumeric(attrs["y"] ?? attrs["refY"], refH) ?? 0;
@@ -590,9 +602,31 @@ export function paintGlyphToCanvas2D(
         ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
         const anchor = String(attrs["text-anchor"] ?? "start");
         ctx.textAlign = anchor === "middle" ? "center" : anchor === "end" ? "right" : "left";
-        ctx.textBaseline = "middle";
+        const vAnchor = String(
+          attrs["textVerticalAnchor"] ?? attrs["text-vertical-anchor"] ?? attrs["dominant-baseline"] ?? "middle",
+        ).toLowerCase();
+        ctx.textBaseline =
+          vAnchor === "top" || vAnchor === "hanging" || vAnchor === "text-before-edge"
+            ? "top"
+            : vAnchor === "bottom" || vAnchor === "alphabetic" || vAnchor === "text-after-edge"
+              ? "bottom"
+              : "middle";
         ctx.fillStyle = hasFill ? fill! : "#e2e8f0";
-        ctx.fillText(text, tx, ty);
+        if (!text.includes("\n")) {
+          ctx.fillText(text, tx, ty);
+        } else {
+          const lines = text.split("\n");
+          const lineHeight = fontSize * 1.25;
+          const startY =
+            ctx.textBaseline === "top"
+              ? ty
+              : ctx.textBaseline === "bottom"
+                ? ty - (lines.length - 1) * lineHeight
+                : ty - ((lines.length - 1) * lineHeight) / 2;
+          for (let i = 0; i < lines.length; i++) {
+            ctx.fillText(lines[i]!, tx, startY + i * lineHeight);
+          }
+        }
       }
     }
 

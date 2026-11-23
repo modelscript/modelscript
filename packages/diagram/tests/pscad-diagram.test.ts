@@ -650,4 +650,134 @@ const projA: PscadProjectLike = {
   console.log("   Test 9 passed: Pathological unit strings handled in linear time.");
 }
 
+// Test 10: PSCAD v5 <graphics> Wrapper, <Gfx> Paramlist/Vertex/ARGB, Sticky Wrapping, PGB Pin Alignment & GraphFrames
+{
+  console.log("Test 10: PSCAD v5 <graphics> Wrapper, Sticky Wrapping, PGB Alignment & GraphFrames");
+  const interfaceGraphicsXml = `<graphics size="4">
+    <Gfx classid="Graphics.Rectangle" id="1" x="-39" y="-39" w="78" h="78">
+      <paramlist>
+        <param name="color" value="Black" />
+        <param name="fill_style" value="0" />
+        <param name="cond" value="true" />
+      </paramlist>
+    </Gfx>
+    <Gfx classid="Graphics.Line" id="2" x="-39" y="0">
+      <vertex x="0" y="0" />
+      <vertex x="-15" y="0" />
+      <paramlist>
+        <param name="color" value="Green" />
+        <param name="cond" value="true" />
+      </paramlist>
+    </Gfx>
+    <Gfx classid="Graphics.Text" id="3" x="2" y="33">
+      <paramlist>
+        <param name="color" value="#ff0000ff" />
+        <param name="anchor" value="1" />
+        <param name="text" value="EMT-Tools.com" />
+        <param name="full_font" value="Tahoma, 4.2pt" />
+        <param name="cond" value="true" />
+      </paramlist>
+    </Gfx>
+  </graphics>`;
+
+  const projEx1: PscadProjectLike = {
+    name: "External_Fortran",
+    definitions: new Map([["Interface", { name: "Interface", graphicsXml: interfaceGraphicsXml }]]),
+    rootModule: {
+      name: "Main",
+      buses: [],
+      wires: [],
+      components: [
+        {
+          id: "iface_1",
+          definitionName: "External_Fortran:Interface",
+          instanceName: "EMT-Tools.com",
+          position: { x: 540, y: 378 },
+          width: 118,
+          height: 101,
+          parameters: { Name: "EMT-Tools.com" },
+          ports: [
+            { id: "MyReal", name: "MyReal", position: { x: -54, y: 0 } },
+            { id: "MyRealOut", name: "MyRealOut", position: { x: 54, y: 0 } },
+          ],
+        },
+        {
+          id: "pgb_1",
+          definitionName: "master:pgb",
+          instanceName: "myOutput",
+          position: { x: 594, y: 378 },
+          width: 73,
+          height: 40,
+          parameters: { Name: "myOutput" },
+          ports: [{ id: "in", name: "in", position: { x: 0, y: 0 } }],
+        },
+      ],
+      stickies: [
+        {
+          id: "sticky_long",
+          position: { x: 18, y: 396 },
+          width: 162,
+          height: 72,
+          text: "Output from the external script. Results are plotted.",
+        },
+      ],
+      graphFrames: [
+        {
+          id: "gf_1",
+          title: "Subroutine Output",
+          kind: "overlay",
+          curves: ["744340404"],
+          curveNames: ["myOutput"],
+          min: -2.0,
+          max: 2.0,
+          xLabel: "T [s]",
+          position: { x: 630, y: 432 },
+          width: 576,
+          height: 288,
+        },
+      ],
+    },
+  };
+
+  const diagEx1 = buildPscadDiagram(projEx1);
+
+  // 1. Custom <graphics> wrapper with <Gfx> paramlist/vertex/ARGB
+  const ifaceCell = diagEx1.cells.find((c) => c.id === "iface_1");
+  assert.ok(ifaceCell, "Interface cell must exist");
+  const rectEl = ifaceCell.markup?.find((m) => m.tagName === "rect");
+  const lineEl = ifaceCell.markup?.find((m) => m.tagName === "line");
+  const textEl = ifaceCell.markup?.find((m) => m.tagName === "text" && m.selector !== "label");
+  assert.ok(rectEl, "Interface must render <Gfx classid='Graphics.Rectangle'> inside <graphics>");
+  assert.ok(lineEl, "Interface must render <Gfx classid='Graphics.Line'> with <vertex> children");
+  assert.ok(textEl, "Interface must render <Gfx classid='Graphics.Text'> inside <paramlist>");
+  const lineAttrs = ifaceCell.attrs?.[lineEl!.selector!] as Record<string, unknown>;
+  assert.notStrictEqual(lineAttrs["x1"], lineAttrs["x2"], "Vertex-based Graphics.Line must have non-zero length");
+  assert.strictEqual(lineAttrs["stroke"], "#16a34a", "Green color param must normalize to #16a34a");
+  const textAttrs = ifaceCell.attrs?.[textEl!.selector!] as Record<string, unknown>;
+  assert.strictEqual(textAttrs["text"], "EMT-Tools.com", "Text param inside <paramlist> must be extracted");
+  assert.strictEqual(textAttrs["fill"], "#0284c7", "PSCAD ARGB #ff0000ff must normalize to blue (#0284c7)");
+
+  // 2. PGB input pin aligned at cmp.position.x (594) so it doesn't overlap Interface
+  const pgbCell = diagEx1.cells.find((c) => c.id === "pgb_1");
+  assert.ok(pgbCell, "PGB cell must exist");
+  assert.strictEqual(pgbCell.x, 594, "master:pgb left edge must align with its input pin x=594");
+
+  // 3. Sticky text word-wrapped to fit inside width=162
+  const stickyCell = diagEx1.cells.find((c) => c.id === "sticky_long");
+  assert.ok(stickyCell, "Sticky cell must exist");
+  const wrapped = String((stickyCell.attrs?.["label"] as Record<string, unknown>)?.["text"] ?? "");
+  assert.ok(wrapped.includes("\n"), "Long sticky note text must be word-wrapped to fit its bounding box");
+
+  // 4. GraphFrame rendered as plot card
+  const gfCell = diagEx1.cells.find((c) => c.id === "graph_gf_1");
+  assert.ok(gfCell, "GraphFrame cell must be emitted");
+  assert.strictEqual(gfCell.x, 630);
+  assert.strictEqual(gfCell.y, 432);
+  assert.strictEqual(gfCell.width, 576);
+  assert.strictEqual(gfCell.height, 288);
+  assert.strictEqual((gfCell.attrs?.["title"] as Record<string, unknown>)?.["text"], "Subroutine Output");
+  assert.strictEqual((gfCell.attrs?.["legend"] as Record<string, unknown>)?.["text"], "myOutput");
+  console.log("   Test 10 passed: PSCAD v5 <graphics>, sticky wrapping, PGB pin alignment & GraphFrame verified.");
+}
+
 console.log("ALL PSCAD DIAGRAM & DIFF TESTS PASSED SUCCESSFULLY! Milestone 2 verified.");

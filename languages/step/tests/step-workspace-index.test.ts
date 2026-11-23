@@ -181,4 +181,47 @@ END-ISO-10303-21;`;
     const maxCoordV2 = Math.max(...meshesV2[0].vertices.map((v: number) => Math.abs(v)));
     assert.ok(maxCoordV2 > maxCoordV1 * 1.5, `Expected updated geometry extent V2=${maxCoordV2} > V1=${maxCoordV1}`);
   });
+
+  it("uses CST-first indexing from compiled WASM STEP CST with exact spans and fieldRanges", async () => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const { createWasmParser } = await import("../src-gen/bindings.js");
+
+    const __dirname = path.dirname(fileURLToPath(import.meta.url));
+    const wasmBytes = fs.readFileSync(path.join(__dirname, "../dist/parser.wasm"));
+    const { parser } = await createWasmParser(wasmBytes);
+
+    const tree = parser.parse(sampleText);
+    assert.ok(tree?.rootNode);
+    assert.strictEqual(tree.rootNode.hasError, false);
+
+    const ws = new UnifiedWorkspace(stepLanguage);
+    ws.indexDocumentText(sampleUri, sampleText, "step", tree);
+    const fileIndex = ws.getFileIndex(sampleUri)!;
+    assert.ok(fileIndex);
+
+    const productSym = Array.from(fileIndex.symbols.values()).find((s) => s.name === "DroneChassis");
+    assert.ok(productSym, "Expected PRODUCT symbol DroneChassis");
+    assert.strictEqual(
+      sampleText.slice(productSym.fieldRanges!.name!.startOffset, productSym.fieldRanges!.name!.endOffset),
+      "DroneChassis",
+    );
+    assert.ok(sampleText.slice(productSym.startOffset, productSym.endOffset).startsWith("#10"));
+
+    const shapeSym = Array.from(fileIndex.symbols.values()).find((s) => s.name === "CentralBody");
+    assert.ok(shapeSym, "Expected MANIFOLD_SOLID_BREP symbol CentralBody");
+    assert.strictEqual(
+      sampleText.slice(shapeSym.fieldRanges!.name!.startOffset, shapeSym.fieldRanges!.name!.endOffset),
+      "CentralBody",
+    );
+    assert.ok(sampleText.slice(shapeSym.startOffset, shapeSym.endOffset).startsWith("#20"));
+
+    // Error CST should gracefully fall back to scanStepEntities
+    const errorTree = { rootNode: { type: "StepFile", hasError: true, children: [] } };
+    ws.indexDocumentText("memfs:/drone-meshing/fallback.step", sampleText, "step", errorTree);
+    const fbIdx = ws.getFileIndex("memfs:/drone-meshing/fallback.step")!;
+    assert.ok(fbIdx.byName.has("DroneChassis"));
+    assert.ok(fbIdx.byName.has("CentralBody"));
+  });
 });

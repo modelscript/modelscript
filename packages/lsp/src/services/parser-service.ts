@@ -6,6 +6,7 @@ import { createWasmParser, registerPreloadedWasmParser } from "@modelscript/dsl/
 import { getStdlibsForLanguage } from "@modelscript/exchange/catalog";
 import { ArenaQueryFlattener } from "@modelscript/modelica/flattener";
 import { ensureBuiltInPscadLibraryRegistered } from "@modelscript/pscad";
+import { globalLibraryRegistry } from "@modelscript/runtime";
 import {
   FederatedQueryCacheStore,
   IndexedDBQueryCacheStore,
@@ -22,9 +23,10 @@ import {
   type XmlFallbackTree,
 } from "../utils/ast-utils.js";
 import type { SyntaxNode, Tree as TreeSitterTree } from "../utils/cst-facade.js";
-import { mountedLibraryMetadata } from "../utils/hierarchy-utils.js";
+import { mountedLibraryMetadata, normalizeLibraryName } from "../utils/hierarchy-utils.js";
 import { LineIndex, TokenData } from "../utils/line-index.js";
 import { BrowserFileSystem } from "../vfs/browser-file-system.js";
+import { findCuratedPackageFallback } from "../vfs/curated-package-fallbacks.js";
 import {
   loadDependencyFromRegistry,
   LoaderContext,
@@ -954,7 +956,16 @@ export class ParserService {
     const directManifest = this.manifest.find((m) => m.id.toLowerCase() === lower);
     if (directManifest) return directManifest.id;
 
-    // Extension match in manifest if URI or filename
+    // Prefer registry lookup first (supports compound extensions and content sniffing for shared extensions like .inp, .dat, .xml)
+    const plugin =
+      globalLanguageRegistry.getPluginById(lower) ||
+      globalLanguageRegistry.getPluginForUri(raw) ||
+      globalLanguageRegistry.getPluginForLanguageIdOrUri(raw, raw);
+    if (plugin?.id) {
+      return plugin.id === "sysml" ? "sysml2" : plugin.id;
+    }
+
+    // Fallback: extension match in manifest if URI or filename
     if (raw.includes(".") || raw.includes("/")) {
       const cleanUri = lower.split("?")[0]!.split("#")[0]!;
       for (const entry of this.manifest) {
@@ -963,14 +974,6 @@ export class ParserService {
           return entry.id;
         }
       }
-    }
-
-    const plugin =
-      globalLanguageRegistry.getPluginById(lower) ||
-      globalLanguageRegistry.getPluginForLanguageIdOrUri(raw, raw) ||
-      globalLanguageRegistry.getPluginForUri(raw);
-    if (plugin?.id) {
-      return plugin.id === "sysml" ? "sysml2" : plugin.id;
     }
 
     return lower;
@@ -1162,7 +1165,27 @@ export class ParserService {
           : null;
 
     if (!depName) {
-      // Polyglot lazy activation: check if language has standard libraries in catalog
+      // 1. Surface any built-in zero-I/O cleanroom stdlibs registered in globalLibraryRegistry
+      const builtInPkgs = globalLibraryRegistry.getPackagesForLanguage(norm);
+      let mountedBuiltIn = false;
+      for (const pkg of builtInPkgs) {
+        const normPkg = normalizeLibraryName(pkg.packageName);
+        if (!mountedLibraryMetadata.has(normPkg)) {
+          mountedLibraryMetadata.set(normPkg, {
+            name: normPkg,
+            version: pkg.version,
+            language: norm,
+            description: `${pkg.packageName} built-in cleanroom standard library`,
+            category: pkg.manifest?.category ?? "library",
+          });
+          mountedBuiltIn = true;
+        }
+      }
+      if (mountedBuiltIn) {
+        this.sendProjectTreeChanged();
+      }
+
+      // 2. Polyglot lazy activation: check if language has additional standard libraries in catalog
       const polyglotLibs = getStdlibsForLanguage(norm);
       if (polyglotLibs.length === 0) return;
 
@@ -1189,6 +1212,7 @@ export class ParserService {
         }
 
         let mountOk = false;
+        const hasBuiltInOrCurated = builtInPkgs.length > 0 || Boolean(findCuratedPackageFallback(lib.packageName));
         const mountPromise = (async () => {
           this.connection.sendNotification("modelscript/status", {
             state: "loading",
@@ -1201,6 +1225,7 @@ export class ParserService {
               version: lib.version,
               filename: lib.filename,
               language: lib.language,
+              quietIfMissing: hasBuiltInOrCurated,
             });
 
             if (ok) {

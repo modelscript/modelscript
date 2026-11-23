@@ -38,7 +38,7 @@ export const PlaygroundNavbar = styled.header`
   overflow: hidden;
 
   button {
-    border-radius: 9px;
+    border-radius: 8px;
   }
 
   @media (max-width: 768px) {
@@ -112,7 +112,7 @@ export const NavLeft = styled.div`
   align-items: center;
   gap: 6px;
   min-width: 0;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   overflow: hidden;
   white-space: nowrap;
 
@@ -124,7 +124,7 @@ export const NavLeft = styled.div`
 export const NavCenter = styled.div`
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   flex: 0 0 auto;
   min-width: 0;
   gap: 6px;
@@ -132,7 +132,7 @@ export const NavCenter = styled.div`
   ul[data-size="small"] {
     background: var(--bgColor-inset, var(--ms-bg-inset));
     border: 1px solid var(--borderColor-muted, var(--ms-divider));
-    border-radius: 10px;
+    border-radius: 8px;
     padding: 2px;
     gap: 2px;
     height: 30px;
@@ -153,7 +153,7 @@ export const NavCenter = styled.div`
   li button {
     border: 1px solid transparent !important;
     outline: none !important;
-    border-radius: 8px !important;
+    border-radius: 6px !important;
     font-size: 12px !important;
     font-weight: 500 !important;
     transition:
@@ -161,7 +161,7 @@ export const NavCenter = styled.div`
       color 0.15s ease,
       border-color 0.15s ease !important;
     height: 100% !important;
-    min-width: 28px !important;
+    min-width: 26px !important;
     padding: 0 8px !important;
     box-sizing: border-box !important;
   }
@@ -178,6 +178,7 @@ export const NavCenter = styled.div`
 
   ul[data-size="small"] button [class*="Content"] {
     padding: 0 !important;
+    gap: 5px !important;
   }
 
   /* Prevent Primer hidden pseudo-element from reserving bold width or causing jitter */
@@ -199,7 +200,7 @@ export const NavCenter = styled.div`
   ul[data-size="small"] button[aria-current="true"],
   li button[aria-current="true"] {
     border: 1px solid color-mix(in srgb, var(--ms-brand, #0891b2) 45%, transparent) !important;
-    border-radius: 8px !important;
+    border-radius: 6px !important;
     outline: none !important;
     font-weight: 600 !important;
     background-color: var(--ms-brand-soft, rgba(8, 145, 178, 0.14)) !important;
@@ -222,25 +223,46 @@ export const NavCenter = styled.div`
     fill: var(--ms-brand, #0891b2) !important;
   }
 
-  /* Responsive label collapse: at <= 1280px, collapse button text so tabs fit comfortably without crowding */
-  @container (max-width: 1280px) {
-    ul[data-size="small"] button,
-    li button {
-      padding: 0 8px !important;
+  /* Tier 2 (<= 1440px): Inactive tabs collapse to icons; active tab keeps icon + label */
+  @container (max-width: 1440px) {
+    li button:not([aria-current="true"]) {
+      padding: 0 6px !important;
     }
-    .segmentedControl-text {
+    li button:not([aria-current="true"]) .segmentedControl-text,
+    li button:not([aria-current="true"]) [class*="Text"] {
       display: none !important;
     }
   }
 
-  @media (max-width: 1280px) {
+  @media (max-width: 1440px) {
+    li button:not([aria-current="true"]) {
+      padding: 0 6px !important;
+    }
+    li button:not([aria-current="true"]) .segmentedControl-text,
+    li button:not([aria-current="true"]) [class*="Text"] {
+      display: none !important;
+    }
+  }
+
+  /* Tier 3 (<= 1100px): All tabs collapse to icon-only */
+  @container (max-width: 1100px) {
     ul[data-size="small"] button,
     li button {
-      padding: 0 8px !important;
+      padding: 0 6px !important;
     }
-    /* Primer renders span.segmentedControl-content > (icon div, div.segmentedControl-text).
-       Hide only the text so icons remain; accessible name comes from aria-label. */
-    .segmentedControl-text {
+    .segmentedControl-text,
+    [class*="Text"] {
+      display: none !important;
+    }
+  }
+
+  @media (max-width: 1100px) {
+    ul[data-size="small"] button,
+    li button {
+      padding: 0 6px !important;
+    }
+    .segmentedControl-text,
+    [class*="Text"] {
       display: none !important;
     }
   }
@@ -260,8 +282,9 @@ export const SplitToggleButton = styled.button<{ $active?: boolean }>`
   justify-content: center;
   gap: 5px;
   height: 30px;
-  padding: 0 10px;
-  border-radius: 10px;
+  width: 30px;
+  padding: 0;
+  border-radius: 8px;
   font-size: 12px;
   font-weight: ${(props) => (props.$active ? 600 : 500)};
   font-family: inherit;
@@ -273,14 +296,14 @@ export const SplitToggleButton = styled.button<{ $active?: boolean }>`
   flex-shrink: 0;
   background: ${(props) =>
     props.$active
-      ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.12))"
+      ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.14))"
       : "var(--bgColor-inset, var(--ms-bg-inset, rgba(0, 0, 0, 0.04)))"};
   border: 1px solid
     ${(props) =>
-      props.$active ? "var(--ms-brand, #0891b2)" : "var(--borderColor-muted, var(--ms-divider, rgba(0, 0, 0, 0.08)))"};
+      props.$active
+        ? "color-mix(in srgb, var(--ms-brand, #0891b2) 45%, transparent)"
+        : "var(--borderColor-muted, var(--ms-divider, rgba(0, 0, 0, 0.08)))"};
   color: ${(props) => (props.$active ? "var(--ms-brand, #0891b2)" : "var(--ms-text-2, var(--color-fg-muted))")};
-  box-shadow: ${(props) =>
-    props.$active ? "0 1px 4px var(--ms-glow-cyan, rgba(8, 145, 178, 0.2))" : "inset 0 1px 2px rgba(0, 0, 0, 0.03)"};
 
   svg {
     color: ${(props) => (props.$active ? "var(--ms-brand, #0891b2)" : "currentColor")};
@@ -291,7 +314,7 @@ export const SplitToggleButton = styled.button<{ $active?: boolean }>`
   &:hover:not(:disabled) {
     background: ${(props) =>
       props.$active
-        ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.18))"
+        ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.2))"
         : "var(--color-action-list-item-default-hover-bg, var(--ms-surface-hover, rgba(125, 125, 125, 0.08)))"};
     color: ${(props) => (props.$active ? "var(--ms-brand, #0891b2)" : "var(--color-fg-default)")};
     border-color: ${(props) => (props.$active ? "var(--ms-brand, #0891b2)" : "var(--color-border-default)")};
@@ -305,20 +328,6 @@ export const SplitToggleButton = styled.button<{ $active?: boolean }>`
     color: var(--ms-text-3, var(--color-fg-muted));
     box-shadow: none;
   }
-
-  @container (max-width: 1280px) {
-    padding: 0 8px;
-    span {
-      display: none !important;
-    }
-  }
-
-  @media (max-width: 1280px) {
-    padding: 0 8px;
-    span {
-      display: none !important;
-    }
-  }
 `;
 
 export const NavRight = styled.div`
@@ -327,7 +336,7 @@ export const NavRight = styled.div`
   justify-content: flex-end;
   gap: 6px;
   min-width: 0;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   flex-shrink: 0;
   white-space: nowrap;
 

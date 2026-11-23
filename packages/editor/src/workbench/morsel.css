@@ -165,6 +165,12 @@ svg[class*="Spinner"] {
   }
 }
 
+.ms-spinner,
+.spinner-spin {
+  animation: rotate-spinner 1s linear infinite !important;
+  transform-origin: center;
+}
+
 @keyframes drop-placeholder-pulse {
   0%,
   100% {

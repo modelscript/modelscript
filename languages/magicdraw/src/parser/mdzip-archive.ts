@@ -83,8 +83,7 @@ function decodeEntryText(zip: typeof defaultContainerToolkit.zip, data: Uint8Arr
     try {
       const proc = (globalThis as { process?: { getBuiltinModule?: (m: string) => unknown } }).process;
       const zlib = proc?.getBuiltinModule?.("node:zlib") as
-        | { gunzipSync?: (buf: Uint8Array) => Uint8Array }
-        | undefined;
+        { gunzipSync?: (buf: Uint8Array) => Uint8Array } | undefined;
       if (zlib?.gunzipSync) {
         return decodeUtf8(zlib.gunzipSync(rawBytes));
       }
@@ -106,6 +105,14 @@ export function tryDecodeZipString(text: string): Uint8Array | null {
     if (typeof Buffer !== "undefined") {
       const buf = Buffer.from(b64, "base64");
       return isZipBuffer(buf) ? new Uint8Array(buf) : null;
+    }
+    if (typeof atob === "function") {
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) {
+        bytes[i] = bin.charCodeAt(i) & 0xff;
+      }
+      return isZipBuffer(bytes) ? bytes : null;
     }
   }
   if (

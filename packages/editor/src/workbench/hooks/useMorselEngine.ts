@@ -19,6 +19,7 @@ import {
   type Solid,
   type SpoolKinematicsSpec,
 } from "@modelscript/cad";
+import { extractThreeMfCadComponents } from "@modelscript/three-mf/cad";
 import { extractUsdCadComponents } from "@modelscript/usd/cad";
 import type { editor } from "monaco-editor";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -1523,10 +1524,18 @@ export function useMorselEngine({
   useEffect(() => {
     if (!editor) return;
     setEditorValue(editor.getValue());
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const disposable = editor.onDidChangeModelContent(() => {
-      setEditorValue(editor.getValue());
+      if (debounceTimer !== null) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        setEditorValue(editor.getValue());
+      }, 250);
     });
-    return () => disposable.dispose();
+    return () => {
+      if (debounceTimer !== null) clearTimeout(debounceTimer);
+      disposable.dispose();
+    };
   }, [editor]);
 
   const buildExperimentMeta = useCallback(
@@ -1633,25 +1642,41 @@ export function useMorselEngine({
   // Keep simExperiment & cachedSimulator synced with source @experiment(...) annotations and user preferences
   useEffect(() => {
     const nextExp = buildExperimentMeta(null);
-    setSimExperiment(nextExp);
-    setCachedSimulator((prev: any) => ({
-      ...(prev ?? {}),
-      experiment: nextExp,
-      dae: {
-        ...(prev?.dae ?? {}),
+    const sameExperiment = (a: typeof nextExp | null | undefined, b: typeof nextExp) =>
+      Boolean(a) &&
+      a?.startTime === b.startTime &&
+      a?.stopTime === b.stopTime &&
+      a?.numberOfIntervals === b.numberOfIntervals &&
+      a?.interval === b.interval &&
+      a?.tolerance === b.tolerance &&
+      a?.solver === b.solver;
+    setSimExperiment((prev) => (sameExperiment(prev, nextExp) ? prev : nextExp));
+    setCachedSimulator((prev: { experiment?: typeof nextExp; dae?: Record<string, unknown> } | undefined) => {
+      if (sameExperiment(prev?.experiment, nextExp)) {
+        return prev;
+      }
+      return {
+        ...(prev ?? {}),
         experiment: nextExp,
-      },
-    }));
+        dae: {
+          ...(prev?.dae ?? {}),
+          experiment: nextExp,
+        },
+      };
+    });
   }, [buildExperimentMeta]);
 
   // ── CAD & 3D Animation State ──
   const [cadComponents, setCadComponents] = useState<CadComponent[]>(() => {
     if (!content) return [];
     if (dialect === "usd") return extractUsdCadComponents(content) as CadComponent[];
+    if (dialect === "three-mf") return extractThreeMfCadComponents(content) as CadComponent[];
     return extractCadComponents(parseSourceCadVariables(content));
   });
   const [gdtOverlay, setGdtOverlay] = useState<GdtOverlayPayload | null>(null);
   const lastCompiledStepRef = useRef<CachedMorselStepCompilation | null>(null);
+  const lastScadCadSigRef = useRef<string | null>(null);
+  const lastNonScadCadSigRef = useRef<string | null>(null);
   const [vtkBuffer, setVtkBuffer] = useState<Uint8Array | null>(null);
   const animationControllerRef = useRef<AnimationController | null>(null);
   const lastSimTrajectoryRef = useRef<{ t: number[]; y: number[][]; states: string[] } | null>(null);
@@ -1854,7 +1879,7 @@ export function useMorselEngine({
 
   // ── Fetch CAD annotations or tessellate direct STEP / OpenSCAD 3D geometry ──
   useEffect(() => {
-    if (!showCadView && dialect !== "step" && dialect !== "scad" && dialect !== "qif") return;
+    if (!showCadView && dialect !== "step" && dialect !== "scad" && dialect !== "qif" && dialect !== "three-mf") return;
     let cancelled = false;
 
     const runClassicCad = () => {
@@ -1947,10 +1972,22 @@ export function useMorselEngine({
       editorValue,
     );
 
-    const runScadLspFallback = () => {
+    const runScadLspFallback = (allowClientFallback = false) => {
       getCadComponents(documentUri, undefined, editorValue)
         .then((components) => {
-          if (cancelled || !Array.isArray(components) || components.length === 0) return;
+          if (cancelled) return;
+          if (!Array.isArray(components) || components.length === 0) {
+            if (allowClientFallback) {
+              const { components: scadComps } = tessellateScadSource(editorValue);
+              if (!cancelled && scadComps.length > 0) {
+                setVtkBuffer(null);
+                setCadComponents(
+                  attachScadKinematicController(editorValue, scadComps, animationControllerRef, setAnimationMode),
+                );
+              }
+            }
+            return;
+          }
           const mapped: CadComponent[] = components.map((c, idx: number) => {
             const cadObj =
               typeof c.cad === "object" && c.cad
@@ -1966,33 +2003,154 @@ export function useMorselEngine({
               shapeType: c.shapeType,
             };
           });
+          setVtkBuffer(null);
           setCadComponents(
             attachScadKinematicController(editorValue, mapped, animationControllerRef, setAnimationMode),
           );
         })
         .catch(() => {
-          // Retain fast client CSG preview if LSP evaluator errors or is still warming up
+          if (cancelled || !allowClientFallback) return;
+          const { components: scadComps } = tessellateScadSource(editorValue);
+          if (!cancelled && scadComps.length > 0) {
+            setVtkBuffer(null);
+            setCadComponents(
+              attachScadKinematicController(editorValue, scadComps, animationControllerRef, setAnimationMode),
+            );
+          }
         });
     };
+
+    if (dialect === "scad") {
+      lastNonScadCadSigRef.current = null;
+      if (!editorValue.trim()) {
+        lastScadCadSigRef.current = null;
+        return;
+      }
+      const pairedNonScadPaths = Object.keys(effectiveFiles)
+        .filter((p) => p !== activePath && /\.(qif|step|stp|p21|mo)$/i.test(p))
+        .sort();
+      const hasPairedNonScadArtifacts = pairedNonScadPaths.length > 0;
+      const pairedSig = pairedNonScadPaths
+        .map((p) => {
+          const val = effectiveFiles[p] ?? "";
+          // Ignore writebacks of our own compiled STEP artifact to avoid re-triggering compilation
+          if (/\.(step|stp|p21)$/i.test(p) && lastCompiledStepRef.current?.result.stepText === val) {
+            return `${p}:<compiled>`;
+          }
+          return `${p}:${val.length}:${val.slice(0, 64)}`;
+        })
+        .join("\0");
+      const scadSig = `${documentUri}\0${editorValue}\0${pairedSig}`;
+      if (lastScadCadSigRef.current === scadSig) {
+        return;
+      }
+
+      const isInitialScadRender = lastScadCadSigRef.current === null;
+      const debounceMs = isInitialScadRender ? 0 : 450;
+      const timerId = setTimeout(() => {
+        if (cancelled) return;
+        lastScadCadSigRef.current = scadSig;
+
+        if (!hasPairedNonScadArtifacts) {
+          setGdtOverlay(null);
+          runScadLspFallback(isInitialScadRender);
+          return;
+        }
+
+        void compileMorselOptionAAssembly({
+          files: effectiveFiles,
+          activePath,
+          dialect,
+          documentUri,
+          isStepText: false,
+          cachedCompilation: lastCompiledStepRef.current,
+          compileStepFromSources: compileStepFromSourcesInMorsel,
+          getStepMeshes: getStepMeshesInMorsel,
+        })
+          .then((outcome) => {
+            if (cancelled) return;
+            if (outcome) {
+              if (outcome.cachedCompilation) {
+                lastCompiledStepRef.current = outcome.cachedCompilation;
+              }
+              setGdtOverlay(outcome.gdtOverlay);
+              if (outcome.updatedStepArtifact) {
+                onUpdateProjectFile?.(outcome.stepPath, outcome.stepText);
+              }
+              if (outcome.components.length > 0) {
+                const scadCode =
+                  (outcome.pairing?.scadPath ? effectiveFiles[outcome.pairing.scadPath] : undefined) ?? editorValue;
+                setVtkBuffer(null);
+                setCadComponents(
+                  attachScadKinematicController(
+                    scadCode,
+                    outcome.components,
+                    animationControllerRef,
+                    setAnimationMode,
+                    outcome.spools,
+                    outcome.telemetry,
+                  ),
+                );
+                return;
+              }
+            } else {
+              setGdtOverlay(null);
+            }
+            runScadLspFallback(isInitialScadRender);
+          })
+          .catch(() => {
+            if (cancelled) return;
+            setGdtOverlay(null);
+            runScadLspFallback(isInitialScadRender);
+          });
+      }, debounceMs);
+
+      return () => {
+        cancelled = true;
+        clearTimeout(timerId);
+      };
+    }
+
+    lastScadCadSigRef.current = null;
+
+    const pairedCadPaths = Object.keys(effectiveFiles)
+      .filter((p) => p !== activePath && /\.(scad|qif|step|stp|p21|mo)$/i.test(p))
+      .sort();
+    const pairedNonScadSig = pairedCadPaths
+      .map((p) => {
+        const val = effectiveFiles[p] ?? "";
+        if (/\.(step|stp|p21)$/i.test(p) && lastCompiledStepRef.current?.result.stepText === val) {
+          return `${p}:<compiled>`;
+        }
+        return `${p}:${val.length}:${val.slice(0, 64)}`;
+      })
+      .join("\0");
+    const nonScadSig = `${documentUri}\0${dialect}\0${selectedTreeClassName ?? ""}\0${activePath}\0${editorValue}\0${pairedNonScadSig}`;
+    if (lastNonScadCadSigRef.current === nonScadSig) {
+      return;
+    }
+    lastNonScadCadSigRef.current = nonScadSig;
 
     if (isStepText) {
       const { components: stepComps } = tessellateStepSource(editorValue);
       setVtkBuffer(null);
       setCadComponents(stepComps);
-    } else if (dialect === "scad") {
-      const { components: scadComps } = tessellateScadSource(editorValue);
-      setVtkBuffer(null);
-      setCadComponents(attachScadKinematicController(editorValue, scadComps, animationControllerRef, setAnimationMode));
     } else if (dialect === "usd") {
       const usdComps = extractUsdCadComponents(editorValue) as CadComponent[];
       setGdtOverlay(null);
       setVtkBuffer(null);
       setCadComponents(usdComps);
       return;
+    } else if (dialect === "three-mf") {
+      const threeMfComps = extractThreeMfCadComponents(editorValue) as CadComponent[];
+      setGdtOverlay(null);
+      setVtkBuffer(null);
+      setCadComponents(threeMfComps);
+      return;
     }
 
     const hasPairedCadArtifacts = Object.keys(effectiveFiles).some((p) => /\.(scad|qif|step|stp|p21)$/i.test(p));
-    const shouldTryOptionA = dialect === "scad" || dialect === "qif" || isStepText || hasPairedCadArtifacts;
+    const shouldTryOptionA = dialect === "qif" || isStepText || hasPairedCadArtifacts;
 
     if (!shouldTryOptionA) {
       setGdtOverlay(null);
@@ -2019,9 +2177,7 @@ export function useMorselEngine({
               onUpdateProjectFile?.(outcome.stepPath, outcome.stepText);
             }
             if (outcome.components.length > 0) {
-              const scadCode =
-                (outcome.pairing?.scadPath ? effectiveFiles[outcome.pairing.scadPath] : undefined) ??
-                (dialect === "scad" ? editorValue : "");
+              const scadCode = (outcome.pairing?.scadPath ? effectiveFiles[outcome.pairing.scadPath] : undefined) ?? "";
               setVtkBuffer(null);
               setCadComponents(
                 attachScadKinematicController(
@@ -2042,18 +2198,14 @@ export function useMorselEngine({
             setGdtOverlay(null);
           }
 
-          if (dialect === "scad") {
-            runScadLspFallback();
-          } else if (!isStepText && dialect !== "qif") {
+          if (!isStepText && dialect !== "qif") {
             runClassicCad();
           }
         })
         .catch(() => {
           if (cancelled) return;
           setGdtOverlay(null);
-          if (dialect === "scad") {
-            runScadLspFallback();
-          } else if (!isStepText && dialect !== "qif") {
+          if (!isStepText && dialect !== "qif") {
             runClassicCad();
           }
         });

@@ -622,7 +622,7 @@ describe("Unified SoA SceneGraph, GlyphCompiler, PointerFSM & UnifiedGraph", () 
       // Verify marker-end, label, segment handles, vertex handles, and remove button were materialized in SVG DOM
       const pathEl = edge.selectorElements.get("line")?.[0] as unknown as FakeEl;
       assert.ok(pathEl.getAttribute("marker-end")?.startsWith("url(#ms-marker-"));
-      assert.equal(container.querySelectorAll(".x6-edge-label").length, 1);
+      assert.equal(container.querySelectorAll(".ms-edge-label").length, 1);
       assert.ok(container.querySelectorAll(".ms-segment-handle").length >= 2);
       assert.equal(container.querySelectorAll(".ms-vertex-handle").length, 2);
       assert.equal(container.querySelectorAll(".ms-edge-remove-btn").length, 1);
@@ -1017,5 +1017,54 @@ describe("Unified SoA SceneGraph, GlyphCompiler, PointerFSM & UnifiedGraph", () 
     assert.equal(graph.scene.getNodePorts("R2")[0]?.localY, 15);
 
     graph.dispose();
+  });
+
+  test("setSize rescales node ports proportionally and removeCell/dispose leave zero leaked state", () => {
+    const graph = new UnifiedGraph({ width: 600, height: 400 });
+    const n1 = graph.addNode({
+      id: "res_n1",
+      x: 50,
+      y: 50,
+      width: 40,
+      height: 20,
+      ports: [
+        { id: "p", args: { x: 0, y: 10 } },
+        { id: "n", args: { x: 40, y: 10 } },
+      ],
+    });
+    const n2 = graph.addNode({
+      id: "res_n2",
+      x: 200,
+      y: 50,
+      width: 40,
+      height: 20,
+      ports: [{ id: "p", args: { x: 0, y: 10 } }],
+    });
+    const edge = graph.addEdge({
+      id: "res_e1",
+      source: { cell: "res_n1", port: "n" },
+      target: { cell: "res_n2", port: "p" },
+      tools: [{ name: "button-remove" }],
+    });
+
+    // Double node size -> port coordinates scale proportionally in both cell & SoA scene
+    n1.setSize(80, 40);
+    assert.deepEqual(n1.getSize(), { width: 80, height: 40 });
+    const scaledPorts = graph.scene.getNodePorts("res_n1");
+    const portN = scaledPorts.find((p) => p.id === "n");
+    assert.ok(portN, "Port 'n' must remain registered after resize");
+    assert.equal(portN.localX, 80);
+    assert.equal(portN.localY, 20);
+
+    // Removing edge & disposing graph cleans up views and internal registries
+    graph.removeCell(edge);
+    assert.equal(graph.getEdges().length, 0);
+    assert.equal(edge.view, null);
+    assert.equal(edge.selectorElements.size, 0);
+
+    graph.dispose();
+    assert.equal(graph.getCells().length, 0);
+    assert.equal(n1.view, null);
+    assert.equal(n2.view, null);
   });
 });

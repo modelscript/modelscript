@@ -52,9 +52,9 @@ test("Drag and Drop Component Placeholder & Bounce Animation Suite", async (t) =
       );
       assert.match(
         mockStyle.textContent,
-        /\.x6-lod-low text,\s*\.x6-lod-low tspan\s*\{[^}]*display:\s*none\s*!important;/,
+        /\.ms-lod-low text,\s*\.ms-lod-low tspan\s*\{[^}]*display:\s*none\s*!important;/,
       );
-      assert.match(mockStyle.textContent, /\.x6-lod-minimal \.x6-port\s*\{[^}]*display:\s*none\s*!important;/);
+      assert.match(mockStyle.textContent, /\.ms-lod-minimal \.ms-port\s*\{[^}]*display:\s*none\s*!important;/);
     } finally {
       delete (globalThis as any).document;
     }

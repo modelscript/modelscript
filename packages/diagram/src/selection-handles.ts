@@ -76,9 +76,10 @@ export function alignNodeSelectionBox(box: HTMLElement, node: NodeLike, graph: G
  * Iterates all active selection boxes and aligns any that belong to nodes.
  */
 export function syncAllNodeSelectionBoxes(graph: GraphLike, selectionContainer?: HTMLElement | null): void {
-  const container = selectionContainer || graph.container?.querySelector?.(".x6-widget-selection");
+  const container =
+    selectionContainer || graph.container?.querySelector?.(".ms-widget-selection, .x6-widget-selection");
   if (!container) return;
-  const boxes = container.querySelectorAll(".x6-widget-selection-box");
+  const boxes = container.querySelectorAll(".ms-selection-box, .x6-widget-selection-box");
   boxes.forEach((elem) => {
     const el = elem as HTMLElement;
     const id = el.getAttribute("data-cell-id");

@@ -1989,8 +1989,7 @@ export class LibraryDatabase {
       );
 
     const row = this.openalexDb.prepare(`SELECT id FROM scholarly_works WHERE urn = ?`).get(normUrn) as
-      | { id: number }
-      | undefined;
+      { id: number } | undefined;
     return {
       ...work,
       id: row?.id ?? work.id,
@@ -2056,8 +2055,7 @@ export class LibraryDatabase {
     // Seed from user's selected onboarding engineering_persona if present
     try {
       const userRow = this.#db.prepare(`SELECT engineering_persona FROM users WHERE id = ?`).get(userId) as
-        | { engineering_persona?: string | null }
-        | undefined;
+        { engineering_persona?: string | null } | undefined;
       const persona = userRow?.engineering_persona?.trim();
       if (persona && PERSONA_SEED_TOPICS[persona]) {
         const insertStmt = this.#db.prepare(
@@ -2074,8 +2072,7 @@ export class LibraryDatabase {
 
   getOrCreateRemoteUser(actorUrl: string, profileData?: RemoteActorProfile): { id: number } {
     const existing = this.#db.prepare(`SELECT id FROM users WHERE actor_url = ?`).get(actorUrl) as
-      | { id: number }
-      | undefined;
+      { id: number } | undefined;
     if (existing) {
       if (profileData) {
         this.updateRemoteActorProfile(actorUrl, profileData);
@@ -2244,8 +2241,7 @@ export class LibraryDatabase {
 
   getInstanceKeys(): { publicKey: string; privateKey: string } {
     const existing = this.#db.prepare(`SELECT value FROM settings WHERE key = 'instance_keys'`).get() as
-      | { value: string }
-      | undefined;
+      { value: string } | undefined;
     if (existing) {
       return JSON.parse(existing.value) as { publicKey: string; privateKey: string };
     }
@@ -2256,8 +2252,7 @@ export class LibraryDatabase {
 
   getInstanceEd25519Keys(): { publicKey: string; privateKey: string } {
     const existing = this.#db.prepare(`SELECT value FROM settings WHERE key = 'instance_ed25519_keys'`).get() as
-      | { value: string }
-      | undefined;
+      { value: string } | undefined;
     if (existing) {
       return JSON.parse(existing.value) as { publicKey: string; privateKey: string };
     }
@@ -2276,8 +2271,7 @@ export class LibraryDatabase {
       };
     }
     const existing = this.#db.prepare(`SELECT value FROM settings WHERE key = 'instance_vapid_keys'`).get() as
-      | { value: string }
-      | undefined;
+      { value: string } | undefined;
     if (existing) {
       return JSON.parse(existing.value) as { publicKey: string; privateKey: string };
     }
@@ -2445,8 +2439,7 @@ export class LibraryDatabase {
 
   freezeUserForDispute(userId: number, reason: string): { success: boolean; previousBalance: number } {
     const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
-      | { credit_balance?: number | undefined }
-      | undefined;
+      { credit_balance?: number | undefined } | undefined;
     if (!user) {
       return { success: false, previousBalance: 0 };
     }
@@ -3093,8 +3086,7 @@ export class LibraryDatabase {
     return this.#db
       .prepare(`SELECT domain, client_id, client_secret, registered_at FROM federated_oauth_clients WHERE domain = ?`)
       .get(domain.toLowerCase().trim()) as
-      | { domain: string; client_id: string; client_secret: string; registered_at: string }
-      | undefined;
+      { domain: string; client_id: string; client_secret: string; registered_at: string } | undefined;
   }
 
   saveFederatedOAuthClient(domain: string, clientId: string, clientSecret: string): void {
@@ -3168,8 +3160,7 @@ export class LibraryDatabase {
 
   ensureUserRSAKeys(userId: number): { publicKey: string; privateKey: string } {
     const user = this.#db.prepare(`SELECT rsa_private_key, rsa_public_key FROM users WHERE id = ?`).get(userId) as
-      | { rsa_private_key?: string | null | undefined; rsa_public_key?: string | null | undefined }
-      | undefined;
+      { rsa_private_key?: string | null | undefined; rsa_public_key?: string | null | undefined } | undefined;
     if (user?.rsa_private_key && user?.rsa_public_key) {
       return { privateKey: user.rsa_private_key, publicKey: user.rsa_public_key };
     }
@@ -3339,8 +3330,7 @@ export class LibraryDatabase {
       email = maybeEmail;
     }
     const existing = this.#db.prepare(`SELECT username, email FROM users WHERE id = ?`).get(userId) as
-      | { username: string; email: string }
-      | undefined;
+      { username: string; email: string } | undefined;
     if (!existing) return;
 
     const trimmedUsername = (username !== undefined ? username : existing.username).trim();
@@ -3419,8 +3409,7 @@ export class LibraryDatabase {
       candidate_streak?: number;
     }
     const row = this.#db.prepare(`SELECT * FROM user_account_locations WHERE user_id = ?`).get(userId) as
-      | UserLocationRecord
-      | undefined;
+      UserLocationRecord | undefined;
 
     if (!row) {
       this.#db
@@ -3567,15 +3556,13 @@ export class LibraryDatabase {
   incrementTokenVersion(userId: number): number {
     this.#db.prepare(`UPDATE users SET token_version = COALESCE(token_version, 1) + 1 WHERE id = ?`).run(userId);
     const res = this.#db.prepare(`SELECT token_version FROM users WHERE id = ?`).get(userId) as
-      | { token_version: number }
-      | undefined;
+      { token_version: number } | undefined;
     return res?.token_version ?? 1;
   }
 
   getPasswordHash(userId: number): string | undefined {
     const res = this.#db.prepare(`SELECT password_hash FROM users WHERE id = ?`).get(userId) as
-      | { password_hash: string }
-      | undefined;
+      { password_hash: string } | undefined;
     return res?.password_hash;
   }
 
@@ -3682,8 +3669,7 @@ export class LibraryDatabase {
 
   getNotificationSettings(userId: number): string | undefined {
     const res = this.#db.prepare(`SELECT notification_settings FROM users WHERE id = ?`).get(userId) as
-      | { notification_settings: string }
-      | undefined;
+      { notification_settings: string } | undefined;
     return res?.notification_settings;
   }
 
@@ -4094,8 +4080,7 @@ export class LibraryDatabase {
     } else {
       try {
         const userVis = this.#db.prepare(`SELECT default_post_visibility FROM users WHERE id = ?`).get(authorId) as
-          | { default_post_visibility?: string | null }
-          | undefined;
+          { default_post_visibility?: string | null } | undefined;
         const dv = userVis?.default_post_visibility;
         if (dv === "public" || dv === "unlisted" || dv === "followers" || dv === "direct") {
           effectiveVisibility = dv;
@@ -4769,8 +4754,7 @@ export class LibraryDatabase {
     p.visibility = ((p as { visibility?: string }).visibility as PostVisibility) || "public";
     if (p.bookmark_count === undefined) {
       const bmRow = this.#db.prepare(`SELECT COUNT(*) as cnt FROM bookmarks WHERE post_id = ?`).get(p.id) as
-        | { cnt: number }
-        | undefined;
+        { cnt: number } | undefined;
       p.bookmark_count = bmRow?.cnt ?? 0;
     }
     const poll = this.getPostPoll(p.id, currentUserId);
@@ -4839,8 +4823,7 @@ export class LibraryDatabase {
     `,
       )
       .get(uid, uid, uid, id) as
-      | (Omit<PostRow, "metadata"> & { metadata?: PostMetadata | string | null | undefined })
-      | undefined;
+      (Omit<PostRow, "metadata"> & { metadata?: PostMetadata | string | null | undefined }) | undefined;
     return this.hydratePost(p, currentUserId, depth);
   }
 
@@ -5613,8 +5596,7 @@ export class LibraryDatabase {
           .prepare(`DELETE FROM notifications WHERE actor_id = ? AND post_id = ? AND type = 'like'`)
           .run(userId, postId);
         const post = this.#db.prepare(`SELECT visibility, is_silenced FROM posts WHERE id = ?`).get(postId) as
-          | { visibility?: string | null; is_silenced?: number | null }
-          | undefined;
+          { visibility?: string | null; is_silenced?: number | null } | undefined;
         if (post && (post.visibility ?? "public") === "public" && !post.is_silenced) {
           this.boostPostTopics(postId, -0.25);
         }
@@ -5669,8 +5651,7 @@ export class LibraryDatabase {
           .prepare(`DELETE FROM notifications WHERE actor_id = ? AND post_id = ? AND type = 'like'`)
           .run(userId, postId);
         const post = this.#db.prepare(`SELECT visibility, is_silenced FROM posts WHERE id = ?`).get(postId) as
-          | { visibility?: string | null; is_silenced?: number | null }
-          | undefined;
+          { visibility?: string | null; is_silenced?: number | null } | undefined;
         if (post && (post.visibility ?? "public") === "public" && !post.is_silenced) {
           this.boostPostTopics(postId, -0.25);
         }
@@ -5688,8 +5669,7 @@ export class LibraryDatabase {
       if (existing) {
         this.#db.prepare(`DELETE FROM bookmarks WHERE user_id = ? AND post_id = ?`).run(userId, postId);
         const post = this.#db.prepare(`SELECT visibility, is_silenced FROM posts WHERE id = ?`).get(postId) as
-          | { visibility?: string | null; is_silenced?: number | null }
-          | undefined;
+          { visibility?: string | null; is_silenced?: number | null } | undefined;
         if (post && (post.visibility ?? "public") === "public" && !post.is_silenced) {
           this.boostPostTopics(postId, -0.35);
         }
@@ -5721,8 +5701,7 @@ export class LibraryDatabase {
           .prepare(`DELETE FROM notifications WHERE actor_id = ? AND post_id = ? AND type = 'repost'`)
           .run(userId, postId);
         const post = this.#db.prepare(`SELECT visibility, is_silenced FROM posts WHERE id = ?`).get(postId) as
-          | { visibility?: string | null; is_silenced?: number | null }
-          | undefined;
+          { visibility?: string | null; is_silenced?: number | null } | undefined;
         if (post && (post.visibility ?? "public") === "public" && !post.is_silenced) {
           this.boostPostTopics(postId, -0.5);
         }
@@ -5886,8 +5865,7 @@ export class LibraryDatabase {
       }
       if (parsedSettings["qualityFilter"] === true && actorId !== userId && type !== "security_alert") {
         const actorRow = this.#db.prepare(`SELECT status, account_type FROM users WHERE id = ?`).get(actorId) as
-          | { status?: string | null; account_type?: string | null }
-          | undefined;
+          { status?: string | null; account_type?: string | null } | undefined;
         if (actorRow?.status === "suspended" || actorRow?.status === "frozen") return;
       }
     }
@@ -5907,11 +5885,9 @@ export class LibraryDatabase {
     }
 
     const channels = parsedSettings?.["channels"] as
-      | { email?: boolean; browserPush?: boolean; inApp?: boolean }
-      | undefined;
+      { email?: boolean; browserPush?: boolean; inApp?: boolean } | undefined;
     const deliveryChannels = parsedSettings?.["deliveryChannels"] as
-      | { inApp?: boolean; emailNotifications?: boolean }
-      | undefined;
+      { inApp?: boolean; emailNotifications?: boolean } | undefined;
     const inAppEnabled = type === "security_alert" || (channels?.inApp !== false && deliveryChannels?.inApp !== false);
     if (inAppEnabled) {
       const isIdempotentSocial = ["like", "repost", "follow", "follow_request"].includes(type);
@@ -6032,8 +6008,7 @@ export class LibraryDatabase {
     if (postId) {
       try {
         const postRow = this.#db.prepare(`SELECT content FROM posts WHERE id = ?`).get(postId) as
-          | { content: string | null }
-          | undefined;
+          { content: string | null } | undefined;
         if (postRow?.content) {
           const cleaned = postRow.content
             .replace(/::artifact(?:\[[^\]]*\])?\{[^}]*\}/g, "")
@@ -6609,8 +6584,7 @@ export class LibraryDatabase {
     }
     if (settings.federationMode === "allowlist") {
       const row = this.#db.prepare(`SELECT tier FROM federation_domains WHERE domain = ?`).get(cleanDomain) as
-        | { tier: string }
-        | undefined;
+        { tier: string } | undefined;
       return row?.tier === "allow";
     }
     return !this.isDomainSuspended(cleanDomain);
@@ -7092,8 +7066,7 @@ export class LibraryDatabase {
 
   deletePostByApId(apId: string, expectedAuthorId?: number): boolean {
     let post = this.#db.prepare(`SELECT CAST(id AS TEXT) as id, author_id FROM posts WHERE ap_id = ?`).get(apId) as
-      | { id: string | number; author_id: number }
-      | undefined;
+      { id: string | number; author_id: number } | undefined;
     if (!post) {
       const localMatch =
         apId.match(/\/users\/[^/]+\/posts\/([a-zA-Z0-9_-]+)\/?$/) || apId.match(/\/posts\/([a-zA-Z0-9_-]+)\/?$/);
@@ -7328,8 +7301,7 @@ export class LibraryDatabase {
                AND ((? IS NOT NULL AND post_id = ?) OR (target_type = ? AND target_resource_id = ?))`,
           )
           .get(data.postId ?? null, data.postId ?? null, resolvedTargetType, resolvedResourceId) as
-          | { c: number }
-          | undefined;
+          { c: number } | undefined;
         const distinctReporters = countRow?.c ?? 0;
         if (distinctReporters >= threshold) {
           this.quarantineResource({
@@ -7786,32 +7758,27 @@ export class LibraryDatabase {
     const pendingReports =
       (
         this.#db.prepare(`SELECT COUNT(*) as c FROM content_reports WHERE status = 'pending'`).get() as
-          | { c: number }
-          | undefined
+          { c: number } | undefined
       )?.c ?? 0;
     const pendingDmca =
       (
         this.#db.prepare(`SELECT COUNT(*) as c FROM dmca_notices WHERE status = 'pending'`).get() as
-          | { c: number }
-          | undefined
+          { c: number } | undefined
       )?.c ?? 0;
     const failedDeliveries =
       (
         this.#db.prepare(`SELECT COUNT(*) as c FROM federation_delivery_queue WHERE status = 'failed'`).get() as
-          | { c: number }
-          | undefined
+          { c: number } | undefined
       )?.c ?? 0;
     const suspendedDomains =
       (
         this.#db.prepare(`SELECT COUNT(*) as c FROM federation_domains WHERE tier IN ('silence', 'suspend')`).get() as
-          | { c: number }
-          | undefined
+          { c: number } | undefined
       )?.c ?? 0;
     const restrictedUsers =
       (
         this.#db.prepare(`SELECT COUNT(*) as c FROM users WHERE status IN ('frozen', 'suspended')`).get() as
-          | { c: number }
-          | undefined
+          { c: number } | undefined
       )?.c ?? 0;
     return {
       pendingReports,
@@ -7859,8 +7826,7 @@ export class LibraryDatabase {
 
     const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
     const totalRow = this.#db.prepare(`SELECT COUNT(*) as c FROM users u ${whereSql}`).get(...params) as
-      | { c: number }
-      | undefined;
+      { c: number } | undefined;
     const total = totalRow?.c ?? 0;
 
     const breakdownRow = this.#db
@@ -8325,8 +8291,7 @@ export class LibraryDatabase {
     const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
     const auditTarget = this.#auditDb ?? this.#db;
     const row = auditTarget.prepare(`SELECT COUNT(*) as c FROM audit_logs a ${whereSql}`).get(...params) as
-      | { c: number }
-      | undefined;
+      { c: number } | undefined;
     return row?.c ?? 0;
   }
 
@@ -9533,15 +9498,13 @@ export class LibraryDatabase {
 
   isSetupCompleted(): boolean {
     const row = this.#db.prepare(`SELECT value FROM instance_settings WHERE key = 'setupCompleted'`).get() as
-      | { value: string }
-      | undefined;
+      { value: string } | undefined;
     return row?.value === "true";
   }
 
   isSetupForceReopened(): boolean {
     const row = this.#db.prepare(`SELECT value FROM instance_settings WHERE key = 'setupCompleted'`).get() as
-      | { value: string }
-      | undefined;
+      { value: string } | undefined;
     return row?.value === "reopen";
   }
 
@@ -10171,8 +10134,7 @@ export class LibraryDatabase {
     bundle: {
       settings?: Record<string, unknown> | undefined;
       federationDomains?:
-        | { domain: string; tier?: "allow" | "silence" | "suspend"; reason?: string | null }[]
-        | undefined;
+        { domain: string; tier?: "allow" | "silence" | "suspend"; reason?: string | null }[] | undefined;
       featureFlags?:
         | { flag_key: string; is_enabled: number | boolean; allowed_roles?: string; rollout_percentage?: number }[]
         | undefined;
@@ -10448,8 +10410,7 @@ export class LibraryDatabase {
 
   getArtifactView(id: number | string): ArtifactViewRow | undefined {
     let row = this.#db.prepare(`SELECT *, CAST(id AS TEXT) as id FROM artifact_views WHERE id = ?`).get(id) as
-      | ArtifactViewRow
-      | undefined;
+      ArtifactViewRow | undefined;
     if (!row) {
       const idStr = String(id).trim();
       if (idStr.length >= 17 && /^\d+$/.test(idStr)) {
@@ -12299,6 +12260,9 @@ export class LibraryDatabase {
       if (kindLower.startsWith("urdf") || libName.toLowerCase().includes("urdf")) return "urdf";
       if (kindLower.startsWith("step") || kindLower === "cad") return "step";
       if (kindLower.startsWith("scad")) return "scad";
+      if (kindLower === "ampl_model" || kindLower === "nl_problem") return "ampl";
+      if (kindLower === "gams_model") return "gams";
+      if (kindLower === "cplex_lp") return "cplex-lp";
       return "modelica";
     };
 
@@ -13515,8 +13479,7 @@ export class LibraryDatabase {
 
   getOrganizationBySlug(slug: string): OrganizationRecord | null {
     const row = this.#db.prepare(`SELECT * FROM organizations WHERE LOWER(slug) = LOWER(?)`).get(slug.trim()) as
-      | OrganizationRecord
-      | undefined;
+      OrganizationRecord | undefined;
     return row ?? null;
   }
 
@@ -14307,8 +14270,7 @@ export class LibraryDatabase {
 
     if (currentUserId) {
       const uRow = this.#db.prepare(`SELECT engineering_persona FROM users WHERE id = ?`).get(currentUserId) as
-        | { engineering_persona?: string | null }
-        | undefined;
+        { engineering_persona?: string | null } | undefined;
       viewerPersona = uRow?.engineering_persona ?? null;
 
       const tRows = this.#db
@@ -14381,8 +14343,7 @@ export class LibraryDatabase {
 
   getCachedCadGeometry(url: string): string | undefined {
     const row = this.#db.prepare(`SELECT geometry_json FROM cad_cache WHERE url = ?`).get(url) as
-      | { geometry_json?: string | undefined }
-      | undefined;
+      { geometry_json?: string | undefined } | undefined;
     return row?.geometry_json;
   }
 
@@ -14418,8 +14379,7 @@ export class LibraryDatabase {
         `SELECT id, name, status, user_id, metadata FROM jobs WHERE json_extract(metadata, '$.' || ?) = ? ORDER BY id DESC LIMIT 1`,
       )
       .get(key, String(value)) as
-      | { id: number; name: string; status: string; user_id: number | null; metadata: string | null }
-      | undefined;
+      { id: number; name: string; status: string; user_id: number | null; metadata: string | null } | undefined;
   }
 
   updateJobStatus(jobId: number, status: string): void {
@@ -14499,8 +14459,7 @@ export class LibraryDatabase {
 
   getUserBalance(userId: number): number {
     const row = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
-      | { credit_balance?: number | undefined }
-      | undefined;
+      { credit_balance?: number | undefined } | undefined;
     return row?.credit_balance ?? 0;
   }
 
@@ -14540,8 +14499,7 @@ export class LibraryDatabase {
 
     const deductTx = this.#db.transaction(() => {
       const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
-        | { credit_balance?: number | undefined }
-        | undefined;
+        { credit_balance?: number | undefined } | undefined;
 
       if (!user) {
         throw new Error(`User with ID ${userId} not found`);
@@ -14619,8 +14577,7 @@ export class LibraryDatabase {
     }
     const grantTx = this.#db.transaction(() => {
       const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
-        | { credit_balance?: number | undefined }
-        | undefined;
+        { credit_balance?: number | undefined } | undefined;
 
       if (!user) {
         throw new Error(`User with ID ${userId} not found`);
@@ -14738,8 +14695,7 @@ export class LibraryDatabase {
 
     const holdTx = this.#db.transaction(() => {
       const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
-        | { credit_balance?: number | undefined }
-        | undefined;
+        { credit_balance?: number | undefined } | undefined;
 
       if (!user) {
         throw new Error(`User with ID ${userId} not found`);
@@ -14803,8 +14759,7 @@ export class LibraryDatabase {
         .get(userId, jobId) as { id: number; amount: number } | undefined;
 
       const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
-        | { credit_balance?: number | undefined }
-        | undefined;
+        { credit_balance?: number | undefined } | undefined;
 
       if (!user) {
         throw new Error(`User with ID ${userId} not found`);
@@ -14907,8 +14862,7 @@ export class LibraryDatabase {
         .get(userId, jobId) as { id: number; amount: number } | undefined;
 
       const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
-        | { credit_balance?: number | undefined }
-        | undefined;
+        { credit_balance?: number | undefined } | undefined;
 
       if (!user) {
         throw new Error(`User with ID ${userId} not found`);
@@ -14988,8 +14942,7 @@ export class LibraryDatabase {
 
   getUserTransactionCount(userId: number): number {
     const row = this.#db.prepare(`SELECT COUNT(*) as count FROM credit_transactions WHERE user_id = ?`).get(userId) as
-      | { count?: number | undefined }
-      | undefined;
+      { count?: number | undefined } | undefined;
     return row?.count ?? 0;
   }
 
@@ -15005,8 +14958,7 @@ export class LibraryDatabase {
 
   getOrgBalance(orgId: number): number {
     const row = this.#db.prepare(`SELECT credit_balance FROM organizations WHERE id = ?`).get(orgId) as
-      | { credit_balance?: number | undefined }
-      | undefined;
+      { credit_balance?: number | undefined } | undefined;
     return row?.credit_balance ?? 0;
   }
 
@@ -16160,8 +16112,7 @@ export class LibraryDatabase {
       if (byId) return byId;
     }
     return this.#db.prepare(`SELECT * FROM script_templates WHERE slug = ? LIMIT 1`).get(String(idOrSlug)) as
-      | ScriptTemplateRow
-      | undefined;
+      ScriptTemplateRow | undefined;
   }
 
   updateJobMetadata(jobId: number, patch: Record<string, unknown>): void {
@@ -16461,8 +16412,7 @@ export class LibraryDatabase {
 
   getTwinByInstanceId(instanceId: number): TwinRow | undefined {
     return this.#db.prepare(`SELECT * FROM twins WHERE instance_id = ? ORDER BY id DESC LIMIT 1`).get(instanceId) as
-      | TwinRow
-      | undefined;
+      TwinRow | undefined;
   }
 
   listTwins(limit = 50): (TwinRow & {
@@ -17501,8 +17451,7 @@ export class LibraryDatabase {
           WHERE s.user_id = ? AND s.slug = ?`,
         )
         .get(user.id, slug) as
-        | (Omit<SolutionRow, "supported_formats"> & { supported_formats: string | null })
-        | undefined;
+        (Omit<SolutionRow, "supported_formats"> & { supported_formats: string | null }) | undefined;
 
       if (!solution) return null;
 
@@ -17914,8 +17863,7 @@ export class LibraryDatabase {
     updates: { text?: string | undefined; hint?: string | null | undefined; priority?: number | undefined },
   ): InstanceRuleRow | undefined {
     const existing = this.#db.prepare(`SELECT * FROM instance_rules WHERE id = ?`).get(id) as
-      | InstanceRuleRow
-      | undefined;
+      InstanceRuleRow | undefined;
     if (!existing) return undefined;
 
     const nextText = updates.text !== undefined ? updates.text.trim() : existing.text;
@@ -18250,8 +18198,7 @@ export class LibraryDatabase {
   } {
     const hash = hashCanonicalEmail(email);
     const row = this.#db.prepare(`SELECT * FROM canonical_email_blocks WHERE canonical_email_hash = ?`).get(hash) as
-      | CanonicalEmailBlockRow
-      | undefined;
+      CanonicalEmailBlockRow | undefined;
     if (!row) return { blocked: false };
     return {
       blocked: true,
@@ -18327,8 +18274,7 @@ export class LibraryDatabase {
 
   getContentFilter(id: number): ContentFilterRow | undefined {
     const row = this.#db.prepare(`SELECT * FROM content_filters WHERE id = ?`).get(id) as
-      | RawContentFilterRow
-      | undefined;
+      RawContentFilterRow | undefined;
     return row ? this.#hydrateContentFilter(row) : undefined;
   }
 
@@ -19080,8 +19026,7 @@ export class LibraryDatabase {
 
     try {
       const countRow = this.#db.prepare(`SELECT COUNT(*) as c FROM remote_artifact_cache`).get() as
-        | { c: number }
-        | undefined;
+        { c: number } | undefined;
       if (countRow && countRow.c >= 5000) {
         this.#db
           .prepare(
@@ -19651,8 +19596,7 @@ export class LibraryDatabase {
 
   getSpaceById(id: string): SpaceRecord | null {
     const row = this.#db.prepare(`${LibraryDatabase.#SPACE_SELECT_SQL} WHERE s.id = ?`).get(id) as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
     return row ? this.#mapSpaceRow(row) : null;
   }
 
@@ -20209,8 +20153,7 @@ export class LibraryDatabase {
 
   getSpaceChannelById(channelId: string): SpaceChannelRecord | null {
     const row = this.#db.prepare(`SELECT * FROM space_channels WHERE id = ?`).get(channelId) as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
     if (!row) return null;
     return {
       id: String(row["id"]),
@@ -20843,8 +20786,7 @@ end ${modelName};
 
   getSpaceWorkflowRunById(id: string): SpaceWorkflowRunRecord | null {
     const r = this.#db.prepare(`SELECT * FROM space_workflow_runs WHERE id = ?`).get(id) as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
     if (!r) return null;
     return {
       id: String(r["id"]),
@@ -21608,8 +21550,7 @@ end ${modelName};
          WHERE space_id = ? AND external_source = ? AND external_key = ?`,
       )
       .get(params.spaceId, params.externalSource, params.externalKey) as
-      | { id: string; issue_number: number }
-      | undefined;
+      { id: string; issue_number: number } | undefined;
 
     if (existing) {
       const closedAt = params.status === "closed" ? "datetime('now')" : "NULL";

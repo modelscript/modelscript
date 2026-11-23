@@ -137,6 +137,20 @@ export interface PscadLineLike {
   color?: string | undefined;
 }
 
+export interface PscadGraphFrameLike {
+  id: string;
+  title: string;
+  kind: "graphframe" | "overlay" | "poly" | "xy";
+  curves: string[];
+  curveNames?: string[] | undefined;
+  min?: number | undefined;
+  max?: number | undefined;
+  xLabel?: string | undefined;
+  position?: { x: number; y: number } | undefined;
+  width?: number | undefined;
+  height?: number | undefined;
+}
+
 export interface PscadModuleLike {
   name?: string | undefined;
   buses: PscadBusLike[];
@@ -144,6 +158,7 @@ export interface PscadModuleLike {
   wires: PscadWireLike[];
   stickies?: PscadStickyLike[] | undefined;
   lines?: PscadLineLike[] | undefined;
+  graphFrames?: PscadGraphFrameLike[] | undefined;
   junctions?: { x: number; y: number }[] | undefined;
   wirelessNets?: Record<string, string[]> | undefined;
 }
@@ -239,9 +254,21 @@ export interface PscadDiagramGraph {
   };
 }
 
+function parsePscadArgbHex(color: string): string | undefined {
+  if (!/^#[0-9a-fA-F]{8}$/.test(color)) return undefined;
+  const alpha = parseInt(color.slice(1, 3), 16);
+  if (alpha === 0) return "none";
+  return `#${color.slice(3).toLowerCase()}`;
+}
+
 function normalizeStroke(color?: string): string {
   if (!color || color === "none" || color === "Transparent") {
     return "none";
+  }
+  const argb = parsePscadArgbHex(color);
+  if (argb !== undefined) {
+    color = argb;
+    if (color === "none") return "none";
   }
   if (color === "Black" || color === "#000000" || color === "0" || color === "ByNode") {
     return "var(--vscode-editor-foreground, #0f172a)";
@@ -255,10 +282,13 @@ function normalizeStroke(color?: string): string {
   if (color === "White") {
     return "#ffffff";
   }
-  if (color === "Blue") {
+  if (color === "Blue" || color === "#0000ff") {
     return "#0284c7";
   }
-  if (color === "Red") {
+  if (color === "Green" || color === "#008000" || color === "#00ff00") {
+    return "#16a34a";
+  }
+  if (color === "Red" || color === "#ff0000") {
     return "#ef4444";
   }
   return color;
@@ -267,6 +297,11 @@ function normalizeStroke(color?: string): string {
 function normalizeFill(color?: string): string {
   if (!color || color === "none" || color === "Hollow" || color === "Transparent") {
     return "none";
+  }
+  const argb = parsePscadArgbHex(color);
+  if (argb !== undefined) {
+    color = argb;
+    if (color === "none") return "none";
   }
   if (color === "Black" || color === "#000000" || color === "0" || color === "Solid") {
     return "var(--vscode-editor-foreground, #0f172a)";
@@ -277,10 +312,50 @@ function normalizeFill(color?: string): string {
   if (color === "White") {
     return "#ffffff";
   }
-  if (color === "Blue") {
+  if (color === "Blue" || color === "#0000ff") {
     return "#0284c7";
   }
+  if (color === "Green" || color === "#008000" || color === "#00ff00") {
+    return "#16a34a";
+  }
   return color;
+}
+
+/**
+ * Word-wraps PSCAD sticky note text to fit within `maxWidthPx` for SVG `<text>` rendering,
+ * preserving explicit paragraph breaks (`\r\n` / `\n`).
+ */
+function wrapStickyText(text: string, maxWidthPx: number, fontSize: number): string {
+  const normalized = text.replace(/\r\n?/g, "\n");
+  const avgCharWidth = Math.max(4, fontSize * 0.56);
+  const maxChars = Math.max(12, Math.floor(maxWidthPx / avgCharWidth));
+  const outLines: string[] = [];
+
+  for (const paragraph of normalized.split("\n")) {
+    if (paragraph.trim().length === 0) {
+      outLines.push("");
+      continue;
+    }
+    if (paragraph.length <= maxChars) {
+      outLines.push(paragraph);
+      continue;
+    }
+    const words = paragraph.split(/\s+/);
+    let current = "";
+    for (const word of words) {
+      if (!word) continue;
+      if (!current) {
+        current = word;
+      } else if (current.length + 1 + word.length <= maxChars) {
+        current += ` ${word}`;
+      } else {
+        outLines.push(current);
+        current = word;
+      }
+    }
+    if (current) outLines.push(current);
+  }
+  return outLines.join("\n");
 }
 
 /**
@@ -497,31 +572,73 @@ function parseSvgXmlToMarkup(
       attrMap.set(k.toLowerCase(), v as string);
     }
     if (tagName === "gfx") {
-      // Also extract child <param name="..." value="..."/> inside <Gfx>
-      for (const pNode of elem.children) {
-        if (pNode.tag.toLowerCase() === "param") {
-          const pName = pNode.attrs["name"] || pNode.attrs["Name"];
-          const pVal = pNode.attrs["value"] || pNode.attrs["Value"] || pNode.text || "";
-          if (pName) {
-            attrMap.set(pName.toLowerCase(), pVal);
+      const vertices: { x: number; y: number }[] = [];
+      const readGfxChildren = (children: MiniXmlElement[]) => {
+        for (const pNode of children) {
+          const pt = pNode.tag.toLowerCase();
+          if (pt === "param") {
+            const pName = pNode.attrs["name"] || pNode.attrs["Name"];
+            const pVal = pNode.attrs["value"] ?? pNode.attrs["Value"] ?? pNode.text ?? "";
+            if (pName) {
+              attrMap.set(pName.toLowerCase(), pVal);
+            }
+          } else if (pt === "paramlist") {
+            readGfxChildren(pNode.children);
+          } else if (pt === "vertex") {
+            const vx = parseFloat(pNode.attrs["x"] ?? pNode.attrs["X"] ?? "0");
+            const vy = parseFloat(pNode.attrs["y"] ?? pNode.attrs["Y"] ?? "0");
+            if (Number.isFinite(vx) && Number.isFinite(vy)) {
+              vertices.push({ x: vx, y: vy });
+            }
           }
         }
+      };
+      readGfxChildren(elem.children);
+
+      const condParam = attrMap.get("cond");
+      if (condParam && !evalPscadCond(condParam, lowerMap)) {
+        return;
       }
+
+      const gfxColor = attrMap.get("color");
+      if (gfxColor && !attrMap.has("stroke")) {
+        attrMap.set("stroke", gfxColor);
+      }
+
       const clsId = (attrMap.get("classid") ?? "").toLowerCase();
       if (clsId.includes("rectangle")) {
         tagName = "rect";
         if (!attrMap.has("width") && attrMap.has("w")) attrMap.set("width", attrMap.get("w")!);
         if (!attrMap.has("height") && attrMap.has("h")) attrMap.set("height", attrMap.get("h")!);
+        const fillStyle = attrMap.get("fill_style")?.toLowerCase();
+        if (fillStyle === "1" || fillStyle === "solid") {
+          attrMap.set("fill-style", "solid");
+          if (attrMap.has("fill_fg") && !attrMap.has("fill-fg")) {
+            attrMap.set("fill-fg", attrMap.get("fill_fg")!);
+          }
+        }
       } else if (clsId.includes("line")) {
-        tagName = "line";
         const gx = parseFloat(attrMap.get("x1") ?? attrMap.get("x") ?? "0");
         const gy = parseFloat(attrMap.get("y1") ?? attrMap.get("y") ?? "0");
-        const gx2 = attrMap.get("x2") ?? (attrMap.has("w") ? String(gx + parseFloat(attrMap.get("w")!)) : String(gx));
-        const gy2 = attrMap.get("y2") ?? (attrMap.has("h") ? String(gy + parseFloat(attrMap.get("h")!)) : String(gy));
-        attrMap.set("x1", String(gx));
-        attrMap.set("y1", String(gy));
-        attrMap.set("x2", gx2);
-        attrMap.set("y2", gy2);
+        if (vertices.length === 2) {
+          tagName = "line";
+          attrMap.set("x1", String(gx + vertices[0]!.x));
+          attrMap.set("y1", String(gy + vertices[0]!.y));
+          attrMap.set("x2", String(gx + vertices[1]!.x));
+          attrMap.set("y2", String(gy + vertices[1]!.y));
+        } else if (vertices.length > 2) {
+          tagName = "polyline";
+          attrMap.set("points", vertices.map((v) => `${gx + v.x},${gy + v.y}`).join(" "));
+          attrMap.set("fill", "none");
+        } else {
+          tagName = "line";
+          const gx2 = attrMap.get("x2") ?? (attrMap.has("w") ? String(gx + parseFloat(attrMap.get("w")!)) : String(gx));
+          const gy2 = attrMap.get("y2") ?? (attrMap.has("h") ? String(gy + parseFloat(attrMap.get("h")!)) : String(gy));
+          attrMap.set("x1", String(gx));
+          attrMap.set("y1", String(gy));
+          attrMap.set("x2", gx2);
+          attrMap.set("y2", gy2);
+        }
       } else if (clsId.includes("ellipse") || clsId.includes("circle")) {
         tagName = "ellipse";
         if (!attrMap.has("cx") && attrMap.has("x")) attrMap.set("cx", attrMap.get("x")!);
@@ -533,6 +650,25 @@ function parseSvgXmlToMarkup(
       } else if (clsId.includes("text")) {
         tagName = "text";
         bodyText = attrMap.get("text") ?? attrMap.get("value") ?? "";
+        if (gfxColor && !attrMap.has("fill")) {
+          attrMap.set("fill", gfxColor);
+        }
+        const anchorParam = attrMap.get("anchor");
+        if (anchorParam === "0") attrMap.set("text-anchor", "start");
+        else if (anchorParam === "1") attrMap.set("text-anchor", "middle");
+        else if (anchorParam === "2") attrMap.set("text-anchor", "end");
+        const fullFont = attrMap.get("full_font");
+        if (fullFont && !attrMap.has("font-size")) {
+          const worldMatch = /([0-9]+(?:\.[0-9]+)?)\s*world/i.exec(fullFont);
+          const ptMatch = /([0-9]+(?:\.[0-9]+)?)\s*pt/i.exec(fullFont);
+          if (worldMatch) {
+            const sz = Math.max(6.5, Math.min(13, parseFloat(worldMatch[1]!) * 0.78));
+            attrMap.set("font-size", String(Math.round(sz * 10) / 10));
+          } else if (ptMatch) {
+            const sz = Math.max(6.5, Math.min(13, parseFloat(ptMatch[1]!) * 1.45));
+            attrMap.set("font-size", String(Math.round(sz * 10) / 10));
+          }
+        }
       }
     }
     const getAttr = (name: string): string | undefined => attrMap.get(name.toLowerCase());
@@ -684,7 +820,15 @@ function parseSvgXmlToMarkup(
       if (!textVal) return;
       const stroke = normalizeStroke(getAttr("fill") || getAttr("stroke"));
       const fsAttr = getAttr("font-size")?.toLowerCase();
-      const fs = fsAttr === "small" ? 8.5 : fsAttr === "large" ? 10.5 : 8.5;
+      const parsedFs = fsAttr ? parseFloat(fsAttr) : NaN;
+      const fs =
+        fsAttr === "small"
+          ? 8.5
+          : fsAttr === "large"
+            ? 10.5
+            : Number.isFinite(parsedFs) && parsedFs > 0
+              ? parsedFs
+              : 8.5;
       const isBold = getAttr("font-weight") === "bold" || getAttr("font-style") === "bold";
 
       markup.push({ tagName: "text", selector });
@@ -699,7 +843,7 @@ function parseSvgXmlToMarkup(
         textAnchor: anchor,
         ...(cellAngle !== 0 ? { transform: `rotate(${-cellAngle}, ${tx}, ${ty})` } : {}),
       };
-    } else if (tagName === "polygon") {
+    } else if (tagName === "polygon" || tagName === "polyline") {
       const pointsStr = getAttr("points") || "";
       const points = pointsStr
         .trim()
@@ -711,9 +855,9 @@ function parseSvgXmlToMarkup(
         })
         .join(" ");
       const stroke = normalizeStroke(getAttr("stroke"));
-      const fill = normalizeFill(getAttr("fill"));
+      const fill = tagName === "polyline" ? "none" : normalizeFill(getAttr("fill"));
 
-      markup.push({ tagName: "polygon", selector });
+      markup.push({ tagName, selector });
       attrs[selector] = {
         points,
         stroke,
@@ -726,7 +870,7 @@ function parseSvgXmlToMarkup(
   function walk(nodes: MiniXmlElement[]) {
     for (const elem of nodes) {
       const tag = elem.tag.toLowerCase();
-      if (tag === "svg" || tag === "g" || tag === "group") {
+      if (tag === "svg" || tag === "g" || tag === "group" || tag === "graphics") {
         walk(elem.children);
       } else {
         processElement(elem);
@@ -1645,7 +1789,14 @@ export function buildPscadDiagram(
 
     // Place X6 node top-left at (cmp.position.x - width/2, cmp.position.y - height/2)
     // so that cmp.position is the exact geometric center of the apparatus.
-    let topLeftX = Math.round(cmp.position.x - width / 2);
+    // Exception: master:pgb (Output Channel) anchors its input pin at (0, 0) and extends
+    // horizontally away from the pin.
+    let topLeftX =
+      cleanDefn === "pgb" && !hasCustomSvgDef
+        ? cmp.mirror || cellAngle === 180
+          ? Math.round(cmp.position.x - width)
+          : Math.round(cmp.position.x)
+        : Math.round(cmp.position.x - width / 2);
     let topLeftY = isAnnotation ? cmp.position.y : Math.round(cmp.position.y - height / 2);
     if (isLibraryMode && cleanDefn === "newpi") {
       topLeftY = Math.round(936 - height / 2);
@@ -2070,6 +2221,9 @@ export function buildPscadDiagram(
       if (!isInViewport(sticky.position.x, sticky.position.y, sticky.width, sticky.height)) continue;
       const isBanner = sticky.width > 400;
       const isTitle = sticky.height <= 40;
+      const fontSize = isTitle ? 13 : isBanner ? 12 : 11;
+      const padX = isTitle ? 12 : 20;
+      const wrappedText = wrapStickyText(sticky.text, Math.max(40, sticky.width - padX), fontSize);
       cells.push({
         id: sticky.id,
         shape: "rect",
@@ -2086,9 +2240,9 @@ export function buildPscadDiagram(
             ry: isBanner ? 6 : 4,
           },
           label: {
-            text: sticky.text,
+            text: wrappedText,
             fill: "#1e293b",
-            fontSize: isTitle ? 13 : isBanner ? 12 : 11,
+            fontSize,
             fontWeight: isTitle ? "bold" : "normal",
             textAnchor: isTitle ? "middle" : "start",
             textVerticalAnchor: isTitle ? "middle" : "top",
@@ -2098,7 +2252,178 @@ export function buildPscadDiagram(
         },
         data: {
           kind: "sticky",
-          text: sticky.text,
+          text: wrappedText,
+          rawText: sticky.text,
+        },
+      });
+    }
+  }
+
+  // 6b. Convert PSCAD GraphFrame / OverlayGraph Plot Frames
+  if (mod.graphFrames && mod.graphFrames.length > 0) {
+    for (const gf of mod.graphFrames) {
+      if (!gf.position || !gf.width || !gf.height) continue;
+      if (!isInViewport(gf.position.x, gf.position.y, gf.width, gf.height)) continue;
+      const gw = Math.max(120, gf.width);
+      const gh = Math.max(80, gf.height);
+      const headerH = 24;
+      const plotX = 44;
+      const plotY = headerH + 14;
+      const plotW = Math.max(40, gw - plotX - 16);
+      const plotH = Math.max(24, gh - plotY - 26);
+      const curveList = (gf.curveNames && gf.curveNames.length > 0 ? gf.curveNames : gf.curves).slice(0, 4);
+      const legendText = curveList.length > 0 ? curveList.join(" · ") : "Plot";
+      const yMaxStr = gf.max !== undefined ? String(gf.max) : "1.0";
+      const yMinStr = gf.min !== undefined ? String(gf.min) : "-1.0";
+      const xAxisLabel = gf.xLabel || "Time [s]";
+      const midY = Math.round(plotY + plotH / 2);
+
+      cells.push({
+        id: `graph_${gf.id}`,
+        shape: "rect",
+        x: gf.position.x,
+        y: gf.position.y,
+        width: gw,
+        height: gh,
+        zIndex: -2,
+        markup: [
+          { tagName: "rect", selector: "body" },
+          { tagName: "rect", selector: "headerBg" },
+          { tagName: "text", selector: "title" },
+          { tagName: "text", selector: "legend" },
+          { tagName: "rect", selector: "plotBg" },
+          { tagName: "line", selector: "gridH1" },
+          { tagName: "line", selector: "gridH2" },
+          { tagName: "line", selector: "gridV1" },
+          { tagName: "line", selector: "gridV2" },
+          { tagName: "text", selector: "yMax" },
+          { tagName: "text", selector: "yMin" },
+          { tagName: "text", selector: "xLabel" },
+        ],
+        attrs: {
+          body: {
+            width: gw,
+            height: gh,
+            fill: "var(--vscode-editor-background, #ffffff)",
+            stroke: "var(--vscode-widget-border, #94a3b8)",
+            strokeWidth: 1.2,
+            rx: 5,
+            ry: 5,
+          },
+          headerBg: {
+            x: 0,
+            y: 0,
+            width: gw,
+            height: headerH,
+            fill: "var(--vscode-editorWidget-background, #f1f5f9)",
+            stroke: "var(--vscode-widget-border, #cbd5e1)",
+            strokeWidth: 1,
+            rx: 5,
+            ry: 5,
+          },
+          title: {
+            text: gf.title,
+            fill: "var(--vscode-editor-foreground, #0f172a)",
+            fontSize: 10.5,
+            fontWeight: "bold",
+            fontFamily: "system-ui, -apple-system, sans-serif",
+            textAnchor: "start",
+            textVerticalAnchor: "middle",
+            refX: 10,
+            refY: Math.round(headerH / 2),
+          },
+          legend: {
+            text: legendText,
+            fill: "#0284c7",
+            fontSize: 9.5,
+            fontWeight: "600",
+            fontFamily: "monospace",
+            textAnchor: "end",
+            textVerticalAnchor: "middle",
+            refX: gw - 10,
+            refY: Math.round(headerH / 2),
+          },
+          plotBg: {
+            x: plotX,
+            y: plotY,
+            width: plotW,
+            height: plotH,
+            fill: "var(--vscode-editor-background, #f8fafc)",
+            stroke: "#cbd5e1",
+            strokeWidth: 1,
+          },
+          gridH1: {
+            x1: plotX,
+            y1: midY,
+            x2: plotX + plotW,
+            y2: midY,
+            stroke: "#cbd5e1",
+            strokeWidth: 0.75,
+            strokeDasharray: "3,3",
+          },
+          gridH2: {
+            x1: plotX,
+            y1: Math.round(plotY + plotH * 0.25),
+            x2: plotX + plotW,
+            y2: Math.round(plotY + plotH * 0.25),
+            stroke: "#e2e8f0",
+            strokeWidth: 0.75,
+            strokeDasharray: "2,3",
+          },
+          gridV1: {
+            x1: Math.round(plotX + plotW * 0.33),
+            y1: plotY,
+            x2: Math.round(plotX + plotW * 0.33),
+            y2: plotY + plotH,
+            stroke: "#e2e8f0",
+            strokeWidth: 0.75,
+            strokeDasharray: "2,3",
+          },
+          gridV2: {
+            x1: Math.round(plotX + plotW * 0.66),
+            y1: plotY,
+            x2: Math.round(plotX + plotW * 0.66),
+            y2: plotY + plotH,
+            stroke: "#e2e8f0",
+            strokeWidth: 0.75,
+            strokeDasharray: "2,3",
+          },
+          yMax: {
+            text: yMaxStr,
+            fill: "#64748b",
+            fontSize: 8.5,
+            fontFamily: "monospace",
+            textAnchor: "end",
+            textVerticalAnchor: "top",
+            refX: plotX - 5,
+            refY: plotY,
+          },
+          yMin: {
+            text: yMinStr,
+            fill: "#64748b",
+            fontSize: 8.5,
+            fontFamily: "monospace",
+            textAnchor: "end",
+            textVerticalAnchor: "bottom",
+            refX: plotX - 5,
+            refY: plotY + plotH,
+          },
+          xLabel: {
+            text: xAxisLabel,
+            fill: "#64748b",
+            fontSize: 9,
+            fontFamily: "system-ui, -apple-system, sans-serif",
+            textAnchor: "middle",
+            textVerticalAnchor: "top",
+            refX: Math.round(plotX + plotW / 2),
+            refY: plotY + plotH + 6,
+          },
+        },
+        data: {
+          kind: "graphframe",
+          title: gf.title,
+          curves: gf.curves,
+          curveNames: curveList,
         },
       });
     }
@@ -2387,8 +2712,7 @@ export function renderPscadSvg(
       }
       pathData += ` L ${tgtPt.x} ${tgtPt.y}`;
       const lineAttrs = c.attrs?.["line"] as
-        | { stroke?: string; strokeWidth?: number; strokeDasharray?: string }
-        | undefined;
+        { stroke?: string; strokeWidth?: number; strokeDasharray?: string } | undefined;
       const stroke = resolveVar(lineAttrs?.stroke, isDark) ?? "#0284c7";
       const sw = lineAttrs?.strokeWidth ?? 2;
       const sda = lineAttrs?.strokeDasharray ? ` stroke-dasharray="${lineAttrs.strokeDasharray}"` : "";

@@ -37,6 +37,7 @@ import {
   getDiagramData,
   parseCode,
   runFormalLints,
+  setPreferredLspLanguageId,
   type MorselOnDemandLintMode,
 } from "./util/lsp-bridge";
 import { startLsp } from "./util/lsp-worker";
@@ -121,6 +122,7 @@ export interface MorselEditorProps {
   onRemoveProjectFile?: ((fileName: string) => void) | undefined;
   onRenameProjectFile?: ((oldName: string, newName: string) => void) | undefined;
   onMoveProjectFile?: ((fileName: string, targetDir: string) => void) | undefined;
+  dirtyFiles?: string[] | Set<string> | undefined;
 }
 
 const isSplit = (v: View) => v === View.SPLIT_COLUMNS || v === View.SPLIT_ROWS;
@@ -138,6 +140,7 @@ export default function MorselEditor(props: MorselEditorProps) {
       setDialectState(nextInfo.id);
     }
   }
+  setPreferredLspLanguageId(dialect);
   const [diagramType, setDiagramTypeState] = useState<string>(() => {
     const requested = props.diagramType ?? props.initialDiagramType;
     if (requested) {
@@ -588,7 +591,9 @@ export default function MorselEditor(props: MorselEditorProps) {
       setTreeVisible((v) => {
         const next = !v;
         if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent("morsel:sidebar-changed", { detail: { open: next } }));
+          queueMicrotask(() => {
+            window.dispatchEvent(new CustomEvent("morsel:sidebar-changed", { detail: { open: next } }));
+          });
         }
         return next;
       });
@@ -2001,6 +2006,26 @@ export default function MorselEditor(props: MorselEditorProps) {
               toast.error(`${label} failed: ${String(res.error)}`);
               return;
             }
+            if (
+              langId === "owl2" &&
+              (actionId === "validate_consistency" || actionId === "explain_inferences" || actionId === "query_sparql")
+            ) {
+              setShowResultsView(false);
+              setShowCadView(false);
+              setShowAnalysisView(true);
+              if (view === "code") setView("split");
+              const rec = res && typeof res === "object" ? (res as Record<string, unknown>) : null;
+              const summary =
+                typeof rec?.["formattedSummary"] === "string" ? rec["formattedSummary"] : `${label} completed`;
+              if (rec?.["consistent"] === false) {
+                toast.error(summary);
+              } else if (Array.isArray(rec?.["unsatisfiableClasses"]) && rec["unsatisfiableClasses"].length > 0) {
+                toast.warning(summary);
+              } else {
+                toast.success(summary);
+              }
+              return;
+            }
             const outputText =
               typeof res === "string"
                 ? res
@@ -2241,6 +2266,7 @@ export default function MorselEditor(props: MorselEditorProps) {
             onRenameProjectFile={props.onRenameProjectFile}
             onMoveProjectFile={props.onMoveProjectFile}
             fileDiagnosticCounts={fileDiagnosticCounts}
+            dirtyFiles={props.dirtyFiles}
           />
 
           <div

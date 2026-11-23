@@ -1020,7 +1020,18 @@ const SIMULINK_MONARCH: Monaco.languages.IMonarchLanguage = {
   },
 };
 
-function getMonarchForFamily(family: MorselSyntaxFamily): Monaco.languages.IMonarchLanguage {
+const PLAINTEXT_MONARCH: Monaco.languages.IMonarchLanguage = {
+  tokenizer: {
+    root: [
+      [/\/\/.*$/, "comment"],
+      [/#.*$/, "comment"],
+      [/"([^"\\]|\\.)*"/, "string"],
+      [/-?\d+(\.\d+)?([eE][+-]?\d+)?/, "number"],
+    ],
+  },
+};
+
+function getMonarchForFamily(family: MorselSyntaxFamily | string): Monaco.languages.IMonarchLanguage {
   switch (family) {
     case "modelica":
       return MODELICA_MONARCH;
@@ -1050,6 +1061,8 @@ function getMonarchForFamily(family: MorselSyntaxFamily): Monaco.languages.IMona
       return PLCOPEN_MONARCH;
     case "simulink":
       return SIMULINK_MONARCH;
+    default:
+      return PLAINTEXT_MONARCH;
   }
 }
 
@@ -1326,9 +1339,10 @@ export function setupMonacoLspAdapter(
             return cached ? { data: cached } : null;
           }
           let raw: number[] = result.data;
-          if (model.getLanguageId() === "modelica" && raw.length >= 5) {
-            // Preserve Monarch's keyword.control (purple) vs keyword (blue) distinction
-            const filtered: number[] = [];
+          if (raw.length >= 5) {
+            const isModelica = model.getLanguageId() === "modelica";
+            const lineCount = model.getLineCount();
+            const sanitized: number[] = [];
             let curLine = 0;
             let curChar = 0;
             let prevEmittedLine = 0;
@@ -1341,14 +1355,21 @@ export function setupMonacoLspAdapter(
               const mod = raw[i + 4]!;
               curLine += dl;
               curChar = dl === 0 ? curChar + dc : dc;
-              if (typeIdx === 0) continue; // skip "keyword"
+              // Preserve Monarch's keyword.control (purple) vs keyword (blue) distinction for Modelica
+              if (isModelica && typeIdx === 0) continue;
+              if (curLine < 0 || curLine >= lineCount || curChar < 0 || len <= 0) continue;
+              const maxLineLen = model.getLineLength(curLine + 1);
+              if (curChar >= maxLineLen) continue;
+              const clampedLen = Math.min(len, maxLineLen - curChar);
+              if (clampedLen <= 0) continue;
               const outDl = curLine - prevEmittedLine;
               const outDc = outDl === 0 ? curChar - prevEmittedChar : curChar;
-              filtered.push(outDl, outDc, len, typeIdx, mod);
+              if (outDl < 0 || outDc < 0) continue;
+              sanitized.push(outDl, outDc, clampedLen, typeIdx, mod);
               prevEmittedLine = curLine;
               prevEmittedChar = curChar;
             }
-            raw = filtered;
+            raw = sanitized;
           }
           const data = new Uint32Array(raw);
           lastSemanticTokensCache.set(uri, data);
@@ -1620,12 +1641,26 @@ export function setupMonacoLspAdapter(
               })),
             },
           });
-          const actions: Monaco.languages.CodeAction[] = (result ?? []).map((ca: any) => ({
-            title: ca.title,
-            kind: ca.kind,
-            isPreferred: ca.isPreferred,
-            edit: ca.edit ? convertWorkspaceEdit(monaco, ca.edit) : undefined,
-          }));
+          const actions: Monaco.languages.CodeAction[] = (result ?? []).map((ca: any) => {
+            if (ca.command?.command) {
+              ensureCommandRegistered(ca.command.command);
+            }
+            return {
+              title: ca.title,
+              kind: ca.kind,
+              isPreferred: ca.isPreferred,
+              edit: ca.edit ? convertWorkspaceEdit(monaco, ca.edit) : undefined,
+              ...(ca.command?.command
+                ? {
+                    command: {
+                      id: ca.command.command,
+                      title: ca.command.title ?? ca.title,
+                      arguments: ca.command.arguments,
+                    },
+                  }
+                : {}),
+            };
+          });
           return { actions, dispose: () => {} };
         } catch {
           return { actions: [], dispose: () => {} };

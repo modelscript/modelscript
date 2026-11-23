@@ -101,7 +101,14 @@ export function registerAllLspProviders(context: LspContext): void {
         : workspaceManager.getWorkspaceIndex("modelica");
       return await idx?.getIndexAsync();
     },
-    () => workspaceManager.getWorkspaceIndex("modelica"),
+    () => {
+      const indices = Array.from(new Set(workspaceManager.allWorkspaceIndices.values()));
+      const mo = workspaceManager.getWorkspaceIndex("modelica");
+      if (mo && !indices.includes(mo)) indices.push(mo);
+      return indices;
+    },
+    undefined,
+    workspaceManager,
   );
 
   registerSignatureHelpProvider(

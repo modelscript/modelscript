@@ -1200,6 +1200,9 @@ importers:
       '@modelscript/swmm':
         specifier: workspace:*
         version: link:../../languages/swmm
+      '@modelscript/three-mf':
+        specifier: workspace:*
+        version: link:../../languages/three-mf
       '@modelscript/urdf':
         specifier: workspace:*
         version: link:../../languages/urdf
@@ -3733,6 +3736,9 @@ importers:
       '@modelscript/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
+      '@modelscript/sparql':
+        specifier: workspace:*
+        version: link:../sparql
       react:
         specifier: ^18.0.0 || ^19.0.0
         version: 19.3.1
@@ -5539,6 +5545,9 @@ importers:
       '@modelscript/nmea0183':
         specifier: workspace:*
         version: link:../../languages/nmea0183
+      '@modelscript/nmodl':
+        specifier: workspace:*
+        version: link:../../languages/nmodl
       '@modelscript/nmtran':
         specifier: workspace:*
         version: link:../../languages/nmtran
@@ -5686,6 +5695,9 @@ importers:
       '@modelscript/smiles':
         specifier: workspace:*
         version: link:../../languages/smiles
+      '@modelscript/sparql':
+        specifier: workspace:*
+        version: link:../../languages/sparql
       '@modelscript/spice':
         specifier: workspace:*
         version: link:../../languages/spice

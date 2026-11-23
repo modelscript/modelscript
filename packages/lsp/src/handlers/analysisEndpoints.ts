@@ -287,10 +287,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
               inputs: inputRanges,
               outputs: outputNames,
               strategy: (params.strategy ?? "latin-hypercube") as
-                | "full-factorial"
-                | "latin-hypercube"
-                | "sobol"
-                | "central-composite",
+                "full-factorial" | "latin-hypercube" | "sobol" | "central-composite",
               numSamples: params.numSamples ?? 50,
               simulateOptions: {
                 startTime,
@@ -707,8 +704,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
               if (!resUri || isVirtualStdlibUri(resUri)) continue;
               const docsExt = context.documents as unknown as { get?: (uri: string) => unknown } | undefined;
               const wmDocs = context.workspaceManager as unknown as
-                | { getDocument?: (uri: string) => unknown }
-                | undefined;
+                { getDocument?: (uri: string) => unknown } | undefined;
               const uDoc = (unifiedWs?.getDocument?.(resUri) ??
                 docsExt?.get?.(resUri) ??
                 wmDocs?.getDocument?.(resUri)) as { getText?: () => string; text?: string } | undefined;
@@ -1123,7 +1119,9 @@ export function registerAnalysisEndpoints(context: LspContext) {
     async (params: {
       uri: string;
       className?: string | undefined;
-      csvData: string;
+      csvData?: string | undefined;
+      comtradeData?: string | undefined;
+      comtradeMode?: "raw" | "phasor" | undefined;
       timeColumn?: string | undefined;
       columnMapping?: Record<string, string> | undefined;
       parameters: string[];
@@ -1141,6 +1139,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         y: number[][];
         states: string[];
       };
+      measured?: Record<string, { t: number[]; y: number[] }> | undefined;
       costHistory: number[];
       error?: string | undefined;
     }> => {
@@ -1182,18 +1181,67 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
         const arena = flattenArenaFromInstance(classInstance, docContext);
 
-        // Parse CSV
-        const csvOptions: any = { skipNaN: true };
-        if (params.timeColumn) csvOptions.timeColumn = params.timeColumn;
-        if (params.columnMapping) csvOptions.columnMapping = new Map(Object.entries(params.columnMapping));
-
-        const csv = parseCsvMeasurements(params.csvData, csvOptions);
-
-        // Build measurements map
+        // Build measurements map from either COMTRADE (.cff) or CSV data
         const measurements = new Map<string, { t: number[]; y: number[] }>();
-        for (const col of csv.columns) {
-          const values = csv.data.get(col);
-          if (values) measurements.set(col, { t: csv.time, y: values });
+        const rawComtrade =
+          params.comtradeData ??
+          (typeof params.csvData === "string" && params.csvData.includes("--- file type: CFG ---")
+            ? params.csvData
+            : undefined);
+
+        if (rawComtrade) {
+          const { extractPhasor, parseComtradeCff } = await import("@modelscript/comtrade");
+          const record = parseComtradeCff(rawComtrade);
+          const timeArr = Array.from(record.timeSec ?? record.timestamps ?? []);
+          const mode = params.comtradeMode ?? "raw";
+          const mapping = params.columnMapping ?? {};
+
+          const channels: Array<{ name: string; signal: number[] }> = [];
+          if (record.analogData instanceof Map) {
+            for (const [chName, arr] of record.analogData.entries()) {
+              channels.push({ name: chName, signal: Array.from(arr) });
+            }
+          } else if (Array.isArray(record.analogData)) {
+            const cfgAnalogs = record.config?.analogChannels ?? record.cfg?.analogChannels ?? [];
+            for (let i = 0; i < record.analogData.length; i++) {
+              const chName = cfgAnalogs[i]?.name ?? `ch${i + 1}`;
+              channels.push({ name: chName, signal: record.analogData[i]! });
+            }
+          }
+
+          for (const ch of channels) {
+            const targetVar = mapping[ch.name] ?? ch.name;
+            if (!targetVar) continue;
+            if (mode === "phasor") {
+              const res = extractPhasor(record, ch.name);
+              if (res.phasors.length > 0) {
+                measurements.set(targetVar, {
+                  t: res.phasors.map((p) => p.timeSec),
+                  y: res.phasors.map((p) => p.magnitudeRms),
+                });
+              }
+            } else if (timeArr.length > 0 && ch.signal.length > 0) {
+              const len = Math.min(timeArr.length, ch.signal.length);
+              measurements.set(targetVar, {
+                t: timeArr.slice(0, len),
+                y: ch.signal.slice(0, len),
+              });
+            }
+          }
+        } else if (params.csvData) {
+          const csvOptions: NonNullable<Parameters<typeof parseCsvMeasurements>[1]> = { skipNaN: true };
+          if (params.timeColumn) csvOptions.timeColumn = params.timeColumn;
+          if (params.columnMapping) csvOptions.columnMapping = new Map(Object.entries(params.columnMapping));
+
+          const csv = parseCsvMeasurements(params.csvData, csvOptions);
+          for (const col of csv.columns) {
+            const values = csv.data.get(col);
+            if (values) measurements.set(col, { t: csv.time, y: values });
+          }
+        }
+
+        if (measurements.size === 0) {
+          throw new Error("No measurement channels found in the provided dataset.");
         }
 
         // Parameter bounds map
@@ -1243,6 +1291,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
             y: yMatrix,
             states,
           },
+          measured: Object.fromEntries(measurements),
           costHistory: result.costHistory,
         };
       } catch (e) {

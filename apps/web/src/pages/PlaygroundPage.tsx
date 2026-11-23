@@ -254,6 +254,10 @@ export const PlaygroundPage: React.FC = () => {
     stopTimeParam ? Number(stopTimeParam) : undefined,
   );
   const [isDirty, setIsDirty] = useState<boolean>(false);
+  const [dirtyFiles, setDirtyFiles] = useState<string[]>([]);
+  useEffect(() => {
+    if (!isDirty) setDirtyFiles([]);
+  }, [isDirty]);
   const [pendingExample, setPendingExample] = useState<HeroExample | null>(null);
   const [pendingClearWorkspace, setPendingClearWorkspace] = useState<boolean>(false);
   const [openNewModelAfterClear, setOpenNewModelAfterClear] = useState<boolean>(false);
@@ -1214,10 +1218,16 @@ export const PlaygroundPage: React.FC = () => {
   };
 
   const handleCodeChange = (nextCode: string) => {
+    const targetFile = activeFile ?? defaultSingleFileName;
     if (nextCode !== currentCode && nextCode !== baselineCodeRef.current) {
       setIsDirty(true);
+      setDirtyFiles((prev) => (prev.includes(targetFile) ? prev : [...prev, targetFile]));
     } else if (nextCode === baselineCodeRef.current) {
-      setIsDirty(false);
+      setDirtyFiles((prev) => {
+        const next = prev.filter((f) => f !== targetFile);
+        if (next.length === 0) setIsDirty(false);
+        return next;
+      });
     }
     setCurrentCode(nextCode);
     if (projectFiles && activeFile) {
@@ -1253,6 +1263,7 @@ export const PlaygroundPage: React.FC = () => {
     setCurrentCode("");
     setCurrentLang(nextDialect);
     setIsDirty(true);
+    setDirtyFiles((prev) => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
   };
 
   const defaultSingleFileName = `model.${getLanguageInfo(currentLang).ext || "mo"}`;
@@ -1282,6 +1293,7 @@ export const PlaygroundPage: React.FC = () => {
       }
     }
     setIsDirty(true);
+    setDirtyFiles((prev) => prev.filter((f) => f !== fileName));
   };
 
   const handleRenameProjectFile = (oldName: string, newName: string) => {
@@ -1305,6 +1317,10 @@ export const PlaygroundPage: React.FC = () => {
       setCurrentLang(inferDialectFromFilename(trimmed) || currentLang);
     }
     setIsDirty(true);
+    setDirtyFiles((prev) => {
+      const withoutOld = prev.filter((f) => f !== oldName);
+      return withoutOld.includes(trimmed) ? withoutOld : [...withoutOld, trimmed];
+    });
   };
 
   const handleMoveProjectFile = (fileName: string, targetDir: string) => {
@@ -1756,6 +1772,7 @@ export const PlaygroundPage: React.FC = () => {
               isLoadingModel={Boolean(loadingTemplateTitle)}
               projectFiles={resolvedProjectFiles}
               activeFileName={activeFile ?? defaultSingleFileName}
+              dirtyFiles={dirtyFiles}
               onSelectProjectFile={handleSwitchProjectFile}
               onAddProjectFile={handleAddProjectFile}
               onOpenNewModelModal={() => {
@@ -1770,6 +1787,8 @@ export const PlaygroundPage: React.FC = () => {
                   if (!prev || prev[fileName] === nextContent) return prev;
                   return { ...prev, [fileName]: nextContent };
                 });
+                setIsDirty(true);
+                setDirtyFiles((prev) => (prev.includes(fileName) ? prev : [...prev, fileName]));
               }}
               embed={false}
               hideFloatingDock={true}

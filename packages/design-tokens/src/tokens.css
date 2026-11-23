@@ -27,6 +27,7 @@
   --ms-brand-soft: rgba(8, 145, 178, 0.12);
   --ms-brand-contrast: #ffffff;
   --ms-brand-shadow: 0 10px 30px -10px rgba(6, 182, 212, 0.45);
+  --ms-spinner-color: #06b6d4;
   --ms-focus-ring: 0 0 0 3px rgba(8, 145, 178, 0.35);
 
   /* ── Neutral surfaces ── */
@@ -196,6 +197,7 @@
   --ms-brand-active: #0e7490;
   --ms-brand-soft: rgba(34, 211, 238, 0.14);
   --ms-brand-shadow: 0 10px 30px -10px rgba(6, 182, 212, 0.55);
+  --ms-spinner-color: #22d3ee;
   --ms-focus-ring: 0 0 0 3px rgba(34, 211, 238, 0.35);
   --ms-gradient-text: linear-gradient(110deg, #5eead4 0%, #22d3ee 45%, #a5b4fc 100%);
 

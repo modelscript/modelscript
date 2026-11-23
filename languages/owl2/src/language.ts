@@ -1,6 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { choice, field, language, optional, repeat, semanticToken, seq } from "@modelscript/dsl";
+import {
+  choice,
+  CstUnparser,
+  field,
+  language,
+  optional,
+  repeat,
+  semanticToken,
+  seq,
+  type SyntaxNode,
+} from "@modelscript/dsl";
+import {
+  executeExplainInferences,
+  executeOpenOntologyDiagram,
+  executeQuerySparql,
+  executeValidateConsistency,
+} from "./actions.js";
 import { indexOwl2Document } from "./indexing.js";
 import { owl2PolyglotConfig } from "./tgg/index.js";
 
@@ -127,7 +143,44 @@ export const owl2Language = language({
 
   // Bi-directional source writeback for updating literal values inside DataPropertyAssertion axioms
   writeback: (ctx) => {
-    const { entry, fullText, newValue } = ctx;
+    const { entry, fullText, newValue, rootCst } = ctx;
+    const cstRoot = ((rootCst as { rootNode?: SyntaxNode } | undefined)?.rootNode ?? rootCst) as SyntaxNode | undefined;
+
+    // 1. Canonical CST literal leaf replacement when CST is available
+    if (cstRoot && entry?.startOffset != null && entry?.endOffset != null && entry.endOffset > entry.startOffset) {
+      const targetNode = cstRoot.descendantForIndex?.(entry.startOffset, entry.endOffset);
+      if (targetNode) {
+        const stack: SyntaxNode[] = [targetNode];
+        while (stack.length > 0) {
+          const cur = stack.pop()!;
+          const t = (cur.type || "").toLowerCase();
+          if (cur.startIndex >= entry.startOffset && cur.endIndex <= entry.endOffset) {
+            if (t.includes("string") || t.includes("quoted_string")) {
+              const raw = fullText.slice(cur.startIndex, cur.endIndex);
+              if (raw.startsWith('"') && raw.endsWith('"') && raw.length >= 2) {
+                const cleanVal = newValue.replace(/^"|"$/g, "");
+                return { startOffset: cur.startIndex + 1, endOffset: cur.endIndex - 1, newText: cleanVal };
+              }
+            }
+            if (t.includes("number") || t.includes("integer") || t.includes("decimal") || t.includes("float")) {
+              return { startOffset: cur.startIndex, endOffset: cur.endIndex, newText: newValue.trim() };
+            }
+          }
+          const children = cur.children ?? [];
+          for (let i = children.length - 1; i >= 0; i--) {
+            stack.push(children[i]!);
+          }
+        }
+      }
+      const cstPatch = CstUnparser.patchWritebackValue(fullText, cstRoot, entry, newValue, {
+        valueFields: ["value", "literal", "lexical_value"],
+      });
+      if (cstPatch) {
+        return { startOffset: cstPatch.startIndex, endOffset: cstPatch.endIndex, newText: cstPatch.text };
+      }
+    }
+
+    // 2. Fallback when rootCst is not provided
     if (entry?.startOffset != null && entry?.endOffset != null && entry.endOffset > entry.startOffset) {
       const declText = fullText.substring(entry.startOffset, entry.endOffset);
       // E.g. DataPropertyAssertion(:maxPayload :Drone "2.5"^^xsd:double)
@@ -174,6 +227,7 @@ export const owl2Language = language({
           modelDescription: "Validates the logical consistency and satisfiability of an OWL 2 ontology.",
         },
       },
+      execute: executeValidateConsistency,
     },
     {
       id: "open_ontology_diagram",
@@ -197,6 +251,7 @@ export const owl2Language = language({
           modelDescription: "Renders an interactive 2D graph diagram of classes and relations.",
         },
       },
+      execute: executeOpenOntologyDiagram,
     },
     {
       id: "explain_inferences",
@@ -217,6 +272,7 @@ export const owl2Language = language({
           modelDescription: "Extracts axiom justification trees explaining inferred subclass relationships.",
         },
       },
+      execute: executeExplainInferences,
     },
     {
       id: "query_sparql",
@@ -236,6 +292,7 @@ export const owl2Language = language({
           modelDescription: "Executes a SPARQL-DL graph query against the active ontology.",
         },
       },
+      execute: executeQuerySparql,
     },
   ],
 

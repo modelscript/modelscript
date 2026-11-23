@@ -964,5 +964,210 @@ equation
 end ThermalPlant;`,
     },
   },
+  {
+    id: "polyglot-power-grid-comtrade-calibration",
+    title: "Polyglot Power Grid: SysML v2 + PSS/E + PSCAD + Fortran + Modelica + COMTRADE",
+    category: "Power Grids & EMT",
+    domain: "Power Grids",
+    description:
+      "End-to-end power systems digital thread linking SysML v2 NERC MOD-026 requirements, PSS/E transmission power flow, PSCAD EMT inverter island calling an external Fortran 90 (.f90) Volt-Var UDM, Modelica plant controller, and an IEEE COMTRADE (.cff) disturbance record for in-browser parameter calibration.",
+    tags: ["Polyglot", "SysML v2", "PSS/E", "PSCAD", "Fortran 90", "Modelica", "COMTRADE", "Calibration"],
+    lang: "sysml2",
+    activeFile: "GridRequirements.sysml",
+    code: `package IBRGridDigitalThread {
+  import PlantController::*;
+
+  part def GridArchitecture {
+    attribute pcc_bus_kv = 230.0 [kV];
+    attribute nominal_freq_hz = 60.0 [Hz];
+    attribute emt_timestep_us = 50.0 [us];
+  }
+
+  part def PlantController {
+    attribute K_droop = 4.0;
+    attribute T_avr = 0.20 [s];
+    attribute Vt_min_pu = 0.90 [pu];
+  }
+
+  requirement def <'REQ-MOD26-01'> VoltageRecoveryReq {
+    doc /* Plant terminal voltage shall recover above 0.90 pu with calibrated droop gain */
+    subject plant : PlantController;
+    require constraint { PlantController.Vt >= 0.90 }
+  }
+
+  verification def ComtradeCalibrationVerification {
+    subject plant : PlantController;
+    verify requirement VoltageRecoveryReq;
+  }
+}`,
+    files: {
+      "GridRequirements.sysml": `package IBRGridDigitalThread {
+  import PlantController::*;
+
+  part def GridArchitecture {
+    attribute pcc_bus_kv = 230.0 [kV];
+    attribute nominal_freq_hz = 60.0 [Hz];
+    attribute emt_timestep_us = 50.0 [us];
+  }
+
+  part def PlantController {
+    attribute K_droop = 4.0;
+    attribute T_avr = 0.20 [s];
+    attribute Vt_min_pu = 0.90 [pu];
+  }
+
+  requirement def <'REQ-MOD26-01'> VoltageRecoveryReq {
+    doc /* Plant terminal voltage shall recover above 0.90 pu with calibrated droop gain */
+    subject plant : PlantController;
+    require constraint { PlantController.Vt >= 0.90 }
+  }
+
+  verification def ComtradeCalibrationVerification {
+    subject plant : PlantController;
+    verify requirement VoltageRecoveryReq;
+  }
+}`,
+      "TransmissionGrid.raw": `0, 100.0, 33, 0, 0, 60.0 / IEEE 3-BUS IBR INTERCONNECTION CASE
+IBR DIGITAL THREAD — 230 KV TRANSMISSION INTERFACE
+1, 'SLACK_230   ', 230.0000, 3, 1, 1, 1, 1.02000,   0.0000
+2, 'PCC_IBR     ', 230.0000, 2, 1, 1, 1, 1.00000,  -2.4000
+3, 'LOAD_SUB    ', 230.0000, 1, 1, 1, 1, 0.98500,  -5.1000
+0 / END OF BUS DATA, BEGIN LOAD DATA
+3, '1 ', 1, 1, 1, 120.000, 35.000, 0.000, 0.000, 0.000, 0.000, 1
+0 / END OF LOAD DATA, BEGIN FIXED SHUNT DATA
+0 / END OF FIXED SHUNT DATA, BEGIN GENERATOR DATA
+1, '1 ',  70.000,  20.000,  150.000, -100.000, 1.02000, 0, 100.0, 0.0, 0.20, 0.0, 0.0, 1.0, 1, 100.0, 200.0, 0.0
+2, '1 ',  50.000,  15.000,   60.000,  -60.000, 1.00000, 0, 100.0, 0.0, 0.15, 0.0, 0.0, 1.0, 1, 100.0, 100.0, 0.0
+0 / END OF GENERATOR DATA, BEGIN BRANCH DATA
+1, 2, '1 ', 0.01000, 0.08500, 0.01760, 250.0, 250.0, 250.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 1.0
+2, 3, '1 ', 0.01700, 0.09200, 0.01580, 200.0, 200.0, 200.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 1.0
+0 / END OF BRANCH DATA
+Q`,
+      "InverterIsland.pscx": `<project name="InverterIsland" version="5.0">
+  <definitions>
+    <Definition classid="UserCmpDefn" name="VoltVarDroopUDM" id="200">
+      <paramlist>
+        <param name="K_droop" value="4.0" />
+        <param name="Q_max" value="1.2" />
+      </paramlist>
+      <script>
+        <segment name="Fortran" id="1"><![CDATA[
+#LOCAL REAL v_err, q_raw, q_clamped
+v_err = 1.0 - ABS($V_pcc) / 230.0
+q_raw = DROOP_GAIN(v_err, $K_droop)
+CALL RIDE_THROUGH_CLAMP(q_raw, $Q_max, q_clamped)
+$Q_cmd = q_clamped
+        ]]></segment>
+      </script>
+    </Definition>
+  </definitions>
+  <schematic classid="UserCanvas">
+    <User classid="UserCmp" id="10" name="master:source_3" defn="master:source_3" x="100" y="120">
+      <paramlist>
+        <param name="Name" value="GridSrc" />
+        <param name="Vm" value="230.0" />
+        <param name="F" value="60.0" />
+      </paramlist>
+    </User>
+    <User classid="UserCmp" id="20" name="master:resistor" defn="master:resistor" x="240" y="120">
+      <paramlist>
+        <param name="Name" value="R_tie" />
+        <param name="R" value="1.5" />
+      </paramlist>
+    </User>
+    <User classid="UserCmp" id="30" name="VoltVarDroopUDM" defn="VoltVarDroopUDM" x="380" y="120">
+      <paramlist>
+        <param name="Name" value="IBR_Ctrl" />
+        <param name="K_droop" value="4.0" />
+        <param name="Q_max" value="1.2" />
+      </paramlist>
+    </User>
+  </schematic>
+</project>`,
+      "VoltVarDroop.f90": `! Custom Fortran 90 User-Defined Model (UDM) linked into InverterIsland.pscx
+! Called live at every EMTDC time step via PSCAD workspace Fortran dispatch.
+
+REAL FUNCTION DROOP_GAIN(V_ERR, K_GAIN)
+  REAL, INTENT(IN) :: V_ERR, K_GAIN
+  ! Deadband +/- 0.01 pu before linear Volt-Var droop response
+  IF (ABS(V_ERR) < 0.01) THEN
+    DROOP_GAIN = 0.0
+  ELSE
+    DROOP_GAIN = V_ERR * K_GAIN
+  END IF
+END FUNCTION DROOP_GAIN
+
+SUBROUTINE RIDE_THROUGH_CLAMP(Q_RAW, Q_MAX, Q_OUT)
+  REAL, INTENT(IN) :: Q_RAW, Q_MAX
+  REAL, INTENT(OUT) :: Q_OUT
+  IF (Q_RAW > Q_MAX) THEN
+    Q_OUT = Q_MAX
+  ELSE IF (Q_RAW < -Q_MAX) THEN
+    Q_OUT = -Q_MAX
+  ELSE
+    Q_OUT = Q_RAW
+  END IF
+END SUBROUTINE RIDE_THROUGH_CLAMP`,
+      "PlantController.mo": `model PlantController
+  // Initial uncalibrated estimates — open Inspector -> Calibration and fit to FaultRecord.cff
+  // True disturbance parameters: K_droop = 4.0, T_avr = 0.20 s
+  parameter Real K_droop = 2.0 annotation(twin = "IBRGridDigitalThread::PlantController.K_droop");
+  parameter Real T_avr(unit = "s") = 0.45 annotation(twin = "IBRGridDigitalThread::PlantController.T_avr");
+  parameter Real T_q(unit = "s") = 0.10;
+  parameter Real V_ref = 1.00;
+  parameter Real V_dip = 0.88;
+  Real Vt(start = 0.88);
+  Real Q_out(start = 0.0);
+equation
+  T_avr * der(Vt) = (V_ref - Vt) - 0.05 * (Vt - V_dip);
+  T_q * der(Q_out) = K_droop * (V_ref - Vt) - Q_out;
+  annotation(implements = "PlantController", experiment(StartTime = 0, StopTime = 1.5, Interval = 0.05));
+end PlantController;`,
+      "FaultRecord.cff": `--- file type: CFG ---
+PCC_IBR_230KV,PMU_01,2013
+2,2A,0D
+1,Vt,,,pu,0.0001,0.0,0,-32767,32767,1.0,1.0,P
+2,Q_out,,,pu,0.0001,0.0,0,-32767,32767,1.0,1.0,P
+60.0
+1
+20.0,31
+01/05/2026,14:22:10.000000
+01/05/2026,14:22:10.000000
+ASCII
+1.0
+--- file type: DAT ASCII ---
+1,0,8800,0
+2,50000,9064,1655
+3,100000,9267,2297
+4,150000,9423,2409
+5,200000,9543,2263
+6,250000,9635,2010
+7,300000,9706,1730
+8,350000,9761,1463
+9,400000,9803,1227
+10,450000,9835,1026
+11,500000,9860,859
+12,550000,9879,725
+13,600000,9894,617
+14,650000,9905,531
+15,700000,9914,464
+16,750000,9921,411
+17,800000,9926,370
+18,850000,9930,338
+19,900000,9933,313
+20,950000,9935,293
+21,1000000,9937,279
+22,1050000,9938,267
+23,1100000,9939,258
+24,1150000,9940,251
+25,1200000,9941,246
+26,1250000,9941,242
+27,1300000,9942,239
+28,1350000,9942,237
+29,1400000,9942,235
+30,1450000,9942,233
+31,1500000,9942,232`,
+    },
+  },
   ...EXTENDED_LANGUAGE_EXAMPLES,
 ];

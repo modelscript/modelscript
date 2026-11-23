@@ -149,6 +149,7 @@ export interface ClassDetailHeaderProps {
   setActiveTab: (tab: ClassTabId) => void;
   equationsCount: number;
   isSimulatable?: boolean | undefined;
+  isOptimizable?: boolean | undefined;
   studiesCount?: number | undefined;
   hasCae?: boolean | undefined;
   treeCollapsed?: boolean | undefined;
@@ -167,6 +168,7 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
   setActiveTab,
   equationsCount,
   isSimulatable = false,
+  isOptimizable = false,
   studiesCount = 0,
   hasCae,
   treeCollapsed,
@@ -354,6 +356,18 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
             <PulseIcon size={15} />
             Simulation
             <TabCountBadge $active={activeTab === "simulation"}>WASM ⚡</TabCountBadge>
+          </TabButton>
+        )}
+        {isOptimizable && (
+          <TabButton
+            role="tab"
+            aria-selected={activeTab === "optimization"}
+            $active={activeTab === "optimization"}
+            onClick={() => setActiveTab("optimization")}
+          >
+            <PulseIcon size={15} />
+            Optimization
+            <TabCountBadge $active={activeTab === "optimization"}>Solve ⚡</TabCountBadge>
           </TabButton>
         )}
         {showStudies && (

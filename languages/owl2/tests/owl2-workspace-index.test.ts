@@ -89,3 +89,46 @@ test("OWL2 UnifiedWorkspace: Indexes ontologies, classes, properties, individual
   assert.ok(unified.byName.has("Quadcopter"));
   assert.ok(unified.symbols.size >= 8);
 });
+
+test("OWL2 UnifiedWorkspace: CST-first indexing emits exact spans and fieldRanges from WASM CST", async () => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const { createWasmParser } = await import("../src-gen/bindings.js");
+
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const wasmBytes = fs.readFileSync(path.join(__dirname, "../dist/parser.wasm"));
+  const { parser } = await createWasmParser(wasmBytes);
+
+  const tree = parser.parse(droneOntology);
+  assert.ok(tree?.rootNode);
+  assert.equal(tree.rootNode.hasError, false);
+
+  const ws = new UnifiedWorkspace(owl2Language);
+  ws.indexDocumentText("file:///workspace/drone.ofn", droneOntology, "owl2", tree);
+  const droneIdx = ws.getFileIndex("file:///workspace/drone.ofn")!;
+  assert.equal(getOwl2OntologyIri(ws, "file:///workspace/drone.ofn"), "http://example.org/drone");
+  assert.deepEqual(getOwl2Imports(ws, "file:///workspace/drone.ofn"), ["http://example.org/foundation"]);
+
+  const quadSym = Array.from(droneIdx.symbols.values()).find((s) => s.name === "Quadcopter");
+  assert.ok(quadSym, "Expected Class symbol Quadcopter");
+  assert.equal(
+    droneOntology.slice(quadSym.fieldRanges!.name!.startOffset, quadSym.fieldRanges!.name!.endOffset),
+    ":Quadcopter",
+  );
+  assert.ok(droneOntology.slice(quadSym.startOffset, quadSym.endOffset).startsWith("Declaration("));
+
+  const propSym = Array.from(droneIdx.symbols.values()).find((s) => s.name === "hasRotor");
+  assert.ok(propSym, "Expected ObjectProperty symbol hasRotor");
+  assert.equal(
+    droneOntology.slice(propSym.fieldRanges!.name!.startOffset, propSym.fieldRanges!.name!.endOffset),
+    ":hasRotor",
+  );
+
+  // Error CST should gracefully fall back to scanner
+  const errorTree = { rootNode: { type: "OntologyDocument", hasError: true, children: [] } };
+  ws.indexDocumentText("file:///workspace/foundation.ofn", foundationOntology, "owl2", errorTree);
+  const foundIdx = ws.getFileIndex("file:///workspace/foundation.ofn")!;
+  assert.ok(foundIdx.byName.has("Entity"));
+  assert.ok(foundIdx.byName.has("System"));
+});

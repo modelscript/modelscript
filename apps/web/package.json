@@ -42,6 +42,7 @@
     "@modelscript/sima": "workspace:*",
     "@modelscript/simulate": "workspace:*",
     "@modelscript/swmm": "workspace:*",
+    "@modelscript/three-mf": "workspace:*",
     "@modelscript/urdf": "workspace:*",
     "@modelscript/usd": "workspace:*",
     "@monaco-editor/react": "^4.7.0",

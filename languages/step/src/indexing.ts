@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { DslIndexFileContext } from "@modelscript/dsl";
+import type { DslIndexFileContext, SyntaxNode } from "@modelscript/dsl";
 import type { SymbolEntry, SymbolIndex, UnifiedWorkspace } from "@modelscript/runtime";
 import { extractStepAssembly } from "./assembly-extractor.js";
 import type { StepAssemblyModel } from "./physical-data.js";
@@ -190,6 +190,154 @@ function extractStepNames(text: string): {
   return { products, shapes };
 }
 
+type StepCstNodeLike = Omit<SyntaxNode, "hasError"> & { hasError?: boolean | (() => boolean) };
+
+function extractValidCstRoot(tree: unknown): SyntaxNode | null {
+  if (!tree || typeof tree !== "object") return null;
+  const candidate = ("rootNode" in tree ? (tree as { rootNode?: unknown }).rootNode : tree) as
+    StepCstNodeLike | undefined;
+  if (!candidate || typeof candidate !== "object" || typeof candidate.type !== "string") return null;
+  const hasErr = typeof candidate.hasError === "function" ? candidate.hasError() : Boolean(candidate.hasError);
+  if (hasErr || candidate.isError) return null;
+  return candidate as SyntaxNode;
+}
+
+function cstNodeText(node: SyntaxNode, source: string): string {
+  if (typeof node.text === "string" && node.text.length > 0) return node.text;
+  if (typeof node.startIndex === "number" && typeof node.endIndex === "number" && node.endIndex >= node.startIndex) {
+    return source.slice(node.startIndex, node.endIndex);
+  }
+  return "";
+}
+
+function collectStepStringNodes(paramsNode: SyntaxNode | null): SyntaxNode[] {
+  if (!paramsNode) return [];
+  const strings: SyntaxNode[] = [];
+  const stack: SyntaxNode[] = [paramsNode];
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    if (cur.type === "STRING") {
+      strings.push(cur);
+      continue;
+    }
+    const kids = cur.namedChildren ?? cur.children ?? [];
+    for (let i = kids.length - 1; i >= 0; i--) {
+      stack.push(kids[i]!);
+    }
+  }
+  return strings;
+}
+
+function unquoteStepString(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function extractStepNamesFromCst(
+  rootNode: SyntaxNode,
+  text: string,
+): {
+  products: StepNameMatch[];
+  shapes: StepNameMatch[];
+} {
+  const products: StepNameMatch[] = [];
+  const shapes: StepNameMatch[] = [];
+  const allowUnnamedFaces = text.length <= 65_536;
+
+  const stack: SyntaxNode[] = [rootNode];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    if (node.type === "EntityInstance") {
+      const idNode =
+        (typeof node.childForFieldName === "function" ? node.childForFieldName("id") : null) ??
+        (node.namedChildren ?? node.children ?? []).find((c) => c.type === "ENTITY_INSTANCE_NAME") ??
+        null;
+      const recordNode =
+        (typeof node.childForFieldName === "function" ? node.childForFieldName("record") : null) ??
+        (node.namedChildren ?? node.children ?? []).find(
+          (c) => c.type === "SimpleRecord" || c.type === "ComplexRecord",
+        ) ??
+        null;
+
+      if (idNode && recordNode) {
+        const stepId = cstNodeText(idNode, text).trim();
+        const simpleRecords: SyntaxNode[] =
+          recordNode.type === "SimpleRecord"
+            ? [recordNode]
+            : (recordNode.namedChildren ?? recordNode.children ?? []).filter((c) => c.type === "SimpleRecord");
+
+        for (const rec of simpleRecords) {
+          const kwNode =
+            (typeof rec.childForFieldName === "function" ? rec.childForFieldName("keyword") : null) ??
+            (rec.namedChildren ?? rec.children ?? []).find((c) => c.type === "KEYWORD") ??
+            null;
+          if (!kwNode) continue;
+          const entityType = cstNodeText(kwNode, text).trim().toUpperCase();
+          if (entityType !== "PRODUCT" && !STEP_SURFACE_OR_FEATURE_TYPES.has(entityType)) continue;
+
+          const paramsNode =
+            (typeof rec.childForFieldName === "function" ? rec.childForFieldName("parameters") : null) ??
+            (rec.namedChildren ?? rec.children ?? []).find((c) => c.type === "ParameterList") ??
+            null;
+          const stringNodes = collectStepStringNodes(paramsNode);
+
+          let chosenStrNode: SyntaxNode | null = null;
+          let rawName: string | null = null;
+          if (entityType === "DATUM") {
+            for (let i = stringNodes.length - 1; i >= 0; i--) {
+              const sNode = stringNodes[i]!;
+              const val = unquoteStepString(cstNodeText(sNode, text));
+              if (val.length > 0) {
+                chosenStrNode = sNode;
+                rawName = val;
+                break;
+              }
+            }
+          } else if (stringNodes.length > 0) {
+            chosenStrNode = stringNodes[0]!;
+            rawName = unquoteStepString(cstNodeText(chosenStrNode, text));
+          }
+
+          const name =
+            rawName && rawName.length > 0 ? rawName : allowUnnamedFaces && entityType !== "PRODUCT" ? stepId : null;
+          if (name && name.length > 0) {
+            const hasStringName = Boolean(rawName && rawName.length > 0 && chosenStrNode);
+            const nameStartOffset = hasStringName ? chosenStrNode!.startIndex + 1 : idNode.startIndex;
+            const nameEndOffset = hasStringName
+              ? Math.max(nameStartOffset, chosenStrNode!.endIndex - 1)
+              : idNode.endIndex;
+            const match: StepNameMatch = {
+              name,
+              stepId,
+              entityType,
+              startOffset: node.startIndex,
+              endOffset: node.endIndex,
+              nameStartOffset,
+              nameEndOffset,
+            };
+            if (entityType === "PRODUCT") {
+              products.push(match);
+            } else {
+              shapes.push(match);
+            }
+          }
+        }
+      }
+      continue;
+    }
+
+    const kids = node.namedChildren ?? node.children ?? [];
+    for (let i = kids.length - 1; i >= 0; i--) {
+      stack.push(kids[i]!);
+    }
+  }
+
+  return { products, shapes };
+}
+
 function deriveProductNameFromUri(uri: string): string {
   const filename =
     uri
@@ -202,10 +350,13 @@ function deriveProductNameFromUri(uri: string): string {
 /**
  * Synchronous STEP file indexing hook registered on `stepLanguage.indexing.indexFile`.
  * Extracts ISO 10303-21 `PRODUCT` packages, B-Rep shape entities, assembly metadata, and any pre-tessellated OCCT meshes.
+ * Prefers CST-first extraction from the compiled WASM `SyntaxNode` when `ctx.tree` is provided without parse errors,
+ * falling back to `scanStepEntities` when only raw source text is available.
  */
 export function indexStepFileSync(ctx: DslIndexFileContext): void {
   const { uri, text } = ctx;
-  const { products, shapes } = extractStepNames(text);
+  const cstRoot = extractValidCstRoot(ctx.tree);
+  const { products, shapes } = cstRoot ? extractStepNamesFromCst(cstRoot, text) : extractStepNames(text);
   const assemblyModel = extractStepAssembly(text);
   ctx.setParsedModel(assemblyModel, "assembly");
 
@@ -240,6 +391,7 @@ export function indexStepFileSync(ctx: DslIndexFileContext): void {
           ? {
               nameStartOffset: product.nameStartOffset,
               nameEndOffset: product.nameEndOffset,
+              fieldRanges: { name: { startOffset: product.nameStartOffset, endOffset: product.nameEndOffset } },
               aliases: product.stepId ? [product.stepId] : [],
             }
           : {}),
@@ -275,6 +427,7 @@ export function indexStepFileSync(ctx: DslIndexFileContext): void {
         namePath: `${primaryProductName}::${shape.name}`,
         nameStartOffset: shape.nameStartOffset,
         nameEndOffset: shape.nameEndOffset,
+        fieldRanges: { name: { startOffset: shape.nameStartOffset, endOffset: shape.nameEndOffset } },
         aliases: shape.stepId && shape.stepId !== shape.name ? [shape.stepId] : [],
       },
     );

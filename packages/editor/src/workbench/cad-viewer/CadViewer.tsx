@@ -368,6 +368,33 @@ function GltfMeshObject({
     };
   }, [cloned, solidPlane, showEdges, dark]);
 
+  useEffect(() => {
+    return () => {
+      if (!url.startsWith("data:") && !url.startsWith("blob:")) return;
+      const disposeObject = (root: THREE.Object3D) => {
+        root.traverse((child) => {
+          const mesh = child as THREE.Mesh;
+          if (mesh.geometry) {
+            mesh.geometry.dispose();
+          }
+          const mats = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
+          for (const mat of mats) {
+            if (!mat) continue;
+            for (const val of Object.values(mat)) {
+              if (val && typeof val === "object" && (val as THREE.Texture).isTexture) {
+                (val as THREE.Texture).dispose();
+              }
+            }
+            mat.dispose();
+          }
+        });
+      };
+      disposeObject(cloned);
+      disposeObject(scene);
+      useGLTF.clear(url);
+    };
+  }, [url, scene, cloned]);
+
   return <primitive object={cloned} />;
 }
 
@@ -403,6 +430,7 @@ function CadModel({
   const [inspectorValues, setInspectorValues] = useState<
     { variable: string; property: string; index: number; value: number | null }[]
   >([]);
+  const lastInspectorUpdateRef = useRef<number>(0);
 
   // Ghost trail state (bypass React for performance)
   const maxTrailPoints = 300;
@@ -511,9 +539,13 @@ function CadModel({
       if (trailGeoRef.current) trailGeoRef.current.setDrawRange(0, 0);
     }
 
-    // Update inspector values at 10Hz if hovered or selected
-    if ((hovered || selected) && Math.random() < 0.2) {
-      setInspectorValues(animationController.getComponentValues(component.name));
+    // Update inspector values at most ~4Hz if hovered or selected
+    if (hovered || selected) {
+      const now = performance.now();
+      if (now - lastInspectorUpdateRef.current >= 250) {
+        lastInspectorUpdateRef.current = now;
+        setInspectorValues(animationController.getComponentValues(component.name));
+      }
     }
   });
 
@@ -1002,6 +1034,10 @@ export default function CadViewer({
 
   const effectiveVtkBuffer = vtkBuffer ?? liveVtkBuffer;
   const hasCaeContext = Boolean(caeSourceCode || effectiveVtkBuffer);
+  const cutLineSamples = useMemo(
+    () => (caePostView ? sampleVtkCutLine(effectiveVtkBuffer, activeCaeField) : []),
+    [caePostView, effectiveVtkBuffer, activeCaeField],
+  );
   const caeModel = useMemo(
     () =>
       hasCaeContext
@@ -1764,7 +1800,7 @@ export default function CadViewer({
               mode={caePostView.mode}
               run={caeRuns.find((r) => r.id === caePostView.runId) ?? caeRuns[0]!}
               allRuns={caeRuns}
-              cutLineSamples={sampleVtkCutLine(effectiveVtkBuffer, activeCaeField)}
+              cutLineSamples={cutLineSamples}
               dark={dark}
               onClose={() => setCaePostView(null)}
             />

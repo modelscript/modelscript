@@ -2041,7 +2041,10 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         }
       } else {
         // Fallback: Check if definition has custom Branch, Fortran/Dsdyn, or Dsout script segments
-        const defGraphic = project.definitions?.get(cleanDefn) ?? project.definitions?.get(rawDefn);
+        const defGraphic =
+          project.definitions?.get(cleanDefn) ??
+          project.definitions?.get(rawDefn) ??
+          project.definitions?.get(cmp.definitionName);
         const branchSeg = defGraphic?.scriptSegments?.get("branch");
         if (branchSeg?.content) {
           const parsedBranches = parseBranchSegment(branchSeg.content, cmp.parameters);

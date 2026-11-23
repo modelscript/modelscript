@@ -112,8 +112,7 @@ export interface RouterPortConfig {
   name?: string | undefined;
   args?: { x?: number | undefined; y?: number | undefined } | undefined;
   position?:
-    | { name?: string | undefined; args?: { x?: number | undefined; y?: number | undefined } | undefined }
-    | undefined;
+    { name?: string | undefined; args?: { x?: number | undefined; y?: number | undefined } | undefined } | undefined;
   group?: string | undefined;
   side?: string | undefined;
   x?: number | undefined;
@@ -1501,13 +1500,22 @@ export function translateConnectedEdgeStubs(
                 { x: Math.round((srcPt.x + tgtPt.x) / 2), y: srcPt.y },
                 { x: Math.round((srcPt.x + tgtPt.x) / 2), y: tgtPt.y },
               ];
-          if (!srcNormal && !tgtNormal && !srcBox && !tgtBox) {
-            injected = zCandidate;
-          } else if (
-            !doesPolylineViolatePortOrBox(srcPt, tgtPt, zCandidate, srcNormal, tgtNormal, srcBox, tgtBox, {
-              allowTangential: true,
-              boxInset: 3,
-            })
+          const zIntersectsOther = (() => {
+            const otherObs = getOtherObstacles();
+            if (otherObs.length === 0) return false;
+            const fullZ = [srcPt, ...zCandidate, tgtPt];
+            for (let i = 0; i < fullZ.length - 1; i++) {
+              if (otherObs.some((r) => segmentIntersectsRect(fullZ[i]!, fullZ[i + 1]!, r, 4))) return true;
+            }
+            return false;
+          })();
+          if (
+            !zIntersectsOther &&
+            ((!srcNormal && !tgtNormal && !srcBox && !tgtBox) ||
+              !doesPolylineViolatePortOrBox(srcPt, tgtPt, zCandidate, srcNormal, tgtNormal, srcBox, tgtBox, {
+                allowTangential: true,
+                boxInset: 3,
+              }))
           ) {
             injected = zCandidate;
           }
@@ -1847,6 +1855,19 @@ export function translateConnectedEdgeStubs(
     }
 
     if (modified && typeof edge.setVertices === "function") {
+      if (srcPt && tgtPt && newVertices.length >= 3) {
+        const cleaned = simplifyCollinearPoints(
+          pruneOrthogonalLoops([srcPt, ...newVertices, tgtPt], {
+            obstacles: getOtherObstacles(),
+            sourceBox: srcBox ?? undefined,
+            targetBox: tgtBox ?? undefined,
+            sourceNormal: srcNormal ?? undefined,
+            targetNormal: tgtNormal ?? undefined,
+          }),
+          0.5,
+        );
+        newVertices = cleaned.length > 2 ? cleaned.slice(1, -1) : [];
+      }
       edge.setVertices(newVertices, { ignoreSnap: true });
     }
   }

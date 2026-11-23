@@ -33,7 +33,7 @@ function extractNodeName(node: TaggableCstNode): string {
   }
   const kids = node.namedChildren ?? node.children ?? [];
   for (const child of kids) {
-    const t = child.type.toLowerCase();
+    const t = typeof child?.type === "string" ? child.type.toLowerCase() : "";
     if (t.includes("ident") || t === "name" || t === "id") {
       if (child.text) return child.text.trim();
     }

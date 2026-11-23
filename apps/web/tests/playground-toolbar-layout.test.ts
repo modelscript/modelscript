@@ -6,7 +6,7 @@ import path from "node:path";
 import { describe, it } from "node:test";
 
 describe("Playground Toolbar & Canvas Sub-Header Architecture", () => {
-  it("verifies PlaygroundNavbar unifies icon-only view switcher including Icon, 3D, Simulation, Inspector, Code, and Split with text", () => {
+  it("verifies PlaygroundNavbar renders responsive icon+text view tabs, icon-only Split, language-gated Run, and autoFit DSL tools", () => {
     const navbarPath = path.resolve(import.meta.dirname, "../src/pages/playground/components/PlaygroundNavbar.tsx");
     const content = fs.readFileSync(navbarPath, "utf-8");
 
@@ -15,8 +15,8 @@ describe("Playground Toolbar & Canvas Sub-Header Architecture", () => {
       "PlaygroundNavbar must render Workbench View SegmentedControl",
     );
     assert.ok(
-      content.includes("SegmentedControl.IconButton"),
-      "PlaygroundNavbar must render icon-only SegmentedControl.IconButton tabs",
+      content.includes("SegmentedControl.Button") && content.includes("leadingIcon={tab.icon}"),
+      "PlaygroundNavbar must render responsive SegmentedControl.Button tabs with leadingIcon",
     );
     assert.ok(
       content.includes('id: "icon"') && content.includes('onSelectDiagramType?.("icon")'),
@@ -25,9 +25,18 @@ describe("Playground Toolbar & Canvas Sub-Header Architecture", () => {
     assert.ok(content.includes('onViewChange?.("3d")'), "PlaygroundNavbar must support 3D view");
     assert.ok(content.includes('onViewChange?.("inspector")'), "PlaygroundNavbar must support Inspector view");
     assert.ok(content.includes('onViewChange?.("code")'), "PlaygroundNavbar must support Code view");
+    assert.ok(content.includes("SplitToggleButton"), "PlaygroundNavbar must render Split toggle button");
     assert.ok(
-      content.includes("SplitToggleButton") && content.includes("<span>Split</span>"),
-      "PlaygroundNavbar must render Split toggle button with Split text",
+      content.includes("supportsSimulation && onSimulate"),
+      "PlaygroundNavbar must gate Run button on supportsSimulation",
+    );
+    assert.ok(
+      content.includes("autoFit") && content.includes("<LanguageToolbarButtons"),
+      "PlaygroundNavbar must enable autoFit on LanguageToolbarButtons",
+    );
+    assert.ok(
+      !content.includes('aria-label="Unsaved changes"'),
+      "PlaygroundNavbar must not render the dirty dot in the topbar (moved to Files sidebar)",
     );
   });
 

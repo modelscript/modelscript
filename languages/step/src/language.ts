@@ -1,6 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { choice, def, field, language, optional, ref, repeat, repeat1, seq } from "@modelscript/dsl";
+import {
+  choice,
+  CstUnparser,
+  def,
+  field,
+  language,
+  optional,
+  ref,
+  repeat,
+  repeat1,
+  seq,
+  type SyntaxNode,
+} from "@modelscript/dsl";
 import type { UnifiedWorkspace } from "@modelscript/runtime";
 import {
   getStepAssemblyModel,
@@ -148,9 +160,41 @@ export const stepLanguage = language({
 
   // Bi-directional source writeback for updating quoted string parameters in STEP entity records
   writeback: (ctx) => {
-    const { entry, fullText, newValue } = ctx;
+    const { entry, fullText, newValue, rootCst } = ctx;
     const startOffset = entry?.startOffset;
     const endOffset = entry?.endOffset;
+    const cleanVal = newValue.replace(/^'|'$/g, "").replace(/'/g, "''");
+    const cstRoot = ((rootCst as { rootNode?: SyntaxNode } | undefined)?.rootNode ?? rootCst) as SyntaxNode | undefined;
+
+    // 1. Canonical CST string literal replacement when CST is available
+    if (cstRoot && startOffset != null && endOffset != null && endOffset > startOffset) {
+      const targetNode = cstRoot.descendantForIndex?.(startOffset, endOffset);
+      if (targetNode) {
+        const stack: SyntaxNode[] = [targetNode];
+        while (stack.length > 0) {
+          const cur = stack.pop()!;
+          const t = (cur.type || "").toLowerCase();
+          if (cur.startIndex >= startOffset && cur.endIndex <= endOffset && t.includes("string")) {
+            const raw = fullText.slice(cur.startIndex, cur.endIndex);
+            if (raw.startsWith("'") && raw.endsWith("'") && raw.length >= 2) {
+              return { startOffset: cur.startIndex + 1, endOffset: cur.endIndex - 1, newText: cleanVal };
+            }
+          }
+          const children = cur.children ?? [];
+          for (let i = children.length - 1; i >= 0; i--) {
+            stack.push(children[i]!);
+          }
+        }
+      }
+      const cstPatch = CstUnparser.patchWritebackValue(fullText, cstRoot, entry, `'${cleanVal}'`, {
+        valueFields: ["value", "name", "label"],
+      });
+      if (cstPatch) {
+        return { startOffset: cstPatch.startIndex, endOffset: cstPatch.endIndex, newText: cstPatch.text };
+      }
+    }
+
+    // 2. Fallback when rootCst is not provided
     if (startOffset != null && endOffset != null && endOffset > startOffset) {
       const declText = fullText.substring(startOffset, endOffset);
       // E.g. #10 = PRODUCT('DroneBody', ...) with ISO 10303-21 '' quote escaping
@@ -158,7 +202,6 @@ export const stepLanguage = language({
       if (strMatch && strMatch.index !== undefined) {
         const valStartOffset = startOffset + strMatch.index + 1;
         const valEndOffset = valStartOffset + strMatch[1]!.length;
-        const cleanVal = newValue.replace(/^'|'$/g, "").replace(/'/g, "''");
         return { startOffset: valStartOffset, endOffset: valEndOffset, newText: cleanVal };
       }
     }

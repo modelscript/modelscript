@@ -480,8 +480,63 @@ export class ValidationService {
     const doc = this.documentManager?.documents?.get?.(uri) ?? this.documentManager?.documents?.get?.(effectiveUri);
     const docText = doc?.getText?.() ?? this.documentManager?.documentTrees?.get?.(uri)?.text ?? "";
     const lines = docText ? splitLinesPreserve(docText) : [];
+    const posIndex = !doc?.positionAt && docText ? new PositionIndex(docText) : null;
+
+    const bridge = this.documentLSPBridges.get(uri) ?? this.documentLSPBridges.get(effectiveUri);
+    const pluginId = globalLanguageRegistry.getPluginForUri(effectiveUri, docText)?.id ?? "modelica";
+    const wsIdx =
+      this.workspaceManager?.getWorkspaceIndex?.(pluginId) ??
+      (pluginId !== "modelica" ? this.workspaceManager?.getWorkspaceIndex?.("modelica") : undefined);
+    const symbolIndex: SymbolIndex | undefined =
+      (bridge as any)?.index ??
+      (bridge as any)?.engine?.index ??
+      wsIdx?.getFileIndex?.(uri) ??
+      wsIdx?.getFileIndex?.(effectiveUri) ??
+      wsIdx?.getIndex?.();
+
+    const offsetToLine = (offset: number): number => {
+      if (doc?.positionAt) return doc.positionAt(offset).line;
+      if (posIndex) return posIndex.charOffsetToPosition(offset).line;
+      return 0;
+    };
+
     const findDeclLine = (name: string): number => {
-      if (!name || lines.length === 0) return 0;
+      if (!name) return 0;
+
+      // 1. Prefer SymbolIndex lookup for accurate declaration line
+      if (symbolIndex?.symbols) {
+        const simpleName = name.includes(".") ? name.slice(name.lastIndexOf(".") + 1) : name;
+        const candidateIds = symbolIndex.byName?.get(simpleName) ?? symbolIndex.byName?.get(name);
+        const candidates: SymbolEntry[] = [];
+        if (candidateIds && candidateIds.length > 0) {
+          for (const id of candidateIds) {
+            const sym = symbolIndex.symbols.get(id);
+            if (sym) candidates.push(sym);
+          }
+        } else {
+          for (const sym of symbolIndex.symbols.values()) {
+            if (sym.name === name || sym.name === simpleName) {
+              candidates.push(sym);
+            }
+          }
+        }
+        const match =
+          candidates.find(
+            (s) =>
+              (s.resourceId === uri || s.resourceId === effectiveUri) &&
+              typeof s.startOffset === "number" &&
+              isTypeLikeSymbol(s),
+          ) ??
+          candidates.find(
+            (s) => (s.resourceId === uri || s.resourceId === effectiveUri) && typeof s.startOffset === "number",
+          );
+        if (match && typeof match.startOffset === "number") {
+          return offsetToLine(match.startOffset);
+        }
+      }
+
+      // 2. Fallback: regex scan on source lines
+      if (lines.length === 0) return 0;
       const re = new RegExp(
         `\\b(model|block|function|class|record|connector|package)\\s+${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
       );
@@ -924,7 +979,8 @@ export class ValidationService {
     }
 
     // 1. Native WASM GLR parser diagnostics
-    const facade = plugin?.facade ?? rootNode?.tree?.facade ?? this.parserService.facade;
+    const isModelicaPlugin = !plugin || plugin.id === "modelica" || plugin.id === "modelscript";
+    const facade = plugin?.facade ?? rootNode?.tree?.facade ?? (isModelicaPlugin ? this.parserService.facade : null);
     if (facade && typeof facade.getDiagnostics === "function") {
       try {
         const rootPtr = rootNode.id ?? rootNode.ptr ?? rootNode?.tree?.rootPtr ?? 0;
@@ -2642,7 +2698,7 @@ export class ValidationService {
       }
 
       if ((textChanged || (changedNames && changedNames.size > 0)) && !this.isCascadeRevalidationActive) {
-        await this.revalidateCrossLanguageDependents(effectiveUri);
+        this.scheduleCrossLanguageRevalidation(effectiveUri);
       }
     } catch (e: any) {
       if (e?.name === "QueryCancelledError" || e?.message === "Query computation was cancelled") {
@@ -2857,6 +2913,21 @@ export class ValidationService {
         // Non-fatal if context lacks foreign workspace support
       }
     }
+  }
+
+  /**
+   * Coalesces rapid multi-file opens/edits into a single asynchronous cross-language peer
+   * revalidation pass so initial diagram/editor requests are never starved by O(N^2) cascades.
+   */
+  private scheduleCrossLanguageRevalidation(sourceEffectiveUri: string): void {
+    if (this.isCascadeRevalidationActive) return;
+    if (this.revalidationTimer) {
+      clearTimeout(this.revalidationTimer);
+    }
+    this.revalidationTimer = setTimeout(() => {
+      this.revalidationTimer = null;
+      void this.revalidateCrossLanguageDependents(sourceEffectiveUri);
+    }, 120);
   }
 
   /**
@@ -3650,7 +3721,7 @@ export class ValidationService {
     }
 
     if (!skipCascade && contentChanged && !this.isCascadeRevalidationActive) {
-      await this.revalidateCrossLanguageDependents(effectiveUri);
+      this.scheduleCrossLanguageRevalidation(effectiveUri);
     }
 
     return finalDiags;

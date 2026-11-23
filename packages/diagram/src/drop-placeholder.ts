@@ -185,14 +185,14 @@ export function ensureDiagramStyles(): void {
     }
 
     /* Zoom-driven Level-of-Detail (LOD) optimizations for large schematics */
-    [data-diagram-lod="medium"] .x6-node,
-    [data-diagram-lod="low"] .x6-node,
-    [data-diagram-lod="medium"] .x6-edge,
-    [data-diagram-lod="low"] .x6-edge {
+    [data-diagram-lod="medium"] .ms-node,
+    [data-diagram-lod="low"] .ms-node,
+    [data-diagram-lod="medium"] .ms-edge,
+    [data-diagram-lod="low"] .ms-edge {
       filter: none !important;
     }
-    [data-diagram-lod="low"] .x6-port-label,
-    [data-diagram-lod="low"] .x6-edge-label,
+    [data-diagram-lod="low"] .ms-port-label,
+    [data-diagram-lod="low"] .ms-edge-label,
     [data-diagram-lod="low"] .compartment-row {
       display: none !important;
     }
@@ -227,225 +227,106 @@ export function ensureDiagramStyles(): void {
     }
 
     /* Unified selection box & transform controls */
-    .x6-widget-selection-box,
-    .x6-widget-selection-inner {
+    .ms-selection-box {
       border: 1.5px solid var(--vscode-focusBorder, #0284c7) !important;
       box-shadow: 0 0 0 1px rgba(2, 132, 199, 0.18), 0 4px 12px rgba(2, 132, 199, 0.08) !important;
       border-radius: 4px;
       background-color: transparent !important;
     }
 
-    .x6-widget-selection-box-node {
-      margin: -5px 0 0 -5px !important;
-      padding: 4px !important;
-      box-sizing: content-box !important;
-      transform-origin: center center !important;
-    }
-
-    .x6-widget-selection-box-edge {
-      display: none !important;
-    }
-
-    .x6-widget-transform {
-      border: none !important;
-      margin: -4px 0 0 -4px !important;
-      padding: 4px !important;
-      box-sizing: content-box !important;
-    }
-
-    /* Hide midpoint resize handles (t, b, l, r) so they never occlude or block component pins/ports */
-    .x6-widget-transform-resize[data-position="t"],
-    .x6-widget-transform-resize[data-position="b"],
-    .x6-widget-transform-resize[data-position="l"],
-    .x6-widget-transform-resize[data-position="r"],
-    .x6-widget-transform-resize[data-position="top"],
-    .x6-widget-transform-resize[data-position="bottom"],
-    .x6-widget-transform-resize[data-position="left"],
-    .x6-widget-transform-resize[data-position="right"] {
-      display: none !important;
-      pointer-events: none !important;
-    }
-
-    /* Free continuous rotation handle (Figma / Canva / PowerPoint grade top-center stalk) */
-    .x6-widget-transform-rotate {
-      display: block !important;
-      position: absolute !important;
-      top: -26px !important;
-      left: 50% !important;
-      width: 12px !important;
-      height: 12px !important;
-      margin: -6px 0 0 -6px !important;
-      background-color: var(--vscode-editor-background, #ffffff) !important;
-      border: 1.5px solid var(--vscode-focusBorder, #0284c7) !important;
-      border-radius: 50% !important;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28) !important;
-      cursor: crosshair !important;
-      z-index: 10 !important;
-      pointer-events: auto !important;
-      transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.12s ease !important;
-    }
-
-    .x6-widget-transform-rotate::before {
-      content: "";
-      position: absolute;
-      top: 10px;
-      left: 50%;
-      width: 1px;
-      height: 20px;
-      background-color: var(--vscode-focusBorder, #0284c7);
-      transform: translateX(-50%);
-      pointer-events: none;
-    }
-
-    .x6-widget-transform-rotate:hover {
-      background-color: var(--vscode-focusBorder, #0284c7) !important;
-      transform: scale(1.25);
-    }
-
-    /* Corner-only precision resize handles (Figma / Linear / KiCad grade) */
-    .x6-widget-transform > div:not(.x6-widget-transform-rotate) {
-      width: 10px !important;
-      height: 10px !important;
-      margin: -5px 0 0 -5px !important;
-      background-color: var(--vscode-editor-background, #ffffff) !important;
-      border: 1.5px solid var(--vscode-focusBorder, #0284c7) !important;
-      border-radius: 2px !important;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
-      transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.12s ease;
-      cursor: inherit;
-    }
-
-    .x6-widget-transform > div:not(.x6-widget-transform-rotate)::after {
-      content: "";
-      position: absolute;
-      inset: -5px;
-      cursor: inherit;
-    }
-
-    .x6-widget-transform > div:not(.x6-widget-transform-rotate):hover {
-      background-color: var(--vscode-focusBorder, #0284c7) !important;
-      transform: scale(1.2);
-    }
-
     /* Edge Selection and Vertex/Segment Handle Controls */
-    @keyframes x6-edge-flow {
+    @keyframes ms-edge-flow {
       to {
         stroke-dashoffset: -20;
       }
     }
 
     /* Universal base for all styles: crisp non-scaling stroke (prevents zoom blowout) */
-    .x6-edge.x6-edge-selected path.connection {
+    .ms-edge.ms-edge-selected path[data-selector="line"] {
       stroke: var(--vscode-focusBorder, #0284c7) !important;
       vector-effect: non-scaling-stroke !important;
     }
 
-    .x6-edge-tool-vertex circle,
-    circle.x6-edge-tool-vertex {
+    .ms-vertex-handle {
       cursor: grab !important;
       transition: fill 0.15s ease;
       filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
       vector-effect: non-scaling-stroke !important;
     }
 
-    .x6-edge-tool-vertex circle:hover,
-    circle.x6-edge-tool-vertex:hover {
+    .ms-vertex-handle:hover {
       fill: var(--vscode-focusBorder, #0284c7) !important;
       cursor: grab !important;
     }
 
-    .x6-edge-tool-segment rect,
-    rect.x6-edge-tool-segment {
+    .ms-segment-handle {
       cursor: move !important;
       transition: opacity 0.15s ease, fill 0.15s ease;
       filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
       vector-effect: non-scaling-stroke !important;
     }
 
-    .x6-edge-tool-segment rect:hover,
-    rect.x6-edge-tool-segment:hover {
+    .ms-segment-handle:hover {
       fill: var(--vscode-focusBorder, #0284c7) !important;
       cursor: move !important;
     }
 
     /* ⚡ Minimalist CAD (Modelica, SPICE, PSCAD): Strict 1.5px non-scaling stroke, zero raster blur */
-    [data-edge-selection="minimalist"] .x6-edge.x6-edge-selected path.connection {
+    [data-edge-selection="minimalist"] .ms-edge.ms-edge-selected path[data-selector="line"] {
       stroke-width: 1.5px !important;
       filter: none !important;
     }
-    [data-edge-selection="minimalist"] .x6-edge-tool-vertex circle,
-    [data-edge-selection="minimalist"] circle.x6-edge-tool-vertex {
+    [data-edge-selection="minimalist"] .ms-vertex-handle {
       stroke-width: 1.5px !important;
       vector-effect: non-scaling-stroke !important;
     }
-    [data-edge-selection="minimalist"] .x6-edge-tool-segment,
-    [data-edge-selection="minimalist"] rect.x6-edge-tool-segment {
-      display: none !important;
-    }
 
     /* 📐 Interactive HUD (SysML v2, Simulink): Sleek 1.8px line, hover-only segment handles */
-    [data-edge-selection="hud"] .x6-edge.x6-edge-selected path.connection {
+    [data-edge-selection="hud"] .ms-edge.ms-edge-selected path[data-selector="line"] {
       stroke-width: 1.8px !important;
       filter: drop-shadow(0 0 1.5px rgba(2, 132, 199, 0.35)) !important;
     }
-    [data-edge-selection="hud"] .x6-edge-tool-segment rect,
-    [data-edge-selection="hud"] rect.x6-edge-tool-segment {
-      opacity: 0.15;
-    }
-    [data-edge-selection="hud"] .x6-edge:hover .x6-edge-tool-segment rect,
-    [data-edge-selection="hud"] .x6-edge:hover rect.x6-edge-tool-segment {
-      opacity: 1;
-    }
 
     /* 🌊 Flow Trace (Olga, Fluids, SWMM): Animated marching dash to preserve physical conduit diameters */
-    [data-edge-selection="trace"] .x6-edge.x6-edge-selected path.connection {
+    [data-edge-selection="trace"] .ms-edge.ms-edge-selected path[data-selector="line"] {
       stroke-width: 1.8px !important;
       stroke-dasharray: 6, 4 !important;
-      animation: x6-edge-flow 1.2s linear infinite !important;
+      animation: ms-edge-flow 1.2s linear infinite !important;
       filter: drop-shadow(0 0 2px rgba(2, 132, 199, 0.45)) !important;
     }
 
     /* 🌐 Precision Halo (Default / Ontologies): Crisp 1.5px core with soft translucent casing */
-    [data-edge-selection="halo"] .x6-edge.x6-edge-selected path.connection,
-    :not([data-edge-selection]) .x6-edge.x6-edge-selected path.connection {
+    [data-edge-selection="halo"] .ms-edge.ms-edge-selected path[data-selector="line"],
+    :not([data-edge-selection]) .ms-edge.ms-edge-selected path[data-selector="line"] {
       stroke-width: 1.5px !important;
       filter: drop-shadow(0 0 2px rgba(2, 132, 199, 0.5)) !important;
     }
-    [data-edge-selection="halo"] .x6-edge-tool-segment rect,
-    :not([data-edge-selection]) .x6-edge-tool-segment rect {
-      opacity: 0.35;
-    }
-    [data-edge-selection="halo"] .x6-edge:hover .x6-edge-tool-segment rect,
-    :not([data-edge-selection]) .x6-edge:hover rect.x6-edge-tool-segment {
-      opacity: 1;
-    }
 
     /* Highlight connected ports when an edge is selected */
-    .x6-port.x6-port-edge-selected circle,
-    .x6-port.x6-port-edge-selected rect {
+    .ms-port.ms-port-edge-selected circle,
+    .ms-port.ms-port-edge-selected rect {
       stroke: var(--vscode-focusBorder, #0284c7) !important;
       stroke-width: 2px !important;
       filter: drop-shadow(0 0 3px rgba(2, 132, 199, 0.6)) !important;
     }
     /* Level-of-Detail (LOD) Rules */
-    .x6-lod-low text,
-    .x6-lod-low tspan {
+    .ms-lod-low text,
+    .ms-lod-low tspan {
       display: none !important;
     }
-    .x6-lod-minimal .x6-port {
+    .ms-lod-minimal .ms-port {
       display: none !important;
     }
 
     /* Port Proximity Magnet Glow & Target Snap Rings */
-    .x6-port-body:hover,
-    .x6-port:hover circle[magnet="true"] {
+    .ms-port:hover circle[magnet="true"] {
       stroke: var(--ms-brand, #0891b2) !important;
       stroke-width: 2.5px !important;
       filter: drop-shadow(0 0 5px var(--ms-brand, #0891b2)) !important;
       cursor: crosshair;
     }
 
-    circle.x6-magnet-available {
+    circle.ms-magnet-available {
       stroke: var(--ms-brand, #0891b2) !important;
       stroke-width: 3px !important;
       fill: var(--ms-bg, #ffffff) !important;
@@ -453,7 +334,7 @@ export function ensureDiagramStyles(): void {
       animation: ms-magnet-pulse 1.4s infinite ease-in-out;
     }
 
-    circle.x6-magnet-adsorbed {
+    circle.ms-magnet-adsorbed {
       stroke: var(--ms-accent-cyan, #22d3ee) !important;
       stroke-width: 5px !important;
       fill: var(--ms-brand, #0891b2) !important;

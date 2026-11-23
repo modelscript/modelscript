@@ -173,7 +173,11 @@ function inlineStaticCopy(targets: StaticCopyTarget[]): Plugin {
         }
         if (
           reqPath.startsWith("/lsp/server/dist/") &&
-          (reqPath.endsWith(".wasm") || reqPath.endsWith(".js") || reqPath.endsWith(".json"))
+          (reqPath.endsWith(".wasm") ||
+            reqPath.endsWith(".js") ||
+            reqPath.endsWith(".json") ||
+            reqPath.endsWith(".zip") ||
+            reqPath.endsWith(".gz"))
         ) {
           res.statusCode = 404;
           res.end("Asset not found");

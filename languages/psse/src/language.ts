@@ -12,6 +12,7 @@ import {
   type SymbolId,
 } from "@modelscript/dsl";
 import { buildPsseBuiltinSymbols, indexPsseDocument } from "./builtins.js";
+import { registerBuiltInPsseLibrarySync } from "./catalog/wasm-dyr-loader.js";
 import { auditNercCompliance } from "./compliance/nerc-auditor.js";
 import { lintPsse } from "./lints/index.js";
 import { extractPowerFlowNetlist, serializePowerFlowNetlist } from "./netlist/powerflow-netlist.js";
@@ -622,5 +623,7 @@ export const psseLanguage = language({
     SymbolPunct: () => /[:;()[\]=+*<>~#%&$^|\\?-]+/,
   },
 });
+
+registerBuiltInPsseLibrarySync();
 
 export default psseLanguage;

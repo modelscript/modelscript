@@ -32,6 +32,7 @@ import PropertiesWidget from "../Properties";
 import { getDiagramPalette } from "../util/lsp-bridge";
 import { AmplOptimizationResults } from "./AmplOptimizationResults";
 import { IconPrimitiveInspector } from "./inspectors/IconPrimitiveInspector";
+import { MorselCalibrationPanel } from "./MorselCalibrationPanel";
 import { MorselDigitalThreadPanel } from "./MorselDigitalThreadPanel";
 import type { MobileTab } from "./MorselMobileTabBar";
 import { PolyglotDomainPanel } from "./PolyglotDomainPanel";
@@ -306,7 +307,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   const [isPropResizerDragging, setIsPropResizerDragging] = useState(false);
   const [isEmptyStateDismissed, setIsEmptyStateDismissed] = useState(false);
   const hasMultiFileProject = Boolean(projectFiles && Object.keys(projectFiles).length >= 2);
-  const [inspectorSubtab, setInspectorSubtab] = useState<"domain" | "thread">("domain");
+  const [inspectorSubtab, setInspectorSubtab] = useState<"domain" | "thread" | "calibrate">("domain");
 
   useEffect(() => {
     setIsEmptyStateDismissed(false);
@@ -456,16 +457,16 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
     }
   };
 
-  const tessellatedBlobUrlsRef = useRef<string[]>([]);
+  const tessellatedBlobUrlsRef = useRef<Map<string, string>>(new Map());
   useEffect(() => {
     const urls = tessellatedBlobUrlsRef.current;
     return () => {
       if (typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
-        for (const url of urls) {
+        for (const url of urls.values()) {
           URL.revokeObjectURL(url);
         }
       }
-      urls.length = 0;
+      urls.clear();
     };
   }, []);
 
@@ -586,8 +587,12 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
         ) {
           const blob = await apiRes.blob();
           if (blob.size > 0) {
+            const prevUrl = tessellatedBlobUrlsRef.current.get(trimmed);
+            if (prevUrl && typeof URL.revokeObjectURL === "function") {
+              URL.revokeObjectURL(prevUrl);
+            }
             const objectUrl = URL.createObjectURL(blob);
-            tessellatedBlobUrlsRef.current.push(objectUrl);
+            tessellatedBlobUrlsRef.current.set(trimmed, objectUrl);
             return objectUrl;
           }
           return null;
@@ -3371,7 +3376,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
             backgroundColor: "var(--color-canvas-default)",
           }}
         >
-          {hasMultiFileProject && (
+          {(hasMultiFileProject || dialect.toLowerCase() === "modelica" || dialect.toLowerCase() === "comtrade") && (
             <div
               style={{
                 display: "flex",
@@ -3385,13 +3390,24 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
               <SegmentedControl
                 aria-label="Inspector Mode"
                 size="small"
-                onChange={(idx) => setInspectorSubtab(idx === 1 ? "thread" : "domain")}
+                onChange={(idx) => {
+                  if (hasMultiFileProject) {
+                    setInspectorSubtab(idx === 1 ? "thread" : idx === 2 ? "calibrate" : "domain");
+                  } else {
+                    setInspectorSubtab(idx === 1 ? "calibrate" : "domain");
+                  }
+                }}
               >
                 <SegmentedControl.Button selected={inspectorSubtab === "domain"}>
                   Domain Inspector
                 </SegmentedControl.Button>
-                <SegmentedControl.Button selected={inspectorSubtab === "thread"}>
-                  Digital Thread
+                {hasMultiFileProject && (
+                  <SegmentedControl.Button selected={inspectorSubtab === "thread"}>
+                    Digital Thread
+                  </SegmentedControl.Button>
+                )}
+                <SegmentedControl.Button selected={inspectorSubtab === "calibrate"}>
+                  Calibration
                 </SegmentedControl.Button>
               </SegmentedControl>
             </div>
@@ -3407,12 +3423,32 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 onUpdateProjectFile={onUpdateProjectFile}
                 onRevealLine={onRevealLine}
               />
+            ) : inspectorSubtab === "calibrate" ? (
+              <MorselCalibrationPanel
+                projectFiles={projectFiles}
+                activeFileName={activeFileName}
+                activeCode={editorValue}
+                documentUri={documentUri}
+                colorMode={colorMode}
+                onUpdateProjectFile={onUpdateProjectFile}
+                onCodeChange={(nextCode) => {
+                  const targetEditor = editorRef.current ?? editor;
+                  const model = targetEditor?.getModel?.();
+                  if (targetEditor && model && targetEditor.getValue() !== nextCode) {
+                    targetEditor.pushUndoStop();
+                    targetEditor.executeEdits("calibration-apply", [
+                      { range: model.getFullModelRange(), text: nextCode, forceMoveMarkers: true },
+                    ]);
+                    targetEditor.pushUndoStop();
+                  }
+                }}
+              />
             ) : (
               <PolyglotDomainPanel
                 dialect={dialect}
                 code={editorValue}
                 colorMode={colorMode}
-                isVisible={showAnalysisView && (!hasMultiFileProject || inspectorSubtab === "domain")}
+                isVisible={showAnalysisView && inspectorSubtab === "domain"}
                 documentUri={documentUri}
                 activeClassName={selectedTreeClassName ?? nestedModels[selectedModelIndex]?.name ?? undefined}
                 projectFiles={projectFiles}

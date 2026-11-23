@@ -1,12 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { BenchmarkCatalog, BenchmarkEntry, BenchmarkTier } from "./benchmark-types.js";
 import rawBenchmarkCatalog from "./benchmarks.catalog.json" with { type: "json" };
 import rawCatalog from "./stdlibs.catalog.json" with { type: "json" };
-import type {
-  BenchmarkCatalog,
-  BenchmarkEntry,
-  BenchmarkTier,
-} from "./benchmark-types.js";
 import type { StdlibCatalog, StdlibDomain, StdlibEntry, StdlibPackId, StdlibTier } from "./types.js";
 
 export * from "./benchmark-types.js";
@@ -49,6 +45,9 @@ export function getStdlibsByPack(pack: StdlibPackId | "all" | string): StdlibEnt
     return catalogJson.libraries.filter(
       (lib) => lib.language.toLowerCase() === "modelica" || lib.packageName.toLowerCase() === "modelica",
     );
+  }
+  if (norm === "minlplib") {
+    return catalogJson.libraries.filter((lib) => lib.packageName.toLowerCase() === "minlplib");
   }
   return catalogJson.libraries.filter((lib) => lib.pack === pack);
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { registerBuiltInMolfileLibrarySync } from "./catalog/library-package-adapter.js";
 import { lowerMolfileToDae, type MolfileDaeOptions } from "./dae/molfile-to-dae.js";
 import { molfileGrammar } from "./grammar/index.js";
 import { indexMolfileFile } from "./indexing.js";
@@ -101,3 +102,5 @@ export const molfileLanguage = language({
     },
   ],
 });
+
+registerBuiltInMolfileLibrarySync();

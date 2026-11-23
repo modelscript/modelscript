@@ -11,16 +11,22 @@ import { Spinner } from "../src/components/Spinner";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-describe("Unified Spinner Component (Packages Design Paradigm)", () => {
-  it("renders a spinning SyncIcon with proper defaults and accessibility attributes", () => {
+describe("Unified Spinner Component (Library Panel Ring Paradigm)", () => {
+  it("renders a spinning ring SVG with proper defaults and accessibility attributes", () => {
     const html = renderToString(React.createElement(Spinner));
 
     assert.ok(html.includes("<svg"), "Spinner must render an SVG element");
+    assert.ok(html.includes("<circle"), "Spinner must render a background track circle");
+    assert.ok(html.includes("<path"), "Spinner must render an active rotating arc path");
     assert.ok(html.includes('class="'), "Spinner must include class attribute");
     assert.ok(html.includes("spinner-spin"), "Spinner must include the spinner-spin animation class");
-    assert.ok(html.includes('role="img"'), 'Spinner must declare role="img"');
+    assert.ok(html.includes("ms-spinner"), "Spinner must include the ms-spinner class");
+    assert.ok(html.includes('role="status"'), 'Spinner must declare role="status"');
     assert.ok(html.includes('aria-label="Loading..."'), 'Spinner must have default aria-label="Loading..."');
-    assert.ok(html.includes('fill="var(--color-text-muted)"'), "Spinner must default fill to var(--color-text-muted)");
+    assert.ok(
+      html.includes("color:var(--ms-spinner-color, #06b6d4)"),
+      "Spinner must default color to var(--ms-spinner-color, #06b6d4)",
+    );
   });
 
   it("correctly maps predefined sizes ('small', 'medium', 'large') and custom numeric sizes", () => {
@@ -47,7 +53,7 @@ describe("Unified Spinner Component (Packages Design Paradigm)", () => {
     );
 
     assert.ok(html.includes("spinner-spin custom-loading-class"), "Custom className must be appended to spinner-spin");
-    assert.ok(html.includes('fill="var(--color-accent-fg)"'), "Custom fill must be honored");
+    assert.ok(html.includes("color:var(--color-accent-fg)"), "Custom fill must be honored as ring color");
     assert.ok(html.includes('aria-label="Processing package..."'), "Custom srText must be reflected in aria-label");
   });
 

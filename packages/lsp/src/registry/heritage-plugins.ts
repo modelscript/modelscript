@@ -14,7 +14,14 @@ import { bufrLanguage, getBufrDocumentSymbols, getBufrHover, validateBufr } from
 import { ceaLanguage, getCeaDocumentSymbols, getCeaHover, validateCea } from "@modelscript/cea";
 import { chemkinLanguage, getChemkinDocumentSymbols, getChemkinHover, validateChemkin } from "@modelscript/chemkin";
 import { cifLanguage, getCifDocumentSymbols, getCifHover, validateCif } from "@modelscript/cif";
-import { cplexLpLanguage, getCplexLpDocumentSymbols, getCplexLpHover, validateCplexLp } from "@modelscript/cplex-lp";
+import {
+  cplexLpLanguage,
+  getCplexLpDocumentSymbols,
+  getCplexLpHover,
+  parseCplexLp,
+  solveCplexLp,
+  validateCplexLp,
+} from "@modelscript/cplex-lp";
 import { csmpLanguage, getCsmpDocumentSymbols, getCsmpHover, validateCsmp } from "@modelscript/csmp";
 import { datcomLanguage, getDatcomDocumentSymbols, getDatcomHover, validateDatcom } from "@modelscript/datcom";
 import { doe2Language, getDoe2DocumentSymbols, getDoe2Hover, validateDoe2 } from "@modelscript/doe2";
@@ -25,7 +32,7 @@ import { endf6Language, getEndf6DocumentSymbols, getEndf6Hover, validateEndf6 } 
 import { eslLanguage, getEslDocumentSymbols, getEslHover, validateEsl } from "@modelscript/esl";
 import { esterelLanguage, getEsterelDocumentSymbols, getEsterelHover, validateEsterel } from "@modelscript/esterel";
 import { fitsLanguage, getFitsDocumentSymbols, getFitsHover, validateFits } from "@modelscript/fits";
-import { gamsLanguage, getGamsDocumentSymbols, getGamsHover, validateGams } from "@modelscript/gams";
+import { gamsLanguage, getGamsDocumentSymbols, getGamsHover, solveGams, validateGams } from "@modelscript/gams";
 import {
   gaussianLanguage,
   getGaussianDocumentSymbols,
@@ -98,6 +105,10 @@ export interface HeritagePluginSpec {
   hoverPos?: (text: string, pos: { line: number; character: number }) => unknown;
   hoverOffset?: (text: string, offset: number) => unknown;
   validate?: (text: string) => unknown;
+  actionHandlers?: Record<
+    string,
+    (ctx: { documentText?: string }, params?: Record<string, unknown>) => Promise<unknown>
+  >;
 }
 
 /**
@@ -329,6 +340,25 @@ export function registerHeritageLanguagePlugins(register: (spec: HeritagePluginS
       symbols: getGamsDocumentSymbols,
       hoverPos: getGamsHover,
       validate: validateGams,
+      actionHandlers: {
+        gams_solve: async (ctx, params) => {
+          const text = (params?.["documentText"] as string | undefined) ?? ctx.documentText;
+          if (!text) return null;
+          const opts = (params?.["options"] as { maxIterations?: number; maxNodes?: number } | undefined) ?? {};
+          const t0 = Date.now();
+          const res = solveGams(text, opts);
+          return {
+            status: res.status,
+            objectiveValue: res.objectiveValue,
+            iterations: res.iterations,
+            nodesExplored: res.nodesExplored,
+            solveTimeMs: Date.now() - t0,
+            variables: res.variableValues,
+            duals: res.duals,
+            solverUsed: `gams-${res.solverType}`,
+          };
+        },
+      },
     },
     {
       id: "mps",
@@ -347,6 +377,26 @@ export function registerHeritageLanguagePlugins(register: (spec: HeritagePluginS
       symbols: getCplexLpDocumentSymbols,
       hoverPos: getCplexLpHover,
       validate: validateCplexLp,
+      actionHandlers: {
+        cplex_lp_solve: async (ctx, params) => {
+          const text = (params?.["documentText"] as string | undefined) ?? ctx.documentText;
+          if (!text) return null;
+          const opts = (params?.["options"] as { maxIterations?: number; maxNodes?: number } | undefined) ?? {};
+          const t0 = Date.now();
+          const parsed = parseCplexLp(text);
+          const res = solveCplexLp(parsed, opts);
+          return {
+            status: res.status,
+            objectiveValue: res.objectiveValue,
+            iterations: res.iterations,
+            nodesExplored: res.nodesExplored,
+            gap: res.gap,
+            solveTimeMs: Date.now() - t0,
+            variables: res.values,
+            solverUsed: "cplex-lp-pure-js",
+          };
+        },
+      },
     },
     {
       id: "iges",

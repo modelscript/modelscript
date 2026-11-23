@@ -598,7 +598,11 @@ export function parsePscxCst(
       return out;
     }
 
-    function extractGraphElement(gel: XmlElement, fallbackTitle: string): void {
+    function extractGraphElement(
+      gel: XmlElement,
+      fallbackTitle: string,
+      frameGeom?: { x: number; y: number; width: number; height: number; xLabel?: string | undefined },
+    ): void {
       const gClass = (attr(gel, "classid") || "").toLowerCase();
       const gParams = readElementParams(gel);
       const kind: PscadGraphFrame["kind"] = gClass.includes("xy")
@@ -618,12 +622,15 @@ export function parsePscxCst(
       const ymin = Number(gParams["ymin"] ?? gParams["min"]);
       const ymax = Number(gParams["ymax"] ?? gParams["max"]);
       const curves: string[] = [];
+      const curveNames: string[] = [];
       const seenCurves = new Set<string>();
-      const pushCurve = (c: string | undefined) => {
+      const pushCurve = (c: string | undefined, displayName?: string | undefined) => {
         const trimmed = c?.trim();
         if (trimmed && !seenCurves.has(trimmed)) {
           seenCurves.add(trimmed);
           curves.push(trimmed);
+          const dn = displayName?.trim();
+          if (dn) curveNames.push(dn);
         }
       };
 
@@ -636,6 +643,7 @@ export function parsePscxCst(
             (ct === "user" && (attr(ch, "classid") || "").toLowerCase().includes("curve"))
           ) {
             const cp = readElementParams(ch);
+            const displayName = cp["name"] ?? attr(ch, "name") ?? attr(ch, "id");
             pushCurve(
               attr(ch, "link") ??
                 cp["link"] ??
@@ -644,6 +652,7 @@ export function parsePscxCst(
                 cp["name"] ??
                 attr(ch, "name") ??
                 attr(ch, "id"),
+              displayName,
             );
           } else if (ct !== "graph" && ct !== "paramlist" && ct !== "param") {
             walkGraphChildren(ch);
@@ -653,16 +662,30 @@ export function parsePscxCst(
       walkGraphChildren(gel);
 
       if (curves.length === 0 && gParams["curves"]) {
-        for (const c of gParams["curves"].split(/[,\s;]+/)) pushCurve(c);
+        for (const c of gParams["curves"].split(/[,\s;]+/)) pushCurve(c, c);
       }
+      const gx = parseFloat(attr(gel, "x") || "");
+      const gy = parseFloat(attr(gel, "y") || "");
+      const gw = parseFloat(attr(gel, "w") || "");
+      const gh = parseFloat(attr(gel, "h") || "");
+      const posX = Number.isFinite(gx) ? gx : frameGeom?.x;
+      const posY = Number.isFinite(gy) ? gy : frameGeom?.y;
+      const width = Number.isFinite(gw) && gw > 0 ? gw : frameGeom?.width;
+      const height = Number.isFinite(gh) && gh > 0 ? gh : frameGeom?.height;
+      const xLabel = gParams["xtitle"] ?? gParams["xlabel"] ?? frameGeom?.xLabel;
       const gid = attr(gel, "id") || `graph_${graphId++}`;
       graphFrames.push({
         id: gid,
         title: title || gid,
         kind,
         curves,
+        curveNames: curveNames.length > 0 ? curveNames : undefined,
         min: Number.isFinite(ymin) ? ymin : undefined,
         max: Number.isFinite(ymax) ? ymax : undefined,
+        xLabel: xLabel?.trim() || undefined,
+        position: posX !== undefined && posY !== undefined ? { x: posX, y: posY } : undefined,
+        width,
+        height,
       });
     }
 
@@ -677,6 +700,14 @@ export function parsePscxCst(
         if (fClass === "graphframe" || !fClass) {
           const fParams = readElementParams(el);
           const fTitle = (fParams["title"] ?? fParams["name"] ?? attr(el, "name") ?? attr(el, "id") ?? "Graph").trim();
+          const fx = parseFloat(attr(el, "x") || "");
+          const fy = parseFloat(attr(el, "y") || "");
+          const fw = parseFloat(attr(el, "w") || "");
+          const fh = parseFloat(attr(el, "h") || "");
+          const frameGeom =
+            Number.isFinite(fx) && Number.isFinite(fy) && Number.isFinite(fw) && fw > 0 && Number.isFinite(fh) && fh > 0
+              ? { x: fx, y: fy, width: fw, height: fh, xLabel: fParams["xtitle"] ?? fParams["xlabel"] }
+              : undefined;
           const nestedGraphs: XmlElement[] = [];
           const findGraphs = (node: XmlElement) => {
             for (const ch of node.children) {
@@ -686,9 +717,16 @@ export function parsePscxCst(
           };
           findGraphs(el);
           if (nestedGraphs.length > 0) {
-            for (const g of nestedGraphs) extractGraphElement(g, fTitle);
+            const subH = frameGeom ? frameGeom.height / nestedGraphs.length : 0;
+            for (let gi = 0; gi < nestedGraphs.length; gi++) {
+              const g = nestedGraphs[gi]!;
+              const sliceGeom = frameGeom
+                ? { ...frameGeom, y: Math.round(frameGeom.y + gi * subH), height: Math.round(subH) }
+                : undefined;
+              extractGraphElement(g, fTitle, sliceGeom);
+            }
           } else {
-            extractGraphElement(el, fTitle);
+            extractGraphElement(el, fTitle, frameGeom);
           }
           return;
         }

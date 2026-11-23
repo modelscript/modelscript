@@ -143,7 +143,7 @@ function Harness(): React.ReactElement {
     getDomSummary: () => {
       const nodeEls = Array.from(document.querySelectorAll(".ms-nodes-layer > g[data-cell-id]"));
       const edgeEls = Array.from(document.querySelectorAll(".ms-edges-layer > g[data-cell-id]"));
-      const selBoxes = Array.from(document.querySelectorAll(".x6-widget-selection-box[data-cell-id]"));
+      const selBoxes = Array.from(document.querySelectorAll(".ms-selection-box[data-cell-id]"));
       const parseTranslate = (tf: string | null): { x: number; y: number } => {
         if (!tf) return { x: 0, y: 0 };
         const m = /translate\\(([-0-9.eE]+)[,\\s]+([-0-9.eE]+)\\)/.exec(tf);
@@ -553,8 +553,8 @@ describe("Real Chromium Diagram Editing & Code-Sync E2E", () => {
       );
 
       // Drag from R90.n port to R180.p port -> must create connected edge and emit connect action
-      const portStart = await page.locator('[data-cell-id="R90"] .x6-port[port-id="n"]').boundingBox();
-      const portEnd = await page.locator('[data-cell-id="R180"] .x6-port[port-id="p"]').boundingBox();
+      const portStart = await page.locator('[data-cell-id="R90"] .ms-port[port-id="n"]').boundingBox();
+      const portEnd = await page.locator('[data-cell-id="R180"] .ms-port[port-id="p"]').boundingBox();
       assert.ok(portStart && portEnd, "Port bounding boxes must exist");
       await page.mouse.move(portStart.x + portStart.width / 2, portStart.y + portStart.height / 2);
       await page.mouse.down();

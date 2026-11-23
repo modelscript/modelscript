@@ -591,6 +591,10 @@ const POLYGLOT_SPECS: PolyglotLangSpec[] = [
   },
   { domain: "JSBSim Flight Dynamics", classKind: "jsbsim_aircraft", accentColor: "#075985", extensions: [".xml"] },
   { domain: "LPS Logic Program", classKind: "lps_program", accentColor: "#5b21b6", extensions: [".lps"] },
+  { domain: "AMPL Optimization", classKind: "ampl_model", accentColor: "#7c3aed", extensions: [".mod"] },
+  { domain: "AMPL NL Problem", classKind: "nl_problem", accentColor: "#6d28d9", extensions: [".nl"] },
+  { domain: "GAMS Optimization", classKind: "gams_model", accentColor: "#059669", extensions: [".gms"] },
+  { domain: "CPLEX LP", classKind: "cplex_lp", accentColor: "#0284c7", extensions: [".lp"] },
   { domain: "CSV Dataset", classKind: "csv_dataset", accentColor: "#0d9488", extensions: [".csv"] },
   { domain: "ModelScript Native", classKind: "modelscript_module", accentColor: "#0284c7", extensions: [".msx"] },
 ];
@@ -606,15 +610,144 @@ function extractPolyglotMetadataFromFile(relPath: string, content: string, spec:
   // Extract leading comment description if present
   const docMatch =
     content.match(/^\s*\/\*\*([\s\S]*?)\*\//) ??
+    content.match(/^\s*\/\*([\s\S]*?)\*\//) ??
+    content.match(/^\s*\$ontext\b([\s\S]*?)\$offtext\b/i) ??
     content.match(/^\s*<!--([\s\S]*?)-->/) ??
-    content.match(/^(?:\s*(?:\/\/|#|!|\*)\s*(.+)\r?\n)+/);
+    content.match(/^(?:\s*(?:\/\/|#|!|\*|\\)\s*(.+)\r?\n)+/);
   let fileDesc: string | null = null;
-  if (docMatch?.[1]) {
-    fileDesc = docMatch[1]
-      .replace(/^\s*[*#!/]+\s?/gm, "")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 280);
+  let fullCommentBlock: string | null = null;
+  if (docMatch?.[0]) {
+    fullCommentBlock = (docMatch[1] ?? docMatch[0]).replace(/^\s*(?:[*#!/\\]+|\$ontext|\$offtext)\s?/gim, "").trim();
+    fileDesc = fullCommentBlock.replace(/\s+/g, " ").trim().slice(0, 280) || null;
+  }
+
+  // 0. Optimization Modeling Languages (.mod, .gms, .lp, .nl)
+  if (lowerExt === ".mod" || lowerExt === ".gms" || lowerExt === ".lp" || lowerExt === ".nl") {
+    const components: ComponentMetadata[] = [];
+    const equations: string[] = [];
+    const seen = new Set<string>();
+    const addComp = (
+      name: string,
+      typeName: string,
+      variability: ComponentMetadata["variability"],
+      description: string | null = null,
+      modifiers: ComponentMetadata["modifiers"] = [],
+    ) => {
+      if (!name || seen.has(name) || components.length >= 60) return;
+      seen.add(name);
+      components.push({ name, typeName, description, causality: null, variability, modifiers });
+    };
+
+    // Extract MINLPLib-style property lines from leading comment block (e.g. "* Problem type : MINLP")
+    const propLines: string[] = [];
+    if (fullCommentBlock) {
+      for (const line of fullCommentBlock.split(/\r?\n/)) {
+        const pm = line.match(/^\s*([A-Za-z0-9 _/-]{2,36})\s*[:=]\s*(.+)$/);
+        if (pm) {
+          propLines.push(`<li><strong>${escapeXml(pm[1]!.trim())}:</strong> ${escapeXml(pm[2]!.trim())}</li>`);
+        }
+      }
+    }
+
+    if (lowerExt === ".mod") {
+      for (const m of content.matchAll(/^\s*set\s+([A-Za-z_][A-Za-z0-9_]*)/gm)) {
+        addComp(m[1]!, "Set", "parameter", "AMPL index set");
+      }
+      for (const m of content.matchAll(/^\s*param\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*[^;]*?(?:=|:=)\s*([^;\n]+))?/gm)) {
+        addComp(
+          m[1]!,
+          "Real",
+          "parameter",
+          "AMPL parameter",
+          m[2] ? [{ name: "value", value: m[2].trim().slice(0, 40) }] : [],
+        );
+      }
+      for (const m of content.matchAll(/^\s*var\s+([A-Za-z_][A-Za-z0-9_]*)([^;]*);/gm)) {
+        const decl = m[2] ?? "";
+        const typeName = /\bbinary\b/i.test(decl) ? "Boolean" : /\binteger\b/i.test(decl) ? "Integer" : "Real";
+        addComp(m[1]!, typeName, "continuous", "Decision variable");
+      }
+      for (const m of content.matchAll(/^\s*(minimize|maximize)\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([^;]+);/gm)) {
+        equations.push(`${m[1]} ${m[2]}: ${m[3]!.trim()}`);
+      }
+      for (const m of content.matchAll(
+        /^\s*(?:subject\s+to|s\.t\.|subj\s+to)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\{[^}]*\})?\s*:\s*([^;]+);/gm,
+      )) {
+        equations.push(`${m[1]}: ${m[2]!.trim()}`);
+      }
+    } else if (lowerExt === ".gms") {
+      const gmsDecls = content.matchAll(
+        /^\s*(Variables?|Positive\s+Variables?|Binary\s+Variables?|Integer\s+Variables?|Free\s+Variables?|Parameters?|Scalars?|Sets?)\s+([\s\S]*?);/gim,
+      );
+      for (const block of gmsDecls) {
+        const kw = block[1]!.toLowerCase();
+        const isParam = kw.startsWith("param") || kw.startsWith("scalar") || kw.startsWith("set");
+        const typeName = kw.includes("binary")
+          ? "Boolean"
+          : kw.includes("integer")
+            ? "Integer"
+            : kw.startsWith("set")
+              ? "Set"
+              : "Real";
+        for (const rawItem of block[2]!.split(",")) {
+          const itemName = rawItem.trim().split(/[\s(/]/)[0];
+          if (itemName && /^[A-Za-z_][A-Za-z0-9_]*$/.test(itemName)) {
+            addComp(itemName, typeName, isParam ? "parameter" : "continuous");
+          }
+        }
+      }
+      for (const m of content.matchAll(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*\.\.\s*([^;]+);/gm)) {
+        equations.push(`${m[1]}: ${m[2]!.trim()}`);
+      }
+    } else if (lowerExt === ".lp") {
+      const objMatch = content.match(
+        /^\s*(minimize|maximize|min|max)\s*\r?\n([\s\S]*?)(?=^\s*(?:subject\s+to|s\.t\.|st|bounds|generals|binaries|end)\b)/im,
+      );
+      if (objMatch) {
+        equations.push(`${objMatch[1]}: ${objMatch[2]!.replace(/\s+/g, " ").trim().slice(0, 200)}`);
+      }
+      const binVars = new Set<string>();
+      const intVars = new Set<string>();
+      const binSec = content.match(
+        /^\s*(?:binaries|binary|bin)\s*\r?\n([\s\S]*?)(?=^\s*(?:generals|general|gen|bounds|semi|end)\b|$)/im,
+      );
+      if (binSec?.[1])
+        binSec[1]
+          .split(/\s+/)
+          .filter(Boolean)
+          .forEach((v) => binVars.add(v));
+      const genSec = content.match(
+        /^\s*(?:generals|general|gen)\s*\r?\n([\s\S]*?)(?=^\s*(?:binaries|binary|bin|bounds|semi|end)\b|$)/im,
+      );
+      if (genSec?.[1])
+        genSec[1]
+          .split(/\s+/)
+          .filter(Boolean)
+          .forEach((v) => intVars.add(v));
+      for (const v of binVars) addComp(v, "Boolean", "discrete", "Binary decision variable");
+      for (const v of intVars) addComp(v, "Integer", "discrete", "Integer decision variable");
+      for (const m of content.matchAll(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([^\r\n]+)/gm)) {
+        equations.push(`${m[1]}: ${m[2]!.trim()}`);
+      }
+    }
+
+    const extraDoc =
+      propLines.length > 0
+        ? `<h3>Model Properties</h3><ul>${propLines.join("")}</ul>`
+        : fullCommentBlock
+          ? `<pre style="white-space:pre-wrap;font-size:12px;">${escapeXml(fullCommentBlock.slice(0, 2000))}</pre>`
+          : "";
+
+    results.push({
+      className: baseName,
+      classKind: spec.classKind,
+      description: fileDesc ?? `${spec.domain} model (${relPath})`,
+      documentation:
+        buildHtmlDocumentation(baseName, spec.classKind, fileDesc, equations, components, relPath) + extraDoc,
+      baseClasses: [],
+      components,
+    });
+    return results;
   }
 
   // 1. SPICE (.cir, .sp, .lib)

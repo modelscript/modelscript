@@ -421,7 +421,7 @@ export function registerHoverProvider(
     }
 
     // ── Custom plugin hover (PSCAD, PSS/E, CFD, FEA, etc.) ──
-    const pluginForHover = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
+    const pluginForHover = globalLanguageRegistry.getPluginForUri(params.textDocument.uri, text);
     if (pluginForHover?.customHandlers?.hover) {
       const customHover = pluginForHover.customHandlers.hover(offset, text, params.textDocument.uri);
       if (customHover) return customHover;
@@ -436,7 +436,13 @@ export function registerHoverProvider(
       const plugin = pluginForHover;
       if (plugin && plugin.facade?.getHover) {
         try {
-          const hoverText = plugin.facade.getHover(0, offset);
+          const treeEntry =
+            context?.documentManager?.documentTrees?.get(params.textDocument.uri) ??
+            validationService?.documentManager?.documentTrees?.get(params.textDocument.uri);
+          const tree = treeEntry?.tree ?? treeEntry;
+          const rootPtr = tree?.rootNode?.id ?? tree?.rootNode?.ptr ?? tree?.rootPtr ?? 0;
+          plugin.facade.loadSource?.(text);
+          const hoverText = plugin.facade.getHover(rootPtr, offset);
           if (hoverText) {
             const word = extractWordAtOffset(text, offset);
             const activeSettings = context?.settings ?? validationService?.context?.settings;

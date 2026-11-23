@@ -105,6 +105,7 @@ import { applySwimlaneLayout, type SwimlanePartition } from "./swimlane-layout.j
 import { animateCells, type SimulationFrame } from "./telemetry.js";
 import { applyTsmOrthogonalLayout } from "./tsm-layout.js";
 import { scheduleViewportCulling } from "./viewport-culling.js";
+import { hydrateDiagramWasm } from "./wasm-hydration.js";
 
 export interface EdgeTerminal {
   cell?: string | undefined;
@@ -699,6 +700,7 @@ export { ensurePatchedSegmentsTool, ensurePatchedTransformTool, ensurePatchedVer
  */
 export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph | null {
   ensureDiagramStyles();
+  void hydrateDiagramWasm();
   let container = targetContainer ?? currentOptions?.container;
   if (!container && typeof document !== "undefined") {
     const el = document.getElementById("container");
@@ -1612,9 +1614,9 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       const portEl = view.container.querySelector(`[data-port="${terminal.port}"]`);
       if (portEl) {
         if (active) {
-          portEl.classList.add("x6-port-edge-selected");
+          portEl.classList.add("ms-port-edge-selected");
         } else {
-          portEl.classList.remove("x6-port-edge-selected");
+          portEl.classList.remove("ms-port-edge-selected");
         }
       }
     });
@@ -1629,7 +1631,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         cell.addTools(getEdgeToolConfig(cell, g, isDark, activeStyle));
         setEdgePortHighlight(cell, true);
       } else if (typeof cell.isNode === "function" && cell.isNode()) {
-        const selContainer = selectionImpl?.container || g.container?.querySelector(".x6-widget-selection");
+        const selContainer = selectionImpl?.container || g.container?.querySelector(".ms-widget-selection");
         const box = selContainer?.querySelector(`[data-cell-id="${cell.id}"]`) as HTMLElement | null;
         if (box) {
           alignNodeSelectionBox(box, cell as Node, g);
@@ -2870,6 +2872,17 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
   g.on("edge:change:target", () => scheduleUpdateSolderDots(g));
   g.on("edge:connected", () => scheduleUpdateSolderDots(g));
   g.on("edge:added", () => scheduleUpdateSolderDots(g));
+  g.on("edge:remove-requested", ({ edge }: { edge?: Edge | null | undefined }) => {
+    if (isRenderingDiagram || !edge || !edge.isEdge()) return;
+    const src = edge.getSource() as { cell?: string; port?: string } | undefined;
+    const tgt = edge.getTarget() as { cell?: string; port?: string } | undefined;
+    if (src?.cell && tgt?.cell) {
+      const source = src.port ? `${src.cell}.${src.port}` : src.cell;
+      const target = tgt.port ? `${tgt.cell}.${tgt.port}` : tgt.cell;
+      enqueueDiagramAction({ type: "disconnect", source, target }, g);
+    }
+    scheduleUpdateSolderDots(g);
+  });
   g.on("edge:removed", () => scheduleUpdateSolderDots(g));
 
   // Quick re-route orthogonal on edge double-click or context menu

@@ -2,3 +2,4 @@
 
 export * from "./arinc429-std-lib-data.js";
 export * from "./arinc429-std-schemas.js";
+export * from "./library-package-adapter.js";

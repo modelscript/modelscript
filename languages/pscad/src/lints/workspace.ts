@@ -46,7 +46,13 @@ export function lintPscadWorkspace(
   }
 
   for (const [uri, xml] of pscxEntries) {
-    const project = parsePscx(xml);
+    if (!xml.trim()) continue;
+    let project: ReturnType<typeof parsePscx>;
+    try {
+      project = parsePscx(xml);
+    } catch {
+      continue;
+    }
     for (const d of lintPscx(project, options)) {
       diagnostics.push({
         uri,
@@ -119,36 +125,52 @@ export function lintPscadWorkspace(
 
   // Formal tier: Cross-project parameter drift check (M6088) when multiple .pscx projects exist in the workspace
   if (options?.tier === "formal" && pscxEntries.length >= 2) {
-    const [primaryUri, primaryXml] = pscxEntries[0]!;
-    const primaryNet = extractEmtNetlist(parsePscx(primaryXml));
-    const otherSources: PolyglotModelSource[] = [];
-    for (let i = 1; i < pscxEntries.length; i++) {
-      const [otherUri, otherXml] = pscxEntries[i]!;
-      const otherNet = extractEmtNetlist(parsePscx(otherXml));
-      for (const br of otherNet.branches ?? []) {
-        if (Number.isFinite(br.resistanceOhm)) {
-          otherSources.push({
-            lang: "pscad_alt",
-            uri: otherUri,
-            component: br.id,
-            param: "r",
-            value: br.resistanceOhm,
-          });
-        }
-        if (Number.isFinite(br.inductanceH)) {
-          otherSources.push({ lang: "pscad_alt", uri: otherUri, component: br.id, param: "l", value: br.inductanceH });
-        }
+    const validNets: Array<{ uri: string; net: ReturnType<typeof extractEmtNetlist> }> = [];
+    for (const [entryUri, entryXml] of pscxEntries) {
+      if (!entryXml.trim()) continue;
+      try {
+        validNets.push({ uri: entryUri, net: extractEmtNetlist(parsePscx(entryXml)) });
+      } catch {
+        // Skip unparseable/empty sibling PSCAD files rather than aborting workspace linting
       }
     }
-    if (otherSources.length > 0) {
-      for (const d of verifyPscadPolyglotDrift(primaryNet, otherSources)) {
-        diagnostics.push({
-          uri: primaryUri,
-          code: d.code,
-          rule: d.rule,
-          severity: d.severity,
-          message: d.message,
-        });
+    if (validNets.length >= 2) {
+      const primaryUri = validNets[0]!.uri;
+      const primaryNet = validNets[0]!.net;
+      const otherSources: PolyglotModelSource[] = [];
+      for (let i = 1; i < validNets.length; i++) {
+        const { uri: otherUri, net: otherNet } = validNets[i]!;
+        for (const br of otherNet.branches ?? []) {
+          if (Number.isFinite(br.resistanceOhm)) {
+            otherSources.push({
+              lang: "pscad_alt",
+              uri: otherUri,
+              component: br.id,
+              param: "r",
+              value: br.resistanceOhm,
+            });
+          }
+          if (Number.isFinite(br.inductanceH)) {
+            otherSources.push({
+              lang: "pscad_alt",
+              uri: otherUri,
+              component: br.id,
+              param: "l",
+              value: br.inductanceH,
+            });
+          }
+        }
+      }
+      if (otherSources.length > 0) {
+        for (const d of verifyPscadPolyglotDrift(primaryNet, otherSources)) {
+          diagnostics.push({
+            uri: primaryUri,
+            code: d.code,
+            rule: d.rule,
+            severity: d.severity,
+            message: d.message,
+          });
+        }
       }
     }
   }

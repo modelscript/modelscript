@@ -81,6 +81,7 @@ export interface TaggableCstNode {
  * get baseline instrumentation automatically even before explicit `.tag(...)` annotations.
  */
 export function inferDefaultTagsFromRuleName(ruleName: string): number {
+  if (!ruleName || typeof ruleName !== "string") return SemanticCstTag.None;
   const r = ruleName.toLowerCase();
   let mask = SemanticCstTag.None;
 

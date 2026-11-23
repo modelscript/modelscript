@@ -21,6 +21,7 @@ import { useFeatureFlag } from "../../FeatureFlagContext";
 import { PackageStudiesTab } from "../package/tabs/PackageStudiesTab";
 import { ClassEquationsTab, ClassSourceTab } from "./components/ClassCodeTabs";
 import { ClassDetailHeader } from "./components/ClassDetailHeader";
+import { ClassOptimizationTab } from "./components/ClassOptimizationTab";
 import { ClassOverviewTab } from "./components/ClassOverviewTab";
 import { ClassParametersSection } from "./components/ClassParametersSection";
 import { ClassSimulationTab } from "./components/ClassSimulationTab";
@@ -144,8 +145,24 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
     return [];
   }, [cls]);
 
-  const isSimulatable = useMemo(() => {
+  const isOptimizable = useMemo(() => {
     if (!cls) return false;
+    const kind = (cls.classKind || "").toLowerCase();
+    const src = (cls.sourceFile || "").toLowerCase();
+    return (
+      kind === "ampl_model" ||
+      kind === "gams_model" ||
+      kind === "cplex_lp" ||
+      kind === "nl_problem" ||
+      src.endsWith(".mod") ||
+      src.endsWith(".gms") ||
+      src.endsWith(".lp") ||
+      src.endsWith(".nl")
+    );
+  }, [cls]);
+
+  const isSimulatable = useMemo(() => {
+    if (!cls || isOptimizable) return false;
     const kind = (cls.classKind || "").toLowerCase();
     if (kind !== "model" && kind !== "block" && kind !== "class") return false;
     if (kind.includes("partial")) return false;
@@ -167,14 +184,16 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
     }
 
     return (hasExperimentAnnotation || isExamplePackage || categorized.connectors.length === 0) && hasEquations;
-  }, [cls, className, equations, categorized.connectors.length]);
+  }, [cls, isOptimizable, className, equations, categorized.connectors.length]);
 
   const validTabs = useMemo<ClassTabId[]>(
     () =>
-      isSimulatable
-        ? ["overview", "parameters", "equations", "simulation", "studies", "source"]
-        : ["overview", "parameters", "equations", "studies", "source"],
-    [isSimulatable],
+      isOptimizable
+        ? ["overview", "parameters", "equations", "optimization", "studies", "source"]
+        : isSimulatable
+          ? ["overview", "parameters", "equations", "simulation", "studies", "source"]
+          : ["overview", "parameters", "equations", "studies", "source"],
+    [isOptimizable, isSimulatable],
   );
   const activeTab: ClassTabId = rawTab && validTabs.includes(rawTab) ? rawTab : "overview";
 
@@ -361,6 +380,7 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
         hasCae={hasCae}
         equationsCount={equations.length}
         isSimulatable={isSimulatable}
+        isOptimizable={isOptimizable}
         studiesCount={
           (linkedStudies.bundledStudies?.length || 0) +
           (linkedStudies.linkedTemplates?.length || 0) +
@@ -431,6 +451,10 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
             hasCae={hasCae}
             onOpenCloudStudies={hasCae ? () => setActiveTab("studies") : undefined}
           />
+        )}
+
+        {isOptimizable && activeTab === "optimization" && (
+          <ClassOptimizationTab libraryName={name} version={version} className={className} cls={cls} />
         )}
 
         {hasCae && activeTab === "studies" && (

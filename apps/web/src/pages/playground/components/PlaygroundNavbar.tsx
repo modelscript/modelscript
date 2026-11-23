@@ -10,6 +10,7 @@ import {
   DownloadIcon,
   GraphIcon,
   ImageIcon,
+  KebabHorizontalIcon,
   MoonIcon,
   PlayIcon,
   RepoForkedIcon,
@@ -97,7 +98,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   canSplit = true,
   splitOrientation = "horizontal",
   onToggleSplit,
-  isDirty = false,
+  isDirty: _isDirty = false,
   isSimulating = false,
   runStatus,
   onOpenProblems,
@@ -323,8 +324,17 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           </Link>
         )}
 
-        {/* Static Colored Language Label */}
-        <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", minWidth: 0, flexShrink: 1 }}>
+        {/* Active Language Pill + Language-Dependent Tools (Run + DSL Toolbar Buttons) */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            minWidth: 0,
+            flex: "1 1 auto",
+            overflow: "hidden",
+          }}
+        >
           <span
             data-testid="morsel-language-badge"
             title={
@@ -346,7 +356,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
               border: "1px solid color-mix(in srgb, var(--ms-brand, #0891b2) 22%, transparent)",
               whiteSpace: "nowrap",
               userSelect: "none",
-              flexShrink: 1,
+              flexShrink: 0,
               minWidth: 0,
             }}
           >
@@ -370,74 +380,82 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             </span>
           </span>
 
-          {isDirty && (
-            <span
-              title="Unsaved changes"
-              aria-label="Unsaved changes"
+          {/* Language-Dependent Run CTA (only shown for languages that support simulation) */}
+          {supportsSimulation && onSimulate && (
+            <Button
+              size="small"
+              variant="primary"
+              leadingVisual={isSimulating ? undefined : PlayIcon}
+              onClick={onSimulate}
+              disabled={isSimulating}
               style={{
-                display: "inline-block",
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                backgroundColor: "var(--ms-warning, #d97706)",
-                boxShadow: "0 0 4px var(--ms-warning, #d97706)",
+                fontWeight: 600,
+                height: 30,
+                padding: "0 11px",
+                borderRadius: 8,
+                background: isSimulating
+                  ? "var(--color-neutral-muted, var(--ms-text-3, #4b5563))"
+                  : "var(--ms-brand, #0e7490)",
+                borderColor: isSimulating ? "transparent" : "var(--ms-brand-active, #155e75)",
+                color: "#ffffff",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
                 flexShrink: 0,
+                transition: "all 0.15s cubic-bezier(0.16, 1, 0.3, 1)",
               }}
-            />
-          )}
-        </div>
-      </NavLeft>
-
-      {onViewChange && (
-        <NavCenter>
-          <SegmentedControl
-            size="small"
-            aria-label="Workbench View"
-            onChange={(idx) => {
-              const target = viewTabs[idx];
-              if (target) target.onClick();
-            }}
-          >
-            {viewTabs.map((tab, idx) => (
-              <SegmentedControl.IconButton
-                key={tab.id}
-                selected={idx === (selectedIndex !== -1 ? selectedIndex : 0)}
-                icon={tab.icon}
-                aria-label={tab.label}
-                description={tab.title}
-                onClick={tab.onClick}
-              />
-            ))}
-          </SegmentedControl>
-
-          {onToggleSplit && (
-            <SplitToggleButton
-              type="button"
-              role="button"
-              aria-pressed={Boolean(isSplit && !isCodeView && canSplit)}
-              aria-label={
-                splitOrientation === "vertical"
-                  ? "Split view (Code on top, visualizer on bottom)"
-                  : "Split view (Code on left, visualizer on right)"
-              }
-              disabled={isCodeView || !canSplit}
-              $active={Boolean(isSplit && !isCodeView && canSplit)}
-              onClick={onToggleSplit}
-              title={splitTitle}
+              title={isSimulating ? "Simulation running…" : `Run Simulation (${isMac ? "⌘↵" : "F5"})`}
             >
-              <SplitIcon size={14} />
-              <span>Split</span>
-            </SplitToggleButton>
+              {isSimulating ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <span
+                    style={{
+                      width: 12,
+                      height: 12,
+                      border: "2px solid #ffffff",
+                      borderTopColor: "transparent",
+                      borderRadius: "50%",
+                      animation: "spin 0.8s linear infinite",
+                      display: "inline-block",
+                    }}
+                  />
+                  Running…
+                </span>
+              ) : (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <span>Run</span>
+                  <kbd
+                    className="nav-hide-lg"
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 500,
+                      fontFamily: "var(--ms-font-mono, monospace)",
+                      opacity: 0.85,
+                      padding: "1px 5px",
+                      borderRadius: 4,
+                      background: "rgba(255, 255, 255, 0.18)",
+                      lineHeight: "12px",
+                    }}
+                  >
+                    {isMac ? "⌘↵" : "F5"}
+                  </kbd>
+                </span>
+              )}
+            </Button>
           )}
 
+          {/* Auto-fitting DSL per-language toolbar buttons */}
           <LanguageToolbarButtons
             languageId={currentLang}
             activeView={activeTabId}
             maxPrimary={activeTabId === "icon" ? 6 : 2}
-            className="nav-hide-sm"
+            autoFit
+            grouped
+            languageLabel={currentLangOption.label}
           />
-        </NavCenter>
-      )}
+        </div>
+      </NavLeft>
 
       <NavRight>
         {/* Compilation / Solver Error Status Pill */}
@@ -450,9 +468,9 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
               display: "inline-flex",
               alignItems: "center",
               gap: 5,
-              height: 28,
+              height: 30,
               padding: "0 8px",
-              borderRadius: 6,
+              borderRadius: 8,
               fontSize: 11,
               fontWeight: 600,
               background: "var(--ms-status-danger-bg, rgba(239, 68, 68, 0.12))",
@@ -469,72 +487,53 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           </button>
         )}
 
-        {/* Primary Run Simulation CTA */}
-        {onSimulate && (
-          <Button
-            size="small"
-            variant="primary"
-            leadingVisual={isSimulating ? undefined : PlayIcon}
-            onClick={onSimulate}
-            disabled={isSimulating}
-            style={{
-              fontWeight: 600,
-              height: 30,
-              padding: "0 13px",
-              borderRadius: "var(--ms-radius-pill, 999px)",
-              background: isSimulating
-                ? "var(--color-neutral-muted, var(--ms-text-3, #4b5563))"
-                : "linear-gradient(180deg, var(--ms-accent-teal, #14b8a6) 0%, var(--ms-brand, #0e7490) 100%)",
-              borderColor: isSimulating ? "transparent" : "var(--ms-brand-active, #155e75)",
-              boxShadow: isSimulating
-                ? "0 0 12px var(--ms-glow-cyan, rgba(6, 182, 212, 0.45))"
-                : "0 2px 8px rgba(14, 116, 144, 0.35)",
-              color: "#ffffff",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 6,
-              transition: "all 0.15s cubic-bezier(0.16, 1, 0.3, 1)",
-            }}
-            title={isSimulating ? "Simulation running…" : `Run Simulation (${isMac ? "⌘↵" : "F5"})`}
-          >
-            {isSimulating ? (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <span
-                  style={{
-                    width: 12,
-                    height: 12,
-                    border: "2px solid #ffffff",
-                    borderTopColor: "transparent",
-                    borderRadius: "50%",
-                    animation: "spin 0.8s linear infinite",
-                    display: "inline-block",
-                  }}
-                />
-                Running…
-              </span>
-            ) : (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <span>Run</span>
-                <kbd
-                  className="nav-hide-lg"
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 500,
-                    fontFamily: "var(--ms-font-mono, monospace)",
-                    opacity: 0.85,
-                    padding: "1px 5px",
-                    borderRadius: 4,
-                    background: "rgba(255, 255, 255, 0.2)",
-                    lineHeight: "12px",
-                  }}
+        {/* Right-Anchored Responsive View Switcher (Icon + Text → Active Text → Icon-Only) + Split */}
+        {onViewChange && (
+          <NavCenter>
+            <SegmentedControl
+              size="small"
+              aria-label="Workbench View"
+              onChange={(idx) => {
+                const target = viewTabs[idx];
+                if (target) target.onClick();
+              }}
+            >
+              {viewTabs.map((tab, idx) => (
+                <SegmentedControl.Button
+                  key={tab.id}
+                  selected={idx === (selectedIndex !== -1 ? selectedIndex : 0)}
+                  leadingIcon={tab.icon}
+                  aria-label={tab.label}
+                  title={tab.title}
+                  onClick={tab.onClick}
                 >
-                  {isMac ? "⌘↵" : "F5"}
-                </kbd>
-              </span>
+                  {tab.label}
+                </SegmentedControl.Button>
+              ))}
+            </SegmentedControl>
+
+            {onToggleSplit && (
+              <SplitToggleButton
+                type="button"
+                role="button"
+                aria-pressed={Boolean(isSplit && !isCodeView && canSplit)}
+                aria-label={
+                  splitOrientation === "vertical"
+                    ? "Split view (Code on top, visualizer on bottom)"
+                    : "Split view (Code on left, visualizer on right)"
+                }
+                disabled={isCodeView || !canSplit}
+                $active={Boolean(isSplit && !isCodeView && canSplit)}
+                onClick={onToggleSplit}
+                title={splitTitle}
+              >
+                <SplitIcon size={14} />
+              </SplitToggleButton>
             )}
-          </Button>
+          </NavCenter>
         )}
+
+        {onViewChange && <NavDivider />}
 
         {/* Global Search / Command Palette */}
         <IconButton
@@ -544,33 +543,8 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           onClick={() => window.dispatchEvent(new CustomEvent("modelscript:open-command-palette"))}
           aria-label={`Search models & commands (${isMac ? "⌘K" : "Ctrl+K"})`}
           title={`Search models, packages & commands (${isMac ? "⌘K" : "Ctrl+K"})`}
-          style={{ height: 30, width: 30, borderRadius: 6 }}
+          style={{ height: 30, width: 30, borderRadius: 8 }}
         />
-
-        {/* Dark / Light Mode Toggle */}
-        <IconButton
-          icon={theme === "dark" ? SunIcon : MoonIcon}
-          size="small"
-          variant="invisible"
-          onClick={toggleTheme}
-          aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-          title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-          style={{ height: 30, width: 30, borderRadius: 6 }}
-        />
-
-        {/* Promote to Multi-File VS Code Workbench */}
-        {onOpenInVsCode && (
-          <IconButton
-            icon={TerminalIcon}
-            size="small"
-            variant="invisible"
-            onClick={onOpenInVsCode}
-            aria-label="Open in VS Code Workbench"
-            title="Promote this model to the full multi-file VS Code Workbench"
-            className="nav-hide-sm"
-            style={{ height: 30, width: 30, borderRadius: 6 }}
-          />
-        )}
 
         {/* Unified Share & Export Menu */}
         <ActionMenu>
@@ -578,7 +552,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             size="small"
             leadingVisual={ShareIcon}
             className="nav-icon-only-xl"
-            style={{ height: 30, borderRadius: 6 }}
+            style={{ height: 30, borderRadius: 8 }}
           >
             <NavText>Share</NavText>
           </ActionMenu.Button>
@@ -620,6 +594,29 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                   Create Git Repository…
                 </ActionList.Item>
               )}
+            </ActionList>
+          </ActionMenu.Overlay>
+        </ActionMenu>
+
+        {/* Global App Utilities Menu (Theme Toggle, Open in VS Code Workbench) */}
+        <ActionMenu>
+          <ActionMenu.Anchor>
+            <IconButton
+              icon={KebabHorizontalIcon}
+              size="small"
+              variant="invisible"
+              aria-label="Workspace options"
+              title="Appearance & workspace options"
+              data-testid="morsel-workspace-options-btn"
+              style={{ height: 30, width: 30, borderRadius: 8 }}
+            />
+          </ActionMenu.Anchor>
+          <ActionMenu.Overlay width="medium">
+            <ActionList>
+              <ActionList.Item onSelect={toggleTheme}>
+                <ActionList.LeadingVisual>{theme === "dark" ? <SunIcon /> : <MoonIcon />}</ActionList.LeadingVisual>
+                Switch to {theme === "dark" ? "light" : "dark"} mode
+              </ActionList.Item>
               {onOpenInVsCode && (
                 <>
                   <ActionList.Divider />
@@ -645,7 +642,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
               variant="default"
               leadingVisual={ZapIcon}
               onClick={onPublishToFeed}
-              style={{ height: 30, borderRadius: 6, fontWeight: 600 }}
+              style={{ height: 30, borderRadius: 8, fontWeight: 600 }}
             >
               {effectivePublishLabel}
             </Button>
@@ -653,7 +650,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
               <ActionMenu.Button
                 size="small"
                 variant="invisible"
-                style={{ padding: "0 4px", minWidth: 28 }}
+                style={{ padding: "0 4px", minWidth: 28, borderRadius: 8 }}
                 aria-label="Ansatz Account & Workspaces"
                 title={`Ansatz Account (@${user.username || "user"})`}
               >
@@ -696,7 +693,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
         ) : (
           <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
             <Link to="/login" style={{ textDecoration: "none" }} className="nav-hide-lg">
-              <Button size="small" variant="invisible" style={{ height: 30, borderRadius: 6 }}>
+              <Button size="small" variant="invisible" style={{ height: 30, borderRadius: 8 }}>
                 Sign In
               </Button>
             </Link>
@@ -708,9 +705,6 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                   height: 30,
                   borderRadius: 8,
                   fontWeight: 600,
-                  backgroundColor: "var(--fgColor-default, #0f172a)",
-                  color: "var(--bgColor-default, #ffffff)",
-                  borderColor: "transparent",
                 }}
               >
                 Sign Up

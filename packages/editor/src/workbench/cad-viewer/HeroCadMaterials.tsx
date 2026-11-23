@@ -625,6 +625,7 @@ export const StudioSsaoPass: React.FC<{
 
   useEffect(() => {
     if (!enabled) {
+      ssaoRef.current?.dispose();
       composerRef.current?.dispose();
       composerRef.current = null;
       ssaoRef.current = null;
@@ -648,6 +649,7 @@ export const StudioSsaoPass: React.FC<{
     ssaoRef.current = ssaoPass;
 
     return () => {
+      ssaoPass.dispose();
       composer.dispose();
       composerRef.current = null;
       ssaoRef.current = null;

@@ -2,6 +2,7 @@
 
 export * from "./LanguageToolbarButtons";
 export * from "./MorselAiPanel";
+export * from "./MorselCalibrationPanel";
 export * from "./MorselCommandIsland";
 export * from "./MorselDiagnosticsPanel";
 export * from "./MorselFloatingDock";

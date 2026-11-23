@@ -404,7 +404,11 @@ export function registerDefinitionProvider(
       if (plugin) {
         if (plugin.facade?.getDefinition) {
           try {
-            const def = plugin.facade.getDefinition(0, offset);
+            const treeEntry = documentTrees.get(params.textDocument.uri);
+            const tree = treeEntry?.tree ?? treeEntry;
+            const rootPtr = tree?.rootNode?.id ?? tree?.rootNode?.ptr ?? tree?.rootPtr ?? 0;
+            plugin.facade.loadSource?.(docText);
+            const def = plugin.facade.getDefinition(rootPtr, offset);
             if (def) {
               const start = def.startOffset ?? def.startIndex ?? 0;
               const end = def.endOffset ?? def.endIndex ?? start;
@@ -473,8 +477,15 @@ export function registerDefinitionProvider(
     if (!document) return null;
 
     const offset = document.offsetAt(params.position);
+    const docText = document.getText();
+    const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri, docText);
+    if (plugin?.customHandlers?.typeDefinition) {
+      const customTypeDef = plugin.customHandlers.typeDefinition(offset, docText, params.textDocument.uri);
+      if (customTypeDef) return customTypeDef;
+    }
+
     if (bridge) {
-      const typeTarget = (bridge as any).typeDefinitionRaw(offset, document.getText());
+      const typeTarget = bridge.typeDefinitionRaw(offset, docText);
       if (typeTarget) {
         const loc = symbolEntryToLocation(typeTarget, documentLSPBridges, documentTrees, documents);
         if (loc) return loc as any;

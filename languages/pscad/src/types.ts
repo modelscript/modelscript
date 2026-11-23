@@ -166,8 +166,7 @@ export interface PscxProject {
   linkedLibraries: string[];
   definitions?: Map<string, PscxDefinitionGraphic> | undefined;
   xmlErrors?:
-    | Array<{ start: number; end: number; message?: string | undefined; code?: string | undefined }>
-    | undefined;
+    Array<{ start: number; end: number; message?: string | undefined; code?: string | undefined }> | undefined;
 }
 
 // ==========================================
@@ -596,8 +595,13 @@ export interface PscadGraphFrame {
   title: string;
   kind: "graphframe" | "overlay" | "poly" | "xy";
   curves: string[];
+  curveNames?: string[] | undefined;
   min?: number | undefined;
   max?: number | undefined;
+  xLabel?: string | undefined;
+  position?: Point2D | undefined;
+  width?: number | undefined;
+  height?: number | undefined;
 }
 
 export interface EmtCustomFortranBlock {

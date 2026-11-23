@@ -33,6 +33,10 @@
       "types": "./dist/src/projections/index.d.ts",
       "default": "./dist/src/projections/index.js"
     },
+    "./cad": {
+      "types": "./dist/src/cad.d.ts",
+      "default": "./dist/src/cad.js"
+    },
     "./lsp": {
       "types": "./dist/src/lsp.d.ts",
       "default": "./dist/src/lsp.js"

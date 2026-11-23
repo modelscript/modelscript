@@ -65,6 +65,7 @@
     "@modelscript/diagram": "workspace:*",
     "@modelscript/dsl": "workspace:*",
     "@modelscript/runtime": "workspace:*",
+    "@modelscript/sparql": "workspace:*",
     "vscode-languageserver": "^9.0.1"
   },
   "devDependencies": {

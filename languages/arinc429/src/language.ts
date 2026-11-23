@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { choice, field, language, optional, repeat, seq } from "@modelscript/dsl";
+import { registerBuiltInArinc429LibrarySync } from "./catalog/library-package-adapter.js";
 import { Arinc429ErrorCode } from "./errors.js";
 import { arinc429Indexing } from "./indexing.js";
 
@@ -76,3 +77,5 @@ export const arinc429Language = language({
 
   extras: () => [/[ \t\r\n]+/, /#[^\r\n]*/],
 });
+
+registerBuiltInArinc429LibrarySync();

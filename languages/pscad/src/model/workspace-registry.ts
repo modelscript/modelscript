@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  buildStepFunction,
+  parseFortranModule,
+  type FortranModuleAst,
+  type FortranStepFunction,
+  type FortranUnitAst,
+} from "@modelscript/fortran";
+import {
   buildProjectModel,
   type ExternalDefinitions,
   type ModelDefinition,
@@ -17,6 +24,15 @@ import {
 const sources = new Map<string, string>();
 let byName: Map<string, PscadProjectModel> | undefined;
 
+interface CompiledWorkspaceFortranUnit {
+  unit: FortranUnitAst;
+  moduleAst: FortranModuleAst;
+  step: FortranStepFunction;
+}
+
+const fortranSources = new Map<string, string>();
+let compiledFortranUnits: Map<string, CompiledWorkspaceFortranUnit> | undefined;
+
 export function registerPscadSource(uri: string, text: string): void {
   if (sources.get(uri) === text) return;
   sources.set(uri, text);
@@ -30,6 +46,112 @@ export function unregisterPscadSource(uri: string): void {
 export function clearPscadSources(): void {
   sources.clear();
   byName = undefined;
+}
+
+/** Registers a workspace Fortran (.f90/.f95/.f/.for) source file for PSCAD external subroutine/function resolution. */
+export function registerPscadFortranSource(uri: string, text: string): void {
+  if (fortranSources.get(uri) === text) return;
+  fortranSources.set(uri, text);
+  compiledFortranUnits = undefined;
+}
+
+/** Unregisters a previously registered workspace Fortran source file. */
+export function unregisterPscadFortranSource(uri: string): void {
+  if (fortranSources.delete(uri)) compiledFortranUnits = undefined;
+}
+
+/** Clears all registered workspace Fortran source files. */
+export function clearPscadFortranSources(): void {
+  fortranSources.clear();
+  compiledFortranUnits = undefined;
+}
+
+function getCompiledFortranUnits(): Map<string, CompiledWorkspaceFortranUnit> {
+  if (compiledFortranUnits) return compiledFortranUnits;
+  const map = new Map<string, CompiledWorkspaceFortranUnit>();
+  for (const text of fortranSources.values()) {
+    try {
+      const mod = parseFortranModule(text);
+      for (const [upperName, unit] of mod.units.entries()) {
+        if (unit.kind !== "subroutine" && unit.kind !== "function") continue;
+        const mergedConstants = { ...mod.moduleConstants, ...unit.signature.constants };
+        const step = buildStepFunction(unit.stmts, mergedConstants, unit.signature.arrays, mod);
+        map.set(upperName.toUpperCase(), { unit, moduleAst: mod, step });
+      }
+    } catch {
+      // Ignore unparseable Fortran sources; diagnostics are surfaced by the Fortran linter.
+    }
+  }
+  compiledFortranUnits = map;
+  return map;
+}
+
+/** Returns true if a subroutine or function with the given name is registered from workspace Fortran sources. */
+export function hasRegisteredFortranUnit(subName: string): boolean {
+  if (fortranSources.size === 0) return false;
+  return getCompiledFortranUnits().has(subName.toUpperCase());
+}
+
+/**
+ * Invokes a registered workspace Fortran SUBROUTINE or FUNCTION by name, passing positional
+ * arguments by reference (mutating `args` in-place for INTENT(OUT)/INTENT(INOUT) parameters)
+ * and returning the function result if the unit is a FUNCTION.
+ */
+export function invokeRegisteredFortranUnit(
+  subName: string,
+  args: number[],
+  execCtx?: {
+    time?: number | undefined;
+    dt?: number | undefined;
+    firstStep?: boolean | undefined;
+    storf?: Float64Array | undefined;
+    stori?: Int32Array | undefined;
+  },
+): number | undefined {
+  if (fortranSources.size === 0) return undefined;
+  const entry = getCompiledFortranUnits().get(subName.toUpperCase());
+  if (!entry) return undefined;
+
+  const { unit, step } = entry;
+  const locals: Record<string, number | boolean | string> = {};
+  const formalArgs = unit.signature.args;
+  for (let i = 0; i < formalArgs.length; i++) {
+    const param = formalArgs[i]!;
+    const val = i < args.length ? args[i]! : 0;
+    locals[param] = val;
+    locals[param.toLowerCase()] = val;
+    locals[param.toUpperCase()] = val;
+  }
+
+  step({
+    locals,
+    time: execCtx?.time ?? 0,
+    dt: execCtx?.dt ?? 50e-6,
+    firstStep: execCtx?.firstStep ?? false,
+    storf: execCtx?.storf,
+    stori: execCtx?.stori,
+    invokeExternalSubroutine: (nestedName, nestedArgs) => invokeRegisteredFortranUnit(nestedName, nestedArgs, execCtx),
+  });
+
+  // Propagate modified formal parameters back to caller arguments (pass-by-reference semantics)
+  for (let i = 0; i < formalArgs.length && i < args.length; i++) {
+    const param = formalArgs[i]!;
+    const candidates = [locals[param], locals[param.toLowerCase()], locals[param.toUpperCase()]];
+    const orig = args[i]!;
+    for (const c of candidates) {
+      if (typeof c === "number" && c !== orig) {
+        args[i] = c;
+        break;
+      }
+    }
+  }
+
+  if (unit.kind === "function") {
+    const retName = unit.returnVar ?? unit.signature.returnVar ?? unit.name;
+    const retVal = locals[retName] ?? locals[retName.toLowerCase()] ?? locals[retName.toUpperCase()];
+    return typeof retVal === "number" ? retVal : Number(retVal ?? 0);
+  }
+  return 0;
 }
 
 /**

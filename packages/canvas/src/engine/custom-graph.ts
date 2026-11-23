@@ -238,6 +238,27 @@ function defaultPolylinePath(
   return d;
 }
 
+const RESIZE_CURSOR_RING = ["ew-resize", "nwse-resize", "ns-resize", "nesw-resize"] as const;
+
+const HANDLE_BASE_ANGLE: Record<ResizeHandleKind, number> = {
+  e: 0,
+  w: 0,
+  nw: 45,
+  se: 45,
+  n: 90,
+  s: 90,
+  ne: 135,
+  sw: 135,
+  rotate: 0,
+};
+
+function getResizeCursorForHandle(handle: ResizeHandleKind, angleDeg: number): string {
+  if (handle === "rotate") return "grab";
+  const effective = (((HANDLE_BASE_ANGLE[handle] + angleDeg) % 180) + 180) % 180;
+  const sector = Math.round(effective / 45) % 4;
+  return RESIZE_CURSOR_RING[sector] ?? "nwse-resize";
+}
+
 let autoCellCounter = 1;
 
 function resolvePortScalar(raw: unknown, total: number): number | undefined {
@@ -507,6 +528,7 @@ export class UnifiedCell {
     this.width = Math.max(0, width);
     this.height = Math.max(0, height);
     this.graph?.scene.setNodeSize(this.id, this.width, this.height);
+    this.graph?.resizeCellVisualDom(this, prev.width, prev.height);
     this.graph?.syncCellDom(this);
     this.graph?.emit("node:change:size", {
       cell: this,
@@ -714,7 +736,7 @@ export class UnifiedCell {
     const containerEl = this.view?.container;
     const existingPortEl =
       (key === "args" || key.startsWith("args/")) && containerEl
-        ? containerEl.querySelector(`.x6-port[port-id="${portId}"], .x6-port[port="${portId}"]`)
+        ? containerEl.querySelector(`.ms-port[port-id="${portId}"], .ms-port[port="${portId}"]`)
         : null;
     if (existingPortEl && updatedPort) {
       existingPortEl.setAttribute("transform", `translate(${updatedPort.args?.x ?? 0}, ${updatedPort.args?.y ?? 0})`);
@@ -966,6 +988,10 @@ export class UnifiedGraph {
   private gridVisible = true;
   private gridType: string = "doubleMesh";
   private gridColor = "rgba(255, 255, 255, 0.12)";
+  private gridThickness = 1;
+  private gridFactor = 10;
+  private gridMinorColor = "transparent";
+  private gridMinorThickness = 0;
   private bgColor = "transparent";
   private renderModePreference: "auto" | "svg" | "canvas2d" = "auto";
   private highScaleThreshold = 1500;
@@ -1000,6 +1026,7 @@ export class UnifiedGraph {
   private webGpuCanvasEl: HTMLCanvasElement | null = null;
   private widgetCanvasEl: HTMLCanvasElement | null = null;
   private gridPatternId: string;
+  private gridPatternEl: SVGPatternElement | null = null;
   private gridRectEl: SVGRectElement | null = null;
   private viewportG: SVGGElement | null = null;
   private edgesG: SVGGElement | null = null;
@@ -1029,6 +1056,9 @@ export class UnifiedGraph {
       this.gridSize = Math.max(1, options.grid.size ?? 2);
       this.gridVisible = options.grid.visible !== false;
       this.gridType = options.grid.type ?? "doubleMesh";
+      if ("args" in options.grid) {
+        this.applyGridArgs((options.grid as { args?: unknown }).args);
+      }
     } else if (typeof options.grid === "number") {
       this.gridSize = Math.max(1, options.grid);
     }
@@ -1077,6 +1107,7 @@ export class UnifiedGraph {
           cell.y = bounds.y;
           cell.width = bounds.width;
           cell.height = bounds.height;
+          this.resizeCellVisualDom(cell, prev.width, prev.height);
           this.syncCellDom(cell);
           this.refreshConnectedEdges(cell);
           this.emit("node:change:size", {
@@ -1253,7 +1284,7 @@ export class UnifiedGraph {
           const cell = this.cells.get(nodeId) ?? null;
           const view = cell ? this.findViewByCell(cell) : null;
           const magnet =
-            view?.container?.querySelector?.(`.x6-port[port="${portId}"], .x6-port[port-id="${portId}"]`) ?? null;
+            view?.container?.querySelector?.(`.ms-port[port="${portId}"], .ms-port[port-id="${portId}"]`) ?? null;
           return vm({ cell, magnet });
         },
         canInteract: (cellId) => {
@@ -1305,7 +1336,7 @@ export class UnifiedGraph {
     }
 
     const root = document.createElement("div");
-    root.className = "x6-graph ms-unified-canvas";
+    root.className = "ms-graph ms-unified-canvas";
     root.style.position = "relative";
     root.style.width = "100%";
     root.style.height = "100%";
@@ -1322,7 +1353,7 @@ export class UnifiedGraph {
     canvas2D.style.pointerEvents = "none";
 
     const svg = document.createElementNS(SVG_NS, "svg");
-    svg.setAttribute("class", "x6-graph-svg");
+    svg.setAttribute("class", "ms-graph-svg");
     svg.setAttribute("width", String(this.width));
     svg.setAttribute("height", String(this.height));
     svg.style.width = "100%";
@@ -1353,7 +1384,7 @@ export class UnifiedGraph {
     svg.appendChild(gridRect);
 
     const viewportG = document.createElementNS(SVG_NS, "g");
-    viewportG.setAttribute("class", "x6-graph-svg-viewport");
+    viewportG.setAttribute("class", "ms-canvas-viewport");
 
     const edgesG = document.createElementNS(SVG_NS, "g");
     edgesG.setAttribute("class", "ms-edges-layer");
@@ -1414,7 +1445,7 @@ export class UnifiedGraph {
     widgetLayer.appendChild(widgetCanvas);
 
     const selOverlay = document.createElement("div");
-    selOverlay.className = "x6-widget-selection";
+    selOverlay.className = "ms-widget-selection";
     selOverlay.style.position = "absolute";
     selOverlay.style.inset = "0";
     selOverlay.style.pointerEvents = "none";
@@ -1430,6 +1461,7 @@ export class UnifiedGraph {
     this.widgetCanvasEl = widgetCanvas;
     this.svgEl = svg;
     this.defsEl = defs;
+    this.gridPatternEl = pattern;
     this.gridRectEl = gridRect;
     this.viewportG = viewportG;
     this.edgesG = edgesG;
@@ -1442,6 +1474,7 @@ export class UnifiedGraph {
     this.selectionOverlayEl = selOverlay;
     this.wirePreviewPathEl = previewPath;
 
+    this.syncGridPatternDom();
     this.attachDomEventListeners(root);
 
     if (this.options.autoResize && typeof ResizeObserver !== "undefined") {
@@ -1506,7 +1539,7 @@ export class UnifiedGraph {
       }
       let pointerPortHit: { nodeId: string; portId: string } | null = null;
       const targetEl = e.target as Element | null;
-      const portEl = targetEl?.closest?.(".x6-port, [data-port], [magnet='true']");
+      const portEl = targetEl?.closest?.(".ms-port, [data-port], [magnet='true']");
       if (portEl) {
         const portId =
           portEl.getAttribute("port-id") ?? portEl.getAttribute("port") ?? portEl.getAttribute("data-port");
@@ -1708,10 +1741,29 @@ export class UnifiedGraph {
     this.rootEl = null;
     this.svgEl = null;
     this.defsEl = null;
+    this.gridPatternEl = null;
+    this.gridRectEl = null;
+    this.viewportG = null;
+    this.edgesG = null;
+    this.nodesG = null;
+    this.toolsG = null;
+    this.guidesG = null;
+    this.edgeToolsG = null;
+    this.marqueeRectEl = null;
+    this.widgetLayerEl = null;
+    this.selectionOverlayEl = null;
+    this.wirePreviewPathEl = null;
     this.canvas2DEl = null;
     this.webGpuCanvasEl = null;
     this.widgetCanvasEl = null;
     this.markerCache.clear();
+    this.plugins.clear();
+    this.widgets.clear();
+    for (const c of this.cells.values()) {
+      c.selectorElements.clear();
+      c.view = null;
+      c.attachGraph(null);
+    }
     this.cells.clear();
     this.selectedIds.clear();
     this.scene.clear();
@@ -1774,31 +1826,118 @@ export class UnifiedGraph {
     }
   }
 
+  private applyGridArgs(args: unknown): void {
+    if (Array.isArray(args)) {
+      const minor = args[0] as { color?: string | undefined; thickness?: number | undefined } | undefined;
+      const major = args[args.length - 1] as
+        { color?: string | undefined; thickness?: number | undefined; factor?: number | undefined } | undefined;
+      if (minor && args.length >= 2) {
+        if (typeof minor.color === "string") this.gridMinorColor = minor.color;
+        if (typeof minor.thickness === "number") this.gridMinorThickness = minor.thickness;
+      }
+      if (major) {
+        if (typeof major.color === "string") this.gridColor = major.color;
+        if (typeof major.thickness === "number") this.gridThickness = major.thickness;
+        if (typeof major.factor === "number" && major.factor >= 1) this.gridFactor = major.factor;
+      }
+    } else if (args && typeof args === "object") {
+      const a = args as { color?: string | undefined; thickness?: number | undefined; factor?: number | undefined };
+      if (typeof a.color === "string") this.gridColor = a.color;
+      if (typeof a.thickness === "number") this.gridThickness = a.thickness;
+      if (typeof a.factor === "number" && a.factor >= 1) this.gridFactor = a.factor;
+    }
+  }
+
+  private syncGridPatternDom(): void {
+    if (!this.gridPatternEl || typeof document === "undefined") return;
+    const s = this.camera.getState();
+    const zoom = Math.max(0.02, s.zoom);
+    const baseStep = Math.max(1, this.gridSize);
+
+    if (this.gridType === "dot") {
+      let screenStep = baseStep * zoom;
+      while (screenStep < 8) screenStep *= 2;
+      const r = Math.max(0.75, Math.min(3, this.gridThickness * 0.75));
+      this.gridPatternEl.setAttribute("width", String(screenStep));
+      this.gridPatternEl.setAttribute("height", String(screenStep));
+      this.gridPatternEl.setAttribute("patternTransform", `translate(${s.tx - r}, ${s.ty - r})`);
+      this.gridPatternEl.innerHTML = "";
+      const dot = document.createElementNS(SVG_NS, "circle");
+      dot.setAttribute("cx", String(r));
+      dot.setAttribute("cy", String(r));
+      dot.setAttribute("r", String(r));
+      dot.setAttribute("fill", this.gridColor);
+      this.gridPatternEl.appendChild(dot);
+    } else if (this.gridType === "mesh") {
+      let screenStep = baseStep * zoom;
+      while (screenStep < 8) screenStep *= 2;
+      this.gridPatternEl.setAttribute("width", String(screenStep));
+      this.gridPatternEl.setAttribute("height", String(screenStep));
+      this.gridPatternEl.setAttribute("patternTransform", `translate(${s.tx}, ${s.ty})`);
+      this.gridPatternEl.innerHTML = "";
+      const path = document.createElementNS(SVG_NS, "path");
+      path.setAttribute("d", `M ${screenStep} 0 L 0 0 0 ${screenStep}`);
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", this.gridColor);
+      path.setAttribute("stroke-width", String(Math.max(0.5, this.gridThickness)));
+      this.gridPatternEl.appendChild(path);
+    } else {
+      // doubleMesh: major grid every gridSize * gridFactor, optional minor subdivisions
+      const factor = Math.max(1, Math.round(this.gridFactor));
+      let majorStep = baseStep * factor * zoom;
+      while (majorStep < 10) majorStep *= 2;
+      const minorStep = majorStep / factor;
+
+      this.gridPatternEl.setAttribute("width", String(majorStep));
+      this.gridPatternEl.setAttribute("height", String(majorStep));
+      this.gridPatternEl.setAttribute("patternTransform", `translate(${s.tx}, ${s.ty})`);
+      this.gridPatternEl.innerHTML = "";
+
+      if (
+        factor > 1 &&
+        minorStep >= 6 &&
+        this.gridMinorThickness > 0 &&
+        this.gridMinorColor !== "transparent" &&
+        this.gridMinorColor !== "none"
+      ) {
+        let minorD = "";
+        for (let i = 1; i < factor; i++) {
+          const offset = i * minorStep;
+          minorD += `M ${offset} 0 L ${offset} ${majorStep} M 0 ${offset} L ${majorStep} ${offset} `;
+        }
+        const minorPath = document.createElementNS(SVG_NS, "path");
+        minorPath.setAttribute("d", minorD.trim());
+        minorPath.setAttribute("fill", "none");
+        minorPath.setAttribute("stroke", this.gridMinorColor);
+        minorPath.setAttribute("stroke-width", String(this.gridMinorThickness));
+        this.gridPatternEl.appendChild(minorPath);
+      }
+
+      const majorPath = document.createElementNS(SVG_NS, "path");
+      majorPath.setAttribute("d", `M ${majorStep} 0 L 0 0 0 ${majorStep}`);
+      majorPath.setAttribute("fill", "none");
+      majorPath.setAttribute("stroke", this.gridColor);
+      majorPath.setAttribute("stroke-width", String(Math.max(0.5, this.gridThickness)));
+      this.gridPatternEl.appendChild(majorPath);
+    }
+
+    if (this.gridRectEl) {
+      this.gridRectEl.setAttribute("fill", this.gridVisible ? `url(#${this.gridPatternId})` : "none");
+    }
+  }
+
   public drawGrid(options: Record<string, unknown>): void {
     this.gridVisible = true;
     if (typeof options["type"] === "string") {
       this.gridType = options["type"];
     }
-    const args = options["args"];
-    if (Array.isArray(args)) {
-      const major = args[args.length - 1] as { color?: string | undefined } | undefined;
-      if (major?.color) this.gridColor = major.color;
-    } else if (args && typeof args === "object" && "color" in args) {
-      const color = (args as { color?: string | undefined }).color;
-      if (color) this.gridColor = color;
-    }
-    if (this.gridRectEl) {
-      this.gridRectEl.setAttribute("fill", `url(#${this.gridPatternId})`);
-    }
-    const pathEl = this.svgEl?.querySelector(`#${this.gridPatternId} path`);
-    if (pathEl) {
-      pathEl.setAttribute("stroke", this.gridColor);
-    }
+    this.applyGridArgs(options["args"]);
+    this.syncGridPatternDom();
   }
 
   public showGrid(): void {
     this.gridVisible = true;
-    this.gridRectEl?.setAttribute("fill", `url(#${this.gridPatternId})`);
+    this.syncGridPatternDom();
   }
 
   public hideGrid(): void {
@@ -1813,6 +1952,7 @@ export class UnifiedGraph {
   public setGridSize(size: number): void {
     this.gridSize = Math.max(1, size);
     this.fsm.setOptions({ gridSize: this.gridSize });
+    this.syncGridPatternDom();
   }
 
   public getGridSize(): number {
@@ -2014,6 +2154,12 @@ export class UnifiedGraph {
     if (cell.view?.container && cell.view.container.parentNode) {
       cell.view.container.parentNode.removeChild(cell.view.container);
     }
+    if (cell.isEdge() && this.edgeToolsG) {
+      const toolGroup = this.edgeToolsG.querySelector(`[data-edge-tools-id="${id}"]`);
+      if (toolGroup && toolGroup.parentNode) toolGroup.parentNode.removeChild(toolGroup);
+    }
+    cell.selectorElements.clear();
+    cell.view = null;
     cell.attachGraph(null);
 
     this.emit("cell:removed", { cell });
@@ -2041,8 +2187,12 @@ export class UnifiedGraph {
       if (c.view?.container && c.view.container.parentNode) {
         c.view.container.parentNode.removeChild(c.view.container);
       }
+      c.selectorElements.clear();
+      c.view = null;
       c.attachGraph(null);
     }
+    if (this.edgeToolsG) this.edgeToolsG.innerHTML = "";
+    if (this.guidesG) this.guidesG.innerHTML = "";
     this.cells.clear();
     this.selectedIds.clear();
     this.widgets.clear();
@@ -2829,6 +2979,7 @@ export class UnifiedGraph {
     if (this.viewportG) {
       this.viewportG.setAttribute("transform", `matrix(${s.zoom},0,0,${s.zoom},${s.tx},${s.ty})`);
     }
+    this.syncGridPatternDom();
     this.syncSelectionBoxesDom();
     this.scheduleCanvas2DRender();
     this.renderWidgetCanvasDom();
@@ -3065,7 +3216,7 @@ export class UnifiedGraph {
       const pt = this.samplePointAlongPolyline(pts, frac);
 
       const lg = document.createElementNS(SVG_NS, "g");
-      lg.setAttribute("class", "x6-edge-label");
+      lg.setAttribute("class", "ms-edge-label");
       lg.setAttribute("transform", `translate(${pt.x}, ${pt.y})`);
 
       const fontSize = lbl.attrs?.text?.fontSize ?? 11;
@@ -3107,20 +3258,22 @@ export class UnifiedGraph {
 
     const g = document.createElementNS(SVG_NS, "g");
     g.setAttribute("data-cell-id", cell.id);
-    g.setAttribute("class", cell.isNode() ? "x6-cell x6-node" : "x6-cell x6-edge");
+    g.setAttribute("class", cell.isNode() ? "ms-cell ms-node" : "ms-cell ms-edge");
 
     if (cell.isNode()) {
       const glyph = cell.getCompiledGlyph();
       if (glyph) {
         const inner = materializeGlyphToSvg(glyph, document, cell.width, cell.height, cell.selectorElements);
+        inner.setAttribute("class", "ms-node-glyph");
         g.appendChild(inner);
       }
       // Render ports
       for (const p of cell.getPorts()) {
         const pg = document.createElementNS(SVG_NS, "g");
-        pg.setAttribute("class", "x6-port");
+        pg.setAttribute("class", "ms-port");
         pg.setAttribute("port", p.id);
         pg.setAttribute("port-id", p.id);
+        pg.setAttribute("data-port", p.id);
         pg.setAttribute("magnet", "true");
         const px = p.args?.x ?? 0;
         const py = p.args?.y ?? 0;
@@ -3140,18 +3293,128 @@ export class UnifiedGraph {
       }
       this.nodesG.appendChild(g);
     } else {
+      const haloEl = document.createElementNS(SVG_NS, "path");
+      haloEl.setAttribute("class", "ms-edge-halo");
+      haloEl.setAttribute("fill", "none");
+      haloEl.setAttribute("stroke", "rgba(56, 189, 248, 0.35)");
+      haloEl.setAttribute("stroke-width", "8");
+      haloEl.setAttribute("stroke-linecap", "round");
+      haloEl.setAttribute("stroke-linejoin", "round");
+      haloEl.setAttribute("vector-effect", "non-scaling-stroke");
+      haloEl.setAttribute("pointer-events", "none");
+      haloEl.style.display = "none";
+      g.appendChild(haloEl);
+
       const pathEl = document.createElementNS(SVG_NS, "path");
+      pathEl.setAttribute("class", "ms-edge-line connection");
       pathEl.setAttribute("fill", "none");
       pathEl.setAttribute("data-selector", "line");
       pathEl.setAttribute("vector-effect", "non-scaling-stroke");
       g.appendChild(pathEl);
+
+      const hitEl = document.createElementNS(SVG_NS, "path");
+      hitEl.setAttribute("class", "ms-edge-hit");
+      hitEl.setAttribute("fill", "none");
+      hitEl.setAttribute("stroke", "transparent");
+      hitEl.setAttribute("stroke-width", "14");
+      hitEl.setAttribute("vector-effect", "non-scaling-stroke");
+      hitEl.setAttribute("pointer-events", "stroke");
+      hitEl.style.cursor = "pointer";
+      g.appendChild(hitEl);
+
       cell.selectorElements.set("line", [pathEl]);
+      cell.selectorElements.set("halo", [haloEl]);
+      cell.selectorElements.set("hit", [hitEl]);
       this.edgesG.appendChild(g);
     }
 
     const view = this.findViewByCell(cell)!;
     view.container = g;
     this.syncCellDom(cell);
+  }
+
+  /**
+   * Scales a node's vector icon graphics, ref-sized primitives, and port positions in-place
+   * whenever its dimensions change (via interactive resize handles or `setSize()`).
+   */
+  public resizeCellVisualDom(cell: UnifiedCell, prevWidth: number, prevHeight: number): void {
+    if (!cell.isNode()) return;
+    const newW = cell.width;
+    const newH = cell.height;
+    if (Math.abs(newW - prevWidth) < 0.01 && Math.abs(newH - prevHeight) < 0.01) return;
+
+    // 1. Rescale ports proportionally (or re-resolve group positions) and sync SoA scene
+    const ports = cell.getPorts();
+    if (ports.length > 0) {
+      const sx = prevWidth > 0 ? newW / prevWidth : 1;
+      const sy = prevHeight > 0 ? newH / prevHeight : 1;
+      for (const p of ports) {
+        if (!p.args) p.args = {};
+        if (typeof p.args.x === "number") p.args.x = Math.round(p.args.x * sx * 10) / 10;
+        if (typeof p.args.y === "number") p.args.y = Math.round(p.args.y * sy * 10) / 10;
+      }
+      this.scene.setNodePorts(
+        cell.id,
+        ports.map((p) => ({
+          id: p.id,
+          group: p.group,
+          x: p.args?.x ?? 0,
+          y: p.args?.y ?? 0,
+          angle: p.args?.angle,
+        })),
+      );
+    }
+
+    // 2. Keep markup root dimensions in sync and re-materialize icon glyph in-place
+    const rawMarkup = cell.getMarkup();
+    if (rawMarkup && !Array.isArray(rawMarkup) && rawMarkup.attrs) {
+      if (rawMarkup.attrs["width"] !== undefined) rawMarkup.attrs["width"] = newW;
+      if (rawMarkup.attrs["height"] !== undefined) rawMarkup.attrs["height"] = newH;
+    }
+    const el = cell.view?.container;
+    if (!el || typeof document === "undefined" || this.activeRenderMode === "canvas2d") return;
+
+    // Update live port DOM transforms
+    const portEls = el.querySelectorAll(".ms-port");
+    portEls.forEach((pEl) => {
+      const pid = pEl.getAttribute("port-id") ?? pEl.getAttribute("port");
+      const match = ports.find((p) => p.id === pid);
+      if (match) {
+        pEl.setAttribute("transform", `translate(${match.args?.x ?? 0}, ${match.args?.y ?? 0})`);
+      }
+    });
+
+    // Update outer <svg> or re-materialize glyph primitives so icons & rects scale smoothly
+    const glyphHost = el.querySelector(".ms-node-glyph");
+    const outerSvg = glyphHost?.firstElementChild;
+    if (outerSvg && outerSvg.tagName.toLowerCase() === "svg") {
+      outerSvg.setAttribute("width", String(newW));
+      outerSvg.setAttribute("height", String(newH));
+      for (const child of Array.from(outerSvg.children)) {
+        const tag = child.tagName.toLowerCase();
+        if (tag === "rect") {
+          child.setAttribute("width", String(newW));
+          child.setAttribute("height", String(newH));
+        } else if (tag === "g") {
+          const tf = child.getAttribute("transform") || "";
+          const m = /scale\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)/.exec(tf);
+          if (m) {
+            const fsx = parseFloat(m[1]!);
+            const fsy = parseFloat(m[2]!);
+            child.setAttribute(
+              "transform",
+              `translate(${fsx < 0 ? newW : 0}, ${fsy < 0 ? newH : 0}) scale(${fsx}, ${fsy})`,
+            );
+          }
+        }
+      }
+    } else if (glyphHost && glyphHost.parentNode) {
+      const recompiled = compileGlyphMarkup(cell.getMarkup(), cell.getAttrs(), newW, newH);
+      cell.selectorElements.clear();
+      const nextGlyph = materializeGlyphToSvg(recompiled, document, newW, newH, cell.selectorElements);
+      nextGlyph.setAttribute("class", "ms-node-glyph");
+      glyphHost.parentNode.replaceChild(nextGlyph, glyphHost);
+    }
   }
 
   public syncCellDom(cell: UnifiedCell): void {
@@ -3173,6 +3436,17 @@ export class UnifiedGraph {
     } else {
       const { d, sourcePt, targetPt, routePoints, stroke, strokeWidth, strokeDasharray, sourceMarker, targetMarker } =
         this.computeEdgeRenderPath(cell);
+      const isSelected = this.selectedIds.has(cell.id);
+      el.classList?.toggle?.("ms-edge-selected", isSelected);
+      const haloEl = cell.selectorElements.get("halo")?.[0] as SVGElement | undefined;
+      if (haloEl) {
+        haloEl.setAttribute("d", d);
+        haloEl.style.display = isSelected ? "" : "none";
+      }
+      const hitEl = cell.selectorElements.get("hit")?.[0];
+      if (hitEl) {
+        hitEl.setAttribute("d", d);
+      }
       const pathEl = cell.selectorElements.get("line")?.[0];
       if (pathEl) {
         pathEl.setAttribute("d", d);
@@ -3190,7 +3464,7 @@ export class UnifiedGraph {
         else pathEl.removeAttribute("marker-end");
       }
       this.syncEdgeLabelsDom(cell, [sourcePt, ...routePoints, targetPt]);
-      if (cell.getTools().length > 0) {
+      if (cell.getTools().length > 0 || isSelected) {
         this.syncEdgeToolsDom(cell);
       }
     }
@@ -3230,7 +3504,9 @@ export class UnifiedGraph {
       existing.parentNode.removeChild(existing);
     }
     const tools = edge.getTools();
-    if (!tools || tools.length === 0 || !this.cells.has(edge.id)) return;
+    const isSelected = this.selectedIds.has(edge.id);
+    if ((!tools || tools.length === 0) && !isSelected) return;
+    if (!this.cells.has(edge.id)) return;
 
     const toolNames = new Set<string>();
     for (const t of tools) {
@@ -3239,10 +3515,15 @@ export class UnifiedGraph {
         toolNames.add(String((t as { name: string }).name));
       }
     }
+    if (isSelected && this.options.interacting !== false) {
+      toolNames.add("button-remove");
+      toolNames.add("segments");
+      toolNames.add("vertices");
+    }
 
     const group = document.createElementNS(SVG_NS, "g");
     group.setAttribute("data-edge-tools-id", edge.id);
-    group.setAttribute("class", "x6-edge-tools-group");
+    group.setAttribute("class", "ms-edge-tools-group");
 
     const sourcePt = edge.getSourcePoint();
     const targetPt = edge.getTargetPoint();
@@ -3272,6 +3553,7 @@ export class UnifiedGraph {
         bar.style.cursor = isHoriz ? "ns-resize" : "ew-resize";
         bar.addEventListener("pointerdown", (e) => {
           e.stopPropagation();
+          (this.rootEl as { setPointerCapture?: (id: number) => void } | null)?.setPointerCapture?.(e.pointerId);
           const pt = this.clientToLocal(e.clientX, e.clientY);
           this.fsm.startSegmentDrag(edge.id, i, pt.x, pt.y);
         });
@@ -3294,6 +3576,7 @@ export class UnifiedGraph {
         dot.style.cursor = "move";
         dot.addEventListener("pointerdown", (e) => {
           e.stopPropagation();
+          (this.rootEl as { setPointerCapture?: (id: number) => void } | null)?.setPointerCapture?.(e.pointerId);
           const pt = this.clientToLocal(e.clientX, e.clientY);
           this.fsm.startVertexDrag(edge.id, i, pt.x, pt.y);
         });
@@ -3311,26 +3594,33 @@ export class UnifiedGraph {
       }
     }
 
-    // 3. Remove edge button
+    // 3. Remove connection pill button with accessible tooltip
     if (toolNames.has("button-remove")) {
       const mid = this.samplePointAlongPolyline(fullPoly, 0.5);
       const btnG = document.createElementNS(SVG_NS, "g");
       btnG.setAttribute("class", "ms-edge-remove-btn");
       btnG.setAttribute("transform", `translate(${mid.x + 12}, ${mid.y - 12})`);
+      btnG.setAttribute("role", "button");
+      btnG.setAttribute("aria-label", "Delete connection");
       btnG.style.cursor = "pointer";
+      const title = document.createElementNS(SVG_NS, "title");
+      title.textContent = "Delete connection (Del)";
+      btnG.appendChild(title);
       const circle = document.createElementNS(SVG_NS, "circle");
-      circle.setAttribute("r", "7");
+      circle.setAttribute("r", "8");
       circle.setAttribute("fill", "#ef4444");
       circle.setAttribute("stroke", "#ffffff");
-      circle.setAttribute("stroke-width", "1.2");
+      circle.setAttribute("stroke-width", "1.5");
       const cross = document.createElementNS(SVG_NS, "path");
-      cross.setAttribute("d", "M -2.5 -2.5 L 2.5 2.5 M 2.5 -2.5 L -2.5 2.5");
+      cross.setAttribute("d", "M -2.8 -2.8 L 2.8 2.8 M 2.8 -2.8 L -2.8 2.8");
       cross.setAttribute("stroke", "#ffffff");
-      cross.setAttribute("stroke-width", "1.4");
+      cross.setAttribute("stroke-width", "1.6");
+      cross.setAttribute("stroke-linecap", "round");
       btnG.appendChild(circle);
       btnG.appendChild(cross);
       btnG.addEventListener("pointerdown", (e) => {
         e.stopPropagation();
+        this.emit("edge:remove-requested", { edge, cell: edge });
         this.removeCell(edge);
       });
       group.appendChild(btnG);
@@ -3379,17 +3669,17 @@ export class UnifiedGraph {
 
   private syncMagnetHighlightsDom(preview: WiringPreview | null): void {
     if (!this.nodesG) return;
-    const ports = this.nodesG.querySelectorAll(".x6-port");
+    const ports = this.nodesG.querySelectorAll(".ms-port");
     ports.forEach((el) => {
-      el.classList.remove("x6-magnet-available");
-      el.classList.remove("x6-magnet-adsorbed");
+      el.classList.remove("ms-magnet-available");
+      el.classList.remove("ms-magnet-adsorbed");
       if (!preview) return;
       const cellId = el.closest?.("[data-cell-id]")?.getAttribute("data-cell-id");
       const portId = el.getAttribute("port") ?? el.getAttribute("port-id");
       if (preview.snappedTarget && preview.snappedTarget.nodeId === cellId && preview.snappedTarget.portId === portId) {
-        el.classList.add("x6-magnet-adsorbed");
+        el.classList.add("ms-magnet-adsorbed");
       } else if (cellId !== preview.sourceNodeId || portId !== preview.sourcePortId) {
-        el.classList.add("x6-magnet-available");
+        el.classList.add("ms-magnet-available");
       }
     });
   }
@@ -3402,13 +3692,30 @@ export class UnifiedGraph {
 
   private syncSelectionBoxesDom(): void {
     if (!this.selectionOverlayEl || typeof document === "undefined") return;
+
+    // Sync selected edge halos and remove pills whenever selection updates
+    for (const cell of this.cells.values()) {
+      if (cell.isEdge()) {
+        const isSel = this.selectedIds.has(cell.id);
+        const haloEl = cell.selectorElements.get("halo")?.[0] as SVGElement | undefined;
+        if (haloEl) haloEl.style.display = isSel ? "" : "none";
+        cell.view?.container?.classList?.toggle?.("ms-edge-selected", isSel);
+        if (isSel || cell.getTools().length > 0) {
+          this.syncEdgeToolsDom(cell);
+        } else if (this.edgeToolsG) {
+          const oldTools = this.edgeToolsG.querySelector(`[data-edge-tools-id="${cell.id}"]`);
+          if (oldTools && oldTools.parentNode) oldTools.parentNode.removeChild(oldTools);
+        }
+      }
+    }
+
     const mode = this.fsm.mode;
     if (mode === "resizing" || mode === "rotating") {
       for (const id of this.selectedIds) {
         const cell = this.cells.get(id);
         if (!cell || !cell.isNode()) continue;
         const existingBox = this.selectionOverlayEl.querySelector(
-          `.x6-widget-selection-box[data-cell-id="${cell.id}"]`,
+          `.ms-selection-box[data-cell-id="${cell.id}"]`,
         ) as HTMLElement | null;
         if (existingBox) {
           const rect = this.coord.localToGraphRect(cell.getBBox());
@@ -3417,26 +3724,32 @@ export class UnifiedGraph {
           existingBox.style.width = `${rect.width}px`;
           existingBox.style.height = `${rect.height}px`;
           existingBox.style.transform = cell.angle !== 0 ? `rotate(${cell.angle}deg)` : "";
+          if (mode === "rotating") {
+            existingBox.querySelectorAll<HTMLElement>(".ms-resize-handle").forEach((hEl) => {
+              const hk = hEl.getAttribute("data-handle") as ResizeHandleKind | null;
+              if (hk) hEl.style.cursor = getResizeCursorForHandle(hk, cell.angle);
+            });
+          }
         }
       }
       return;
     }
     this.selectionOverlayEl.innerHTML = "";
-    const handles: ResizeHandleKind[] = ["nw", "ne", "se", "sw", "rotate"];
+    const handles: ResizeHandleKind[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w", "rotate"];
 
     for (const id of this.selectedIds) {
       const cell = this.cells.get(id);
       if (!cell || !cell.isNode()) continue;
       const rect = this.coord.localToGraphRect(cell.getBBox());
       const box = document.createElement("div");
-      box.className = "x6-widget-selection-box";
+      box.className = "ms-selection-box";
       box.setAttribute("data-cell-id", cell.id);
       box.style.position = "absolute";
       box.style.left = `${rect.x}px`;
       box.style.top = `${rect.y}px`;
       box.style.width = `${rect.width}px`;
       box.style.height = `${rect.height}px`;
-      box.style.border = "1.5px solid #38bdf8";
+      box.style.border = "1.5px solid #0284c7";
       box.style.boxSizing = "content-box";
       box.style.margin = "-5px 0 0 -5px";
       box.style.padding = "4px";
@@ -3446,33 +3759,83 @@ export class UnifiedGraph {
         box.style.transformOrigin = "center center";
       }
 
+      // Vertical lollipop stem connecting rotate handle to top-center
+      const stem = document.createElement("div");
+      stem.className = "ms-rotate-stem";
+      stem.style.position = "absolute";
+      stem.style.left = "50%";
+      stem.style.top = "-14px";
+      stem.style.width = "1.5px";
+      stem.style.height = "14px";
+      stem.style.marginLeft = "-0.75px";
+      stem.style.background = "#10b981";
+      stem.style.pointerEvents = "none";
+      box.appendChild(stem);
+
+      const cellW = cell.width || 1;
+      const cellH = cell.height || 1;
+      const isMidpointOccludingPort = (h: ResizeHandleKind): boolean => {
+        if (h !== "n" && h !== "e" && h !== "s" && h !== "w") return false;
+        if ((h === "n" || h === "s") && rect.width < 36) return true;
+        if ((h === "e" || h === "w") && rect.height < 36) return true;
+        const hx = h === "w" ? 0 : h === "e" ? cellW : cellW / 2;
+        const hy = h === "n" ? 0 : h === "s" ? cellH : cellH / 2;
+        const tol = Math.max(8, Math.min(cellW, cellH) * 0.25);
+        for (const p of cell.getPorts()) {
+          const px = p.args?.x ?? cellW / 2;
+          const py = p.args?.y ?? cellH / 2;
+          if (Math.hypot(px - hx, py - hy) <= tol) return true;
+        }
+        return false;
+      };
+
       for (const h of handles) {
+        if (isMidpointOccludingPort(h)) continue;
         const dot = document.createElement("div");
         dot.className = `ms-resize-handle ms-handle-${h}`;
+        dot.setAttribute("data-handle", h);
         dot.style.position = "absolute";
-        dot.style.width = "8px";
-        dot.style.height = "8px";
+        dot.style.width = h === "rotate" ? "10px" : "8px";
+        dot.style.height = h === "rotate" ? "10px" : "8px";
         dot.style.borderRadius = h === "rotate" ? "999px" : "2px";
-        dot.style.background = h === "rotate" ? "#10b981" : "#38bdf8";
-        dot.style.border = "1px solid #0f172a";
+        dot.style.background = h === "rotate" ? "#10b981" : "#ffffff";
+        dot.style.border = h === "rotate" ? "1.5px solid #064e3b" : "1.5px solid #0284c7";
+        dot.style.boxShadow = "0 1px 2px rgba(0, 0, 0, 0.25)";
         dot.style.pointerEvents = "auto";
-        dot.style.cursor = h === "rotate" ? "grab" : "nwse-resize";
+        dot.style.cursor = getResizeCursorForHandle(h, cell.angle);
         if (h === "nw") {
-          dot.style.left = "-4px";
-          dot.style.top = "-4px";
+          dot.style.left = "-5px";
+          dot.style.top = "-5px";
+        } else if (h === "n") {
+          dot.style.left = "50%";
+          dot.style.top = "-5px";
+          dot.style.marginLeft = "-5px";
         } else if (h === "ne") {
-          dot.style.right = "-4px";
-          dot.style.top = "-4px";
+          dot.style.right = "-5px";
+          dot.style.top = "-5px";
+        } else if (h === "e") {
+          dot.style.right = "-5px";
+          dot.style.top = "50%";
+          dot.style.marginTop = "-5px";
         } else if (h === "se") {
-          dot.style.right = "-4px";
-          dot.style.bottom = "-4px";
+          dot.style.right = "-5px";
+          dot.style.bottom = "-5px";
+        } else if (h === "s") {
+          dot.style.left = "50%";
+          dot.style.bottom = "-5px";
+          dot.style.marginLeft = "-5px";
         } else if (h === "sw") {
-          dot.style.left = "-4px";
-          dot.style.bottom = "-4px";
+          dot.style.left = "-5px";
+          dot.style.bottom = "-5px";
+        } else if (h === "w") {
+          dot.style.left = "-5px";
+          dot.style.top = "50%";
+          dot.style.marginTop = "-5px";
         } else if (h === "rotate") {
           dot.style.left = "50%";
-          dot.style.top = "-18px";
-          dot.style.marginLeft = "-4px";
+          dot.style.top = "-22px";
+          dot.style.marginLeft = "-6px";
+          dot.title = "Drag to rotate (hold Shift for 15° snap)";
         }
         dot.addEventListener("pointerdown", (e) => {
           e.stopPropagation();

@@ -101,3 +101,46 @@ test("OpenSCAD UnifiedWorkspace: Indexes declarations, includes, and uses", () =
   assert.ok(unified.byName.has("clearance"));
   assert.ok(unified.symbols.size >= 8);
 });
+
+test("OpenSCAD UnifiedWorkspace: CST-first indexing emits exact spans and fieldRanges from WASM CST", async () => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const { createWasmParser } = await import("../src-gen/bindings.js");
+
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const wasmBytes = fs.readFileSync(path.join(__dirname, "../dist/parser.wasm"));
+  const { parser } = await createWasmParser(wasmBytes);
+
+  const ws = new UnifiedWorkspace(scadLanguage);
+  const libTree = parser.parse(libraryScad);
+  assert.ok(libTree?.rootNode);
+  assert.equal(libTree.rootNode.hasError, false);
+
+  ws.indexDocumentText("file:///workspace/lib.scad", libraryScad, "scad", libTree);
+  const libIdx = ws.getFileIndex("file:///workspace/lib.scad")!;
+  const modSym = Array.from(libIdx.symbols.values()).find((s) => s.name === "mounting_bracket" && s.kind === "Module");
+  assert.ok(modSym, "Expected Module symbol for mounting_bracket");
+  assert.equal(
+    libraryScad.slice(modSym.fieldRanges!.name!.startOffset, modSym.fieldRanges!.name!.endOffset),
+    "mounting_bracket",
+  );
+  assert.ok(modSym.endOffset > modSym.fieldRanges!.name!.endOffset, "Expected full ModuleDeclaration span from CST");
+
+  const fnSym = Array.from(libIdx.symbols.values()).find((s) => s.name === "bolt_radius" && s.kind === "Function");
+  assert.ok(fnSym, "Expected Function symbol for bolt_radius");
+  assert.equal(
+    libraryScad.slice(fnSym.fieldRanges!.name!.startOffset, fnSym.fieldRanges!.name!.endOffset),
+    "bolt_radius",
+  );
+
+  const varSym = Array.from(libIdx.symbols.values()).find((s) => s.name === "length" && s.kind === "Variable");
+  assert.ok(varSym, "Expected Variable symbol for length");
+  assert.equal(libraryScad.slice(varSym.fieldRanges!.name!.startOffset, varSym.fieldRanges!.name!.endOffset), "length");
+
+  // Error CST should gracefully fall back to scanner
+  const errorTree = { rootNode: { type: "SourceFile", hasError: true, children: [] } };
+  ws.indexDocumentText("file:///workspace/main.scad", mainScad, "scad", errorTree);
+  const mainIdx = ws.getFileIndex("file:///workspace/main.scad")!;
+  assert.ok(mainIdx.byName.has("main_chassis"));
+});

@@ -1046,26 +1046,43 @@ async function cadComponentsToRawMeshes(components: CadComponent[]): Promise<Raw
     if (typeof uri === "string" && (uri.startsWith("data:") || uri.startsWith("http") || uri.startsWith("/"))) {
       try {
         const gltf = await gltfLoaderSingleton.loadAsync(uri);
-        gltf.scene.traverse((child) => {
-          if ((child as THREE.Mesh).isMesh) {
+        try {
+          gltf.scene.traverse((child) => {
+            if ((child as THREE.Mesh).isMesh) {
+              const mesh = child as THREE.Mesh;
+              const posAttr = mesh.geometry.getAttribute("position");
+              if (!posAttr) return;
+              const normAttr = mesh.geometry.getAttribute("normal");
+              const idxAttr = mesh.geometry.getIndex();
+              const mat = mesh.material as THREE.MeshStandardMaterial | undefined;
+              const col = mat?.color ? [mat.color.r, mat.color.g, mat.color.b, mat.opacity ?? 1] : undefined;
+              out.push({
+                attributes: {
+                  position: { array: Array.from(posAttr.array as Iterable<number>) },
+                  normal: normAttr ? { array: Array.from(normAttr.array as Iterable<number>) } : undefined,
+                },
+                index: idxAttr ? { array: Array.from(idxAttr.array as Iterable<number>) } : undefined,
+                name: comp.name || mesh.name || "OpenSCAD_Solid",
+                color: col,
+              });
+            }
+          });
+        } finally {
+          gltf.scene.traverse((child) => {
             const mesh = child as THREE.Mesh;
-            const posAttr = mesh.geometry.getAttribute("position");
-            if (!posAttr) return;
-            const normAttr = mesh.geometry.getAttribute("normal");
-            const idxAttr = mesh.geometry.getIndex();
-            const mat = mesh.material as THREE.MeshStandardMaterial | undefined;
-            const col = mat?.color ? [mat.color.r, mat.color.g, mat.color.b, mat.opacity ?? 1] : undefined;
-            out.push({
-              attributes: {
-                position: { array: Array.from(posAttr.array as Iterable<number>) },
-                normal: normAttr ? { array: Array.from(normAttr.array as Iterable<number>) } : undefined,
-              },
-              index: idxAttr ? { array: Array.from(idxAttr.array as Iterable<number>) } : undefined,
-              name: comp.name || mesh.name || "OpenSCAD_Solid",
-              color: col,
-            });
-          }
-        });
+            if (mesh.geometry) mesh.geometry.dispose();
+            const mats = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
+            for (const mat of mats) {
+              if (!mat) continue;
+              for (const val of Object.values(mat)) {
+                if (val && typeof val === "object" && (val as THREE.Texture).isTexture) {
+                  (val as THREE.Texture).dispose();
+                }
+              }
+              mat.dispose();
+            }
+          });
+        }
       } catch {
         // Skip unloaded GLB part
       }

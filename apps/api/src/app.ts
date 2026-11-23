@@ -215,7 +215,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   // 1. DigitalOcean flagship deployment (isFlagship) ALWAYS — ensures flagship never has missing packages even after a database reset
   // 2. Airgapped production appliances
   // 3. Any production/staging node when SEED_STDLIB_ON_BOOT=true, when target standard libraries are missing, or when database has 0 packages
-  const defaultStdlibPacks = "modelica";
+  const defaultStdlibPacks = "modelica,minlplib";
   const requestedStdlibPacks = (process.env["STDLIB_PACKS"] || defaultStdlibPacks)
     .split(",")
     .map((p) => p.trim())

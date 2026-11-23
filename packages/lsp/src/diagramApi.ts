@@ -271,6 +271,207 @@ function findStatementEndLine(maskedLines: string[], startLine: number): number 
   return maskedLines.length - 1;
 }
 
+const CST_CONNECTION_NODE_TYPES = new Set([
+  "connect_clause",
+  "connect_equation",
+  "connection",
+  "connection_usage",
+  "connection_statement",
+  "connection_clause",
+  "edge_statement",
+  "flow_statement",
+  "link_statement",
+]);
+
+const CST_STATEMENT_WRAPPER_TYPES = new Set(["equation", "equation_statement", "statement", "element"]);
+
+const CST_NON_CODE_SUBTREE_TYPES = new Set([
+  "comment",
+  "string_comment",
+  "line_comment",
+  "block_comment",
+  "annotation",
+  "annotation_clause",
+  "string_literal",
+  "STRING",
+  "string",
+]);
+
+const CST_IDENT_LEAF_TYPES = new Set([
+  "ident",
+  "IDENT",
+  "identifier",
+  "IDENTIFIER",
+  "ID",
+  "id",
+  "name",
+  "simple_name",
+  "symbol",
+]);
+
+function offsetToLspPosition(docText: string, offset: number): { line: number; character: number } {
+  let line = 0;
+  let character = 0;
+  const limit = Math.min(Math.max(0, offset), docText.length);
+  for (let i = 0; i < limit; i++) {
+    if (docText[i] === "\r") {
+      line++;
+      character = 0;
+      if (i + 1 < limit && docText[i + 1] === "\n") i++;
+    } else if (docText[i] === "\n") {
+      line++;
+      character = 0;
+    } else {
+      character++;
+    }
+  }
+  return { line, character };
+}
+
+function getSyntaxChildren(node: SyntaxNode): SyntaxNode[] {
+  if (Array.isArray(node.children)) return node.children;
+  if (Array.isArray(node.namedChildren)) return node.namedChildren;
+  return [];
+}
+
+function getSyntaxNodeText(node: SyntaxNode, docText: string): string {
+  if (typeof node.text === "string" && node.text.length > 0) return node.text;
+  if (
+    typeof node.startIndex === "number" &&
+    typeof node.endIndex === "number" &&
+    node.endIndex >= node.startIndex &&
+    node.startIndex >= 0
+  ) {
+    return docText.slice(node.startIndex, node.endIndex);
+  }
+  return "";
+}
+
+function findBestCstNodeForSpan(root: SyntaxNode, startOffset: number, endOffset: number): SyntaxNode | null {
+  if (typeof root.descendantForIndex === "function") {
+    try {
+      const hit = root.descendantForIndex(startOffset, endOffset);
+      if (hit && hit.startIndex <= startOffset && hit.endIndex >= endOffset) {
+        return hit;
+      }
+    } catch {
+      // Fallback to manual traversal below
+    }
+  }
+  let best: SyntaxNode | null = root.startIndex <= startOffset && root.endIndex >= endOffset ? root : null;
+  const stack: SyntaxNode[] = [root];
+  while (stack.length > 0) {
+    const curr = stack.pop()!;
+    if (curr.startIndex > startOffset || curr.endIndex < endOffset) continue;
+    if (!best || curr.endIndex - curr.startIndex <= best.endIndex - best.startIndex) {
+      best = curr;
+    }
+    const kids = getSyntaxChildren(curr);
+    for (let i = kids.length - 1; i >= 0; i--) {
+      const child = kids[i];
+      if (child) stack.push(child);
+    }
+  }
+  return best;
+}
+
+function isConnectionCstNode(node: SyntaxNode): boolean {
+  const t = (node.type || "").toLowerCase();
+  if (!t) return false;
+  if (CST_CONNECTION_NODE_TYPES.has(t)) return true;
+  if (
+    getSyntaxChildren(node).length > 0 &&
+    (t.endsWith("_connect_clause") || t.endsWith("_connection") || t.endsWith("connection_statement"))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function extractConnectionCodeText(node: SyntaxNode, docText: string): string {
+  const kids = getSyntaxChildren(node);
+  if (kids.length === 0) return getSyntaxNodeText(node, docText);
+  const parts: string[] = [];
+  for (const child of kids) {
+    const cType = child.type || "";
+    if (CST_NON_CODE_SUBTREE_TYPES.has(cType)) continue;
+    parts.push(getSyntaxNodeText(child, docText));
+  }
+  return parts.join(" ");
+}
+
+function findMatchingConnectionCstNode(
+  root: SyntaxNode,
+  docText: string,
+  src: string,
+  srcPort: string | undefined,
+  tgt: string,
+  tgtPort: string | undefined,
+): SyntaxNode | null {
+  const stack: Array<{ node: SyntaxNode; parent: SyntaxNode | null }> = [{ node: root, parent: null }];
+  while (stack.length > 0) {
+    const { node, parent } = stack.pop()!;
+    if (!node || typeof node !== "object") continue;
+    if (isConnectionCstNode(node)) {
+      const codeText = extractConnectionCodeText(node, docText);
+      if (statementMatchesEndpoints(codeText, src, srcPort, tgt, tgtPort)) {
+        if (parent && CST_STATEMENT_WRAPPER_TYPES.has((parent.type || "").toLowerCase())) {
+          const siblingConns = getSyntaxChildren(parent).filter((c) => isConnectionCstNode(c));
+          if (siblingConns.length === 1) {
+            return parent;
+          }
+        }
+        return node;
+      }
+      continue;
+    }
+    const kids = getSyntaxChildren(node);
+    for (let i = kids.length - 1; i >= 0; i--) {
+      const child = kids[i];
+      if (child) stack.push({ node: child, parent: node });
+    }
+  }
+  return null;
+}
+
+function collectIdentifierNodesInCstScope(scopeNode: SyntaxNode, docText: string, targetName: string): SyntaxNode[] {
+  const results: SyntaxNode[] = [];
+  const seen = new Set<string>();
+  const stack: SyntaxNode[] = [scopeNode];
+  while (stack.length > 0) {
+    const curr = stack.pop()!;
+    if (!curr || typeof curr !== "object") continue;
+    const t = curr.type || "";
+    if (CST_NON_CODE_SUBTREE_TYPES.has(t)) continue;
+
+    const kids = getSyntaxChildren(curr);
+    if (kids.length === 0) {
+      if (typeof curr.startIndex === "number" && typeof curr.endIndex === "number" && curr.endIndex > curr.startIndex) {
+        const text = getSyntaxNodeText(curr, docText);
+        const isIdentType = CST_IDENT_LEAF_TYPES.has(t) || Boolean((curr as { isNamed?: boolean }).isNamed);
+        if (text === targetName && isIdentType) {
+          const isQualifiedMember =
+            !targetName.includes(".") && curr.startIndex > 0 && docText[curr.startIndex - 1] === ".";
+          if (!isQualifiedMember) {
+            const key = `${curr.startIndex}:${curr.endIndex}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              results.push(curr);
+            }
+          }
+        }
+      }
+      continue;
+    }
+
+    for (let i = kids.length - 1; i >= 0; i--) {
+      const child = kids[i];
+      if (child) stack.push(child);
+    }
+  }
+  return results;
+}
+
 function findMatchingEdgeStatement(
   maskedLines: string[],
   src: string,
@@ -1334,6 +1535,27 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
         }
         case "disconnect": {
           if (docText !== undefined && !isKnownNonModelicaExt) {
+            const cstRoot = getCstRoot();
+            if (cstRoot) {
+              const connNode = findMatchingConnectionCstNode(
+                cstRoot,
+                docText,
+                action.source,
+                action.sourcePort,
+                action.target,
+                action.targetPort,
+              );
+              if (connNode && connNode.endIndex > connNode.startIndex) {
+                const delRes = CstUnparser.deleteDeclaration(docText, cstRoot, {
+                  startOffset: connNode.startIndex,
+                  endOffset: connNode.endIndex,
+                });
+                if (delRes) {
+                  allEdits.push({ range: delRes.edit.range, newText: "" });
+                  break;
+                }
+              }
+            }
             const matchSpan = findMatchingEdgeStatement(
               maskedLines,
               action.source,
@@ -1355,13 +1577,34 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
         }
         case "reconnect": {
           if (docText !== undefined) {
-            const matchSpan = findMatchingEdgeStatement(
-              maskedLines,
-              action.oldSource,
-              action.oldSourcePort,
-              action.oldTarget,
-              action.oldTargetPort,
-            );
+            const cstRoot = getCstRoot();
+            const cstConnNode = cstRoot
+              ? findMatchingConnectionCstNode(
+                  cstRoot,
+                  docText,
+                  action.oldSource,
+                  action.oldSourcePort,
+                  action.oldTarget,
+                  action.oldTargetPort,
+                )
+              : null;
+            const matchSpan =
+              cstConnNode && cstConnNode.endIndex > cstConnNode.startIndex
+                ? {
+                    startLine: cstConnNode.startPosition
+                      ? cstConnNode.startPosition.row
+                      : offsetToLspPosition(docText, cstConnNode.startIndex).line,
+                    endLine: cstConnNode.endPosition
+                      ? cstConnNode.endPosition.row
+                      : offsetToLspPosition(docText, Math.max(cstConnNode.startIndex, cstConnNode.endIndex - 1)).line,
+                  }
+                : findMatchingEdgeStatement(
+                    maskedLines,
+                    action.oldSource,
+                    action.oldSourcePort,
+                    action.oldTarget,
+                    action.oldTargetPort,
+                  );
             const edgeTemplate =
               (action.edgeType && mutations?.edgeTemplates?.[action.edgeType]) ||
               mutations?.edgeTemplate ||
@@ -1527,6 +1770,40 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           if (docText !== undefined && maskedLines.length > 0 && action.oldName && action.newName) {
             const entry = this.resolveSymbolEntry(symbolIndex, action.oldName);
             const parentSym = entry?.parentId != null ? symbolIndex?.symbols?.get?.(entry.parentId) : null;
+            const cstRoot = getCstRoot();
+            if (cstRoot) {
+              const scopeNode =
+                parentSym &&
+                parentSym.startOffset != null &&
+                parentSym.endOffset != null &&
+                parentSym.endOffset > parentSym.startOffset
+                  ? (findBestCstNodeForSpan(cstRoot, parentSym.startOffset, parentSym.endOffset) ?? cstRoot)
+                  : cstRoot;
+              const idNodes = collectIdentifierNodesInCstScope(scopeNode, docText, action.oldName);
+              if (idNodes.length > 0) {
+                for (const idNode of idNodes) {
+                  if (idNode.startPosition && idNode.endPosition) {
+                    const patchRes = CstUnparser.patchAndUnparse({
+                      target: idNode,
+                      replaceText: action.newName,
+                    });
+                    allEdits.push({
+                      range: patchRes.edit.range,
+                      newText: patchRes.edit.newText,
+                    });
+                  } else {
+                    allEdits.push({
+                      range: {
+                        start: offsetToLspPosition(docText, idNode.startIndex),
+                        end: offsetToLspPosition(docText, idNode.endIndex),
+                      },
+                      newText: action.newName,
+                    });
+                  }
+                }
+                break;
+              }
+            }
             let scopeStartLine = 0;
             let scopeEndLine = lines.length - 1;
             if (
