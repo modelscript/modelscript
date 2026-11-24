@@ -373,7 +373,7 @@ difference() {
   cylinder(h = 12, r = 6, center = true);
 }
 `,
-    supportsDiagram: false,
+    supportsDiagram: true,
     supportsSimulation: false,
     supports3d: true,
     defaultView: "3d",

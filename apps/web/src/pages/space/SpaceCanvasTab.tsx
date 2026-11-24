@@ -538,6 +538,22 @@ export function SpaceCanvasTab({ spaceSlug, spaceName }: SpaceCanvasTabProps): R
             }}
             onMoveTile={previewDoc ? undefined : handleTileMove}
             onCreateSpatialWire={previewDoc ? undefined : handleCreateSpatialWire}
+            onDiagramEdit={
+              previewDoc
+                ? undefined
+                : (_actions, ctx) => {
+                    const latestTile = store.toDocument().tiles[ctx.tileId];
+                    if (!latestTile) return;
+                    store.upsertTile({
+                      ...latestTile,
+                      viewState: {
+                        ...latestTile.viewState,
+                        diagramData: ctx.diagramData,
+                        spatial3DLayout: ctx.spatial3DLayout,
+                      },
+                    });
+                  }
+            }
           />
         )}
       </div>

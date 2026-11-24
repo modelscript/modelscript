@@ -279,12 +279,7 @@ export interface BooleanSolid {
 
 /** Engineering boundary condition / physical port category for tagged CAD surface patches. */
 export type BoundaryPatchType =
-  | "fixed_support"
-  | "mechanical_flange"
-  | "fluid_inlet"
-  | "fluid_outlet"
-  | "aerodynamic_surface"
-  | "thermal_interface";
+  "fixed_support" | "mechanical_flange" | "fluid_inlet" | "fluid_outlet" | "aerodynamic_surface" | "thermal_interface";
 
 /** Metadata tag binding a named boundary surface patch to a multiphysics port. */
 export interface BoundaryPatchTag {
@@ -354,6 +349,46 @@ export type Solid =
 
 // ── Assembly ─────────────────────────────────────────────────────────────
 
+/** Supported kinematic joint categories connecting a child part to its parent in an assembly graph. */
+export type AssemblyJointKind =
+  "fixed" | "revolute" | "prismatic" | "cylindrical" | "spherical" | "swashplate" | "slider-crank";
+
+/** Kinematic joint specification attaching a part to its parent link. */
+export interface AssemblyJointDefinition {
+  /** Joint degree-of-freedom category. */
+  readonly kind: AssemblyJointKind;
+  /** Local joint origin relative to the parent frame `[x, y, z]`. */
+  readonly origin: Vec3;
+  /** Primary joint axis (unit vector in parent frame). */
+  readonly axis?: Vec3 | undefined;
+  /** Optional lower/upper motion limits (radians for revolute, meters for prismatic). */
+  readonly limits?: readonly [number, number] | undefined;
+  /** Optional simulation variable or actuator channel driving this joint. */
+  readonly channel?: string | undefined;
+  /** Whether this joint supports runtime detach/reconnect topology transitions. */
+  readonly detachable?: boolean | undefined;
+}
+
+/** Named logical subsystem grouping parts for isolation, ghost-shell inspection, and callouts. */
+export interface SubsystemDefinition {
+  /** Stable identifier (e.g. `"mantle"`, `"pump-core"`, `"arm-chains"`). */
+  readonly id: string;
+  /** Short numbered display code (e.g. `"01"`, `"04"`). */
+  readonly code: string;
+  /** Human-readable subsystem title (e.g. `"ARM CHAINS"`). */
+  readonly label: string;
+  /** Optional subtitle/stat line (e.g. `"202 LINKS · 489 WHEELS"`). */
+  readonly subtitle?: string | undefined;
+  /** Accent hex color for UI pills and callout pins. */
+  readonly accentColor?: string | undefined;
+  /** Preferred explosion vector for hierarchy-aware explode views. */
+  readonly explodeAxis?: Vec3 | undefined;
+  /** Marks outer enclosure shells that become translucent in Ghost-Shell mode. */
+  readonly defaultGhostable?: boolean | undefined;
+  /** Optional 3D anchor point in model space for subsystem callout labels. */
+  readonly calloutAnchor?: Vec3 | undefined;
+}
+
 /** A single part entry in a multi-part CAD {@link Assembly}. */
 export interface PartEntry {
   /** Root CSG solid for this part. */
@@ -369,6 +404,14 @@ export interface PartEntry {
         max: [number, number, number];
       }
     | undefined;
+  /** Optional subsystem identifier for isolation, ghosting, and part-count summaries. */
+  readonly subsystemId?: string | undefined;
+  /** Optional parent solid name for hierarchical forward kinematics and explode views. */
+  readonly parentName?: string | undefined;
+  /** Optional kinematic joint connecting this part to `parentName`. */
+  readonly joint?: AssemblyJointDefinition | undefined;
+  /** Optional explicit unit vector controlling explode displacement direction. */
+  readonly explodeDirection?: Vec3 | undefined;
 }
 
 /** Named collection of {@link PartEntry} solids forming a multi-part CAD assembly. */
@@ -377,6 +420,38 @@ export interface Assembly {
   readonly name: string;
   /** Ordered list of constituent parts. */
   readonly parts: readonly PartEntry[];
+  /** Optional structured subsystem definitions for hierarchical inspection and isolation. */
+  readonly subsystems?: readonly SubsystemDefinition[] | undefined;
+}
+
+/** Resolved node inside a topological {@link AssemblyGraph}. */
+export interface AssemblyGraphNode {
+  /** Index into `assembly.parts`. */
+  readonly partIndex: number;
+  /** Solid name (`part.solid.name`). */
+  readonly name: string;
+  /** Resolved subsystem ID (defaults to `"default"` if unspecified). */
+  readonly subsystemId: string;
+  /** Parent node index in `AssemblyGraph.nodes`, or `-1` for root parts. */
+  readonly parentIndex: number;
+  /** Child node indices in `AssemblyGraph.nodes`. */
+  readonly childIndices: readonly number[];
+  /** Tree depth (`0` for roots). */
+  readonly depth: number;
+  /** Optional joint specification attaching to `parentIndex`. */
+  readonly joint?: AssemblyJointDefinition | undefined;
+  /** Resolved unit explode direction vector. */
+  readonly explodeDirection: Vec3;
+}
+
+/** Precomputed hierarchical scene graph and subsystem summary for a CAD {@link Assembly}. */
+export interface AssemblyGraph {
+  readonly assemblyName: string;
+  readonly nodes: readonly AssemblyGraphNode[];
+  /** Indices into `nodes` ordered parent-before-child for single-pass forward kinematics. */
+  readonly topologicalOrder: readonly number[];
+  readonly nameToNodeIndex: ReadonlyMap<string, number>;
+  readonly subsystems: readonly (SubsystemDefinition & { readonly partCount: number })[];
 }
 
 // ── Parameter metadata ───────────────────────────────────────────────────

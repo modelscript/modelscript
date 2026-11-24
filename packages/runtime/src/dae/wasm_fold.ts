@@ -3869,6 +3869,10 @@ export function foldArenaConstants(
                 if (!arena.isVarFinal(rIdx)) arena.setVarFinal(rIdx, true);
                 if (!evaluatedParamNames.has(r)) {
                   evaluatedParamNames.add(r);
+                  forwardEvalNames.add(r);
+                  evalPropagated = true;
+                } else if (!forwardEvalNames.has(r)) {
+                  forwardEvalNames.add(r);
                   evalPropagated = true;
                 }
               }
@@ -4945,6 +4949,16 @@ export function foldArenaConstants(
         if (curRhs !== rhsExpr) arena.setStmtLeft(s, curRhs);
       }
       return s + 1;
+    }
+    if (sk === StmtKind.ComplexAssignment) {
+      const rhsExpr = arena.getStmtLeft(s);
+      if (rhsExpr >= 0) {
+        let curRhs = simplifyArenaIfElse(arena, rhsExpr, ifElseFoldMap, nameToIdx, omcCompatibility);
+        curRhs = substituteArenaConstants(arena, curRhs, activeSubMap, nameToIdx);
+        if (curRhs !== rhsExpr) arena.setStmtLeft(s, curRhs);
+      }
+      const tcount = arena.getStmtData1(s);
+      return s + 1 + (tcount > 0 ? tcount : 0);
     }
     return s + 1;
   };

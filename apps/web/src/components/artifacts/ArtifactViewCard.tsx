@@ -29,7 +29,11 @@ import {
   ViewerDispatcher,
 } from "./card";
 import { CardFooterSlotDisabled, CardFooterSlotProvider } from "./card/CardFooterSlot";
-import { buildArtifactRotundaDocument, parseRotundaEnvironmentId } from "./rotunda-board-adapter";
+import {
+  buildArtifactRotundaDocument,
+  parseRotundaEnvironmentId,
+  resolveDefaultArtifactEnvironment,
+} from "./rotunda-board-adapter";
 import { buildLiveArtifactRotundaRenderer, useArtifactRotundaGeometry } from "./RotundaGeometryBridge";
 
 const ArtifactDiffModal = React.lazy(() => import("./ArtifactDiffModal"));
@@ -608,7 +612,7 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
                     mode="spatial-3d"
                     initialEnvironment={parseRotundaEnvironmentId(
                       viewConfig?.environment ?? viewConfig?.env,
-                      "dark-lab",
+                      resolveDefaultArtifactEnvironment(artifact?.view_type, viewConfig),
                     )}
                     onExitTo2D={() => setIsVrRotundaMode(false)}
                     title={String(artifact?.title || artifact?.name || viewConfig?.title || `Artifact #${artifactId}`)}

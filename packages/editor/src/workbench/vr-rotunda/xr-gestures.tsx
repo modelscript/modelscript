@@ -5,6 +5,7 @@ import { TeleportTarget, XROrigin, useXR, useXRControllerLocomotion, useXRInputS
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import type { SpatialInteractionLock } from "./spatial-interaction.js";
 import { clampNumber, type RotundaAction, type RotundaScaleMode } from "./types.js";
 import type { RotundaCueKind } from "./xr-session.js";
 
@@ -296,13 +297,15 @@ export interface XrControllerBindingsProps {
   scaleMode?: RotundaScaleMode | undefined;
   onCue: (kind: RotundaCueKind) => void;
   twoHandSensitivity?: number | undefined;
+  /** Shared ref reporting active 3D diagram editor interaction lock (suspends explode/carousel when active). */
+  interactionLockRef?: React.RefObject<SpatialInteractionLock> | undefined;
 }
 
 /**
  * Native WebXR Controller & Quest 2 Bare-Hand Tracking Gesture Bindings:
- *  - Right thumbstick X flick (`|x| > 0.72`, 380ms debounce + Schmitt reset `< 0.3`): pages Orbital Carousel in tabletop mode (yields to 45° snap-turn in 1:1 real-scale mode).
+ *  - Right thumbstick X flick (`|x| > 0.72`, 380ms debounce + Schmitt reset `< 0.3`): pages Orbital Carousel in tabletop mode (yields to 45° snap-turn in 1:1 real-scale mode or active 3D diagram grabs).
  *  - Right thumbstick Y (`|y| > 0.25`): smoothly adjusts central plinth zoom.
- *  - Dual-controller squeeze pull-apart (`xr-standard-squeeze` on both hands): explodes/collapses CAD assembly with haptic detents.
+ *  - Dual-controller squeeze pull-apart (`xr-standard-squeeze` on both hands): explodes/collapses CAD assembly with haptic detents (yields while 3D diagram editor interaction lock is held).
  *  - Face buttons (`a-button`/`x-button` toggle play/pause; `b-button`/`y-button` toggle tabletop ↔ 1:1 real-scale).
  *  - Two-hand bare-hand index-pinch pull-apart: smoothly drives CAD `explodeFactor` (`0..1`) with detent ticks.
  *  - Right-hand middle-finger pinch (rising edge, 450ms cooldown): pages Orbital Carousel (`+1`).
@@ -315,6 +318,7 @@ export function XrControllerBindings({
   scaleMode = "tabletop",
   onCue,
   twoHandSensitivity = DEFAULT_TWO_HAND_SENSITIVITY,
+  interactionLockRef,
 }: XrControllerBindingsProps): null {
   const rightController = useXRInputSourceState("controller", "right");
   const leftController = useXRInputSourceState("controller", "left");
@@ -371,10 +375,12 @@ export function XrControllerBindings({
   }, [explodeFactor]);
 
   useFrame((_state, rawDelta, frame) => {
+    // Yield cleanly while a 3D diagram grab, magnetic wire drag, or wrist palette pull is active
+    const lock = interactionLockRef?.current ?? "none";
     const hasController = Boolean(rightController || leftController);
     const hasHand = Boolean(rightHand || leftHand);
 
-    if (!hasController && !hasHand) {
+    if ((!hasController && !hasHand) || lock !== "none") {
       isTwoHandSqueezingRef.current = false;
       prevTwoHandDistRef.current = null;
       isTwoHandPinchingRef.current = false;

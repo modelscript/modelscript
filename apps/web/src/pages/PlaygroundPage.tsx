@@ -239,7 +239,20 @@ export const PlaygroundPage: React.FC = () => {
     initialHashPayload?.title ||
     titleParam ||
     (hasInitialArtifactTarget ? "Loading Artifact…" : hasInitialTarget ? "" : "Untitled Workspace");
-  const defaultInitialLang = initialLangFromHash || langParam || "modelica";
+  const initialTemplateKey = templateParam || modelParam;
+  const initialTemplateLang = initialTemplateKey
+    ? (() => {
+        const normalizedKey = TEMPLATE_ALIASES[initialTemplateKey.toLowerCase()] || initialTemplateKey;
+        const match = HERO_EXAMPLES.find(
+          (ex) =>
+            ex.id.toLowerCase() === normalizedKey.toLowerCase() ||
+            ex.id.toLowerCase() === initialTemplateKey.toLowerCase() ||
+            ex.title.toLowerCase().includes(initialTemplateKey.toLowerCase()),
+        );
+        return match?.lang ?? null;
+      })()
+    : null;
+  const defaultInitialLang = initialLangFromHash || langParam || initialTemplateLang || "modelica";
 
   const [isLoadingArtifact, setIsLoadingArtifact] = useState<boolean>(hasInitialArtifactTarget);
   const [currentCode, setCurrentCode] = useState<string>(defaultInitialCode);

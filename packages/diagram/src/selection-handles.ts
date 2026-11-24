@@ -542,102 +542,67 @@ export function updateNodeVisualOnResize(
         : (container.querySelector("svg") as SVGSVGElement | null);
   }
 
-  // Update ports proportionally
-  const ports = typeof anyNode.getPorts === "function" ? anyNode.getPorts() : [];
-  if (Array.isArray(ports) && ports.length > 0) {
-    const data = typeof anyNode.getData === "function" ? anyNode.getData() || {} : {};
-    let portRatios = data["__portRatios"] as Record<string, { rx: number; ry: number }> | undefined;
-
-    if (!portRatios) {
-      portRatios = {};
-      let baseW = prevWidth && prevWidth > 0 ? prevWidth : 0;
-      let baseH = prevHeight && prevHeight > 0 ? prevHeight : 0;
-
-      if (baseW <= 0 && rootSvg) {
-        const svgW = parseFloat(rootSvg.getAttribute("width") || "");
-        if (!isNaN(svgW) && svgW > 0) baseW = svgW;
-      }
-      if (baseH <= 0 && rootSvg) {
-        const svgH = parseFloat(rootSvg.getAttribute("height") || "");
-        if (!isNaN(svgH) && svgH > 0) baseH = svgH;
-      }
-      if (baseW <= 0) {
-        baseW =
-          (typeof data["origWidth"] === "number" ? data["origWidth"] : 0) ||
-          (typeof anyNode.getSize === "function" ? anyNode.getSize()?.width : 0) ||
-          newWidth;
-      }
-      if (baseH <= 0) {
-        baseH =
-          (typeof data["origHeight"] === "number" ? data["origHeight"] : 0) ||
-          (typeof anyNode.getSize === "function" ? anyNode.getSize()?.height : 0) ||
-          newHeight;
-      }
-
-      for (const p of ports) {
-        if (!p?.id) continue;
-        const curArgs = p.args || {};
-        const px = typeof curArgs.x === "number" ? curArgs.x : 0;
-        const py = typeof curArgs.y === "number" ? curArgs.y : 0;
-        portRatios[p.id] = {
-          rx: baseW > 0 ? px / baseW : 0.5,
-          ry: baseH > 0 ? py / baseH : 0.5,
-        };
-      }
-
-      if (typeof anyNode.setData === "function") {
-        anyNode.setData({ ...data, __portRatios: portRatios }, { silent: true });
-      }
-    }
-
-    for (const p of ports) {
-      if (!p?.id) continue;
-      const ratio = portRatios[p.id];
-      if (ratio && typeof anyNode.setPortProp === "function") {
-        const portX = Math.round(ratio.rx * newWidth * 10) / 10;
-        const portY = Math.round(ratio.ry * newHeight * 10) / 10;
-        anyNode.setPortProp(p.id, "args", {
-          ...(p.args || {}),
-          x: portX,
-          y: portY,
-        });
+  if (rootSvg) {
+    rootSvg.setAttribute("width", String(newWidth));
+    rootSvg.setAttribute("height", String(newHeight));
+    for (const child of Array.from(rootSvg.children) as (HTMLElement | SVGElement)[]) {
+      const tag = child.tagName?.toLowerCase();
+      if (tag === "rect") {
+        // Direct hitbox/background rect scales with the node (never deep nested icon rects)
+        child.setAttribute("width", String(newWidth));
+        child.setAttribute("height", String(newHeight));
+      } else if (tag === "text" && child.getAttribute("text-anchor") === "middle") {
+        child.setAttribute("x", String(newWidth / 2));
+        child.setAttribute("y", String(newHeight / 2 + 3));
+      } else if (tag === "g") {
+        const tf = child.getAttribute("transform") || "";
+        const scaleMatch = tf.match(/scale\s*\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)/);
+        if (scaleMatch) {
+          const sx = parseFloat(scaleMatch[1]!);
+          const sy = parseFloat(scaleMatch[2]!);
+          const tx = sx < 0 ? newWidth : 0;
+          const ty = sy < 0 ? newHeight : 0;
+          child.setAttribute("transform", `translate(${tx}, ${ty}) scale(${sx}, ${sy})`);
+        }
       }
     }
   }
 
-  // Update root SVG and structural DOM elements
-  if (rootSvg) {
-    rootSvg.setAttribute("width", String(newWidth));
-    rootSvg.setAttribute("height", String(newHeight));
-
-    const updateSvgSubtree = (parent: Element, w: number, h: number) => {
-      for (const child of Array.from(parent.children) as (HTMLElement | SVGElement)[]) {
-        const tag = child.tagName?.toLowerCase();
-        if (tag === "rect") {
-          child.setAttribute("width", String(w));
-          child.setAttribute("height", String(h));
-        } else if (tag === "g") {
-          const transform = child.getAttribute("transform") || "";
-          const scaleMatch = transform.match(/scale\s*\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)/);
-          if (scaleMatch) {
-            const sx = parseFloat(scaleMatch[1]!);
-            const sy = parseFloat(scaleMatch[2]!);
-            const tx = sx < 0 ? w : 0;
-            const ty = sy < 0 ? h : 0;
-            child.setAttribute("transform", `translate(${tx}, ${ty}) scale(${sx}, ${sy})`);
-          }
-          // Recurse into nested <g> (stops if child is <svg> so inner icon graphics are preserved)
-          updateSvgSubtree(child, w, h);
-        } else if (tag === "text") {
-          if (child.getAttribute("text-anchor") === "middle") {
-            child.setAttribute("x", String(w / 2));
-            child.setAttribute("y", String(h / 2 + 3));
-          }
+  // Proportionally rescale ports when caller supplies prevWidth/prevHeight (standalone resize helper)
+  const oldW = prevWidth && prevWidth > 0 ? prevWidth : anyNode.getSize?.()?.width;
+  const oldH = prevHeight && prevHeight > 0 ? prevHeight : anyNode.getSize?.()?.height;
+  if (
+    oldW &&
+    oldH &&
+    oldW > 0 &&
+    oldH > 0 &&
+    (Math.abs(oldW - newWidth) > 0.01 || Math.abs(oldH - newHeight) > 0.01) &&
+    typeof anyNode.getPorts === "function" &&
+    typeof anyNode.setPortProp === "function"
+  ) {
+    const curData = (typeof anyNode.getData === "function" ? anyNode.getData() : null) || {};
+    const existingRatios = (curData["__portRatios"] as Record<string, { rx: number; ry: number }> | undefined) ?? {};
+    const nextRatios: Record<string, { rx: number; ry: number }> = { ...existingRatios };
+    let ratiosUpdated = false;
+    for (const p of anyNode.getPorts() || []) {
+      if (!p.id || !p.args) continue;
+      if (typeof p.args.x === "number" && typeof p.args.y === "number") {
+        let ratio = nextRatios[p.id];
+        if (!ratio) {
+          ratio = { rx: p.args.x / oldW, ry: p.args.y / oldH };
+          nextRatios[p.id] = ratio;
+          ratiosUpdated = true;
         }
+        anyNode.setPortProp(p.id, "args", {
+          ...p.args,
+          x: Math.round(ratio.rx * newWidth * 100) / 100,
+          y: Math.round(ratio.ry * newHeight * 100) / 100,
+        });
       }
-    };
-
-    updateSvgSubtree(rootSvg, newWidth, newHeight);
+    }
+    if (ratiosUpdated && typeof anyNode.setData === "function") {
+      anyNode.setData({ ...curData, __portRatios: nextRatios }, { silent: true });
+    }
   }
 
   // Keep stored markup attributes in sync if markup is attached

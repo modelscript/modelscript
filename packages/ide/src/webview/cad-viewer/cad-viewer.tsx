@@ -43,6 +43,7 @@ import { MateConnectorTool } from "./mate-connector-tool";
 import { MateModal, type MateFrameSelection } from "./mate-modal";
 import { ReachabilityTubeOverlay } from "./reachability-tube-overlay";
 import { RequirementVerdictCard, type RequirementVerdictPayload } from "./requirement-verdict-card";
+import { StreamlineRenderer } from "./streamline-renderer";
 import VrMode, { VrButton, getSharedVsCodeApi } from "./vr-mode";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -169,6 +170,12 @@ export interface CadViewerProps {
   enableVr?: boolean | undefined;
   /** Callback to launch a top-level browser WebXR VR session outside sandboxed VS Code webviews. */
   onOpenExternalVr?: (() => void) | undefined;
+  /** Optional mission phase bands displayed along the AnimationTimeline scrubber. */
+  missionPhases?: readonly import("@modelscript/cad").MissionPhaseBand[] | undefined;
+  /** Optional discrete operator-action / autonomy keyframe log for click-to-seek timeline scrubbing. */
+  operationLog?: readonly import("@modelscript/cad").OperationLogEvent[] | undefined;
+  /** Enable analytical fluid streamlines overlay in the 3D scene. */
+  showStreamlines?: boolean | undefined;
 }
 
 export interface QifOverlayPayload {
@@ -728,6 +735,8 @@ function SceneContents({
   verificationOverlay,
   showFlowpipe = true,
   showBarrier = true,
+  showStreamlines = false,
+  autoTurntable = false,
 }: {
   components: CadComponent[];
   assetBaseUrl: string;
@@ -747,6 +756,8 @@ function SceneContents({
   verificationOverlay?: Verification3DOverlayPayload | null | undefined;
   showFlowpipe?: boolean | undefined;
   showBarrier?: boolean | undefined;
+  showStreamlines?: boolean | undefined;
+  autoTurntable?: boolean | undefined;
 }) {
   const { gl, camera } = useThree();
   const controlsRef = useRef<React.ComponentRef<typeof OrbitControls>>(null);
@@ -941,8 +952,35 @@ function SceneContents({
       {/* 3D Dynamic Cross-Section Cutting Plane Visualization */}
       <CuttingPlaneVisualizer options={cuttingPlane ?? { enabled: false, axis: "none", offset: 0, inverted: false }} />
 
+      {/* Analytical Fluid Streamlines Overlay */}
+      {showStreamlines && (
+        <StreamlineRenderer
+          enabled={true}
+          domainBounds={{
+            min: [
+              sceneBounds.center[0] - sceneBounds.radius,
+              sceneBounds.center[1] - sceneBounds.radius * 0.5,
+              sceneBounds.center[2] - sceneBounds.radius * 0.5,
+            ],
+            max: [
+              sceneBounds.center[0] + sceneBounds.radius,
+              sceneBounds.center[1] + sceneBounds.radius * 0.5,
+              sceneBounds.center[2] + sceneBounds.radius * 0.5,
+            ],
+          }}
+          clippingPlanes={clippingPlanes}
+        />
+      )}
+
       {/* Controls */}
-      <OrbitControls ref={controlsRef} makeDefault enableDamping dampingFactor={0.1} />
+      <OrbitControls
+        ref={controlsRef}
+        makeDefault
+        enableDamping
+        dampingFactor={0.1}
+        autoRotate={Boolean(autoTurntable)}
+        autoRotateSpeed={1.6}
+      />
 
       {/* Gizmo */}
       <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
@@ -1069,6 +1107,9 @@ export default function CadViewer({
   verificationOverlay = null,
   enableVr = true,
   onOpenExternalVr,
+  missionPhases,
+  operationLog,
+  showStreamlines = false,
 }: CadViewerProps) {
   const [error, setError] = useState<string | null>(null);
   const [contextLost, setContextLost] = useState<boolean>(false);
@@ -1076,6 +1117,7 @@ export default function CadViewer({
   const [isBindingPickerOpen, setIsBindingPickerOpen] = useState(false);
   const [showFlowpipe, setShowFlowpipe] = useState(true);
   const [showBarrier, setShowBarrier] = useState(true);
+  const [autoTurntable, setAutoTurntable] = useState(false);
 
   const resolvedOpenExternalVr = useMemo<(() => void) | undefined>(() => {
     if (onOpenExternalVr) return onOpenExternalVr;
@@ -1477,9 +1519,33 @@ export default function CadViewer({
             verificationOverlay={verificationOverlay}
             showFlowpipe={showFlowpipe}
             showBarrier={showBarrier}
+            showStreamlines={showStreamlines}
+            autoTurntable={autoTurntable}
           />
         </VrMode>
       </Canvas>
+
+      <button
+        type="button"
+        onClick={() => setAutoTurntable((prev) => !prev)}
+        title="Toggle Turntable Auto-Rotate"
+        style={{
+          position: "absolute",
+          bottom: animationController ? 72 : 16,
+          left: 16,
+          zIndex: 30,
+          padding: "4px 10px",
+          borderRadius: 999,
+          border: autoTurntable ? "1px solid #38bdf8" : "1px solid rgba(148,163,184,0.3)",
+          background: autoTurntable ? "rgba(56,189,248,0.2)" : "rgba(15,23,42,0.72)",
+          color: autoTurntable ? "#7dd3fc" : "#cbd5e1",
+          fontSize: 11,
+          fontWeight: 600,
+          cursor: "pointer",
+        }}
+      >
+        {autoTurntable ? "Turntable ON" : "Turntable"}
+      </button>
 
       {(enableVr || resolvedOpenExternalVr) && (
         <VrButton onOpenExternalVr={resolvedOpenExternalVr} style={animationController ? { bottom: 72 } : undefined} />
@@ -1500,7 +1566,9 @@ export default function CadViewer({
       )}
 
       {/* Animation timeline overlay */}
-      {animationController && <AnimationTimeline controller={animationController} />}
+      {animationController && (
+        <AnimationTimeline controller={animationController} missionPhases={missionPhases} operationLog={operationLog} />
+      )}
 
       {/* Interactive Geometry-to-Variable Binding Picker Modal */}
       {selectedComponent && (

@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { Line } from "@react-three/drei";
+import { useThree } from "@react-three/fiber";
 import type React from "react";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import { getCachedHeroPbrTextures } from "../cad-viewer/HeroCadMaterials.js";
+import { createCaeFieldGradientTexture, type CaeFieldOverlayMode } from "./procedural-pbr.js";
 import { clampNumber, type RotundaCaeOverlay, type RotundaRenderStyle } from "./types.js";
 
 // ── Shared Types & Material / Leader-Line Helpers ───────────────────────────
@@ -36,6 +39,17 @@ export interface ShowcasePartMaterialProps {
 }
 
 const EMPTY_PLANES: THREE.Plane[] = [];
+
+const SHARED_SHOWCASE_CAE_MAPS: Partial<Record<CaeFieldOverlayMode, THREE.DataTexture>> = {};
+
+function getSharedShowcaseCaeMap(mode: CaeFieldOverlayMode): THREE.DataTexture {
+  let tex = SHARED_SHOWCASE_CAE_MAPS[mode];
+  if (!tex) {
+    tex = createCaeFieldGradientTexture(mode, 128);
+    SHARED_SHOWCASE_CAE_MAPS[mode] = tex;
+  }
+  return tex;
+}
 
 const TURBO_STOPS: ReadonlyArray<[number, number, number]> = [
   [0x1d / 255, 0x4e / 255, 0xd8 / 255], // cool deep blue
@@ -88,16 +102,31 @@ export function ShowcasePartMaterial({
   clippingPlanes,
   simulationTime,
 }: ShowcasePartMaterialProps): React.ReactElement {
+  const { gl } = useThree();
+  const pbrMaps = useMemo(() => getCachedHeroPbrTextures(gl), [gl]);
   const matRef = useRef<THREE.MeshStandardMaterial | null>(null);
   const effectivePlanes = isGhost ? EMPTY_PLANES : clippingPlanes;
   const hasClipping = effectivePlanes.length > 0;
+  const activeContourMap: THREE.DataTexture | null =
+    !isGhost && renderStyle === "shaded" && (caeOverlay === "fea-stress" || caeOverlay === "thermal")
+      ? getSharedShowcaseCaeMap(caeOverlay)
+      : null;
+  const prevStateRef = useRef<{ hasClipping: boolean; hasMap: boolean }>({
+    hasClipping,
+    hasMap: activeContourMap !== null,
+  });
 
   useEffect(() => {
     const mat = matRef.current;
     if (!mat) return;
     mat.clippingPlanes = effectivePlanes;
-    mat.needsUpdate = true;
-  }, [effectivePlanes, hasClipping]);
+    mat.map = activeContourMap;
+    const hasMap = activeContourMap !== null;
+    if (prevStateRef.current.hasClipping !== hasClipping || prevStateRef.current.hasMap !== hasMap) {
+      prevStateRef.current = { hasClipping, hasMap };
+      mat.needsUpdate = true;
+    }
+  }, [effectivePlanes, hasClipping, activeContourMap]);
 
   if (isGhost) {
     return (
@@ -124,26 +153,26 @@ export function ShowcasePartMaterial({
   let resolvedRoughness = roughness;
 
   if (caeOverlay === "fea-stress") {
-    const dynamicStress = clampNumber(stressFactor + 0.07 * Math.sin(simulationTime * 2.4 + stressFactor * 4.2), 0, 1);
-    resolvedColor = sampleGradientHex(TURBO_STOPS, dynamicStress);
-    resolvedEmissive = resolvedColor;
-    resolvedEmissiveIntensity = 0.22 + dynamicStress * 0.34;
-    resolvedMetalness = 0.24;
-    resolvedRoughness = 0.42;
+    const dynamicStress = clampNumber(stressFactor + 0.05 * Math.sin(simulationTime * 1.8 + stressFactor * 4.2), 0, 1);
+    resolvedColor = activeContourMap ? "#ffffff" : sampleGradientHex(TURBO_STOPS, dynamicStress);
+    resolvedEmissive = activeContourMap ? "#000000" : resolvedColor;
+    resolvedEmissiveIntensity = activeContourMap ? 0 : 0.16 + dynamicStress * 0.24;
+    resolvedMetalness = 0.16;
+    resolvedRoughness = 0.44;
   } else if (caeOverlay === "thermal") {
     const dynamicThermal = clampNumber(
-      thermalFactor + 0.08 * Math.sin(simulationTime * 1.9 + thermalFactor * 3.1),
+      thermalFactor + 0.06 * Math.sin(simulationTime * 1.6 + thermalFactor * 3.1),
       0,
       1,
     );
-    resolvedColor = sampleGradientHex(THERMAL_STOPS, dynamicThermal);
-    resolvedEmissive = resolvedColor;
-    resolvedEmissiveIntensity = 0.34 + dynamicThermal * 0.54;
-    resolvedMetalness = 0.16;
+    resolvedColor = activeContourMap ? "#ffffff" : sampleGradientHex(THERMAL_STOPS, dynamicThermal);
+    resolvedEmissive = activeContourMap ? "#000000" : resolvedColor;
+    resolvedEmissiveIntensity = activeContourMap ? 0 : 0.24 + dynamicThermal * 0.4;
+    resolvedMetalness = 0.14;
     resolvedRoughness = 0.46;
   } else if (caeOverlay === "cfd-flow") {
     resolvedEmissive = "#0284c7";
-    resolvedEmissiveIntensity = Math.max(emissiveIntensity, 0.12);
+    resolvedEmissiveIntensity = Math.max(emissiveIntensity, 0.08);
   }
 
   if (renderStyle === "wireframe") {
@@ -185,14 +214,20 @@ export function ShowcasePartMaterial({
     );
   }
 
+  const useBrushedAlloy = caeOverlay === "none" && resolvedMetalness >= 0.45;
   return (
     <meshStandardMaterial
       ref={matRef}
       color={resolvedColor}
+      map={activeContourMap}
       emissive={resolvedEmissive}
       emissiveIntensity={resolvedEmissiveIntensity}
       metalness={resolvedMetalness}
       roughness={resolvedRoughness}
+      normalMap={useBrushedAlloy ? pbrMaps.normal : null}
+      normalScale={useBrushedAlloy ? new THREE.Vector2(0.03, 0.015) : undefined}
+      roughnessMap={useBrushedAlloy ? pbrMaps.roughness : null}
+      envMapIntensity={resolvedMetalness >= 0.5 ? 1.35 : 0.95}
       side={hasClipping ? THREE.DoubleSide : THREE.FrontSide}
       clippingPlanes={effectivePlanes}
       clipShadows={true}

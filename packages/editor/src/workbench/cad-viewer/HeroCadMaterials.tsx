@@ -17,6 +17,7 @@ import {
   formatMaterialModifierGlyph,
   sliceSectionContoursAtPlane,
   synthesizeBrushedAlloyTextures,
+  synthesizeMechanicalDetailTextures,
   type AlloyMaterialSpec,
   type GdtCallout3D,
   type GdtDatumFeature3D,
@@ -36,6 +37,9 @@ export interface HeroPbrTextures {
   roughness: THREE.DataTexture;
   ao: THREE.DataTexture;
   iridescence: THREE.DataTexture;
+  detailNormal: THREE.DataTexture;
+  detailRoughness: THREE.DataTexture;
+  detailAo: THREE.DataTexture;
 }
 
 const pbrTextureCache = new WeakMap<THREE.WebGLRenderer, HeroPbrTextures>();
@@ -60,7 +64,7 @@ function makeRepeatDataTexture(
 }
 
 /**
- * Returns cached procedural brushed-alloy PBR textures scoped to a WebGLRenderer.
+ * Returns cached procedural brushed-alloy and mechanical panel/rivet PBR textures scoped to a WebGLRenderer.
  */
 export function getCachedHeroPbrTextures(gl: THREE.WebGLRenderer): HeroPbrTextures {
   const cached = pbrTextureCache.get(gl);
@@ -68,6 +72,7 @@ export function getCachedHeroPbrTextures(gl: THREE.WebGLRenderer): HeroPbrTextur
 
   const maxAniso = Math.min(gl.capabilities.getMaxAnisotropy(), 8);
   const bufs = synthesizeBrushedAlloyTextures(256);
+  const detailBufs = synthesizeMechanicalDetailTextures(256);
 
   const normal = makeRepeatDataTexture(bufs.normalRgba, bufs.size, bufs.size, maxAniso, true);
   const roughness = makeRepeatDataTexture(bufs.roughnessRgba, bufs.size, bufs.size, maxAniso, true);
@@ -77,7 +82,25 @@ export function getCachedHeroPbrTextures(gl: THREE.WebGLRenderer): HeroPbrTextur
   iridescence.generateMipmaps = false;
   iridescence.minFilter = THREE.LinearFilter;
 
-  const result: HeroPbrTextures = { normal, roughness, ao, iridescence };
+  const detailNormal = makeRepeatDataTexture(detailBufs.normalRgba, detailBufs.size, detailBufs.size, maxAniso, true);
+  const detailRoughness = makeRepeatDataTexture(
+    detailBufs.roughnessRgba,
+    detailBufs.size,
+    detailBufs.size,
+    maxAniso,
+    true,
+  );
+  const detailAo = makeRepeatDataTexture(detailBufs.aoRgba, detailBufs.size, detailBufs.size, maxAniso, true);
+
+  const result: HeroPbrTextures = {
+    normal,
+    roughness,
+    ao,
+    iridescence,
+    detailNormal,
+    detailRoughness,
+    detailAo,
+  };
   pbrTextureCache.set(gl, result);
   return result;
 }
@@ -170,6 +193,9 @@ const COLOR_PRESERVING_PRESETS = new Set<string>([
   "anodized-aluminum",
   "cast-aluminum",
   "stainless-steel",
+  "ceramic-white-shell",
+  "dark-anodized-joint",
+  "safety-orange-accent",
 ]);
 
 /**
@@ -186,6 +212,7 @@ export function resolveHeroAlloyConfig(
   const presetKey = classifyAlloyPreset(partName, colorRgba, materialHint);
   const spec: AlloyMaterialSpec = ALLOY_MATERIAL_PRESETS[presetKey];
   const useBrushed = spec.useBrushedMaps !== false;
+  const useDetail = spec.useDetailMaps === true;
 
   let colorHex = dark ? spec.colorDark : spec.colorLight;
   if (COLOR_PRESERVING_PRESETS.has(presetKey) && colorRgba && colorRgba.length >= 3) {
@@ -201,9 +228,9 @@ export function resolveHeroAlloyConfig(
     anisotropyRotation: spec.anisotropyRotation,
     clearcoat: spec.clearcoat ?? 0.14,
     clearcoatRoughness: spec.clearcoatRoughness ?? 0.25,
-    normalMap: useBrushed ? maps.normal : null,
+    normalMap: useDetail ? maps.detailNormal : useBrushed ? maps.normal : null,
     normalScale: new THREE.Vector2(spec.normalScale[0], spec.normalScale[1]),
-    roughnessMap: useBrushed ? maps.roughness : null,
+    roughnessMap: useDetail ? maps.detailRoughness : useBrushed ? maps.roughness : null,
     iridescence: spec.iridescence ?? 0,
     iridescenceIOR: spec.iridescenceIOR ?? 1.3,
     iridescenceThicknessRange: spec.iridescenceThicknessRange
@@ -217,10 +244,16 @@ export function resolveHeroAlloyConfig(
 }
 
 /**
- * Attaches the procedural 7-lobe aerospace photography environment IBL + 3-point
+ * Attaches the procedural 7-lobe aerospace photography environment IBL + optional 3-point
  * studio key/rim/fill lighting to the active R3F scene.
+ *
+ * Set `includeLights={false}` inside environments (such as the VR Engineering Rotunda)
+ * that already provide their own calibrated directional/hemisphere lighting rig.
  */
-export const HeroStudioEnvironment: React.FC<{ dark?: boolean }> = ({ dark = true }) => {
+export const HeroStudioEnvironment: React.FC<{ dark?: boolean; includeLights?: boolean }> = ({
+  dark = true,
+  includeLights = true,
+}) => {
   const { gl, scene } = useThree();
 
   useEffect(() => {
@@ -238,6 +271,8 @@ export const HeroStudioEnvironment: React.FC<{ dark?: boolean }> = ({ dark = tru
       gl.toneMappingExposure = prevExposure;
     };
   }, [gl, scene, dark]);
+
+  if (!includeLights) return null;
 
   return (
     <>

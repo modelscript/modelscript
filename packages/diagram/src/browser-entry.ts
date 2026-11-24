@@ -24,6 +24,7 @@ export {
   getDiagramWasmExports,
   getEdgeToolConfig,
   getGraph,
+  getGraphFor,
   getTypicalNodeSize,
   groupSelectedNodes,
   hydrateDiagramWasm,

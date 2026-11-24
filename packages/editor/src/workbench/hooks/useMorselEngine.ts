@@ -1203,6 +1203,47 @@ export function tessellateScadSource(scadCode: string): {
     }
     const argsStr = readBalanced("(", ")");
     skipWs();
+    if (ident === "for") {
+      // Evaluate OpenSCAD range loop `for (i = [start : end])` or `[start : step : end]`
+      const loopMatch = /^\s*([A-Za-z_$]\w*)\s*=\s*\[\s*([^\]]+)\s*\]\s*$/.exec(argsStr);
+      const bodyStartCursor = cursor;
+      const runOneIteration = (): Solid[] => {
+        cursor = bodyStartCursor;
+        if (cleanCode[cursor] === "{") {
+          cursor++;
+          return parseBlockStatements();
+        }
+        const single = parseStatement();
+        return single ? [single] : [];
+      };
+      if (loopMatch) {
+        const varName = loopMatch[1]!;
+        const rangeParts = loopMatch[2]!.split(":").map((s) => evalScadExpr(s.trim(), vars, NaN));
+        const startVal = rangeParts[0] ?? 0;
+        const stepVal = rangeParts.length >= 3 ? (rangeParts[1] ?? 1) : 1;
+        const endVal = rangeParts.length >= 3 ? (rangeParts[2] ?? startVal) : (rangeParts[1] ?? startVal);
+        const iterSolids: Solid[] = [];
+        const hadPrev = Object.prototype.hasOwnProperty.call(vars, varName);
+        const prevVal = vars[varName];
+        if (Number.isFinite(startVal) && Number.isFinite(endVal) && Number.isFinite(stepVal) && stepVal !== 0) {
+          let guard = 0;
+          for (let v = startVal; stepVal > 0 ? v <= endVal + 1e-9 : v >= endVal - 1e-9; v += stepVal) {
+            if (++guard > 64) break;
+            vars[varName] = v;
+            iterSolids.push(...runOneIteration());
+          }
+        } else {
+          iterSolids.push(...runOneIteration());
+        }
+        if (hadPrev && prevVal !== undefined) {
+          vars[varName] = prevVal;
+        } else {
+          Reflect.deleteProperty(vars, varName);
+        }
+        return foldSolids(iterSolids, "union");
+      }
+      return foldSolids(runOneIteration(), "union");
+    }
     if (cleanCode[cursor] === ";") {
       cursor++;
       return buildPrimitiveSolid(ident, argsStr);
@@ -2076,7 +2117,7 @@ export function useMorselEngine({
       editorValue,
     );
 
-    const runScadLspFallback = (allowClientFallback = false) => {
+    const runScadLspFallback = (allowClientFallback = false, onSettled?: () => void) => {
       getCadComponents(documentUri, undefined, editorValue)
         .then((components) => {
           if (cancelled) return;
@@ -2090,6 +2131,7 @@ export function useMorselEngine({
                 );
               }
             }
+            onSettled?.();
             return;
           }
           const mapped: CadComponent[] = components.map((c, idx: number) => {
@@ -2112,16 +2154,20 @@ export function useMorselEngine({
           setCadComponents(
             attachScadKinematicController(editorValue, mapped, animationControllerRef, setAnimationMode),
           );
+          onSettled?.();
         })
         .catch(() => {
-          if (cancelled || !allowClientFallback) return;
-          const { components: scadComps } = tessellateScadSource(editorValue);
-          if (!cancelled && scadComps.length > 0) {
-            setVtkBuffer(null);
-            setCadComponents(
-              attachScadKinematicController(editorValue, scadComps, animationControllerRef, setAnimationMode),
-            );
+          if (cancelled) return;
+          if (allowClientFallback) {
+            const { components: scadComps } = tessellateScadSource(editorValue);
+            if (!cancelled && scadComps.length > 0) {
+              setVtkBuffer(null);
+              setCadComponents(
+                attachScadKinematicController(editorValue, scadComps, animationControllerRef, setAnimationMode),
+              );
+            }
           }
+          onSettled?.();
         });
     };
 
@@ -2152,13 +2198,31 @@ export function useMorselEngine({
 
       const isInitialScadRender = lastScadCadSigRef.current === null;
       const debounceMs = isInitialScadRender ? 0 : 450;
+      const markScadSettled = () => {
+        if (!cancelled) {
+          lastScadCadSigRef.current = scadSig;
+        }
+      };
+
+      // Provide immediate client-side CSG preview for standalone SCAD files so 3D & VR
+      // never stall on "No shape classes found" while waiting for the LSP worker.
+      if (!hasPairedNonScadArtifacts && isInitialScadRender) {
+        const { components: initialScadComps } = tessellateScadSource(editorValue);
+        if (initialScadComps.length > 0) {
+          setGdtOverlay(null);
+          setVtkBuffer(null);
+          setCadComponents(
+            attachScadKinematicController(editorValue, initialScadComps, animationControllerRef, setAnimationMode),
+          );
+        }
+      }
+
       const timerId = setTimeout(() => {
         if (cancelled) return;
-        lastScadCadSigRef.current = scadSig;
 
         if (!hasPairedNonScadArtifacts) {
           setGdtOverlay(null);
-          runScadLspFallback(isInitialScadRender);
+          runScadLspFallback(true, markScadSettled);
           return;
         }
 
@@ -2196,17 +2260,18 @@ export function useMorselEngine({
                     outcome.telemetry,
                   ),
                 );
+                markScadSettled();
                 return;
               }
             } else {
               setGdtOverlay(null);
             }
-            runScadLspFallback(isInitialScadRender);
+            runScadLspFallback(true, markScadSettled);
           })
           .catch(() => {
             if (cancelled) return;
             setGdtOverlay(null);
-            runScadLspFallback(isInitialScadRender);
+            runScadLspFallback(true, markScadSettled);
           });
       }, debounceMs);
 

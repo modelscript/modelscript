@@ -622,23 +622,28 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       (node.properties?.icon as string);
     const iconUrl = typeof rawIconUrl === "string" && rawIconUrl.trim().length > 0 ? rawIconUrl.trim() : undefined;
 
+    const angle = typeof node.angle === "number" && Number.isFinite(node.angle) ? node.angle : 0;
+    const rotAttr = angle !== 0 ? ` rotate(${angle}, ${nw / 2}, ${nh / 2})` : "";
+    const safeFill = escapeXml(fill);
+    const safeStroke = escapeXml(stroke);
+
     bodyParts.push(
-      `<g id="${escapeXml(node.id)}" transform="translate(${nx}, ${ny})" filter="url(#${scopedId("shadow")})">`,
+      `<g id="${escapeXml(node.id)}" transform="translate(${nx}, ${ny})${rotAttr}" filter="url(#${scopedId("shadow")})">`,
     );
 
     // 2.5D Multiplicity Cascade: Stacked background card shadows
     if (multiplicity > 1) {
       bodyParts.push(
-        `<rect x="6" y="-6" width="${nw}" height="${nh}" rx="${rx}" ry="${ry}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" opacity="0.4"/>`,
+        `<rect x="6" y="-6" width="${nw}" height="${nh}" rx="${rx}" ry="${ry}" fill="${safeFill}" stroke="${safeStroke}" stroke-width="${strokeWidth}" opacity="0.4"/>`,
       );
       bodyParts.push(
-        `<rect x="3" y="-3" width="${nw}" height="${nh}" rx="${rx}" ry="${ry}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" opacity="0.7"/>`,
+        `<rect x="3" y="-3" width="${nw}" height="${nh}" rx="${rx}" ry="${ry}" fill="${safeFill}" stroke="${safeStroke}" stroke-width="${strokeWidth}" opacity="0.7"/>`,
       );
     }
 
     // Main node rectangle
     bodyParts.push(
-      `<rect width="${nw}" height="${nh}" rx="${rx}" ry="${ry}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"/>`,
+      `<rect width="${nw}" height="${nh}" rx="${rx}" ry="${ry}" fill="${safeFill}" stroke="${safeStroke}" stroke-width="${strokeWidth}"/>`,
     );
 
     // Double border for defined classes (Graffoo / VOWL notation)
@@ -651,8 +656,8 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       );
     }
 
-    // Bitmap raster / vector image embedding if present
-    if (iconUrl) {
+    // Bitmap raster / vector image embedding if present (allow safe data: URIs only)
+    if (iconUrl && /^data:image\/(png|jpeg|jpg|webp|gif|svg\+xml);/i.test(iconUrl)) {
       const imgW = Math.min(nw - 16, 48);
       const imgH = Math.min(nh - 16, 48);
       bodyParts.push(
@@ -953,7 +958,7 @@ export function renderCellsSvg(
 }
 
 /**
- * Serializes a live AntV X6 SVG DOM node into a clean, self-contained standalone SVG
+ * Serializes a live UnifiedGraph SVG DOM node into a clean, self-contained standalone SVG
  * with a normalized `viewBox`, explicit `xmlns`, and optional solid background rect
  * so exported schematics are never clipped or unstyled in external SVG viewers.
  */
@@ -966,28 +971,75 @@ export function serializeInteractiveGraphSvg(
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   clone.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
 
-  // Compute tight content bounds from the live viewport group before resetting its transform on the clone
-  const liveViewport = svgEl.querySelector(".x6-graph-svg-viewport") as SVGGraphicsElement | null;
-  const cloneViewport = clone.querySelector(".x6-graph-svg-viewport") as SVGGElement | null;
+  // Strip interactive-only layers (tools, guides, marquee, wire preview) and background grid rect from clone
+  clone.querySelectorAll(".ms-tools-layer, .ms-edge-tools, .ms-alignment-guides, .ms-marquee-rect").forEach((el) => {
+    el.remove();
+  });
+  clone.querySelectorAll(':scope > rect[width="100%"][height="100%"]').forEach((el) => {
+    el.remove();
+  });
+  clone.querySelectorAll(".ms-edge-halo").forEach((el) => {
+    (el as SVGElement).style.display = "none";
+  });
+
+  // Compute tight content bounds from the live edges + nodes layers before resetting transform on the clone
+  const liveViewport = (svgEl.querySelector(".ms-canvas-viewport") ??
+    svgEl.querySelector(".x6-graph-svg-viewport")) as SVGGraphicsElement | null;
+  const cloneViewport = (clone.querySelector(".ms-canvas-viewport") ??
+    clone.querySelector(".x6-graph-svg-viewport")) as SVGGElement | null;
   let vbX = 0;
   let vbY = 0;
   let vbW = Math.max(1, svgEl.clientWidth || 800);
   let vbH = Math.max(1, svgEl.clientHeight || 600);
 
-  if (liveViewport && typeof liveViewport.getBBox === "function") {
-    try {
-      const bbox = liveViewport.getBBox();
-      if (Number.isFinite(bbox.width) && Number.isFinite(bbox.height) && bbox.width > 0 && bbox.height > 0) {
-        vbX = Math.floor(bbox.x - padding);
-        vbY = Math.floor(bbox.y - padding);
-        vbW = Math.ceil(bbox.width + padding * 2);
-        vbH = Math.ceil(bbox.height + padding * 2);
-        if (cloneViewport) {
-          cloneViewport.removeAttribute("transform");
+  const measureBBox = (): { x: number; y: number; width: number; height: number } | null => {
+    const layers = [
+      svgEl.querySelector(".ms-edges-layer") as SVGGraphicsElement | null,
+      svgEl.querySelector(".ms-nodes-layer") as SVGGraphicsElement | null,
+    ].filter((el): el is SVGGraphicsElement => Boolean(el && typeof el.getBBox === "function"));
+    if (layers.length > 0) {
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const layer of layers) {
+        try {
+          const b = layer.getBBox();
+          if (Number.isFinite(b.x) && Number.isFinite(b.y) && (b.width > 0 || b.height > 0)) {
+            minX = Math.min(minX, b.x);
+            minY = Math.min(minY, b.y);
+            maxX = Math.max(maxX, b.x + b.width);
+            maxY = Math.max(maxY, b.y + b.height);
+          }
+        } catch {
+          // Detached layer
         }
       }
-    } catch {
-      // getBBox can throw if element is detached or hidden
+      if (Number.isFinite(minX) && maxX > minX && maxY > minY) {
+        return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+      }
+    }
+    if (liveViewport && typeof liveViewport.getBBox === "function") {
+      try {
+        const b = liveViewport.getBBox();
+        if (Number.isFinite(b.width) && Number.isFinite(b.height) && b.width > 0 && b.height > 0) {
+          return { x: b.x, y: b.y, width: b.width, height: b.height };
+        }
+      } catch {
+        // Detached viewport
+      }
+    }
+    return null;
+  };
+
+  const bbox = measureBBox();
+  if (bbox) {
+    vbX = Math.floor(bbox.x - padding);
+    vbY = Math.floor(bbox.y - padding);
+    vbW = Math.ceil(bbox.width + padding * 2);
+    vbH = Math.ceil(bbox.height + padding * 2);
+    if (cloneViewport) {
+      cloneViewport.removeAttribute("transform");
     }
   }
 

@@ -26,6 +26,19 @@ export interface MultibodyLinkSnapshot {
   color?: string | undefined;
 }
 
+export interface InstancedClusterSnapshot {
+  readonly clusterId: string;
+  readonly geometry: THREE.BufferGeometry;
+  /** Contiguous column-major 4×4 matrices (`count * 16`). */
+  readonly matrices: Float32Array;
+  /** Optional contiguous RGB colors (`count * 3`). */
+  readonly colors?: Float32Array | undefined;
+  readonly count: number;
+  readonly baseColor?: string | undefined;
+  readonly metalness?: number | undefined;
+  readonly roughness?: number | undefined;
+}
+
 export type ArtifactRotundaGeometrySnapshot =
   | {
       kind: "step-meshes";
@@ -45,6 +58,10 @@ export type ArtifactRotundaGeometrySnapshot =
       kind: "multibody";
       nodes: MultibodyNodeSnapshot[];
       links: MultibodyLinkSnapshot[];
+    }
+  | {
+      kind: "instanced-assembly";
+      clusters: InstancedClusterSnapshot[];
     };
 
 export interface SnapshotFitTransform {
@@ -250,6 +267,28 @@ function computeBoundingBoxFromSnapshot(snapshot: ArtifactRotundaGeometrySnapsho
         bbox.expandByPoint(tmpVec);
         tmpVec.set(link.to[0], link.to[1], link.to[2]);
         bbox.expandByPoint(tmpVec);
+      }
+      break;
+    }
+    case "instanced-assembly": {
+      const mat = new THREE.Matrix4();
+      for (const cluster of snapshot.clusters) {
+        if (!cluster.geometry.boundingBox) {
+          cluster.geometry.computeBoundingBox();
+        }
+        const localBox = cluster.geometry.boundingBox;
+        for (let i = 0; i < cluster.count; i++) {
+          const off = i * 16;
+          if (off + 15 >= cluster.matrices.length) break;
+          mat.fromArray(cluster.matrices, off);
+          if (localBox && !localBox.isEmpty()) {
+            tmpBox.copy(localBox).applyMatrix4(mat);
+            bbox.union(tmpBox);
+          } else {
+            tmpVec.set(cluster.matrices[off + 12]!, cluster.matrices[off + 13]!, cluster.matrices[off + 14]!);
+            bbox.expandByPoint(tmpVec);
+          }
+        }
       }
       break;
     }
@@ -715,6 +754,64 @@ function MultibodyRotundaContent({
   );
 }
 
+function InstancedClusterMesh({
+  cluster,
+  clippingPlanes,
+}: {
+  cluster: InstancedClusterSnapshot;
+  clippingPlanes: THREE.Plane[];
+}): React.ReactElement {
+  const meshRef = useRef<THREE.InstancedMesh | null>(null);
+
+  useEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    const mat = new THREE.Matrix4();
+    const col = new THREE.Color();
+    for (let i = 0; i < cluster.count; i++) {
+      const off = i * 16;
+      if (off + 15 >= cluster.matrices.length) break;
+      mat.fromArray(cluster.matrices, off);
+      mesh.setMatrixAt(i, mat);
+      if (cluster.colors && i * 3 + 2 < cluster.colors.length) {
+        col.setRGB(cluster.colors[i * 3]!, cluster.colors[i * 3 + 1]!, cluster.colors[i * 3 + 2]!);
+        mesh.setColorAt(i, col);
+      }
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }, [cluster]);
+
+  return (
+    <instancedMesh ref={meshRef} args={[cluster.geometry, undefined, Math.max(1, cluster.count)]} frustumCulled={false}>
+      <meshStandardMaterial
+        color={cluster.colors ? "#ffffff" : (cluster.baseColor ?? "#94a3b8")}
+        metalness={cluster.metalness ?? 0.45}
+        roughness={cluster.roughness ?? 0.32}
+        clippingPlanes={clippingPlanes}
+      />
+    </instancedMesh>
+  );
+}
+
+function InstancedAssemblyRotundaContent({
+  clusters,
+  fit,
+  clippingPlanes,
+}: {
+  clusters: readonly InstancedClusterSnapshot[];
+  fit: SnapshotFitTransform;
+  clippingPlanes: THREE.Plane[];
+}): React.ReactElement {
+  return (
+    <group position={fit.position} scale={[fit.scale, fit.scale, fit.scale]}>
+      {clusters.map((cluster) => (
+        <InstancedClusterMesh key={cluster.clusterId} cluster={cluster} clippingPlanes={clippingPlanes} />
+      ))}
+    </group>
+  );
+}
+
 function LiveArtifactRotundaContent({
   snapshot,
   explodeFactor,
@@ -768,6 +865,8 @@ function LiveArtifactRotundaContent({
           clippingPlanes={planes}
         />
       );
+    case "instanced-assembly":
+      return <InstancedAssemblyRotundaContent clusters={snapshot.clusters} fit={fit} clippingPlanes={planes} />;
   }
 }
 

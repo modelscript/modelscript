@@ -122,4 +122,48 @@ describe("Cryptographically Verifiable Digital Thread Proof Manifest Suite", () 
     assert.strictEqual(vTampered.isValid, false);
     assert(vTampered.reason?.includes("Ed25519"));
   });
+
+  it("should fall back to pure-JS SHA-256 when node:crypto is unavailable (browser mode) with exact parity", () => {
+    const vectors: Array<string | Uint8Array> = [
+      "",
+      "abc",
+      "a".repeat(55),
+      "a".repeat(56),
+      "a".repeat(64),
+      "a".repeat(128),
+      "The quick brown fox jumps over the lazy dog",
+      "SysML::αβγ::Ω⚡日本語::🚀",
+      new Uint8Array([0, 1, 2, 127, 128, 254, 255]),
+    ];
+
+    const nativeHashes = vectors.map((v) => ProofManifestGenerator.hashContent(v));
+    assert.strictEqual(nativeHashes[0], "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    assert.strictEqual(nativeHashes[1], "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+
+    const proc = process as unknown as { getBuiltinModule?: unknown };
+    const origGetBuiltinModule = proc.getBuiltinModule;
+    proc.getBuiltinModule = undefined;
+    try {
+      const fallbackHashes = vectors.map((v) => ProofManifestGenerator.hashContent(v));
+      assert.deepStrictEqual(fallbackHashes, nativeHashes);
+
+      const items: ProofManifestItem[] = [
+        {
+          domain: "modelica",
+          identifier: "Grid::IEEE2800",
+          sha256: ProofManifestGenerator.hashContent("model IEEE2800 end IEEE2800;"),
+          verificationStatus: "CERTIFIED_SAFE",
+          engine: "power_grid_oracle",
+        },
+      ];
+      const browserManifest = ProofManifestGenerator.generateManifest(items, "browser-commit");
+      assert.strictEqual(ProofManifestGenerator.verifyManifest(browserManifest).isValid, true);
+
+      // Restore native crypto and cross-verify the browser-generated manifest
+      proc.getBuiltinModule = origGetBuiltinModule;
+      assert.strictEqual(ProofManifestGenerator.verifyManifest(browserManifest).isValid, true);
+    } finally {
+      proc.getBuiltinModule = origGetBuiltinModule;
+    }
+  });
 });

@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 
-interface StreamlineRendererProps {
+export interface StreamlineRendererProps {
   enabled: boolean;
-  flowVelocity?: number;
-  domainBounds?: { min: [number, number, number]; max: [number, number, number] };
-  numLines?: number;
-  clippingPlanes?: THREE.Plane[];
+  flowVelocity?: number | undefined;
+  domainBounds?: { min: [number, number, number]; max: [number, number, number] } | undefined;
+  numLines?: number | undefined;
+  clippingPlanes?: THREE.Plane[] | undefined;
 }
 
 export function StreamlineRenderer({
@@ -18,12 +18,18 @@ export function StreamlineRenderer({
   numLines = 24,
   clippingPlanes,
 }: StreamlineRendererProps) {
-  const lineGeometries = useMemo(() => {
+  const lineObjects = useMemo(() => {
     if (!enabled) return [];
 
-    const lines: THREE.BufferGeometry[] = [];
+    const objects: THREE.Line[] = [];
     const [minX, minY, minZ] = domainBounds.min;
     const [maxX, maxY, maxZ] = domainBounds.max;
+    const mat = new THREE.LineBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.85,
+      clippingPlanes: clippingPlanes ?? [],
+    });
 
     for (let i = 0; i < numLines; i++) {
       // Seed positions on inlet y-z plane
@@ -74,26 +80,31 @@ export function StreamlineRenderer({
 
       const geo = new THREE.BufferGeometry().setFromPoints(points);
       geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-      lines.push(geo);
+      objects.push(new THREE.Line(geo, mat));
     }
 
-    return lines;
-  }, [enabled, flowVelocity, domainBounds, numLines]);
+    return objects;
+  }, [enabled, flowVelocity, domainBounds, numLines, clippingPlanes]);
+
+  useEffect(() => {
+    return () => {
+      const disposedMats = new Set<THREE.Material>();
+      for (const obj of lineObjects) {
+        obj.geometry.dispose();
+        if (obj.material instanceof THREE.Material && !disposedMats.has(obj.material)) {
+          obj.material.dispose();
+          disposedMats.add(obj.material);
+        }
+      }
+    };
+  }, [lineObjects]);
 
   if (!enabled) return null;
 
   return (
     <group>
-      {lineGeometries.map((geo, idx) => (
-        <line key={`streamline-${idx}`} geometry={geo}>
-          <lineBasicMaterial
-            vertexColors={true}
-            linewidth={2}
-            transparent={true}
-            opacity={0.85}
-            clippingPlanes={clippingPlanes}
-          />
-        </line>
+      {lineObjects.map((lineObj, idx) => (
+        <primitive key={`streamline-${idx}`} object={lineObj} />
       ))}
     </group>
   );

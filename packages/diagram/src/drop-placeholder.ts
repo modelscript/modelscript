@@ -485,17 +485,41 @@ export function ensureDiagramStyles(): void {
     }
 
     /* CAD Spacebar Hand Pan Mode */
+    .ms-hand-panning,
+    .ms-hand-panning *,
     .x6-hand-panning,
     .x6-hand-panning * {
       cursor: grab !important;
     }
+    .ms-hand-panning-active,
+    .ms-hand-panning-active *,
     .x6-hand-panning-active,
     .x6-hand-panning-active * {
       cursor: grabbing !important;
     }
+
+    /* Visible focus ring for keyboard navigation */
+    .ms-graph:focus-visible,
+    #container:focus-visible {
+      outline: 2px solid var(--ms-accent, #38bdf8);
+      outline-offset: -2px;
+    }
+
+    /* Accessibility: respect prefers-reduced-motion */
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
   `;
   document.head.appendChild(style);
 }
+
+const dropSafetyTimersByGraph = new WeakMap<object, ReturnType<typeof setTimeout>>();
 
 export function dropComponentGhost(
   g: DropPlaceholderGraph,
@@ -518,10 +542,12 @@ export function dropComponentGhost(
     timestamp: initialTimestamp,
   };
 
-  if (dropSafetyTimer !== null) {
-    clearTimeout(dropSafetyTimer);
+  const prevGraphTimer = dropSafetyTimersByGraph.get(g);
+  if (prevGraphTimer !== undefined) {
+    clearTimeout(prevGraphTimer);
   }
-  dropSafetyTimer = setTimeout(() => {
+  const timer = setTimeout(() => {
+    dropSafetyTimersByGraph.delete(g);
     try {
       const existing = g.getCellById?.("__drop_placeholder__");
       if (existing) g.removeCell?.(existing);
@@ -530,6 +556,8 @@ export function dropComponentGhost(
     }
     clearActiveDropPlaceholder();
   }, 3500);
+  dropSafetyTimersByGraph.set(g, timer);
+  dropSafetyTimer = timer;
 
   const strokeColor = isDark ? "#cccccc" : "#333333";
   const fillColor = isDark ? "rgba(204, 204, 204, 0.15)" : "rgba(51, 51, 51, 0.08)";
@@ -548,15 +576,28 @@ export function dropComponentGhost(
 
   if (iconSvg) {
     const displaySvg = isDark ? adaptSvgColors(iconSvg, isDark) : iconSvg;
+    const dataUrl = `data:image/svg+xml;utf8,${encodeURIComponent(displaySvg)}`;
     return g.addNode({
       id: "__drop_placeholder__",
       shape: "image",
+      imageUrl: dataUrl,
       x: x - halfW,
       y: y - halfH,
       width: w,
       height: h,
       zIndex: 9999,
-      imageUrl: `data:image/svg+xml;utf8,${encodeURIComponent(displaySvg)}`,
+      markup: [
+        {
+          tagName: "image",
+          selector: "image",
+          attrs: {
+            href: dataUrl,
+            width: w,
+            height: h,
+            preserveAspectRatio: "xMidYMid meet",
+          },
+        },
+      ],
       attrs: {
         image: {
           preserveAspectRatio: "xMidYMid meet",
@@ -585,6 +626,13 @@ export function dropComponentGhost(
           pointerEvents: "none",
           style:
             "transform-box: fill-box; transform-origin: center center; animation: drop-placeholder-bounce 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) forwards, drop-placeholder-pulse 1.4s ease-in-out infinite 0.24s;",
+        },
+        label: {
+          text: className.split(".").pop(),
+          fill: strokeColor,
+          pointerEvents: "none",
+          fontSize: 10,
+          fontWeight: "600",
         },
         text: {
           text: className.split(".").pop(),

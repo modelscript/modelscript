@@ -8,7 +8,7 @@
  * for dynamic 3D CAD simulation animation.
  */
 
-import type { Mat4, Vec3 } from "./types.js";
+import type { AssemblyGraph, Mat4, Vec3 } from "./types.js";
 
 /** Quaternion represented as [x, y, z, w]. */
 export type Quat = [number, number, number, number];
@@ -480,4 +480,233 @@ export function hermiteInterpolate(p0: number, m0: number, p1: number, m1: numbe
   const h01 = -2 * t3 + 3 * t2;
   const h11 = t3 - t2;
   return h00 * p0 + h10 * m0 + h01 * p1 + h11 * m1;
+}
+
+// ── Hierarchical Forward Kinematics & Closed-Loop Mechanism Solvers ────────
+
+export interface ForwardKinematicsOutput {
+  /** Contiguous [x, y, z] world positions per node (`nodes.length * 3`). */
+  readonly positions: Float64Array;
+  /** Contiguous [qx, qy, qz, qw] world quaternions per node (`nodes.length * 4`). */
+  readonly quaternions: Float64Array;
+}
+
+/**
+ * Evaluates parent-before-child forward kinematics across an {@link AssemblyGraph}
+ * in a single topological pass, writing world positions and quaternions directly
+ * into pre-allocated typed arrays (zero per-frame allocations when reused).
+ *
+ * Supports `revolute`, `prismatic`, `cylindrical`, `fixed`, and `spherical` joints,
+ * plus runtime detachment overrides via `detachedNodes`.
+ */
+export function evaluateForwardKinematics(
+  graph: AssemblyGraph,
+  jointValues: ReadonlyMap<string, number> | Record<string, number>,
+  out?: ForwardKinematicsOutput,
+  detachedNodes?: ReadonlySet<string>,
+): ForwardKinematicsOutput {
+  const n = graph.nodes.length;
+  const positions = out && out.positions.length >= n * 3 ? out.positions : new Float64Array(n * 3);
+  const quaternions = out && out.quaternions.length >= n * 4 ? out.quaternions : new Float64Array(n * 4);
+
+  const readVal = (key: string | undefined): number => {
+    if (!key) return 0;
+    if (jointValues instanceof Map) return jointValues.get(key) ?? 0;
+    return (jointValues as Record<string, number>)[key] ?? 0;
+  };
+
+  for (let orderIdx = 0; orderIdx < graph.topologicalOrder.length; orderIdx++) {
+    const idx = graph.topologicalOrder[orderIdx]!;
+    const node = graph.nodes[idx]!;
+    const pOff = idx * 3;
+    const qOff = idx * 4;
+
+    const isDetached = detachedNodes?.has(node.name) ?? false;
+    const parentIdx = isDetached ? -1 : node.parentIndex;
+
+    // Parent world pose
+    let px = 0;
+    let py = 0;
+    let pz = 0;
+    let pqx = 0;
+    let pqy = 0;
+    let pqz = 0;
+    let pqw = 1;
+
+    if (parentIdx >= 0) {
+      const ppOff = parentIdx * 3;
+      const pqOff = parentIdx * 4;
+      px = positions[ppOff]!;
+      py = positions[ppOff + 1]!;
+      pz = positions[ppOff + 2]!;
+      pqx = quaternions[pqOff]!;
+      pqy = quaternions[pqOff + 1]!;
+      pqz = quaternions[pqOff + 2]!;
+      pqw = quaternions[pqOff + 3]!;
+    }
+
+    const joint = node.joint;
+    let lx = joint ? joint.origin[0] : 0;
+    let ly = joint ? joint.origin[1] : 0;
+    let lz = joint ? joint.origin[2] : 0;
+    let lqx = 0;
+    let lqy = 0;
+    let lqz = 0;
+    let lqw = 1;
+
+    if (joint) {
+      let qVal = readVal(joint.channel ?? node.name);
+      if (joint.limits) {
+        qVal = Math.max(joint.limits[0], Math.min(joint.limits[1], qVal));
+      }
+      const axis: Vec3 = joint.axis ?? [0, 0, 1];
+      const aLen = Math.hypot(axis[0], axis[1], axis[2]) || 1;
+      const ax = axis[0] / aLen;
+      const ay = axis[1] / aLen;
+      const az = axis[2] / aLen;
+
+      if (joint.kind === "revolute" || joint.kind === "cylindrical") {
+        const half = qVal * 0.5;
+        const s = Math.sin(half);
+        lqx = ax * s;
+        lqy = ay * s;
+        lqz = az * s;
+        lqw = Math.cos(half);
+      } else if (joint.kind === "prismatic") {
+        lx += ax * qVal;
+        ly += ay * qVal;
+        lz += az * qVal;
+      }
+    }
+
+    // World position = parentPos + rotate(localOrigin, parentQuat)
+    const tx = 2 * (pqy * lz - pqz * ly);
+    const ty = 2 * (pqz * lx - pqx * lz);
+    const tz = 2 * (pqx * ly - pqy * lx);
+    positions[pOff] = px + lx + pqw * tx + (pqy * tz - pqz * ty);
+    positions[pOff + 1] = py + ly + pqw * ty + (pqz * tx - pqx * tz);
+    positions[pOff + 2] = pz + lz + pqw * tz + (pqx * ty - pqy * tx);
+
+    // World quaternion = parentQuat * localQuat
+    quaternions[qOff] = pqw * lqx + pqx * lqw + pqy * lqz - pqz * lqy;
+    quaternions[qOff + 1] = pqw * lqy - pqx * lqz + pqy * lqw + pqz * lqx;
+    quaternions[qOff + 2] = pqw * lqz + pqx * lqy - pqy * lqx + pqz * lqw;
+    quaternions[qOff + 3] = pqw * lqw - pqx * lqx - pqy * lqy - pqz * lqz;
+  }
+
+  return { positions, quaternions };
+}
+
+/** Closed-loop kinematic state of one piston in an axial swashplate pump (e.g., 7-piston subsea pump). */
+export interface SwashplatePistonState {
+  readonly index: number;
+  readonly ringAngleRad: number;
+  readonly radialX: number;
+  readonly radialZ: number;
+  /** Axial stroke displacement along +Y (meters). */
+  readonly axialOffset: number;
+  /** Dimensionless normalized axial velocity (-1..+1), positive = discharge stroke. */
+  readonly normalizedVelocity: number;
+  /** True during high-pressure discharge half-cycle, false during intake suction. */
+  readonly isDischarging: boolean;
+}
+
+export interface SwashplatePumpSolution {
+  readonly shaftAngleRad: number;
+  readonly swashplateTiltRad: number;
+  readonly swashplateQuaternion: Quat;
+  readonly pistons: readonly SwashplatePistonState[];
+  /** Instantaneous normalized volumetric discharge flow rate (sum of discharging pistons). */
+  readonly instantaneousFlowNorm: number;
+}
+
+/**
+ * Analytical closed-loop kinematics for an N-piston axial swashplate pump (e.g. 7-piston hydraulic/water-jet core).
+ * Ensures exact piston-shoe contact against the tilted swashplate plane at every shaft angle.
+ */
+export function solveSwashplatePumpKinematics(
+  shaftAngleRad: number,
+  pistonCount = 7,
+  swashplateTiltRad = 0.28,
+  pitchRadius = 0.042,
+): SwashplatePumpSolution {
+  const count = Math.max(1, Math.floor(pistonCount));
+  const tanTilt = Math.tan(swashplateTiltRad);
+  const strokeAmp = pitchRadius * tanTilt;
+  const pistons: SwashplatePistonState[] = [];
+  let dischargeSum = 0;
+
+  for (let i = 0; i < count; i++) {
+    const ringAngle = (i / count) * Math.PI * 2;
+    const phase = ringAngle + shaftAngleRad;
+    const radialX = Math.cos(ringAngle) * pitchRadius;
+    const radialZ = Math.sin(ringAngle) * pitchRadius;
+    // Closed-loop constraint: piston shoe rides in plane y = R * tan(alpha) * cos(theta_i + omega*t)
+    const axialOffset = strokeAmp * Math.cos(phase);
+    const velNorm = -Math.sin(phase);
+    const isDischarging = velNorm > 0;
+    if (isDischarging) dischargeSum += velNorm;
+
+    pistons.push({
+      index: i,
+      ringAngleRad: ringAngle,
+      radialX,
+      radialZ,
+      axialOffset,
+      normalizedVelocity: velNorm,
+      isDischarging,
+    });
+  }
+
+  // Swashplate wobbles in phase with shaft rotation while maintaining tilt angle
+  const qSpin = quaternionFromAxisAngle([0, 1, 0], -shaftAngleRad, false);
+  const qTilt = quaternionFromAxisAngle([0, 0, 1], swashplateTiltRad, false);
+  const swashplateQuaternion = quaternionMultiply(qSpin, qTilt);
+
+  // Average sum of positive sin half-waves over N pistons is N / PI
+  const meanSum = count / Math.PI;
+  const instantaneousFlowNorm = meanSum > 1e-6 ? dischargeSum / meanSum : 0;
+
+  return {
+    shaftAngleRad,
+    swashplateTiltRad,
+    swashplateQuaternion,
+    pistons,
+    instantaneousFlowNorm,
+  };
+}
+
+export interface SliderCrankState {
+  readonly crankAngleRad: number;
+  readonly crankPin: readonly [number, number];
+  readonly sliderPosition: number;
+  readonly connectingRodAngleRad: number;
+  readonly normalizedVelocity: number;
+}
+
+/**
+ * Analytical closed-loop kinematics for a planar slider-crank mechanism (`rodLength > crankRadius`).
+ */
+export function solveSliderCrankKinematics(
+  crankAngleRad: number,
+  crankRadius: number,
+  rodLength: number,
+): SliderCrankState {
+  const r = Math.max(1e-6, crankRadius);
+  const l = Math.max(r * 1.05, rodLength);
+  const cx = r * Math.cos(crankAngleRad);
+  const cy = r * Math.sin(crankAngleRad);
+  const sinBeta = Math.max(-0.999, Math.min(0.999, -cy / l));
+  const cosBeta = Math.sqrt(Math.max(1e-9, 1 - sinBeta * sinBeta));
+  const sliderPosition = cx + l * cosBeta;
+  const connectingRodAngleRad = Math.asin(sinBeta);
+  // dx/dtheta = -r*sin(theta) - (r^2 * sin(theta)*cos(theta)) / (l * cosBeta)
+  const dxdTheta = -r * Math.sin(crankAngleRad) * (1 + (r * Math.cos(crankAngleRad)) / (l * cosBeta));
+  return {
+    crankAngleRad,
+    crankPin: [cx, cy],
+    sliderPosition,
+    connectingRodAngleRad,
+    normalizedVelocity: dxdTheta / r,
+  };
 }

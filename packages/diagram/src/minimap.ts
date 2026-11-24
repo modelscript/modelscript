@@ -37,6 +37,8 @@ export interface MinimapGraphEdge {
 export interface MinimapGraph {
   disposed?: boolean | undefined;
   container?: HTMLElement | { clientWidth?: number; clientHeight?: number } | null | undefined;
+  getWidth?: (() => number) | undefined;
+  getHeight?: (() => number) | undefined;
   getNodes: () => MinimapGraphNode[];
   getEdges?: (() => MinimapGraphEdge[]) | undefined;
   scale?: (() => { sx: number; sy: number }) | undefined;
@@ -46,8 +48,30 @@ export interface MinimapGraph {
   getCellById?: ((id: string) => unknown) | undefined;
 }
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+const minimapCenterCallbacks = new WeakMap<HTMLElement, (worldX: number, worldY: number) => void>();
+
+function sanitizeSvgColor(raw: unknown, fallback: string): string {
+  if (typeof raw !== "string") return fallback;
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.length > 64) return fallback;
+  if (/^[#a-zA-Z0-9(),.\s%-]+$/.test(trimmed)) return trimmed;
+  return fallback;
+}
+
+/**
+ * Removes any Minimap HUD attached to `container`.
+ */
+export function destroyMinimapHud(container: HTMLElement | null | undefined): void {
+  if (!container) return;
+  minimapCenterCallbacks.delete(container);
+  const hud = container.querySelector("#modelscript-minimap-hud");
+  if (hud) hud.remove();
+}
+
 /**
  * Creates or retrieves the floating Minimap HUD container in the DOM.
+ * Always updates the `onCenterGraph` callback so remounted graphs never invoke a disposed instance.
  */
 export function ensureMinimapHud(
   container: HTMLElement,
@@ -55,6 +79,8 @@ export function ensureMinimapHud(
   initiallyVisible = true,
 ): HTMLElement | null {
   if (typeof document === "undefined" || !container) return null;
+  minimapCenterCallbacks.set(container, onCenterGraph);
+
   let hud = container.querySelector("#modelscript-minimap-hud") as HTMLElement | null;
   if (hud) return hud;
 
@@ -69,9 +95,9 @@ export function ensureMinimapHud(
   hud.style.background = "var(--ms-surface-glass, rgba(22, 27, 34, 0.85))";
   hud.style.backdropFilter = "blur(12px)";
   (hud.style as unknown as Record<string, string>)["webkitBackdropFilter"] = "blur(12px)";
-  hud.style.border = "1px solid var(--ms-divider, rgba(255, 255, 255, 0.12))";
+  hud.style.border = "1px solid var(--ms-divider, rgba(148, 163, 184, 0.25))";
   hud.style.borderRadius = "12px";
-  hud.style.boxShadow = "var(--ms-shadow-card, 0 12px 32px -4px rgba(0, 0, 0, 0.35))";
+  hud.style.boxShadow = "var(--ms-shadow-card, 0 12px 32px -4px rgba(0, 0, 0, 0.25))";
   hud.style.zIndex = "990";
   hud.style.overflow = "hidden";
   hud.style.display = initiallyVisible ? "flex" : "none";
@@ -99,7 +125,7 @@ export function ensureMinimapHud(
   title.style.fontWeight = "700";
   title.style.letterSpacing = "0.06em";
   title.style.textTransform = "uppercase";
-  title.style.color = "var(--ms-text-3, rgba(148, 163, 184, 0.75))";
+  title.style.color = "var(--ms-text-3, rgba(148, 163, 184, 0.85))";
   header.appendChild(title);
 
   const closeBtn = document.createElement("button");
@@ -108,7 +134,7 @@ export function ensureMinimapHud(
   closeBtn.title = "Close Minimap (M)";
   closeBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l10 10M13 3L3 13"/></svg>`;
   closeBtn.style.pointerEvents = "auto";
-  closeBtn.style.background = "rgba(0, 0, 0, 0.25)";
+  closeBtn.style.background = "var(--ms-surface-2, rgba(100, 116, 139, 0.22))";
   closeBtn.style.border = "none";
   closeBtn.style.borderRadius = "999px";
   closeBtn.style.width = "18px";
@@ -121,12 +147,18 @@ export function ensureMinimapHud(
   closeBtn.style.opacity = "0";
   closeBtn.style.transition = "opacity 0.15s ease, background 0.15s ease, color 0.15s ease";
   closeBtn.onmouseenter = () => {
-    closeBtn.style.background = "rgba(0, 0, 0, 0.55)";
+    closeBtn.style.background = "var(--ms-surface-hover, rgba(100, 116, 139, 0.45))";
     closeBtn.style.color = "var(--ms-text-1, #ffffff)";
   };
   closeBtn.onmouseleave = () => {
-    closeBtn.style.background = "rgba(0, 0, 0, 0.25)";
+    closeBtn.style.background = "var(--ms-surface-2, rgba(100, 116, 139, 0.22))";
     closeBtn.style.color = "var(--ms-text-2, #94a3b8)";
+  };
+  closeBtn.onfocus = () => {
+    closeBtn.style.opacity = "1";
+  };
+  closeBtn.onblur = () => {
+    closeBtn.style.opacity = "0";
   };
   closeBtn.onclick = (e) => {
     e.stopPropagation();
@@ -139,31 +171,58 @@ export function ensureMinimapHud(
     closeBtn.style.opacity = "1";
   };
   hud.onmouseleave = () => {
-    closeBtn.style.opacity = "0";
+    if (document.activeElement !== closeBtn) {
+      closeBtn.style.opacity = "0";
+    }
   };
 
   // SVG Thumbnail Canvas
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const svg = document.createElementNS(SVG_NS, "svg");
   svg.id = "minimap-svg";
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", "Diagram overview minimap");
   svg.style.width = "100%";
   svg.style.height = "100%";
   svg.style.cursor = "crosshair";
 
   let isDraggingMinimap = false;
   const panToMinimapCoord = (clientX: number, clientY: number) => {
+    const centerFn = minimapCenterCallbacks.get(container);
+    if (!centerFn) return;
+    // Use exact SVG screen CTM inversion so letterboxing (preserveAspectRatio="xMidYMid meet") is respected
+    if (typeof svg.createSVGPoint === "function" && typeof svg.getScreenCTM === "function") {
+      const ctm = svg.getScreenCTM();
+      if (ctm) {
+        try {
+          const pt = svg.createSVGPoint();
+          pt.x = clientX;
+          pt.y = clientY;
+          const world = pt.matrixTransform(ctm.inverse());
+          if (Number.isFinite(world.x) && Number.isFinite(world.y)) {
+            centerFn(world.x, world.y);
+            return;
+          }
+        } catch {
+          // Fallback below
+        }
+      }
+    }
     const rect = svg.getBoundingClientRect();
-    const clickX = clientX - rect.left;
-    const clickY = clientY - rect.top;
-
-    const viewBox = svg.viewBox.baseVal;
-    if (viewBox && viewBox.width > 0 && viewBox.height > 0) {
-      const worldX = viewBox.x + (clickX / rect.width) * viewBox.width;
-      const worldY = viewBox.y + (clickY / rect.height) * viewBox.height;
-      onCenterGraph(worldX, worldY);
+    const viewBox = svg.viewBox?.baseVal;
+    if (viewBox && viewBox.width > 0 && viewBox.height > 0 && rect.width > 0 && rect.height > 0) {
+      const scale = Math.min(rect.width / viewBox.width, rect.height / viewBox.height);
+      const renderedW = viewBox.width * scale;
+      const renderedH = viewBox.height * scale;
+      const offsetX = (rect.width - renderedW) / 2;
+      const offsetY = (rect.height - renderedH) / 2;
+      const worldX = viewBox.x + (clientX - rect.left - offsetX) / scale;
+      const worldY = viewBox.y + (clientY - rect.top - offsetY) / scale;
+      centerFn(worldX, worldY);
     }
   };
 
   svg.addEventListener("pointerdown", (e: PointerEvent) => {
+    if (typeof e.button === "number" && e.button !== 0) return;
     isDraggingMinimap = true;
     try {
       svg.setPointerCapture(e.pointerId);
@@ -196,143 +255,57 @@ export function ensureMinimapHud(
  * Updates the SVG thumbnail and viewfinder extent in the Minimap HUD.
  */
 export function updateMinimapHud(hud: HTMLElement | null, g: MinimapGraph): void {
-  if (!hud || hud.style.display === "none") return;
+  if (!hud || hud.style.display === "none" || g.disposed) return;
   const svg = hud.querySelector("#minimap-svg") as SVGSVGElement | null;
-  if (!svg) return;
+  if (!svg || typeof document === "undefined") return;
 
   const nodes = g.getNodes().filter((n) => !isEphemeralDiagramNode(n.id));
   if (nodes.length === 0) {
-    svg.innerHTML = "";
+    svg.textContent = "";
     return;
   }
 
-  // Calculate full model bounding box (including nodes and edge paths)
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
 
+  const includePt = (x: number, y: number) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  };
+
   for (const n of nodes) {
     const pos = n.getPosition?.();
     const size = n.getSize?.();
     if (!pos || !size) continue;
-    minX = Math.min(minX, pos.x);
-    minY = Math.min(minY, pos.y);
-    maxX = Math.max(maxX, pos.x + (size.width || 0));
-    maxY = Math.max(maxY, pos.y + (size.height || 0));
+    includePt(pos.x, pos.y);
+    includePt(pos.x + (size.width || 0), pos.y + (size.height || 0));
   }
 
   const edges = g.getEdges?.() || [];
+  const edgePolylines: { x: number; y: number }[][] = [];
+
   for (const edge of edges) {
-    if (typeof g.findViewByCell === "function") {
-      const edgeView = g.findViewByCell(edge as never) as {
-        path?: { bbox?: () => { x: number; y: number; width: number; height: number } };
-      } | null;
-      if (typeof edgeView?.path?.bbox === "function") {
-        try {
-          const b = edgeView.path.bbox();
-          if (b && isFinite(b.x) && isFinite(b.y)) {
-            minX = Math.min(minX, b.x);
-            minY = Math.min(minY, b.y);
-            maxX = Math.max(maxX, b.x + (b.width || 0));
-            maxY = Math.max(maxY, b.y + (b.height || 0));
-            continue;
-          }
-        } catch {}
-      }
-    }
+    const view =
+      typeof g.findViewByCell === "function"
+        ? (g.findViewByCell(edge as never) as {
+            sourcePoint?: { x: number; y: number } | undefined;
+            targetPoint?: { x: number; y: number } | undefined;
+            routePoints?: { x: number; y: number }[] | undefined;
+          } | null)
+        : null;
 
-    if (typeof edge.getBBox === "function") {
-      try {
-        const b = edge.getBBox();
-        if (b && isFinite(b.x) && isFinite(b.y)) {
-          minX = Math.min(minX, b.x);
-          minY = Math.min(minY, b.y);
-          maxX = Math.max(maxX, b.x + (b.width || 0));
-          maxY = Math.max(maxY, b.y + (b.height || 0));
-          continue;
-        }
-      } catch {}
-    }
+    let p1 = view?.sourcePoint ?? edge.getSourcePoint?.();
+    let p2 = view?.targetPoint ?? edge.getTargetPoint?.();
 
-    const p1 = edge.getSourcePoint?.();
-    const p2 = edge.getTargetPoint?.();
-    if (p1 && isFinite(p1.x) && isFinite(p1.y)) {
-      minX = Math.min(minX, p1.x);
-      minY = Math.min(minY, p1.y);
-      maxX = Math.max(maxX, p1.x);
-      maxY = Math.max(maxY, p1.y);
-    }
-    if (p2 && isFinite(p2.x) && isFinite(p2.y)) {
-      minX = Math.min(minX, p2.x);
-      minY = Math.min(minY, p2.y);
-      maxX = Math.max(maxX, p2.x);
-      maxY = Math.max(maxY, p2.y);
-    }
-    const verts = edge.getVertices?.() || [];
-    for (const v of verts) {
-      if (v && isFinite(v.x) && isFinite(v.y)) {
-        minX = Math.min(minX, v.x);
-        minY = Math.min(minY, v.y);
-        maxX = Math.max(maxX, v.x);
-        maxY = Math.max(maxY, v.y);
-      }
-    }
-  }
-
-  if (minX === Infinity || !isFinite(minX)) return;
-
-  // Add 40px margin around graph
-  const pad = 40;
-  minX -= pad;
-  minY -= pad;
-  const totalW = Math.max(100, maxX - minX + pad * 2);
-  const totalH = Math.max(100, maxY - minY + pad * 2);
-
-  svg.setAttribute("viewBox", `${minX} ${minY} ${totalW} ${totalH}`);
-
-  // Calculate visible viewfinder rectangle
-  const container = g.container as HTMLElement | undefined;
-  const cw = container?.clientWidth || 800;
-  const ch = container?.clientHeight || 600;
-  const { sx, sy } = typeof g.scale === "function" ? g.scale() : { sx: 1, sy: 1 };
-  const { tx, ty } = typeof g.translate === "function" ? g.translate() : { tx: 0, ty: 0 };
-
-  const viewX = -tx / sx;
-  const viewY = -ty / sy;
-  const viewW = cw / sx;
-  const viewH = ch / sy;
-
-  // Render SVG elements
-  let svgContent = "";
-
-  // 1. Render edges
-  for (const edge of edges) {
-    let pathData = "";
-
-    // 1a. Try retrieving exact rendered path from EdgeView if available in graph
-    if (typeof g.findViewByCell === "function") {
-      const edgeView = g.findViewByCell(edge as never) as {
-        getConnectionPathData?: () => string;
-        path?: { serialize?: () => string };
-      } | null;
-      if (typeof edgeView?.getConnectionPathData === "function") {
-        pathData = edgeView.getConnectionPathData() || "";
-      } else if (typeof edgeView?.path?.serialize === "function") {
-        pathData = edgeView.path.serialize() || "";
-      }
-    }
-
-    if (pathData) {
-      svgContent += `<path d="${pathData}" fill="none" stroke="#64748b" stroke-width="1.5" opacity="0.6" stroke-linejoin="round" stroke-linecap="round"/>`;
-      continue;
-    }
-
-    // 1b. Fallback: retrieve endpoints and intermediate vertices
-    let p1 = edge.getSourcePoint?.();
-    let p2 = edge.getTargetPoint?.();
-
-    if (typeof edge.getSourceCell === "function" || typeof edge.getSourceCellId === "function") {
+    if (
+      (!p1 || (p1.x === 0 && p1.y === 0)) &&
+      (typeof edge.getSourceCell === "function" || typeof edge.getSourceCellId === "function")
+    ) {
       let sCell = typeof edge.getSourceCell === "function" ? edge.getSourceCell() : null;
       if (!sCell && typeof g.getCellById === "function") {
         const sId = typeof edge.getSourceCellId === "function" ? edge.getSourceCellId() : edge.source?.cell;
@@ -343,7 +316,10 @@ export function updateMinimapHud(hud: HTMLElement | null, g: MinimapGraph): void
       if (resolvedP1) p1 = resolvedP1;
     }
 
-    if (typeof edge.getTargetCell === "function" || typeof edge.getTargetCellId === "function") {
+    if (
+      (!p2 || (p2.x === 0 && p2.y === 0)) &&
+      (typeof edge.getTargetCell === "function" || typeof edge.getTargetCellId === "function")
+    ) {
       let tCell = typeof edge.getTargetCell === "function" ? edge.getTargetCell() : null;
       if (!tCell && typeof g.getCellById === "function") {
         const tId = typeof edge.getTargetCellId === "function" ? edge.getTargetCellId() : edge.target?.cell;
@@ -354,32 +330,155 @@ export function updateMinimapHud(hud: HTMLElement | null, g: MinimapGraph): void
       if (resolvedP2) p2 = resolvedP2;
     }
 
-    const vertices = edge.getVertices?.() || [];
-
-    if (p1 && p2 && isFinite(p1.x) && isFinite(p1.y) && isFinite(p2.x) && isFinite(p2.y)) {
-      if (vertices.length > 0) {
-        const pts = [p1, ...vertices, p2];
-        const d = `M ${pts.map((p) => `${p.x} ${p.y}`).join(" L ")}`;
-        svgContent += `<path d="${d}" fill="none" stroke="#64748b" stroke-width="1.5" opacity="0.6" stroke-linejoin="round" stroke-linecap="round"/>`;
-      } else {
-        svgContent += `<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="#64748b" stroke-width="1.5" opacity="0.6"/>`;
+    const midPts = view?.routePoints && view.routePoints.length > 0 ? view.routePoints : (edge.getVertices?.() ?? []);
+    if (p1 && p2 && Number.isFinite(p1.x) && Number.isFinite(p1.y) && Number.isFinite(p2.x) && Number.isFinite(p2.y)) {
+      const poly = [p1, ...midPts, p2];
+      for (const pt of poly) includePt(pt.x, pt.y);
+      edgePolylines.push(poly);
+    } else if (typeof (view as { getConnectionPathData?: () => string } | null)?.getConnectionPathData === "function") {
+      const pathData = (view as { getConnectionPathData: () => string }).getConnectionPathData();
+      if (typeof pathData === "string" && pathData.length > 0) {
+        const nums = pathData.match(/-?\d+(?:\.\d+)?/g);
+        if (nums && nums.length >= 4) {
+          const poly: { x: number; y: number }[] = [];
+          for (let i = 0; i + 1 < nums.length; i += 2) {
+            const x = Number(nums[i]);
+            const y = Number(nums[i + 1]);
+            if (Number.isFinite(x) && Number.isFinite(y)) {
+              includePt(x, y);
+              poly.push({ x, y });
+            }
+          }
+          if (poly.length >= 2) {
+            edgePolylines.push(poly);
+          }
+        }
       }
     }
   }
 
-  // 2. Render node thumbnails
-  for (const n of nodes) {
-    const pos = n.getPosition?.();
-    const size = n.getSize?.();
-    if (!pos || !size) continue;
-    const stroke = (n.attr?.("body/stroke") as string) || "#38bdf8";
-    svgContent += `<rect x="${pos.x}" y="${pos.y}" width="${size.width}" height="${size.height}" rx="3" ry="3" fill="#1e293b" stroke="${stroke}" stroke-width="1.2" opacity="0.9"/>`;
+  if (minX === Infinity || !Number.isFinite(minX)) return;
+
+  // Calculate visible viewfinder rectangle and union it into bounds so panning off-content stays visible
+  const container = g.container as HTMLElement | undefined;
+  const cw = (typeof g.getWidth === "function" ? g.getWidth() : 0) || container?.clientWidth || 800;
+  const ch = (typeof g.getHeight === "function" ? g.getHeight() : 0) || container?.clientHeight || 600;
+  const { sx, sy } = typeof g.scale === "function" ? g.scale() : { sx: 1, sy: 1 };
+  const { tx, ty } = typeof g.translate === "function" ? g.translate() : { tx: 0, ty: 0 };
+
+  const viewX = -tx / (sx || 1);
+  const viewY = -ty / (sy || 1);
+  const viewW = cw / (sx || 1);
+  const viewH = ch / (sy || 1);
+
+  includePt(viewX, viewY);
+  includePt(viewX + viewW, viewY + viewH);
+
+  // Add 40px margin around union bounds
+  const pad = 40;
+  minX -= pad;
+  minY -= pad;
+  maxX += pad;
+  maxY += pad;
+  const totalW = Math.max(100, maxX - minX);
+  const totalH = Math.max(100, maxY - minY);
+
+  svg.setAttribute("viewBox", `${minX} ${minY} ${totalW} ${totalH}`);
+
+  // Build SVG safely using DOM elements in browsers (no raw innerHTML interpolation of user strings).
+  // Fall back to sanitized numeric/allow-listed SVG markup only in lightweight mock DOMs without createDocumentFragment.
+  if (typeof document.createDocumentFragment === "function") {
+    const frag = document.createDocumentFragment();
+
+    for (const poly of edgePolylines) {
+      if (poly.length === 2) {
+        const line = document.createElementNS(SVG_NS, "line");
+        line.setAttribute("x1", String(poly[0]!.x));
+        line.setAttribute("y1", String(poly[0]!.y));
+        line.setAttribute("x2", String(poly[1]!.x));
+        line.setAttribute("y2", String(poly[1]!.y));
+        line.setAttribute("stroke", "var(--ms-text-3, #64748b)");
+        line.setAttribute("stroke-width", "1.5");
+        line.setAttribute("vector-effect", "non-scaling-stroke");
+        line.setAttribute("opacity", "0.6");
+        frag.appendChild(line);
+      } else {
+        const path = document.createElementNS(SVG_NS, "path");
+        path.setAttribute("d", `M ${poly.map((p) => `${p.x} ${p.y}`).join(" L ")}`);
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke", "var(--ms-text-3, #64748b)");
+        path.setAttribute("stroke-width", "1.5");
+        path.setAttribute("vector-effect", "non-scaling-stroke");
+        path.setAttribute("opacity", "0.6");
+        path.setAttribute("stroke-linejoin", "round");
+        path.setAttribute("stroke-linecap", "round");
+        frag.appendChild(path);
+      }
+    }
+
+    for (const n of nodes) {
+      const pos = n.getPosition?.();
+      const size = n.getSize?.();
+      if (!pos || !size) continue;
+      const stroke = sanitizeSvgColor(n.attr?.("body/stroke"), "#38bdf8");
+      const rect = document.createElementNS(SVG_NS, "rect");
+      rect.setAttribute("x", String(pos.x));
+      rect.setAttribute("y", String(pos.y));
+      rect.setAttribute("width", String(Math.max(1, size.width)));
+      rect.setAttribute("height", String(Math.max(1, size.height)));
+      rect.setAttribute("rx", "3");
+      rect.setAttribute("ry", "3");
+      rect.setAttribute("fill", "var(--ms-surface-2, rgba(100, 116, 139, 0.35))");
+      rect.setAttribute("stroke", stroke);
+      rect.setAttribute("stroke-width", "1.2");
+      rect.setAttribute("vector-effect", "non-scaling-stroke");
+      rect.setAttribute("opacity", "0.9");
+      frag.appendChild(rect);
+    }
+
+    const vf = document.createElementNS(SVG_NS, "rect");
+    vf.setAttribute("x", String(viewX));
+    vf.setAttribute("y", String(viewY));
+    vf.setAttribute("width", String(Math.max(1, viewW)));
+    vf.setAttribute("height", String(Math.max(1, viewH)));
+    vf.setAttribute("rx", "3");
+    vf.setAttribute("ry", "3");
+    vf.setAttribute("fill", "rgba(6, 182, 212, 0.16)");
+    vf.setAttribute("stroke", "#06b6d4");
+    vf.setAttribute("stroke-width", "1.5");
+    vf.setAttribute("vector-effect", "non-scaling-stroke");
+    frag.appendChild(vf);
+
+    svg.textContent = "";
+    svg.appendChild(frag);
+  } else {
+    const parts: string[] = [];
+    for (const poly of edgePolylines) {
+      if (poly.length === 2) {
+        parts.push(
+          `<line x1="${poly[0]!.x}" y1="${poly[0]!.y}" x2="${poly[1]!.x}" y2="${poly[1]!.y}" stroke="var(--ms-text-3, #64748b)" stroke-width="1.5" vector-effect="non-scaling-stroke" opacity="0.6"/>`,
+        );
+      } else {
+        const d = `M ${poly.map((p) => `${p.x} ${p.y}`).join(" L ")}`;
+        parts.push(
+          `<path d="${d}" fill="none" stroke="var(--ms-text-3, #64748b)" stroke-width="1.5" vector-effect="non-scaling-stroke" opacity="0.6" stroke-linejoin="round" stroke-linecap="round"/>`,
+        );
+      }
+    }
+    for (const n of nodes) {
+      const pos = n.getPosition?.();
+      const size = n.getSize?.();
+      if (!pos || !size) continue;
+      const stroke = sanitizeSvgColor(n.attr?.("body/stroke"), "#38bdf8");
+      parts.push(
+        `<rect x="${pos.x}" y="${pos.y}" width="${Math.max(1, size.width)}" height="${Math.max(1, size.height)}" rx="3" ry="3" fill="var(--ms-surface-2, rgba(100, 116, 139, 0.35))" stroke="${stroke}" stroke-width="1.2" vector-effect="non-scaling-stroke" opacity="0.9"/>`,
+      );
+    }
+    parts.push(
+      `<rect x="${viewX}" y="${viewY}" width="${Math.max(1, viewW)}" height="${Math.max(1, viewH)}" rx="3" ry="3" fill="rgba(6, 182, 212, 0.16)" stroke="#06b6d4" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`,
+    );
+    svg.innerHTML = parts.join("");
   }
-
-  // 3. Render camera viewfinder
-  svgContent += `<rect x="${viewX}" y="${viewY}" width="${viewW}" height="${viewH}" rx="3" ry="3" fill="rgba(6, 182, 212, 0.16)" stroke="#06b6d4" stroke-width="1.5"/>`;
-
-  svg.innerHTML = svgContent;
 }
 
 /**

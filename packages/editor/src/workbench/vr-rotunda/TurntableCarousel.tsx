@@ -4,7 +4,13 @@ import { Line } from "@react-three/drei";
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import type { AssemblyVisibilityState } from "../cad-viewer/assembly-visibility.js";
 import { HeroModelAsset } from "./HeroModelAsset.js";
+import {
+  createBrushedAluminumPbr,
+  createKnurledMetalNormalMap,
+  createRadialContactShadowTexture,
+} from "./procedural-pbr.js";
 import {
   PLINTH_CENTER_REAL_SCALE,
   PLINTH_CENTER_TABLETOP,
@@ -85,13 +91,58 @@ export interface TurntableCarouselProps {
   sectionCutAxis: RotundaClipAxis;
   sectionCutOffset: number;
   simulationTime: number;
+  simulationTimeRef?: React.RefObject<number> | undefined;
   isPlaying: boolean;
   animationController?: RotundaAnimationControllerLike | null | undefined;
+  visibility?: AssemblyVisibilityState | undefined;
+  autoTurntable?: boolean | undefined;
+  isInXr?: boolean | undefined;
+  dark?: boolean | undefined;
+  onSelectSubsystem?: ((subsystemId: string) => void) | undefined;
   onPageModel: (delta: number) => void;
   onSelectModelIndex: (index: number) => void;
   onPlinthYawChange: (yaw: number) => void;
   onSectionCutOffsetChange: (offset: number) => void;
   onDraggingChange?: ((dragging: boolean) => void) | undefined;
+}
+
+/** Builds a CNC-turned multi-step chamfered plinth head housing (`LatheGeometry`). */
+function createCncPlinthHousingGeometry(): THREE.LatheGeometry {
+  const pts: THREE.Vector2[] = [
+    new THREE.Vector2(0.34, -0.148),
+    new THREE.Vector2(0.68, -0.148),
+    new THREE.Vector2(0.725, -0.132),
+    new THREE.Vector2(0.768, -0.098),
+    // Recessed indirect LED reveal shadow groove
+    new THREE.Vector2(0.742, -0.088),
+    new THREE.Vector2(0.742, -0.068),
+    new THREE.Vector2(0.792, -0.056),
+    new THREE.Vector2(0.792, -0.016),
+    // Crisp 45° CNC machined top chamfer bezel
+    new THREE.Vector2(0.772, 0.002),
+    new THREE.Vector2(0.662, 0.002),
+    new THREE.Vector2(0.654, -0.008),
+  ];
+  const geom = new THREE.LatheGeometry(pts, 64);
+  geom.computeVertexNormals();
+  return geom;
+}
+
+/** Builds a flared CNC-machined architectural pedestal column with chamfered floor flange. */
+function createCncPedestalColumnGeometry(): THREE.LatheGeometry {
+  const pts: THREE.Vector2[] = [
+    new THREE.Vector2(0.56, -0.48),
+    new THREE.Vector2(0.56, -0.452),
+    new THREE.Vector2(0.52, -0.43),
+    new THREE.Vector2(0.41, -0.418),
+    new THREE.Vector2(0.35, -0.32),
+    new THREE.Vector2(0.305, 0.16),
+    new THREE.Vector2(0.335, 0.44),
+    new THREE.Vector2(0.37, 0.48),
+  ];
+  const geom = new THREE.LatheGeometry(pts, 48);
+  geom.computeVertexNormals();
+  return geom;
 }
 
 // ── Metrology Plinth 36-Tick Perimeter Ring ─────────────────────────────────
@@ -134,11 +185,11 @@ function PlinthTickMarks({ plinthYaw, accentColor }: { plinthYaw: number; accent
       <instancedMesh ref={minorRef} args={[undefined, undefined, 32]} frustumCulled={false}>
         <boxGeometry args={[0.008, 0.005, 0.036]} />
         <meshStandardMaterial
-          color="#94a3b8"
-          emissive="#38bdf8"
-          emissiveIntensity={0.25}
-          metalness={0.75}
-          roughness={0.28}
+          color="#64748b"
+          emissive="#0284c7"
+          emissiveIntensity={0.14}
+          metalness={0.45}
+          roughness={0.32}
         />
       </instancedMesh>
       {/* 4 accentuated 90° cardinal ticks */}
@@ -147,9 +198,9 @@ function PlinthTickMarks({ plinthYaw, accentColor }: { plinthYaw: number; accent
         <meshStandardMaterial
           color={accentColor}
           emissive={accentColor}
-          emissiveIntensity={1.15}
-          metalness={0.4}
-          roughness={0.2}
+          emissiveIntensity={0.95}
+          metalness={0.32}
+          roughness={0.22}
         />
       </instancedMesh>
     </group>
@@ -169,9 +220,14 @@ interface CarouselSlotNodeProps {
   caeOverlay: RotundaCaeOverlay;
   renderStyle: RotundaRenderStyle;
   simulationTime: number;
+  simulationTimeRef?: React.RefObject<number> | undefined;
   isPlaying: boolean;
   clippingPlanes: THREE.Plane[];
   animationController?: RotundaAnimationControllerLike | null | undefined;
+  visibility?: AssemblyVisibilityState | undefined;
+  isInXr?: boolean | undefined;
+  dark?: boolean | undefined;
+  onSelectSubsystem?: ((subsystemId: string) => void) | undefined;
   onClickGhost: (direction: number) => void;
 }
 
@@ -186,9 +242,14 @@ function CarouselSlotNode({
   caeOverlay,
   renderStyle,
   simulationTime,
+  simulationTimeRef,
   isPlaying,
   clippingPlanes,
   animationController,
+  visibility,
+  isInXr,
+  dark,
+  onSelectSubsystem,
   onClickGhost,
 }: CarouselSlotNodeProps): React.ReactElement {
   const slotGroupRef = useRef<THREE.Group | null>(null);
@@ -262,7 +323,7 @@ function CarouselSlotNode({
         onPointerOut={() => setHovered(false)}
       >
         <mesh rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[0.56, hovered ? 0.024 : 0.016, 12, 48]} />
+          <torusGeometry args={[0.56, 0.018, 12, 48]} />
           <meshStandardMaterial
             color={hovered ? "#67e8f9" : "#38bdf8"}
             emissive={hovered ? "#22d3ee" : "#0284c7"}
@@ -318,11 +379,16 @@ function CarouselSlotNode({
           caeOverlay={isTargetHero ? caeOverlay : "none"}
           renderStyle={renderStyle}
           simulationTime={simulationTime}
+          simulationTimeRef={isTargetHero ? simulationTimeRef : undefined}
           isPlaying={isPlaying}
           clippingPlanes={isTargetHero ? clippingPlanes : EMPTY_CLIPPING_PLANES}
           animationController={isTargetHero ? animationController : null}
           isGhost={!isTargetHero}
           ghostOpacity={hovered ? 0.56 : 0.38}
+          visibility={isTargetHero ? visibility : undefined}
+          isInXr={isInXr}
+          dark={dark}
+          onSelectSubsystem={isTargetHero ? onSelectSubsystem : undefined}
         />
       </group>
     </group>
@@ -786,8 +852,14 @@ export function TurntableCarousel({
   sectionCutAxis,
   sectionCutOffset,
   simulationTime,
+  simulationTimeRef,
   isPlaying,
   animationController,
+  visibility,
+  autoTurntable = false,
+  isInXr = false,
+  dark = true,
+  onSelectSubsystem,
   onPageModel,
   onSelectModelIndex,
   onPlinthYawChange,
@@ -803,9 +875,38 @@ export function TurntableCarousel({
 
   const plinthRootRef = useRef<THREE.Group | null>(null);
   const pedestalStemRef = useRef<THREE.Mesh | null>(null);
+  const contactShadowRef = useRef<THREE.Mesh | null>(null);
   const haloMatRef = useRef<THREE.MeshStandardMaterial | null>(null);
   const pulseRingRef = useRef<THREE.Mesh | null>(null);
   const pulseMatRef = useRef<THREE.MeshStandardMaterial | null>(null);
+
+  const contactShadowTex = useMemo(() => createRadialContactShadowTexture(0.46, 0.22, 128), []);
+  const stageShadowTex = useMemo(() => createRadialContactShadowTexture(0.32, 0.14, 128), []);
+  const plinthMetalPbr = useMemo(() => createBrushedAluminumPbr(4, 2, "#b4c0ce", 128), []);
+  const plinthDarkPbr = useMemo(() => createBrushedAluminumPbr(4, 2, "#546170", 128), []);
+  const knurlNormal = useMemo(() => createKnurledMetalNormalMap(48, 2, 64), []);
+  const plinthHousingGeom = useMemo(() => createCncPlinthHousingGeometry(), []);
+  const pedestalColumnGeom = useMemo(() => createCncPedestalColumnGeometry(), []);
+
+  useEffect(() => {
+    return () => {
+      contactShadowTex.dispose();
+      stageShadowTex.dispose();
+      plinthMetalPbr.dispose();
+      plinthDarkPbr.dispose();
+      knurlNormal.dispose();
+      plinthHousingGeom.dispose();
+      pedestalColumnGeom.dispose();
+    };
+  }, [
+    contactShadowTex,
+    stageShadowTex,
+    plinthMetalPbr,
+    plinthDarkPbr,
+    knurlNormal,
+    plinthHousingGeom,
+    pedestalColumnGeom,
+  ]);
 
   // Ref-driven smooth animation state (zero per-frame React re-renders)
   const animatedStepRef = useRef<number>(carouselStep);
@@ -1057,6 +1158,12 @@ export function TurntableCarousel({
       pedestalStemRef.current.position.y = -0.14 - 0.48 * tabletopRatio;
     }
 
+    // Keep lightweight floor contact-shadow disc flush with y = 0.005m across tabletop/real-scale transitions
+    if (contactShadowRef.current) {
+      const safeScale = Math.max(0.05, currentScaleRef.current);
+      contactShadowRef.current.position.y = (0.005 - currentPosRef.current.y) / safeScale;
+    }
+
     // 2. Orbital Carousel exponential spring damping
     const stepDiff = carouselStep - animatedStepRef.current;
     if (Math.abs(stepDiff) > 0.0005) {
@@ -1068,7 +1175,10 @@ export function TurntableCarousel({
 
     const transitionMag = Math.abs(carouselStep - animatedStepRef.current);
 
-    // 3. Inertial momentum damping after rim grab-to-spin release
+    // 3. Inertial momentum damping after rim grab-to-spin release + hands-free auto-turntable
+    if (!isRimDraggingRef.current && autoTurntable && Math.abs(angularVelRef.current) <= 0.012) {
+      plinthYawRef.current += delta * 0.34;
+    }
     if (!isRimDraggingRef.current && Math.abs(angularVelRef.current) > 0.012) {
       const decay = Math.exp(-delta * 4.8);
       const nextYaw = plinthYawRef.current + angularVelRef.current * delta;
@@ -1091,7 +1201,7 @@ export function TurntableCarousel({
     if (haloMatRef.current) {
       const breath = 0.5 + 0.5 * Math.sin(state.clock.elapsedTime * 2.2);
       const boost = isRimDraggingRef.current ? 0.9 : transitionMag > 0.08 ? 1.1 : 0;
-      haloMatRef.current.emissiveIntensity = 0.85 + breath * 0.45 + boost;
+      haloMatRef.current.emissiveIntensity = 0.72 + breath * 0.35 + boost;
     }
 
     // 5. Holographic transition ring pulse during orbital paging (|delta| > 0.08)
@@ -1145,30 +1255,43 @@ export function TurntableCarousel({
 
   const initialPos = scaleMode === "real-scale" ? PLINTH_CENTER_REAL_SCALE : PLINTH_CENTER_TABLETOP;
   const initialScale = scaleMode === "real-scale" ? 2.15 : 1.0;
+  const initialShadowLocalY = (0.005 - initialPos[1]) / initialScale;
 
   return (
     <group ref={plinthRootRef} name="rotunda-turntable-carousel" position={initialPos} scale={initialScale}>
-      {/* ── Circular Metrology Plinth Stage ──────────────────────────────── */}
+      {/* ── Circular Metrology Plinth Stage (CNC Machined Brushed Titanium) ── */}
       <group name="metrology-plinth">
-        {/* Retractable brushed dark aluminum pedestal column (collapses cleanly in real-scale) */}
-        <mesh ref={pedestalStemRef} position={[0, -0.62, 0]} castShadow receiveShadow>
-          <cylinderGeometry args={[0.32, 0.44, 0.96, 36]} />
-          <meshStandardMaterial color="#0f172a" metalness={0.82} roughness={0.34} />
+        {/* Lightweight soft radial contact-shadow disc on the floor (ZERO shadow-map GPU cost) */}
+        <mesh ref={contactShadowRef} position={[0, initialShadowLocalY, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <circleGeometry args={[1.18, 40]} />
+          <meshBasicMaterial map={contactShadowTex} transparent={true} depthWrite={false} />
         </mesh>
 
-        {/* Lower plinth chassis housing */}
-        <mesh position={[0, -0.078, 0]} castShadow receiveShadow>
-          <cylinderGeometry args={[0.785, 0.72, 0.135, 64]} />
-          <meshStandardMaterial color="#1e293b" metalness={0.84} roughness={0.28} />
+        {/* Retractable flared CNC-turned anodized titanium pedestal column (collapses cleanly in real-scale) */}
+        <mesh ref={pedestalStemRef} geometry={pedestalColumnGeom} position={[0, -0.62, 0]}>
+          <meshStandardMaterial
+            map={plinthDarkPbr.map}
+            normalMap={plinthDarkPbr.normalMap}
+            normalScale={new THREE.Vector2(0.42, 0.42)}
+            roughnessMap={plinthDarkPbr.roughnessMap}
+            roughness={1.0}
+            metalness={0.86}
+          />
         </mesh>
 
-        {/* Brushed dark aluminum outer turntable bezel */}
-        <mesh position={[0, -0.012, 0]} receiveShadow>
-          <cylinderGeometry args={[0.77, 0.79, 0.03, 64]} />
-          <meshStandardMaterial color="#334155" metalness={0.86} roughness={0.26} />
+        {/* Single-mesh CNC-turned multi-step chamfered plinth head housing with shadow-line reveal */}
+        <mesh geometry={plinthHousingGeom} position={[0, 0, 0]}>
+          <meshStandardMaterial
+            map={plinthMetalPbr.map}
+            normalMap={plinthMetalPbr.normalMap}
+            normalScale={new THREE.Vector2(0.45, 0.45)}
+            roughnessMap={plinthMetalPbr.roughnessMap}
+            roughness={1.0}
+            metalness={0.86}
+          />
         </mesh>
 
-        {/* Interactive grab-to-spin metallic rim torus */}
+        {/* Interactive grab-to-spin diamond-knurled CNC anodized metallic rim torus */}
         <mesh
           position={[0, 0.002, 0]}
           rotation={[Math.PI / 2, 0, 0]}
@@ -1182,49 +1305,71 @@ export function TurntableCarousel({
           }}
           onPointerOut={() => setRimHovered(false)}
         >
-          <torusGeometry args={[0.765, 0.032, 16, 64]} />
+          <torusGeometry args={[0.768, 0.031, 20, 72]} />
           <meshStandardMaterial
-            color={rimHovered || rimDragging ? "#64748b" : "#334155"}
-            emissive={rimHovered || rimDragging ? accentColor : "#0f172a"}
-            emissiveIntensity={rimDragging ? 0.65 : rimHovered ? 0.35 : 0.05}
-            metalness={0.9}
-            roughness={0.2}
+            color={rimHovered || rimDragging ? "#38bdf8" : "#8b98a8"}
+            normalMap={knurlNormal}
+            normalScale={new THREE.Vector2(0.75, 0.75)}
+            emissive={rimHovered || rimDragging ? "#0284c7" : "#1e293b"}
+            emissiveIntensity={rimDragging ? 0.55 : rimHovered ? 0.3 : 0.04}
+            metalness={0.88}
+            roughness={0.24}
           />
         </mesh>
 
-        {/* Recessed dark optical glass center stage */}
-        <mesh position={[0, -0.004, 0]} receiveShadow>
-          <cylinderGeometry args={[0.655, 0.655, 0.012, 64]} />
-          <meshStandardMaterial color="#07101f" metalness={0.36} roughness={0.12} transparent={true} opacity={0.92} />
+        {/* Satin bead-blasted optical ceramic / frosted glass center stage deck */}
+        <mesh position={[0, -0.004, 0]}>
+          <cylinderGeometry args={[0.656, 0.656, 0.012, 64]} />
+          <meshStandardMaterial
+            map={plinthMetalPbr.map}
+            normalMap={plinthMetalPbr.normalMap}
+            normalScale={new THREE.Vector2(0.18, 0.18)}
+            roughnessMap={plinthMetalPbr.roughnessMap}
+            color="#e2e8f0"
+            emissive="#f8fafc"
+            emissiveIntensity={0.08}
+            metalness={0.28}
+            roughness={0.55}
+            transparent={true}
+            opacity={0.97}
+          />
         </mesh>
 
-        {/* Subtle etched metrology reticle rings on the glass stage */}
+        {/* Soft radial contact-shadow decal right beneath the hero CAD assembly on the turntable stage */}
+        <mesh position={[0, 0.0035, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <circleGeometry args={[0.52, 36]} />
+          <meshBasicMaterial map={stageShadowTex} transparent={true} depthWrite={false} />
+        </mesh>
+
+        {/* Precision laser-etched hairline metrology reticle rings on the stage deck */}
         {[0.22, 0.42, 0.61].map((r, idx) => (
-          <mesh key={`reticle-${idx}`} position={[0, 0.003, 0]} rotation={[Math.PI / 2, 0, 0]}>
-            <torusGeometry args={[r, 0.0028, 8, 64]} />
+          <mesh key={`reticle-${idx}`} position={[0, 0.004, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[r, 0.0024, 8, 64]} />
             <meshStandardMaterial
-              color={accentColor}
-              emissive={accentColor}
+              color="#0284c7"
+              emissive="#0284c7"
               emissiveIntensity={0.48}
               transparent={true}
-              opacity={0.38}
+              opacity={0.45}
+              toneMapped={false}
             />
           </mesh>
         ))}
 
         {/* 36 Radial Perimeter Tick Marks (10° ticks + accentuated 90° cardinal ticks) */}
-        <PlinthTickMarks plinthYaw={plinthYaw} accentColor={accentColor} />
+        <PlinthTickMarks plinthYaw={plinthYaw} accentColor="#0284c7" />
 
-        {/* Animated glowing cyan/accent LED status halo ring underneath bezel */}
-        <mesh position={[0, -0.095, 0]} rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[0.785, 0.015, 12, 72]} />
+        {/* Recessed indirect LED cove halo tucked cleanly inside the CNC shadow-line groove */}
+        <mesh position={[0, -0.078, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[0.752, 0.011, 12, 72]} />
           <meshStandardMaterial
             ref={haloMatRef}
-            color={accentColor}
-            emissive={accentColor}
+            color="#0284c7"
+            emissive="#0284c7"
             emissiveIntensity={1.1}
             roughness={0.2}
             metalness={0.2}
+            toneMapped={false}
           />
         </mesh>
 
@@ -1251,11 +1396,11 @@ export function TurntableCarousel({
                 >
                   <sphereGeometry args={[isSelected ? 0.02 : 0.013, 14, 14]} />
                   <meshStandardMaterial
-                    color={isSelected ? pipColor : "#64748b"}
-                    emissive={isSelected ? pipColor : "#1e293b"}
-                    emissiveIntensity={isSelected ? 1.8 : 0.3}
-                    roughness={0.2}
-                    metalness={0.3}
+                    color={isSelected ? pipColor : "#94a3b8"}
+                    emissive={isSelected ? pipColor : "#64748b"}
+                    emissiveIntensity={isSelected ? 1.5 : 0.18}
+                    roughness={0.22}
+                    metalness={0.28}
                   />
                 </mesh>
               );
@@ -1268,9 +1413,9 @@ export function TurntableCarousel({
           <torusGeometry args={[0.82, 0.014, 12, 72]} />
           <meshStandardMaterial
             ref={pulseMatRef}
-            color="#67e8f9"
-            emissive="#22d3ee"
-            emissiveIntensity={2.0}
+            color="#38bdf8"
+            emissive="#0284c7"
+            emissiveIntensity={1.6}
             transparent={true}
             opacity={0.65}
             depthWrite={false}
@@ -1293,9 +1438,14 @@ export function TurntableCarousel({
             caeOverlay={caeOverlay}
             renderStyle={renderStyle}
             simulationTime={simulationTime}
+            simulationTimeRef={simulationTimeRef}
             isPlaying={isPlaying}
             clippingPlanes={activeClippingPlanes}
             animationController={animationController}
+            visibility={visibility}
+            isInXr={isInXr}
+            dark={dark}
+            onSelectSubsystem={onSelectSubsystem}
             onClickGhost={onPageModel}
           />
         ))}

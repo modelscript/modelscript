@@ -247,7 +247,28 @@ function cleanFlatText(text: string): string {
 }
 
 function parseFlatModel(rawText: string): { vars: string[]; eqs: string[] } {
-  const text = cleanFlatText(rawText);
+  const cleanedText = cleanFlatText(rawText);
+  // Collapse embedded newlines inside Modelica double-quoted string literals (e.g. multi-line descriptions)
+  let text = "";
+  let inQuote = false;
+  for (let i = 0; i < cleanedText.length; i++) {
+    const ch = cleanedText[i]!;
+    if (ch === "\\" && inQuote && i + 1 < cleanedText.length) {
+      text += ch + cleanedText[i + 1]!;
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      inQuote = !inQuote;
+      text += ch;
+      continue;
+    }
+    if (inQuote && (ch === "\n" || ch === "\r")) {
+      text += " ";
+      continue;
+    }
+    text += ch;
+  }
   const vars: string[] = [];
   const eqs: string[] = [];
   let inClass = false;
@@ -1117,10 +1138,16 @@ function executeFlattenStage(context: Context, task: WorkerTask): FlattenResult 
       ...(task.flattenerBackend ? { backend: task.flattenerBackend } : {}),
     });
     if (arena) {
-      const wasmBail = (arena as any).wasmBail as { code?: number; reason?: string; description?: string } | undefined;
+      const wasmBail = (arena as any).wasmBail as
+        { code?: number; reason?: string; description?: string; file?: string; snippet?: string } | undefined;
       const errDiags = arena.diagnostics.filter((d) => d.severity === "error");
       if (task.flattenerBackend === "wasm" && (wasmBail || errDiags.length > 0)) {
-        const bailPrefix = wasmBail ? `[wasmBail:${wasmBail.reason ?? wasmBail.code}] ` : "";
+        const bailLoc = wasmBail?.file
+          ? ` @ ${path.basename(wasmBail.file)}: ${String(wasmBail.snippet ?? "")
+              .replace(/\s+/g, " ")
+              .slice(0, 120)}`
+          : "";
+        const bailPrefix = wasmBail ? `[wasmBail:${wasmBail.reason ?? wasmBail.code}${bailLoc}] ` : "";
         const diagMsg = errDiags.map((d) => d.message).join(" | ");
         msError = `${bailPrefix}${diagMsg || wasmBail?.description || "WASM flattening failed"}`.trim();
       } else {

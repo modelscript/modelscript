@@ -5186,7 +5186,10 @@ export class ModelicaFlattener {
               } else if (vt === VarType.Boolean) {
                 folded = dae.addBoolLiteral(isMin);
               } else if (vt === VarType.Enumeration) {
-                const lits = dae.getVarEnumerationLiterals(vi);
+                const rawLits = dae.getVarEnumerationLiterals(vi);
+                const lits = rawLits?.map((l: string | { stringValue?: string }) =>
+                  typeof l === "string" ? l : String(l?.stringValue ?? l),
+                );
                 if (lits && lits.length > 0) {
                   const chosenLit = isMin ? lits[lits.length - 1]! : lits[0]!;
                   let baseEnumName: string | undefined;
@@ -5199,13 +5202,15 @@ export class ModelicaFlattener {
                   if (!baseEnumName) {
                     const rootSym = this.db.symbol(rootClassId);
                     const scopeSyms = [
+                      ...this.db.childrenOf(rootClassId),
                       ...(rootSym?.parentId ? this.db.childrenOf(rootSym.parentId) : []),
                       ...this.db.childrenOf(null),
-                      ...this.db.childrenOf(rootClassId),
                     ];
                     for (const sym of scopeSyms) {
-                      const cText: string = (this.db.cstNode(sym.id) as { text?: string } | null)?.text ?? "";
-                      const em = cText.match(/\benumeration\s*\(([^)]+)\)/);
+                      const cText: string = ((this.db.cstNode(sym.id) as { text?: string } | null)?.text ?? "").trim();
+                      const em = cText.match(
+                        /^(?:(?:encapsulated|partial|replaceable|final)\s+)*(?:type|class)\s+[A-Za-z_]\w*\s*=\s*enumeration\s*\(([^)]+)\)/,
+                      );
                       if (!em) continue;
                       const symLits = em[1]!.split(",").map((s) => s.trim().split(/\s+/)[0]!);
                       if (symLits.length === lits.length && symLits.every((ll, idx) => ll === lits[idx])) {
@@ -5421,7 +5426,10 @@ export class ModelicaFlattener {
               ? dae.interner.resolve(dae.getExprLeft(startExpr))
               : undefined;
         if (!litName || litName.includes(".")) continue;
-        const lits = dae.getVarEnumerationLiterals(vi);
+        const rawStartLits = dae.getVarEnumerationLiterals(vi);
+        const lits = rawStartLits?.map((l: string | { stringValue?: string }) =>
+          typeof l === "string" ? l : String(l?.stringValue ?? l),
+        );
         if (lits && lits.length > 0 && !lits.includes(litName)) continue;
         let baseEnumName: string | undefined;
         if (lits && lits.length > 0) {
@@ -5435,13 +5443,15 @@ export class ModelicaFlattener {
         if (!baseEnumName) {
           const rootSym = this.db.symbol(rootClassId);
           const scopeSyms = [
+            ...this.db.childrenOf(rootClassId),
             ...(rootSym?.parentId ? this.db.childrenOf(rootSym.parentId) : []),
             ...this.db.childrenOf(null),
-            ...this.db.childrenOf(rootClassId),
           ];
           for (const sym of scopeSyms) {
-            const cText: string = (this.db.cstNode(sym.id) as { text?: string } | null)?.text ?? "";
-            const em = cText.match(/\benumeration\s*\(([^)]+)\)/);
+            const cText: string = ((this.db.cstNode(sym.id) as { text?: string } | null)?.text ?? "").trim();
+            const em = cText.match(
+              /^(?:(?:encapsulated|partial|replaceable|final)\s+)*(?:type|class)\s+[A-Za-z_]\w*\s*=\s*enumeration\s*\(([^)]+)\)/,
+            );
             if (!em) continue;
             const symLits = em[1]!.split(",").map((s) => s.trim().split(/\s+/)[0]!);
             if (
@@ -5495,7 +5505,10 @@ export class ModelicaFlattener {
           }
         }
         if (vi < 0 || dae.getVarType(vi) !== VarType.Enumeration) continue;
-        const lits = dae.getVarEnumerationLiterals(vi);
+        const rawEqLits = dae.getVarEnumerationLiterals(vi);
+        const lits = rawEqLits?.map((ll: string | { stringValue?: string }) =>
+          typeof ll === "string" ? ll : String(ll?.stringValue ?? ll),
+        );
         if (!lits || ord < 1 || ord > lits.length) continue;
         const litName = lits[ord - 1]!;
         let baseEnumName: string | undefined;
@@ -5508,13 +5521,15 @@ export class ModelicaFlattener {
         if (!baseEnumName) {
           const rootSym = this.db.symbol(rootClassId);
           const scopeSyms = [
+            ...this.db.childrenOf(rootClassId),
             ...(rootSym?.parentId ? this.db.childrenOf(rootSym.parentId) : []),
             ...this.db.childrenOf(null),
-            ...this.db.childrenOf(rootClassId),
           ];
           for (const sym of scopeSyms) {
-            const cText: string = (this.db.cstNode(sym.id) as { text?: string } | null)?.text ?? "";
-            const em = cText.match(/\benumeration\s*\(([^)]+)\)/);
+            const cText: string = ((this.db.cstNode(sym.id) as { text?: string } | null)?.text ?? "").trim();
+            const em = cText.match(
+              /^(?:(?:encapsulated|partial|replaceable|final)\s+)*(?:type|class)\s+[A-Za-z_]\w*\s*=\s*enumeration\s*\(([^)]+)\)/,
+            );
             if (!em) continue;
             const symLits = em[1]!.split(",").map((s) => s.trim().split(/\s+/)[0]!);
             if (symLits.length === lits.length && symLits.every((ll, idx) => ll === lits[idx])) {
@@ -7603,10 +7618,27 @@ export class ModelicaFlattener {
         }
       };
 
-      // Check if this class definition is an enumeration
-      const isEnum = (classEntry?.metadata as any)?.isEnumeration || Boolean(classCst?.text?.includes("enumeration("));
+      // Check if this class definition itself is an enumeration (not a class containing a nested enum type)
+      const findOwnShortSpec = <T extends { type?: string; text?: string; children?: T[] }>(
+        node: T | null | undefined,
+      ): T | null => {
+        if (!node) return null;
+        if (node.type === "short_class_specifier") return node;
+        if (node.type === "long_class_specifier" || node.type === "composition" || node.type === "element_list") {
+          return null;
+        }
+        for (const ch of node.children || []) {
+          const found = findOwnShortSpec(ch);
+          if (found) return found;
+        }
+        return null;
+      };
+      const ownShortSpec = findOwnShortSpec(classCst);
+      const isEnum =
+        (classEntry?.metadata as any)?.isEnumeration ||
+        Boolean(ownShortSpec && /\benumeration\s*\(/.test(ownShortSpec.text ?? ""));
       if (isEnum && classEntry) {
-        const lits = extractEnumLiteralsFromCst(classCst, classEntry.metadata);
+        const lits = extractEnumLiteralsFromCst(ownShortSpec ?? classCst, classEntry.metadata);
         if (lits && lits.length > 0) {
           const qName = getSymbolQualifiedName(this.db, classId);
           const displayName = formatEnumDisplayName(qName, classEntry.name);

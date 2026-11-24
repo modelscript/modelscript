@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { Verification3DOverlayPayload } from "@modelscript/cad";
+import { HeroStudioEnvironment } from "@modelscript/editor/workbench/cad-viewer/HeroCadMaterials";
 import type {
   DigitalTwinClearanceResult,
   DigitalTwinEnvironmentAsset,
   DigitalTwinToolpathTrace,
   UrdfVisualPose3D,
 } from "@modelscript/urdf";
-import { GizmoHelper, GizmoViewport, Grid } from "@react-three/drei";
+import { ContactShadows, GizmoHelper, GizmoViewport, Grid } from "@react-three/drei";
 import { Canvas, useThree } from "@react-three/fiber";
 import React, { useEffect, useMemo, useRef } from "react";
 import styled from "styled-components";
@@ -388,11 +389,10 @@ const SceneContent: React.FC<{
         sceneScale={sceneScale}
       />
 
-      {/* Studio 3-point lighting for realistic CAD shading */}
-      <ambientLight intensity={0.85} />
-      <directionalLight position={[6, 12, 8]} intensity={1.35} />
-      <directionalLight position={[-8, 6, -6]} intensity={0.65} />
-      <directionalLight position={[0, -5, 5]} intensity={0.25} />
+      {/* Unified Studio PBR PMREM IBL + 3-point lighting & soft contact shadows */}
+      <HeroStudioEnvironment dark={true} />
+      <ambientLight intensity={0.45} />
+      <ContactShadows position={[0, floorY + 0.002, 0]} opacity={0.35} scale={6} blur={2.2} far={2.4} />
 
       {showGrid && (
         <Grid

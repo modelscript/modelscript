@@ -8,6 +8,7 @@
  * the 3D viewport.
  */
 
+import type { MissionPhaseBand, OperationLogEvent } from "@modelscript/cad";
 import { PauseIcon, PlayIcon, SquareFillIcon, SyncIcon } from "@primer/octicons-react";
 import { IconButton, Select } from "@primer/react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -22,6 +23,8 @@ export interface BreachMarker {
 interface AnimationTimelineProps {
   controller: AnimationController;
   breachMarkers?: BreachMarker[] | undefined;
+  missionPhases?: readonly MissionPhaseBand[] | undefined;
+  operationLog?: readonly OperationLogEvent[] | undefined;
   fitInsets?: { top: number; right: number; bottom: number; left: number } | undefined;
 }
 
@@ -44,8 +47,15 @@ function formatTime(t: number): string {
   return `${min}m ${sec}s`;
 }
 
-export function AnimationTimeline({ controller, fitInsets }: AnimationTimelineProps) {
+export function AnimationTimeline({
+  controller,
+  breachMarkers,
+  missionPhases,
+  operationLog,
+  fitInsets,
+}: AnimationTimelineProps) {
   const [state, setState] = useState<AnimationState>(controller.state);
+  const [logExpanded, setLogExpanded] = useState(false);
   const animFrameRef = useRef<number>(0);
   const sliderRef = useRef<HTMLInputElement>(null);
   const isDragging = useRef(false);
@@ -227,73 +237,256 @@ export function AnimationTimeline({ controller, fitInsets }: AnimationTimelinePr
         )}
       </span>
 
-      {/* Scrubber slider */}
-      <div style={{ flex: 1, position: "relative", minWidth: 120 }}>
-        <input
-          ref={sliderRef}
-          type="range"
-          min={state.startTime}
-          max={state.stopTime}
-          step={(state.stopTime - state.startTime) / 1000 || 0.001}
-          defaultValue={state.currentTime}
-          onInput={handleSliderInput}
-          onChange={handleSliderChange}
-          disabled={isLive}
-          aria-label="Timeline scrubber"
-          style={{
-            width: "100%",
-            height: 6,
-            appearance: "none",
-            WebkitAppearance: "none",
-            background: `linear-gradient(to right, var(--fgColor-accent, var(--ms-brand)) ${progress}%, var(--borderColor-default, rgba(255,255,255,0.15)) ${progress}%)`,
-            borderRadius: 3,
-            outline: "none",
-            cursor: isLive ? "not-allowed" : "pointer",
-            opacity: isLive ? 0.4 : 1,
-          }}
-        />
-
-        {/* Verification breach indicators on timeline */}
-        {breachMarkers &&
-          breachMarkers.map((b) => {
-            const range = state.stopTime - state.startTime;
-            if (range <= 0) return null;
-            const leftPct = Math.max(0, Math.min(100, ((b.time - state.startTime) / range) * 100));
-            return (
-              <div
-                key={`${b.time}_${b.contractId ?? ""}`}
-                title={`Violation at ${b.time.toFixed(2)}s: ${b.label}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  controller.seek(b.time);
-                }}
-                style={{
-                  position: "absolute",
-                  left: `${leftPct}%`,
-                  top: "50%",
-                  transform: "translate(-50%, -50%)",
-                  width: 10,
-                  height: 14,
-                  cursor: "pointer",
-                  zIndex: 5,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <div
+      {/* Scrubber slider + Mission Phase Bands + Operator Action / Breach Markers */}
+      <div style={{ flex: 1, position: "relative", minWidth: 140 }}>
+        {missionPhases && missionPhases.length > 0 && state.stopTime > state.startTime && (
+          <div
+            data-testid="timeline-mission-phases"
+            style={{
+              display: "flex",
+              position: "relative",
+              height: 12,
+              marginBottom: 4,
+              borderRadius: 3,
+              overflow: "hidden",
+              background: "rgba(148, 163, 184, 0.12)",
+            }}
+          >
+            {missionPhases.map((phase) => {
+              const range = state.stopTime - state.startTime;
+              const leftPct = Math.max(0, Math.min(100, ((phase.startTime - state.startTime) / range) * 100));
+              const widthPct = Math.max(2, Math.min(100 - leftPct, ((phase.endTime - phase.startTime) / range) * 100));
+              const active = state.currentTime >= phase.startTime && state.currentTime <= phase.endTime;
+              return (
+                <button
+                  key={phase.id}
+                  type="button"
+                  title={`${phase.label} (${phase.startTime.toFixed(1)}s – ${phase.endTime.toFixed(1)}s)`}
+                  onClick={() => controller.seek(phase.startTime + 0.01)}
                   style={{
-                    width: 3,
-                    height: 10,
-                    backgroundColor: "#ef4444",
-                    borderRadius: 2,
-                    boxShadow: "0 0 6px rgba(239, 68, 68, 0.9)",
+                    position: "absolute",
+                    left: `${leftPct}%`,
+                    width: `${widthPct}%`,
+                    height: "100%",
+                    border: "none",
+                    borderRight: "1px solid rgba(15, 23, 42, 0.4)",
+                    background: active ? `${phase.color}88` : `${phase.color}33`,
+                    color: "#f8fafc",
+                    fontSize: 8,
+                    fontWeight: 700,
+                    letterSpacing: "0.04em",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    padding: "0 4px",
+                    cursor: "pointer",
+                    lineHeight: "12px",
+                  }}
+                >
+                  {phase.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div style={{ position: "relative" }}>
+          <input
+            ref={sliderRef}
+            type="range"
+            min={state.startTime}
+            max={state.stopTime}
+            step={(state.stopTime - state.startTime) / 1000 || 0.001}
+            defaultValue={state.currentTime}
+            onInput={handleSliderInput}
+            onChange={handleSliderChange}
+            disabled={isLive}
+            aria-label="Timeline scrubber"
+            style={{
+              width: "100%",
+              height: 6,
+              appearance: "none",
+              WebkitAppearance: "none",
+              background: `linear-gradient(to right, var(--fgColor-accent, var(--ms-brand)) ${progress}%, var(--borderColor-default, rgba(255,255,255,0.15)) ${progress}%)`,
+              borderRadius: 3,
+              outline: "none",
+              cursor: isLive ? "not-allowed" : "pointer",
+              opacity: isLive ? 0.4 : 1,
+            }}
+          />
+
+          {/* Operator action / autonomy keyframe markers */}
+          {operationLog &&
+            operationLog.map((ev) => {
+              const range = state.stopTime - state.startTime;
+              if (range <= 0) return null;
+              const leftPct = Math.max(0, Math.min(100, ((ev.time - state.startTime) / range) * 100));
+              const dotColor =
+                ev.category === "fault" || ev.category === "breach"
+                  ? "#ef4444"
+                  : ev.category === "autonomy"
+                    ? "#38bdf8"
+                    : "#f97316";
+              return (
+                <button
+                  key={ev.id}
+                  type="button"
+                  title={`${ev.time.toFixed(1)}s · [${ev.code}] ${ev.label}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    controller.seek(ev.time);
+                  }}
+                  style={{
+                    position: "absolute",
+                    left: `${leftPct}%`,
+                    top: "50%",
+                    transform: "translate(-50%, -50%)",
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    border: "1px solid #0f172a",
+                    backgroundColor: dotColor,
+                    padding: 0,
+                    cursor: "pointer",
+                    zIndex: 4,
                   }}
                 />
-              </div>
-            );
-          })}
+              );
+            })}
+
+          {/* Verification breach indicators on timeline */}
+          {breachMarkers &&
+            breachMarkers.map((b) => {
+              const range = state.stopTime - state.startTime;
+              if (range <= 0) return null;
+              const leftPct = Math.max(0, Math.min(100, ((b.time - state.startTime) / range) * 100));
+              return (
+                <div
+                  key={`${b.time}_${b.contractId ?? ""}`}
+                  title={`Violation at ${b.time.toFixed(2)}s: ${b.label}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    controller.seek(b.time);
+                  }}
+                  style={{
+                    position: "absolute",
+                    left: `${leftPct}%`,
+                    top: "50%",
+                    transform: "translate(-50%, -50%)",
+                    width: 10,
+                    height: 14,
+                    cursor: "pointer",
+                    zIndex: 5,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 3,
+                      height: 10,
+                      backgroundColor: "#ef4444",
+                      borderRadius: 2,
+                      boxShadow: "0 0 6px rgba(239, 68, 68, 0.9)",
+                    }}
+                  />
+                </div>
+              );
+            })}
+        </div>
       </div>
+
+      {/* Expandable Operation Log trigger */}
+      {operationLog && operationLog.length > 0 && (
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => setLogExpanded((v) => !v)}
+            style={{
+              height: 28,
+              padding: "0 8px",
+              fontSize: 10,
+              fontWeight: 700,
+              fontFamily: "'SF Mono', 'Cascadia Code', 'Fira Code', monospace",
+              background: logExpanded ? "rgba(249, 115, 22, 0.22)" : "transparent",
+              border: `1px solid ${logExpanded ? "#f97316" : "var(--color-border-default, rgba(255,255,255,0.15))"}`,
+              borderRadius: 6,
+              color: logExpanded ? "#f97316" : "var(--color-fg-default)",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            OPS ({operationLog.length})
+          </button>
+
+          {logExpanded && (
+            <div
+              data-testid="operation-log-drawer"
+              style={{
+                position: "absolute",
+                bottom: 38,
+                right: 0,
+                width: 280,
+                maxHeight: 200,
+                overflowY: "auto",
+                padding: 8,
+                borderRadius: 8,
+                border: "1px solid var(--borderColor-default, rgba(255,255,255,0.18))",
+                background: "var(--bgColor-default, rgba(13, 17, 23, 0.94))",
+                backdropFilter: "blur(10px)",
+                boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+              }}
+            >
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.08em", opacity: 0.65, padding: "0 4px" }}>
+                OPERATION LOG · CLICK TO SEEK
+              </div>
+              {operationLog.map((ev) => {
+                const isPast = state.currentTime >= ev.time;
+                return (
+                  <button
+                    key={ev.id}
+                    type="button"
+                    onClick={() => controller.seek(ev.time)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      padding: "4px 6px",
+                      borderRadius: 5,
+                      border: "none",
+                      background: isPast ? "rgba(56, 189, 248, 0.14)" : "transparent",
+                      color: "var(--color-fg-default, #f8fafc)",
+                      fontSize: 10.5,
+                      fontFamily: "'SF Mono', 'Cascadia Code', 'Fira Code', monospace",
+                      cursor: "pointer",
+                      textAlign: "left",
+                    }}
+                  >
+                    <span style={{ opacity: 0.7 }}>{formatTime(ev.time)}</span>
+                    <span
+                      style={{
+                        flex: 1,
+                        fontWeight: 600,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {ev.label}
+                    </span>
+                    <span style={{ fontSize: 9, color: "#f97316", fontWeight: 700 }}>{ev.code}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Speed selector */}
       <Select

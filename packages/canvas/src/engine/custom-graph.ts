@@ -261,6 +261,34 @@ function getResizeCursorForHandle(handle: ResizeHandleKind, angleDeg: number): s
 
 let autoCellCounter = 1;
 
+function escapeSelectorAttr(value: string): string {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(value);
+  }
+  return value.replace(/["\\]/g, "\\$&");
+}
+
+function isDarkColorString(color: string): boolean {
+  const c = color.trim().toLowerCase();
+  if (!c || c === "transparent" || c === "none") return false;
+  if (c === "#ffffff" || c === "#fff" || c === "white" || c === "#f8fafc" || c === "#f1f5f9") return false;
+  const hexMatch = /^#([0-9a-f]{3}|[0-9a-f]{6})$/.exec(c);
+  if (hexMatch) {
+    const hex = hexMatch[1]!;
+    const r = hex.length === 3 ? parseInt(hex[0]! + hex[0]!, 16) : parseInt(hex.slice(0, 2), 16);
+    const g = hex.length === 3 ? parseInt(hex[1]! + hex[1]!, 16) : parseInt(hex.slice(2, 4), 16);
+    const b = hex.length === 3 ? parseInt(hex[2]! + hex[2]!, 16) : parseInt(hex.slice(4, 6), 16);
+    const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return lum < 0.5;
+  }
+  const rgbMatch = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(c);
+  if (rgbMatch) {
+    const lum = (0.299 * Number(rgbMatch[1]) + 0.587 * Number(rgbMatch[2]) + 0.114 * Number(rgbMatch[3])) / 255;
+    return lum < 0.5;
+  }
+  return true;
+}
+
 function resolvePortScalar(raw: unknown, total: number): number | undefined {
   if (typeof raw === "number" && Number.isFinite(raw)) return raw;
   if (typeof raw === "string") {
@@ -485,10 +513,15 @@ export class UnifiedCell {
     this.y = y;
     this.graph?.scene.setNodePosition(this.id, x, y);
     if (dx !== 0 || dy !== 0) {
-      for (const child of this.children) {
-        child.x += dx;
-        child.y += dy;
-      }
+      const moveChildren = (parent: UnifiedCell) => {
+        for (const child of parent.children) {
+          child.x += dx;
+          child.y += dy;
+          this.graph?.syncCellDom(child);
+          moveChildren(child);
+        }
+      };
+      moveChildren(this);
     }
     this.graph?.syncCellDom(this);
     if (!options?.silent) {
@@ -565,6 +598,13 @@ export class UnifiedCell {
 
   public setZIndex(z: number): void {
     this.zIndex = z;
+    if (this.kind === "node") {
+      this.graph?.scene.setNodeZIndex(this.id, z);
+    } else {
+      const rec = this.graph?.scene.getEdge(this.id);
+      if (rec) rec.zIndex = z;
+    }
+    this.graph?.reorderCellDomByZIndex(this);
     this.graph?.syncCellDom(this);
   }
 
@@ -734,12 +774,17 @@ export class UnifiedCell {
     );
     const updatedPort = this.ports.find((p) => p.id === portId);
     const containerEl = this.view?.container;
+    const escPort = escapeSelectorAttr(portId);
     const existingPortEl =
       (key === "args" || key.startsWith("args/")) && containerEl
-        ? containerEl.querySelector(`.ms-port[port-id="${portId}"], .ms-port[port="${portId}"]`)
+        ? containerEl.querySelector(`.ms-port[port-id="${escPort}"], .ms-port[port="${escPort}"]`)
         : null;
     if (existingPortEl && updatedPort) {
-      existingPortEl.setAttribute("transform", `translate(${updatedPort.args?.x ?? 0}, ${updatedPort.args?.y ?? 0})`);
+      const flipX = Boolean(this.data["flipX"]);
+      const flipY = Boolean(this.data["flipY"]);
+      const px = flipX ? this.width - (updatedPort.args?.x ?? 0) : (updatedPort.args?.x ?? 0);
+      const py = flipY ? this.height - (updatedPort.args?.y ?? 0) : (updatedPort.args?.y ?? 0);
+      existingPortEl.setAttribute("transform", `translate(${px}, ${py})`);
     } else {
       this.graph?.rebuildCellDom(this);
     }
@@ -864,7 +909,10 @@ export class UnifiedCell {
     return this.vertices.map((p) => ({ x: p.x, y: p.y }));
   }
 
-  public setVertices(vertices: WorldPoint[], options?: { ignoreSnap?: boolean | undefined }): void {
+  public setVertices(
+    vertices: WorldPoint[],
+    options?: { ignoreSnap?: boolean | undefined; ui?: boolean | undefined; toolId?: string | undefined },
+  ): void {
     this.vertices = vertices.map((p) => ({ x: p.x, y: p.y }));
     this.graph?.syncEdgeToScene(this);
     this.graph?.syncCellDom(this);
@@ -1132,14 +1180,41 @@ export class UnifiedGraph {
           this.scheduleCanvas2DRender();
         },
         onWireConnected: ({ sourceNodeId, sourcePortId, targetNodeId, targetPortId }) => {
-          const edge = this.options.connecting?.createEdge ? this.options.connecting.createEdge() : this.createEdge({});
+          const connOpts = this.options.connecting;
+          const allowLoop = typeof connOpts?.allowLoop === "function" ? connOpts.allowLoop() : connOpts?.allowLoop;
+          if (allowLoop === false && sourceNodeId === targetNodeId) {
+            return;
+          }
+          const allowMulti = typeof connOpts?.allowMulti === "function" ? connOpts.allowMulti() : connOpts?.allowMulti;
+          if (allowMulti === false) {
+            for (const existing of this.getEdges()) {
+              const s = existing.getSource();
+              const t = existing.getTarget();
+              if (
+                (s.cell === sourceNodeId &&
+                  s.port === sourcePortId &&
+                  t.cell === targetNodeId &&
+                  t.port === targetPortId) ||
+                (s.cell === targetNodeId &&
+                  s.port === targetPortId &&
+                  t.cell === sourceNodeId &&
+                  t.port === sourcePortId)
+              ) {
+                return;
+              }
+            }
+          }
+          const edge = connOpts?.createEdge ? connOpts.createEdge() : this.createEdge({});
           edge.setSource({ cell: sourceNodeId, port: sourcePortId });
           edge.setTarget({ cell: targetNodeId, port: targetPortId });
-          if (!edge.getRouter() && this.options.connecting?.router) {
-            edge.setRouter(this.options.connecting.router);
+          if (!edge.getRouter() && connOpts?.router) {
+            edge.setRouter(connOpts.router);
           }
-          if (!edge.getConnector() && this.options.connecting?.connector) {
-            edge.setConnector(this.options.connecting.connector);
+          if (!edge.getConnector() && connOpts?.connector) {
+            edge.setConnector(connOpts.connector);
+          }
+          if (connOpts?.validateEdge && !connOpts.validateEdge({ edge })) {
+            return;
           }
           this.addEdge(edge);
           this.emit("edge:connected", { isNew: true, edge, cell: edge });
@@ -1147,7 +1222,7 @@ export class UnifiedGraph {
         onEdgeVerticesChanged: (edgeId, vertices, committed) => {
           const edge = this.cells.get(edgeId);
           if (!edge) return;
-          edge.setVertices(vertices);
+          edge.setVertices(vertices, { ui: !committed });
           this.syncEdgeToolsDom(edge);
           if (committed) {
             this.emit("edge:mouseup", { edge, cell: edge });
@@ -1155,7 +1230,7 @@ export class UnifiedGraph {
         },
         onPanDelta: (dx, dy) => {
           const next = this.camera.panByScreenDelta(dx, dy);
-          this.applyViewportTransformDom();
+          this.applyViewportTransformDom(true);
           this.emit("translate", { tx: next.tx, ty: next.ty });
         },
         onAlignmentGuides: (guides) => {
@@ -1258,18 +1333,21 @@ export class UnifiedGraph {
           }
           this.wirePreviewPathEl.setAttribute("d", d);
         },
-        onNodeInteractiveClick: (nodeId, phase) => {
+        onNodeInteractiveClick: (nodeId, phase, u, v) => {
           const node = this.cells.get(nodeId);
           if (!node) return;
-          if (phase === "down") this.emit("node:mousedown", { node, cell: node });
-          else if (phase === "up") this.emit("node:mouseup", { node, cell: node });
+          if (phase === "down") this.emit("node:mousedown", { node, cell: node, x: u, y: v });
+          else if (phase === "up") this.emit("node:mouseup", { node, cell: node, x: u, y: v });
           else if (phase === "click") {
-            this.emit("node:click", { node, cell: node });
-            this.emit("cell:click", { cell: node, x: node.x, y: node.y });
+            this.emit("node:click", { node, cell: node, x: u, y: v });
+            this.emit("cell:click", { cell: node, node, x: u, y: v });
           }
         },
         validateConnection: (sId, sPort, tId, tPort) => {
-          const validator = this.options.connecting?.validateConnection;
+          const connOpts = this.options.connecting;
+          const allowLoop = typeof connOpts?.allowLoop === "function" ? connOpts.allowLoop() : connOpts?.allowLoop;
+          if (allowLoop === false && sId === tId) return false;
+          const validator = connOpts?.validateConnection;
           if (!validator) return true;
           return validator({
             sourceCell: this.cells.get(sId) ?? null,
@@ -1283,8 +1361,9 @@ export class UnifiedGraph {
           if (!vm) return true;
           const cell = this.cells.get(nodeId) ?? null;
           const view = cell ? this.findViewByCell(cell) : null;
+          const escPort = escapeSelectorAttr(portId);
           const magnet =
-            view?.container?.querySelector?.(`.ms-port[port="${portId}"], .ms-port[port-id="${portId}"]`) ?? null;
+            view?.container?.querySelector?.(`.ms-port[port="${escPort}"], .ms-port[port-id="${escPort}"]`) ?? null;
           return vm({ cell, magnet });
         },
         canInteract: (cellId) => {
@@ -1490,6 +1569,9 @@ export class UnifiedGraph {
     }
   }
 
+  private hoveredCellId: string | null = null;
+  private lastGridZoom = -1;
+
   private attachDomEventListeners(root: HTMLElement): void {
     const toLocal = (e: MouseEvent | PointerEvent): { u: number; v: number; sx: number; sy: number } => {
       const pt = this.clientToLocal(e.clientX, e.clientY);
@@ -1519,11 +1601,74 @@ export class UnifiedGraph {
       return null;
     };
 
+    const clearHover = (e?: Event) => {
+      if (!this.hoveredCellId) return;
+      const prevCell = this.cells.get(this.hoveredCellId);
+      this.hoveredCellId = null;
+      if (prevCell) {
+        if (prevCell.isNode()) {
+          this.emit("node:mouseleave", { node: prevCell, cell: prevCell, e });
+        } else {
+          this.emit("edge:mouseleave", { edge: prevCell, cell: prevCell, e });
+        }
+      }
+    };
+
+    const updateHover = (e: PointerEvent, u: number, v: number) => {
+      if (this.fsm.mode !== "idle" || this.activeWidgetInteraction) return;
+      const targetEl = e.target as Element | null;
+      const cellEl = targetEl?.closest?.("[data-cell-id]");
+      let nextId = cellEl?.getAttribute("data-cell-id") ?? null;
+      if (!nextId && this.activeRenderMode === "canvas2d") {
+        const hitNode = this.scene.hitTestNode(u, v);
+        if (hitNode) nextId = hitNode.id;
+      }
+      if (nextId !== this.hoveredCellId) {
+        clearHover(e);
+        if (nextId) {
+          const nextCell = this.cells.get(nextId);
+          if (nextCell) {
+            this.hoveredCellId = nextId;
+            if (nextCell.isNode()) {
+              this.emit("node:mouseenter", { node: nextCell, cell: nextCell, x: u, y: v, e });
+            } else {
+              this.emit("edge:mouseenter", { edge: nextCell, cell: nextCell, x: u, y: v, e });
+            }
+          }
+        }
+      }
+      if (this.hoveredCellId) {
+        const curCell = this.cells.get(this.hoveredCellId);
+        if (curCell) {
+          if (curCell.isNode()) {
+            this.emit("node:mousemove", { node: curCell, cell: curCell, x: u, y: v, e });
+          } else {
+            this.emit("edge:mousemove", { edge: curCell, cell: curCell, x: u, y: v, e });
+          }
+        }
+      } else {
+        this.emit("blank:mousemove", { x: u, y: v, e });
+      }
+    };
+
+    const cancelActiveGestures = () => {
+      if (this.activeWidgetInteraction) {
+        this.activeWidgetInteraction = null;
+      }
+      this.fsm.cancel();
+    };
+
     const onPointerDown = (e: PointerEvent) => {
+      if (e.isPrimary === false) return;
+      // Focus the container so scoped keyboard shortcuts work reliably
+      if (typeof this.container?.focus === "function" && this.container.tabIndex >= 0) {
+        this.container.focus({ preventScroll: true });
+      }
       const { u, v, sx, sy } = toLocal(e);
       if (e.button === 0 && this.widgets.size > 0) {
         const hit = hitTestWidget(u, v);
         if (hit) {
+          (root as { setPointerCapture?: (id: number) => void }).setPointerCapture?.(e.pointerId);
           this.activeWidgetInteraction = {
             mode: hit.mode,
             widgetId: hit.widget.id,
@@ -1534,7 +1679,7 @@ export class UnifiedGraph {
           return;
         }
       }
-      if (e.button === 0) {
+      if (e.button === 0 || e.button === 1) {
         (root as { setPointerCapture?: (id: number) => void }).setPointerCapture?.(e.pointerId);
       }
       let pointerPortHit: { nodeId: string; portId: string } | null = null;
@@ -1555,6 +1700,8 @@ export class UnifiedGraph {
         v,
         screenX: sx,
         screenY: sy,
+        pointerId: e.pointerId,
+        isPrimary: e.isPrimary,
         button: e.button,
         buttons: e.buttons,
         shiftKey: e.shiftKey,
@@ -1598,6 +1745,8 @@ export class UnifiedGraph {
         v,
         screenX: sx,
         screenY: sy,
+        pointerId: e.pointerId,
+        isPrimary: e.isPrimary,
         button: e.button,
         buttons: e.buttons,
         shiftKey: e.shiftKey,
@@ -1606,11 +1755,17 @@ export class UnifiedGraph {
         altKey: e.altKey,
         phase: "move",
       });
+      updateHover(e, u, v);
       this.emit("blank:pointermove", { x: u, y: v, e });
+      this.emit("cell:pointermove", { x: u, y: v, e });
     };
 
     const onPointerUp = (e: PointerEvent) => {
-      (root as { releasePointerCapture?: (id: number) => void }).releasePointerCapture?.(e.pointerId);
+      try {
+        (root as { releasePointerCapture?: (id: number) => void }).releasePointerCapture?.(e.pointerId);
+      } catch {
+        // Ignore when capture was not held on this pointerId
+      }
       const { u, v, sx, sy } = toLocal(e);
       if (this.activeWidgetInteraction) {
         const finished = this.activeWidgetInteraction;
@@ -1619,12 +1774,16 @@ export class UnifiedGraph {
         return;
       }
       const hitNode = this.scene.hitTestNode(u, v);
+      const edgeTol = Math.max(4, Math.min(32, 8 / Math.max(0.1, this.camera.getState().zoom)));
+      const hitEdge = hitNode ? null : this.scene.hitTestEdge(u, v, edgeTol);
       this.fsm.handleEvent({
         planeId: "primary",
         u,
         v,
         screenX: sx,
         screenY: sy,
+        pointerId: e.pointerId,
+        isPrimary: e.isPrimary,
         button: e.button,
         buttons: e.buttons,
         shiftKey: e.shiftKey,
@@ -1633,11 +1792,39 @@ export class UnifiedGraph {
         altKey: e.altKey,
         phase: "up",
       });
-      if (!hitNode) {
+      if (!hitNode && !hitEdge && e.button === 0) {
         this.emit("blank:mouseup", { x: u, y: v, e });
-        this.emit("blank:click", { x: u, y: v, e });
+        if (this.fsm.wasLastUpCleanBlankClick()) {
+          this.emit("blank:click", { x: u, y: v, e });
+        }
       }
       this.emit("blank:pointerup", { x: u, y: v, e });
+      this.emit("cell:pointerup", { x: u, y: v, e });
+    };
+
+    const onPointerCancel = (e: PointerEvent) => {
+      try {
+        (root as { releasePointerCapture?: (id: number) => void }).releasePointerCapture?.(e.pointerId);
+      } catch {
+        // Ignore
+      }
+      cancelActiveGestures();
+    };
+
+    const onLostPointerCapture = () => {
+      if (this.fsm.mode !== "idle" && this.fsm.mode !== "portal-focused") {
+        cancelActiveGestures();
+      }
+    };
+
+    const onPointerLeave = (e: PointerEvent) => {
+      clearHover(e);
+      this.emit("blank:mouseleave", { e });
+    };
+
+    const onWindowBlur = () => {
+      clearHover();
+      cancelActiveGestures();
     };
 
     const onDblClick = (e: MouseEvent) => {
@@ -1647,7 +1834,8 @@ export class UnifiedGraph {
         const cell = this.cells.get(hitNode.id);
         if (cell) this.emit("node:dblclick", { node: cell, cell, e });
       } else {
-        const hitEdge = this.scene.hitTestEdge(u, v, 8);
+        const edgeTol = Math.max(4, Math.min(32, 8 / Math.max(0.1, this.camera.getState().zoom)));
+        const hitEdge = this.scene.hitTestEdge(u, v, edgeTol);
         if (hitEdge) {
           const cell = this.cells.get(hitEdge.edge.id);
           if (cell) this.emit("edge:dblclick", { edge: cell, cell, e });
@@ -1675,7 +1863,8 @@ export class UnifiedGraph {
         if (cell) this.emit("node:contextmenu", { node: cell, cell, e });
         return;
       }
-      const hitEdge = this.scene.hitTestEdge(u, v, 8);
+      const edgeTol = Math.max(4, Math.min(32, 8 / Math.max(0.1, this.camera.getState().zoom)));
+      const hitEdge = this.scene.hitTestEdge(u, v, edgeTol);
       if (hitEdge) {
         const cell = this.cells.get(hitEdge.edge.id);
         if (cell) this.emit("edge:contextmenu", { edge: cell, cell, e });
@@ -1688,37 +1877,106 @@ export class UnifiedGraph {
       const mw = this.options.mousewheel;
       const enabled = mw === true || (typeof mw === "object" && mw.enabled !== false);
       if (!enabled) return;
-      if (e.ctrlKey || e.metaKey) {
+
+      // Normalize deltaMode (0 = pixels, 1 = lines, 2 = pages)
+      const modeScale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
+      const dy = e.deltaY * modeScale;
+      const dx = e.deltaX * modeScale;
+
+      const mods = typeof mw === "object" ? mw.modifiers : undefined;
+      const modsArr = Array.isArray(mods) ? mods : typeof mods === "string" ? [mods] : null;
+      const zoomModPressed = modsArr
+        ? modsArr.some((m) =>
+            m === "ctrl"
+              ? e.ctrlKey || e.metaKey
+              : m === "meta"
+                ? e.metaKey
+                : m === "shift"
+                  ? e.shiftKey
+                  : m === "alt"
+                    ? e.altKey
+                    : false,
+          )
+        : e.ctrlKey || e.metaKey;
+
+      if (zoomModPressed) {
         e.preventDefault();
         const rect = this.container.getBoundingClientRect?.() ?? { left: 0, top: 0 };
-        const next = this.camera.zoomByWheelDelta(e.deltaY, {
+        const next = this.camera.zoomByWheelDelta(dy, {
           x: e.clientX - rect.left,
           y: e.clientY - rect.top,
         });
         this.applyViewportTransformDom();
         this.emit("scale", { sx: next.zoom, sy: next.zoom });
+      } else if (dx !== 0 || dy !== 0) {
+        // Two-finger trackpad scroll / plain wheel pans the canvas smoothly
+        const panEnabled =
+          this.options.panning === undefined ||
+          this.options.panning === true ||
+          (typeof this.options.panning === "object" && this.options.panning.enabled !== false);
+        if (panEnabled) {
+          e.preventDefault();
+          const panDx = e.shiftKey && dx === 0 ? -dy : -dx;
+          const panDy = e.shiftKey && dx === 0 ? 0 : -dy;
+          const next = this.camera.panByScreenDelta(panDx, panDy);
+          this.applyViewportTransformDom(true);
+          this.emit("translate", { tx: next.tx, ty: next.ty });
+        }
       }
     };
 
     root.addEventListener("pointerdown", onPointerDown);
     root.addEventListener("pointermove", onPointerMove);
     root.addEventListener("pointerup", onPointerUp);
+    root.addEventListener("pointercancel", onPointerCancel);
+    root.addEventListener("lostpointercapture", onLostPointerCapture);
+    root.addEventListener("pointerleave", onPointerLeave);
     root.addEventListener("dblclick", onDblClick);
     root.addEventListener("contextmenu", onContextMenu);
     root.addEventListener("wheel", onWheel, { passive: false });
+    if (typeof window !== "undefined") {
+      window.addEventListener("blur", onWindowBlur);
+    }
 
     this.cleanupDomListeners.push(() => {
       root.removeEventListener("pointerdown", onPointerDown);
       root.removeEventListener("pointermove", onPointerMove);
       root.removeEventListener("pointerup", onPointerUp);
+      root.removeEventListener("pointercancel", onPointerCancel);
+      root.removeEventListener("lostpointercapture", onLostPointerCapture);
+      root.removeEventListener("pointerleave", onPointerLeave);
       root.removeEventListener("dblclick", onDblClick);
       root.removeEventListener("contextmenu", onContextMenu);
       root.removeEventListener("wheel", onWheel);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("blur", onWindowBlur);
+      }
     });
   }
 
   public isDisposed(): boolean {
     return this.disposed;
+  }
+
+  public getWidth(): number {
+    return this.width;
+  }
+
+  public getHeight(): number {
+    return this.height;
+  }
+
+  public setReadOnly(readOnly: boolean): void {
+    this.fsm.setOptions({ readOnly });
+    this.syncSelectionBoxesDom();
+  }
+
+  public setSnapEnabled(enabled: boolean): void {
+    this.fsm.setOptions({ snapEnabled: enabled });
+  }
+
+  public setSnapStep(step: number): void {
+    this.fsm.setOptions({ gridSize: Math.max(1, step) });
   }
 
   public dispose(): void {
@@ -1794,8 +2052,12 @@ export class UnifiedGraph {
   public emit(event: string, args: unknown = {}): void {
     const set = this.listeners.get(event);
     if (!set) return;
-    for (const fn of set) {
-      fn(args);
+    for (const fn of Array.from(set)) {
+      try {
+        fn(args);
+      } catch (err) {
+        console.error(`[UnifiedGraph] error in "${event}" listener:`, err);
+      }
     }
   }
 
@@ -1848,11 +2110,23 @@ export class UnifiedGraph {
     }
   }
 
-  private syncGridPatternDom(): void {
+  private syncGridPatternDom(panOnly = false): void {
     if (!this.gridPatternEl || typeof document === "undefined") return;
     const s = this.camera.getState();
     const zoom = Math.max(0.02, s.zoom);
     const baseStep = Math.max(1, this.gridSize);
+
+    // Fast path during panning when zoom & grid config have not changed: update patternTransform only
+    if (panOnly && this.lastGridZoom === zoom && this.gridPatternEl.childElementCount > 0) {
+      if (this.gridType === "dot") {
+        const r = Math.max(0.75, Math.min(3, this.gridThickness * 0.75));
+        this.gridPatternEl.setAttribute("patternTransform", `translate(${s.tx - r}, ${s.ty - r})`);
+      } else {
+        this.gridPatternEl.setAttribute("patternTransform", `translate(${s.tx}, ${s.ty})`);
+      }
+      return;
+    }
+    this.lastGridZoom = zoom;
 
     if (this.gridType === "dot") {
       let screenStep = baseStep * zoom;
@@ -1928,6 +2202,7 @@ export class UnifiedGraph {
 
   public drawGrid(options: Record<string, unknown>): void {
     this.gridVisible = true;
+    this.lastGridZoom = -1;
     if (typeof options["type"] === "string") {
       this.gridType = options["type"];
     }
@@ -1937,6 +2212,7 @@ export class UnifiedGraph {
 
   public showGrid(): void {
     this.gridVisible = true;
+    this.lastGridZoom = -1;
     this.syncGridPatternDom();
   }
 
@@ -1951,6 +2227,7 @@ export class UnifiedGraph {
 
   public setGridSize(size: number): void {
     this.gridSize = Math.max(1, size);
+    this.lastGridZoom = -1;
     this.fsm.setOptions({ gridSize: this.gridSize });
     this.syncGridPatternDom();
   }
@@ -1977,6 +2254,13 @@ export class UnifiedGraph {
 
   public addNode(metadata: Record<string, unknown> | UnifiedCell): UnifiedCell {
     const node = metadata instanceof UnifiedCell ? metadata : new UnifiedCell("node", metadata, this);
+    const existing = this.cells.get(node.id);
+    if (existing && existing !== node && existing.view?.container && existing.view.container.parentNode) {
+      existing.view.container.parentNode.removeChild(existing.view.container);
+      existing.selectorElements.clear();
+      existing.view = null;
+      existing.attachGraph(null);
+    }
     node.attachGraph(this);
     this.cells.set(node.id, node);
 
@@ -2061,6 +2345,13 @@ export class UnifiedGraph {
 
   public addEdge(metadata: Record<string, unknown> | UnifiedCell): UnifiedCell {
     const edge = metadata instanceof UnifiedCell ? metadata : new UnifiedCell("edge", metadata, this);
+    const existing = this.cells.get(edge.id);
+    if (existing && existing !== edge && existing.view?.container && existing.view.container.parentNode) {
+      existing.view.container.parentNode.removeChild(existing.view.container);
+      existing.selectorElements.clear();
+      existing.view = null;
+      existing.attachGraph(null);
+    }
     edge.attachGraph(this);
     this.cells.set(edge.id, edge);
     this.syncEdgeToScene(edge);
@@ -2140,10 +2431,21 @@ export class UnifiedGraph {
     const cell = this.cells.get(id);
     if (!cell) return null;
 
+    // Cascade removal to connected edges when removing a node so wires don't dangle to (0,0)
+    if (cell.isNode()) {
+      const connectedEdges = this.getConnectedEdges(id);
+      for (const edge of connectedEdges) {
+        if (this.cells.has(edge.id)) {
+          this.removeCell(edge);
+        }
+      }
+    }
+
+    const wasSelected = this.selectedIds.delete(id);
     this.cells.delete(id);
-    this.selectedIds.delete(id);
     this.widgets.delete(id);
     this.portal3DManager.unregisterPortal(id);
+    if (this.hoveredCellId === id) this.hoveredCellId = null;
 
     if (cell.isNode()) {
       this.scene.removeNode(id);
@@ -2155,12 +2457,17 @@ export class UnifiedGraph {
       cell.view.container.parentNode.removeChild(cell.view.container);
     }
     if (cell.isEdge() && this.edgeToolsG) {
-      const toolGroup = this.edgeToolsG.querySelector(`[data-edge-tools-id="${id}"]`);
+      const toolGroup = this.edgeToolsG.querySelector(`[data-edge-tools-id="${escapeSelectorAttr(id)}"]`);
       if (toolGroup && toolGroup.parentNode) toolGroup.parentNode.removeChild(toolGroup);
     }
     cell.selectorElements.clear();
     cell.view = null;
     cell.attachGraph(null);
+
+    if (wasSelected) {
+      this.syncFsmSelection();
+      this.emit("selection:changed", { added: [], removed: [cell], selected: this.getSelectedCells() });
+    }
 
     this.emit("cell:removed", { cell });
     this.emit(cell.isNode() ? "node:removed" : "edge:removed", {
@@ -2183,7 +2490,9 @@ export class UnifiedGraph {
 
   public clearCells(): void {
     const all = Array.from(this.cells.values());
+    const prevSelected = this.getSelectedCells();
     for (const c of all) {
+      this.portal3DManager.unregisterPortal(c.id);
       if (c.view?.container && c.view.container.parentNode) {
         c.view.container.parentNode.removeChild(c.view.container);
       }
@@ -2193,11 +2502,16 @@ export class UnifiedGraph {
     }
     if (this.edgeToolsG) this.edgeToolsG.innerHTML = "";
     if (this.guidesG) this.guidesG.innerHTML = "";
+    this.hoveredCellId = null;
     this.cells.clear();
     this.selectedIds.clear();
     this.widgets.clear();
     this.scene.clear();
+    this.syncFsmSelection();
     this.syncSelectionBoxesDom();
+    if (prevSelected.length > 0) {
+      this.emit("selection:changed", { added: [], removed: prevSelected, selected: [] });
+    }
   }
 
   public batchUpdate(_name: string, execute: () => void): void {
@@ -2257,6 +2571,18 @@ export class UnifiedGraph {
 
   // ── Selection ──
 
+  private syncFsmSelection(): void {
+    const nodeIds: string[] = [];
+    const edgeIds: string[] = [];
+    for (const id of this.selectedIds) {
+      const c = this.cells.get(id);
+      if (!c) continue;
+      if (c.isNode()) nodeIds.push(id);
+      else edgeIds.push(id);
+    }
+    this.fsm.syncSelection(nodeIds, edgeIds);
+  }
+
   public getSelectedCells(): UnifiedCell[] {
     const out: UnifiedCell[] = [];
     for (const id of this.selectedIds) {
@@ -2282,6 +2608,7 @@ export class UnifiedGraph {
       }
     }
     if (added.length > 0) {
+      this.syncFsmSelection();
       this.syncSelectionBoxesDom();
       this.emit("selection:changed", { added, removed: [], selected: this.getSelectedCells() });
     }
@@ -2297,6 +2624,7 @@ export class UnifiedGraph {
       }
     }
     if (removed.length > 0) {
+      this.syncFsmSelection();
       this.syncSelectionBoxesDom();
       this.emit("selection:changed", { added: [], removed, selected: this.getSelectedCells() });
     }
@@ -2309,6 +2637,7 @@ export class UnifiedGraph {
       this.scene.setNodeFlag(c.id, SceneNodeFlags.SELECTED, false);
     }
     this.selectedIds.clear();
+    this.syncFsmSelection();
     this.syncSelectionBoxesDom();
     this.emit("selection:changed", { added: [], removed, selected: [] });
   }
@@ -2700,7 +3029,9 @@ export class UnifiedGraph {
       } else if (upd.propKind === AnimationPropKind.STROKE_WIDTH) {
         cell.attr(`${upd.selector}/stroke-width`, Math.max(0.5, upd.numericValue));
       } else if (upd.propKind === AnimationPropKind.FILL_LEVEL) {
-        cell.attr(`${upd.selector}/transform`, `scale(1, ${upd.normalized.toFixed(3)})`);
+        const n = Math.max(0, Math.min(1, upd.normalized));
+        const h = cell.height || 1;
+        cell.attr(`${upd.selector}/transform`, `translate(0, ${(h * (1 - n)).toFixed(2)}) scale(1, ${n.toFixed(3)})`);
       }
     });
   }
@@ -2734,10 +3065,27 @@ export class UnifiedGraph {
     ctx.translate(cam.tx, cam.ty);
     ctx.scale(cam.zoom, cam.zoom);
 
+    const vMinX = visibleRect.x;
+    const vMinY = visibleRect.y;
+    const vMaxX = visibleRect.x + visibleRect.width;
+    const vMaxY = visibleRect.y + visibleRect.height;
+
     let drawnEdges = 0;
     for (const edge of this.getEdges()) {
-      const { d, stroke, strokeWidth } = this.computeEdgeRenderPath(edge);
+      const { d, sourcePt, targetPt, routePoints, stroke, strokeWidth } = this.computeEdgeRenderPath(edge);
       if (!d) continue;
+      // Frustum-cull offscreen edges
+      let eMinX = Math.min(sourcePt.x, targetPt.x);
+      let eMaxX = Math.max(sourcePt.x, targetPt.x);
+      let eMinY = Math.min(sourcePt.y, targetPt.y);
+      let eMaxY = Math.max(sourcePt.y, targetPt.y);
+      for (const rp of routePoints) {
+        if (rp.x < eMinX) eMinX = rp.x;
+        if (rp.x > eMaxX) eMaxX = rp.x;
+        if (rp.y < eMinY) eMinY = rp.y;
+        if (rp.y > eMaxY) eMaxY = rp.y;
+      }
+      if (eMaxX < vMinX || eMinX > vMaxX || eMaxY < vMinY || eMinY > vMaxY) continue;
       if (typeof Path2D !== "undefined") {
         ctx.strokeStyle = stroke;
         ctx.lineWidth = strokeWidth / Math.max(0.25, cam.zoom);
@@ -2905,7 +3253,7 @@ export class UnifiedGraph {
       ctx.save();
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, this.width, this.height);
-      const isDark = this.bgColor !== "#ffffff" && this.bgColor !== "#f8fafc";
+      const isDark = isDarkColorString(this.bgColor);
       this.paintToCanvas2D(ctx as unknown as Canvas2DContextLike, { dark: isDark });
       ctx.restore();
     };
@@ -2933,7 +3281,7 @@ export class UnifiedGraph {
     const ctx = this.widgetCanvasEl.getContext("2d");
     if (!ctx) return;
     const cam = this.camera.getState();
-    const isDark = this.bgColor !== "#ffffff" && this.bgColor !== "#f8fafc";
+    const isDark = isDarkColorString(this.bgColor);
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, this.width, this.height);
@@ -2973,14 +3321,15 @@ export class UnifiedGraph {
     ctx.restore();
   }
 
-  private applyViewportTransformDom(): void {
+  private applyViewportTransformDom(panOnly = false): void {
     const s = this.camera.getState();
+    this.fsm.setZoom(s.zoom);
     this.fsm.setPortSnapRadius(Math.max(4, Math.min(24, 14 / Math.max(0.05, s.zoom))));
     if (this.viewportG) {
       this.viewportG.setAttribute("transform", `matrix(${s.zoom},0,0,${s.zoom},${s.tx},${s.ty})`);
     }
-    this.syncGridPatternDom();
-    this.syncSelectionBoxesDom();
+    this.syncGridPatternDom(panOnly);
+    this.syncSelectionBoxesDom(panOnly);
     this.scheduleCanvas2DRender();
     this.renderWidgetCanvasDom();
   }
@@ -3244,6 +3593,38 @@ export class UnifiedGraph {
     }
   }
 
+  public reorderCellDomByZIndex(cell: UnifiedCell): void {
+    const el = cell.view?.container;
+    const layer = cell.isNode() ? this.nodesG : this.edgesG;
+    if (!el || !layer || el.parentNode !== layer) return;
+    el.setAttribute("data-z-index", String(cell.zIndex));
+    const targetZ = cell.zIndex;
+    let insertBeforeEl: Element | null = null;
+    for (let child = layer.firstElementChild; child; child = child.nextElementSibling) {
+      if (child === el) continue;
+      const cz = Number(child.getAttribute("data-z-index") ?? 0);
+      if (cz > targetZ) {
+        insertBeforeEl = child;
+        break;
+      }
+    }
+    if (insertBeforeEl !== el.nextElementSibling) {
+      layer.insertBefore(el, insertBeforeEl);
+    }
+  }
+
+  private insertElementByZIndex(layer: SVGGElement, el: Element, zIndex: number): void {
+    el.setAttribute("data-z-index", String(zIndex));
+    for (let child = layer.firstElementChild; child; child = child.nextElementSibling) {
+      const cz = Number(child.getAttribute("data-z-index") ?? 0);
+      if (cz > zIndex) {
+        layer.insertBefore(el, child);
+        return;
+      }
+    }
+    layer.appendChild(el);
+  }
+
   public rebuildCellDom(cell: UnifiedCell): void {
     if (typeof document === "undefined" || !this.nodesG || !this.edgesG) return;
     if (this.activeRenderMode === "canvas2d") {
@@ -3251,13 +3632,12 @@ export class UnifiedGraph {
       return;
     }
 
-    if (cell.view?.container && cell.view.container.parentNode) {
-      cell.view.container.parentNode.removeChild(cell.view.container);
-    }
+    const oldContainer = cell.view?.container ?? null;
     cell.selectorElements.clear();
 
     const g = document.createElementNS(SVG_NS, "g");
     g.setAttribute("data-cell-id", cell.id);
+    g.setAttribute("data-z-index", String(cell.zIndex));
     g.setAttribute("class", cell.isNode() ? "ms-cell ms-node" : "ms-cell ms-edge");
 
     if (cell.isNode()) {
@@ -3267,7 +3647,10 @@ export class UnifiedGraph {
         inner.setAttribute("class", "ms-node-glyph");
         g.appendChild(inner);
       }
-      // Render ports
+      // Render ports (respecting flipX / flipY so flips survive DOM rebuilds)
+      const data = cell.getData();
+      const flipX = Boolean(data["flipX"]);
+      const flipY = Boolean(data["flipY"]);
       for (const p of cell.getPorts()) {
         const pg = document.createElementNS(SVG_NS, "g");
         pg.setAttribute("class", "ms-port");
@@ -3275,8 +3658,10 @@ export class UnifiedGraph {
         pg.setAttribute("port-id", p.id);
         pg.setAttribute("data-port", p.id);
         pg.setAttribute("magnet", "true");
-        const px = p.args?.x ?? 0;
-        const py = p.args?.y ?? 0;
+        const rawX = p.args?.x ?? 0;
+        const rawY = p.args?.y ?? 0;
+        const px = flipX ? cell.width - rawX : rawX;
+        const py = flipY ? cell.height - rawY : rawY;
         pg.setAttribute("transform", `translate(${px}, ${py})`);
         if (p.markup) {
           const portGlyph = compileGlyphMarkup(p.markup, p.attrs, 8, 8);
@@ -3291,7 +3676,14 @@ export class UnifiedGraph {
         }
         g.appendChild(pg);
       }
-      this.nodesG.appendChild(g);
+      if (oldContainer && oldContainer.parentNode === this.nodesG) {
+        this.nodesG.replaceChild(g, oldContainer);
+      } else {
+        if (oldContainer && oldContainer.parentNode) {
+          oldContainer.parentNode.removeChild(oldContainer);
+        }
+        this.insertElementByZIndex(this.nodesG, g, cell.zIndex);
+      }
     } else {
       const haloEl = document.createElementNS(SVG_NS, "path");
       haloEl.setAttribute("class", "ms-edge-halo");
@@ -3325,7 +3717,14 @@ export class UnifiedGraph {
       cell.selectorElements.set("line", [pathEl]);
       cell.selectorElements.set("halo", [haloEl]);
       cell.selectorElements.set("hit", [hitEl]);
-      this.edgesG.appendChild(g);
+      if (oldContainer && oldContainer.parentNode === this.edgesG) {
+        this.edgesG.replaceChild(g, oldContainer);
+      } else {
+        if (oldContainer && oldContainer.parentNode) {
+          oldContainer.parentNode.removeChild(oldContainer);
+        }
+        this.insertElementByZIndex(this.edgesG, g, cell.zIndex);
+      }
     }
 
     const view = this.findViewByCell(cell)!;
@@ -3343,7 +3742,7 @@ export class UnifiedGraph {
     const newH = cell.height;
     if (Math.abs(newW - prevWidth) < 0.01 && Math.abs(newH - prevHeight) < 0.01) return;
 
-    // 1. Rescale ports proportionally (or re-resolve group positions) and sync SoA scene
+    // 1. Rescale ports proportionally and sync SoA scene
     const ports = cell.getPorts();
     if (ports.length > 0) {
       const sx = prevWidth > 0 ? newW / prevWidth : 1;
@@ -3365,26 +3764,37 @@ export class UnifiedGraph {
       );
     }
 
-    // 2. Keep markup root dimensions in sync and re-materialize icon glyph in-place
+    // 2. Keep markup root dimensions in sync (clone attrs so shared markup objects are never mutated)
     const rawMarkup = cell.getMarkup();
     if (rawMarkup && !Array.isArray(rawMarkup) && rawMarkup.attrs) {
-      if (rawMarkup.attrs["width"] !== undefined) rawMarkup.attrs["width"] = newW;
-      if (rawMarkup.attrs["height"] !== undefined) rawMarkup.attrs["height"] = newH;
+      if (rawMarkup.attrs["width"] !== undefined || rawMarkup.attrs["height"] !== undefined) {
+        const clonedAttrs = { ...rawMarkup.attrs };
+        if (clonedAttrs["width"] !== undefined) clonedAttrs["width"] = newW;
+        if (clonedAttrs["height"] !== undefined) clonedAttrs["height"] = newH;
+        rawMarkup.attrs = clonedAttrs;
+      }
     }
     const el = cell.view?.container;
     if (!el || typeof document === "undefined" || this.activeRenderMode === "canvas2d") return;
 
-    // Update live port DOM transforms
+    // Update live port DOM transforms (accounting for flip)
+    const data = cell.getData();
+    const flipX = Boolean(data["flipX"]);
+    const flipY = Boolean(data["flipY"]);
     const portEls = el.querySelectorAll(".ms-port");
     portEls.forEach((pEl) => {
       const pid = pEl.getAttribute("port-id") ?? pEl.getAttribute("port");
       const match = ports.find((p) => p.id === pid);
       if (match) {
-        pEl.setAttribute("transform", `translate(${match.args?.x ?? 0}, ${match.args?.y ?? 0})`);
+        const rawX = match.args?.x ?? 0;
+        const rawY = match.args?.y ?? 0;
+        const px = flipX ? newW - rawX : rawX;
+        const py = flipY ? newH - rawY : rawY;
+        pEl.setAttribute("transform", `translate(${px}, ${py})`);
       }
     });
 
-    // Update outer <svg> or re-materialize glyph primitives so icons & rects scale smoothly
+    // Update outer <svg> or re-materialize glyph primitives so icons & background rects scale smoothly
     const glyphHost = el.querySelector(".ms-node-glyph");
     const outerSvg = glyphHost?.firstElementChild;
     if (outerSvg && outerSvg.tagName.toLowerCase() === "svg") {
@@ -3393,8 +3803,14 @@ export class UnifiedGraph {
       for (const child of Array.from(outerSvg.children)) {
         const tag = child.tagName.toLowerCase();
         if (tag === "rect") {
-          child.setAttribute("width", String(newW));
-          child.setAttribute("height", String(newH));
+          // Only resize background/body rects matching the previous full bounds, not inner graphic rects
+          const rw = parseFloat(child.getAttribute("width") ?? "");
+          const rh = parseFloat(child.getAttribute("height") ?? "");
+          const isBody = child.getAttribute("data-selector") === "body";
+          if (isBody || (Math.abs(rw - prevWidth) < 1 && Math.abs(rh - prevHeight) < 1)) {
+            child.setAttribute("width", String(newW));
+            child.setAttribute("height", String(newH));
+          }
         } else if (tag === "g") {
           const tf = child.getAttribute("transform") || "";
           const m = /scale\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)/.exec(tf);
@@ -3432,6 +3848,37 @@ export class UnifiedGraph {
       el.setAttribute("transform", `translate(${cell.x}, ${cell.y})${rot}`);
       if ("style" in el) {
         (el as HTMLElement).style.display = cell.visible ? "" : "none";
+      }
+      // Apply flipX / flipY cleanly on the glyph host so flips persist across DOM rebuilds
+      const data = cell.getData();
+      const flipX = Boolean(data["flipX"]);
+      const flipY = Boolean(data["flipY"]);
+      const glyphHost = el.querySelector?.(".ms-node-glyph");
+      if (glyphHost) {
+        if (flipX || flipY) {
+          const sx = flipX ? -1 : 1;
+          const sy = flipY ? -1 : 1;
+          const tx = flipX ? cell.width : 0;
+          const ty = flipY ? cell.height : 0;
+          glyphHost.setAttribute("transform", `translate(${tx}, ${ty}) scale(${sx}, ${sy})`);
+        } else if (glyphHost.getAttribute?.("transform")) {
+          glyphHost.removeAttribute?.("transform");
+        }
+      }
+      // Keep port DOM positions synchronized with flip state
+      const ports = cell.getPorts();
+      if (ports.length > 0) {
+        el.querySelectorAll(".ms-port").forEach((pEl) => {
+          const pid = pEl.getAttribute("port-id") ?? pEl.getAttribute("port");
+          const match = ports.find((p) => p.id === pid);
+          if (match) {
+            const rawX = match.args?.x ?? 0;
+            const rawY = match.args?.y ?? 0;
+            const px = flipX ? cell.width - rawX : rawX;
+            const py = flipY ? cell.height - rawY : rawY;
+            pEl.setAttribute("transform", `translate(${px}, ${py})`);
+          }
+        });
       }
     } else {
       const { d, sourcePt, targetPt, routePoints, stroke, strokeWidth, strokeDasharray, sourceMarker, targetMarker } =
@@ -3493,13 +3940,31 @@ export class UnifiedGraph {
     }
   }
 
+  private canInteractWithCell(cell: UnifiedCell): { nodeMovable: boolean; edgeMovable: boolean } {
+    if (this.fsm.isReadOnly()) return { nodeMovable: false, edgeMovable: false };
+    const inter = this.options.interacting;
+    if (inter === false) return { nodeMovable: false, edgeMovable: false };
+    if (typeof inter === "function") {
+      const res = inter({ cell });
+      if (typeof res === "boolean") return { nodeMovable: res, edgeMovable: res };
+      if (res && typeof res === "object") {
+        return {
+          nodeMovable: res["nodeMovable"] !== false,
+          edgeMovable: res["edgeMovable"] !== false,
+        };
+      }
+    }
+    return { nodeMovable: true, edgeMovable: true };
+  }
+
   /**
    * Renders interactive native SVG edge editing handles (orthogonal segment midpoint bars,
    * vertex dots with drag & right-click delete, and remove pill) directly inside `edgeToolsG`.
    */
   public syncEdgeToolsDom(edge: UnifiedCell): void {
     if (!this.edgeToolsG || typeof document === "undefined") return;
-    const existing = this.edgeToolsG.querySelector(`[data-edge-tools-id="${edge.id}"]`);
+    const escId = escapeSelectorAttr(edge.id);
+    const existing = this.edgeToolsG.querySelector(`[data-edge-tools-id="${escId}"]`);
     if (existing && existing.parentNode) {
       existing.parentNode.removeChild(existing);
     }
@@ -3508,18 +3973,29 @@ export class UnifiedGraph {
     if ((!tools || tools.length === 0) && !isSelected) return;
     if (!this.cells.has(edge.id)) return;
 
-    const toolNames = new Set<string>();
+    // Enforce read-only and interacting.edgeMovable before rendering any interactive edge tools
+    const { edgeMovable } = this.canInteractWithCell(edge);
+    if (!edgeMovable) return;
+
+    const toolConfigs = new Map<string, Record<string, unknown>>();
     for (const t of tools) {
-      if (typeof t === "string") toolNames.add(t);
-      else if (t && typeof t === "object" && "name" in t) {
-        toolNames.add(String((t as { name: string }).name));
+      if (typeof t === "string") {
+        toolConfigs.set(t, {});
+      } else if (t && typeof t === "object" && "name" in t) {
+        const obj = t as { name: string; args?: Record<string, unknown> | undefined };
+        toolConfigs.set(String(obj.name), obj.args ?? {});
       }
     }
-    if (isSelected && this.options.interacting !== false) {
-      toolNames.add("button-remove");
-      toolNames.add("segments");
-      toolNames.add("vertices");
+    // Only add default tools when caller did not explicitly configure a custom tool set
+    if (isSelected && toolConfigs.size === 0) {
+      toolConfigs.set("button-remove", {});
+      toolConfigs.set("segments", {});
+      toolConfigs.set("vertices", {});
     }
+    if (toolConfigs.size === 0) return;
+
+    const zoom = Math.max(0.1, this.camera.getState().zoom);
+    const invZoom = 1 / zoom;
 
     const group = document.createElementNS(SVG_NS, "g");
     group.setAttribute("data-edge-tools-id", edge.id);
@@ -3528,57 +4004,101 @@ export class UnifiedGraph {
     const sourcePt = edge.getSourcePoint();
     const targetPt = edge.getTargetPoint();
     const verts = edge.getVertices();
-    const fullPoly = [sourcePt, ...verts, targetPt];
+    const routePts = edge.view?.routePoints ?? [];
+    const activePts = verts.length > 0 ? verts : routePts;
+    const fullPoly = [sourcePt, ...activePts, targetPt];
 
-    // 1. Orthogonal segment drag bars at each segment midpoint
-    if (toolNames.has("segments")) {
+    // 1. Orthogonal segment drag bars at each segment midpoint (screen-constant size + generous hit target)
+    if (toolConfigs.has("segments")) {
+      const segArgs = toolConfigs.get("segments") ?? {};
+      const segAttrs = (segArgs["attrs"] as Record<string, unknown> | undefined) ?? {};
+      const segFill = typeof segAttrs["fill"] === "string" ? segAttrs["fill"] : "#38bdf8";
+      const segStroke = typeof segAttrs["stroke"] === "string" ? segAttrs["stroke"] : "#0f172a";
+      const barLen = 14 * invZoom;
+      const barThick = 6 * invZoom;
+      const hitPad = 6 * invZoom;
+
       for (let i = 0; i < fullPoly.length - 1; i++) {
         const a = fullPoly[i]!;
         const b = fullPoly[i + 1]!;
         const len = Math.hypot(b.x - a.x, b.y - a.y);
-        if (len < 16) continue;
+        if (len < 16 * invZoom) continue;
         const mx = (a.x + b.x) / 2;
         const my = (a.y + b.y) / 2;
         const isHoriz = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
+
+        const segG = document.createElementNS(SVG_NS, "g");
+        segG.setAttribute("class", "ms-segment-handle");
+        segG.style.cursor = isHoriz ? "ns-resize" : "ew-resize";
+
+        // Transparent ≥18px screen hit area
+        const hitRect = document.createElementNS(SVG_NS, "rect");
+        hitRect.setAttribute("x", String(mx - (isHoriz ? barLen / 2 : barThick / 2) - hitPad));
+        hitRect.setAttribute("y", String(my - (isHoriz ? barThick / 2 : barLen / 2) - hitPad));
+        hitRect.setAttribute("width", String((isHoriz ? barLen : barThick) + hitPad * 2));
+        hitRect.setAttribute("height", String((isHoriz ? barThick : barLen) + hitPad * 2));
+        hitRect.setAttribute("fill", "transparent");
+        segG.appendChild(hitRect);
+
         const bar = document.createElementNS(SVG_NS, "rect");
-        bar.setAttribute("class", "ms-segment-handle");
-        bar.setAttribute("x", String(mx - (isHoriz ? 7 : 3)));
-        bar.setAttribute("y", String(my - (isHoriz ? 3 : 7)));
-        bar.setAttribute("width", String(isHoriz ? 14 : 6));
-        bar.setAttribute("height", String(isHoriz ? 6 : 14));
-        bar.setAttribute("rx", "2");
-        bar.setAttribute("fill", "#38bdf8");
-        bar.setAttribute("stroke", "#0f172a");
-        bar.setAttribute("stroke-width", "1");
-        bar.style.cursor = isHoriz ? "ns-resize" : "ew-resize";
-        bar.addEventListener("pointerdown", (e) => {
+        bar.setAttribute("x", String(mx - (isHoriz ? barLen / 2 : barThick / 2)));
+        bar.setAttribute("y", String(my - (isHoriz ? barThick / 2 : barLen / 2)));
+        bar.setAttribute("width", String(isHoriz ? barLen : barThick));
+        bar.setAttribute("height", String(isHoriz ? barThick : barLen));
+        bar.setAttribute("rx", String(2 * invZoom));
+        bar.setAttribute("fill", segFill);
+        bar.setAttribute("stroke", segStroke);
+        bar.setAttribute("stroke-width", String(1 * invZoom));
+        segG.appendChild(bar);
+
+        segG.addEventListener("pointerdown", (e) => {
+          if (e.button !== 0) return;
           e.stopPropagation();
           (this.rootEl as { setPointerCapture?: (id: number) => void } | null)?.setPointerCapture?.(e.pointerId);
           const pt = this.clientToLocal(e.clientX, e.clientY);
-          this.fsm.startSegmentDrag(edge.id, i, pt.x, pt.y);
+          this.fsm.startSegmentDrag(edge.id, i, pt.x, pt.y, e.pointerId);
         });
-        group.appendChild(bar);
+        group.appendChild(segG);
       }
     }
 
-    // 2. Vertex drag dots (right-click or double-click removes vertex)
-    if (toolNames.has("vertices")) {
+    // 2. Vertex drag dots (right-click or double-click removes vertex; screen-constant size + ≥18px hit target)
+    if (toolConfigs.has("vertices")) {
+      const vArgs = toolConfigs.get("vertices") ?? {};
+      const vAttrs = (vArgs["attrs"] as Record<string, unknown> | undefined) ?? {};
+      const vFill = typeof vAttrs["fill"] === "string" ? vAttrs["fill"] : "#f8fafc";
+      const vStroke = typeof vAttrs["stroke"] === "string" ? vAttrs["stroke"] : "#0284c7";
+      const dotR = 4.5 * invZoom;
+      const hitR = 9 * invZoom;
+
       for (let i = 0; i < verts.length; i++) {
         const v = verts[i]!;
+        const vG = document.createElementNS(SVG_NS, "g");
+        vG.setAttribute("class", "ms-vertex-handle");
+        vG.style.cursor = "move";
+
+        const hitCircle = document.createElementNS(SVG_NS, "circle");
+        hitCircle.setAttribute("cx", String(v.x));
+        hitCircle.setAttribute("cy", String(v.y));
+        hitCircle.setAttribute("r", String(hitR));
+        hitCircle.setAttribute("fill", "transparent");
+        vG.appendChild(hitCircle);
+
         const dot = document.createElementNS(SVG_NS, "circle");
-        dot.setAttribute("class", "ms-vertex-handle");
         dot.setAttribute("cx", String(v.x));
         dot.setAttribute("cy", String(v.y));
-        dot.setAttribute("r", "4.5");
-        dot.setAttribute("fill", "#f8fafc");
-        dot.setAttribute("stroke", "#0284c7");
-        dot.setAttribute("stroke-width", "1.5");
-        dot.style.cursor = "move";
-        dot.addEventListener("pointerdown", (e) => {
+        dot.setAttribute("r", String(dotR));
+        dot.setAttribute("fill", vFill);
+        dot.setAttribute("stroke", vStroke);
+        dot.setAttribute("stroke-width", String(1.5 * invZoom));
+        vG.appendChild(dot);
+
+        vG.addEventListener("pointerdown", (e) => {
+          if (e.button !== 0) return;
           e.stopPropagation();
           (this.rootEl as { setPointerCapture?: (id: number) => void } | null)?.setPointerCapture?.(e.pointerId);
           const pt = this.clientToLocal(e.clientX, e.clientY);
-          this.fsm.startVertexDrag(edge.id, i, pt.x, pt.y);
+          this.fsm.startVertexDrag(edge.id, i, pt.x, pt.y, e.pointerId);
         });
         const removeVertex = (e: Event) => {
           e.preventDefault();
@@ -3588,18 +4108,18 @@ export class UnifiedGraph {
           edge.setVertices(next);
           this.syncEdgeToolsDom(edge);
         };
-        dot.addEventListener("contextmenu", removeVertex);
-        dot.addEventListener("dblclick", removeVertex);
-        group.appendChild(dot);
+        vG.addEventListener("contextmenu", removeVertex);
+        vG.addEventListener("dblclick", removeVertex);
+        group.appendChild(vG);
       }
     }
 
-    // 3. Remove connection pill button with accessible tooltip
-    if (toolNames.has("button-remove")) {
+    // 3. Remove connection pill button with accessible tooltip (screen-constant size)
+    if (toolConfigs.has("button-remove")) {
       const mid = this.samplePointAlongPolyline(fullPoly, 0.5);
       const btnG = document.createElementNS(SVG_NS, "g");
       btnG.setAttribute("class", "ms-edge-remove-btn");
-      btnG.setAttribute("transform", `translate(${mid.x + 12}, ${mid.y - 12})`);
+      btnG.setAttribute("transform", `translate(${mid.x + 12 * invZoom}, ${mid.y - 12 * invZoom}) scale(${invZoom})`);
       btnG.setAttribute("role", "button");
       btnG.setAttribute("aria-label", "Delete connection");
       btnG.style.cursor = "pointer";
@@ -3619,6 +4139,7 @@ export class UnifiedGraph {
       btnG.appendChild(circle);
       btnG.appendChild(cross);
       btnG.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
         e.stopPropagation();
         this.emit("edge:remove-requested", { edge, cell: edge });
         this.removeCell(edge);
@@ -3690,32 +4211,58 @@ export class UnifiedGraph {
     }
   }
 
-  private syncSelectionBoxesDom(): void {
+  private canResizeOrRotateNode(cell: UnifiedCell): { canResize: boolean; canRotate: boolean } {
+    const { nodeMovable } = this.canInteractWithCell(cell);
+    if (!nodeMovable) return { canResize: false, canRotate: false };
+    const data = cell.getData();
+    if (data["readOnly"] || data["isInherited"] || data["locked"]) {
+      return { canResize: false, canRotate: false };
+    }
+    const tfPlugin = this.getPlugin("transform");
+    if (!(tfPlugin instanceof UnifiedTransform)) {
+      return { canResize: true, canRotate: true };
+    }
+    const evalOpt = (opt: UnifiedTransformOptions["resizing"]): boolean => {
+      if (opt === undefined) return true;
+      if (typeof opt === "boolean") return opt;
+      if (typeof opt.enabled === "function") return opt.enabled(cell);
+      return opt.enabled !== false;
+    };
+    return {
+      canResize: evalOpt(tfPlugin.options.resizing),
+      canRotate: evalOpt(tfPlugin.options.rotating),
+    };
+  }
+
+  private syncSelectionBoxesDom(panOnly = false): void {
     if (!this.selectionOverlayEl || typeof document === "undefined") return;
 
-    // Sync selected edge halos and remove pills whenever selection updates
-    for (const cell of this.cells.values()) {
-      if (cell.isEdge()) {
-        const isSel = this.selectedIds.has(cell.id);
-        const haloEl = cell.selectorElements.get("halo")?.[0] as SVGElement | undefined;
-        if (haloEl) haloEl.style.display = isSel ? "" : "none";
-        cell.view?.container?.classList?.toggle?.("ms-edge-selected", isSel);
-        if (isSel || cell.getTools().length > 0) {
-          this.syncEdgeToolsDom(cell);
-        } else if (this.edgeToolsG) {
-          const oldTools = this.edgeToolsG.querySelector(`[data-edge-tools-id="${cell.id}"]`);
-          if (oldTools && oldTools.parentNode) oldTools.parentNode.removeChild(oldTools);
+    // Skip rebuilding edge tools during pan-only viewport updates (SVG edges move via viewportG matrix)
+    if (!panOnly) {
+      for (const cell of this.cells.values()) {
+        if (cell.isEdge()) {
+          const isSel = this.selectedIds.has(cell.id);
+          const haloEl = cell.selectorElements.get("halo")?.[0] as SVGElement | undefined;
+          if (haloEl) haloEl.style.display = isSel ? "" : "none";
+          cell.view?.container?.classList?.toggle?.("ms-edge-selected", isSel);
+          if (isSel || cell.getTools().length > 0) {
+            this.syncEdgeToolsDom(cell);
+          } else if (this.edgeToolsG) {
+            const oldTools = this.edgeToolsG.querySelector(`[data-edge-tools-id="${escapeSelectorAttr(cell.id)}"]`);
+            if (oldTools && oldTools.parentNode) oldTools.parentNode.removeChild(oldTools);
+          }
         }
       }
     }
 
     const mode = this.fsm.mode;
-    if (mode === "resizing" || mode === "rotating") {
+    if (panOnly || mode === "resizing" || mode === "rotating") {
+      let updatedAll = true;
       for (const id of this.selectedIds) {
         const cell = this.cells.get(id);
         if (!cell || !cell.isNode()) continue;
         const existingBox = this.selectionOverlayEl.querySelector(
-          `.ms-selection-box[data-cell-id="${cell.id}"]`,
+          `.ms-selection-box[data-cell-id="${escapeSelectorAttr(cell.id)}"]`,
         ) as HTMLElement | null;
         if (existingBox) {
           const rect = this.coord.localToGraphRect(cell.getBBox());
@@ -3730,10 +4277,13 @@ export class UnifiedGraph {
               if (hk) hEl.style.cursor = getResizeCursorForHandle(hk, cell.angle);
             });
           }
+        } else {
+          updatedAll = false;
         }
       }
-      return;
+      if (updatedAll) return;
     }
+
     this.selectionOverlayEl.innerHTML = "";
     const handles: ResizeHandleKind[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w", "rotate"];
 
@@ -3741,6 +4291,8 @@ export class UnifiedGraph {
       const cell = this.cells.get(id);
       if (!cell || !cell.isNode()) continue;
       const rect = this.coord.localToGraphRect(cell.getBBox());
+      const { canResize, canRotate } = this.canResizeOrRotateNode(cell);
+
       const box = document.createElement("div");
       box.className = "ms-selection-box";
       box.setAttribute("data-cell-id", cell.id);
@@ -3759,18 +4311,20 @@ export class UnifiedGraph {
         box.style.transformOrigin = "center center";
       }
 
-      // Vertical lollipop stem connecting rotate handle to top-center
-      const stem = document.createElement("div");
-      stem.className = "ms-rotate-stem";
-      stem.style.position = "absolute";
-      stem.style.left = "50%";
-      stem.style.top = "-14px";
-      stem.style.width = "1.5px";
-      stem.style.height = "14px";
-      stem.style.marginLeft = "-0.75px";
-      stem.style.background = "#10b981";
-      stem.style.pointerEvents = "none";
-      box.appendChild(stem);
+      if (canRotate) {
+        // Vertical lollipop stem connecting rotate handle to top-center
+        const stem = document.createElement("div");
+        stem.className = "ms-rotate-stem";
+        stem.style.position = "absolute";
+        stem.style.left = "50%";
+        stem.style.top = "-14px";
+        stem.style.width = "1.5px";
+        stem.style.height = "14px";
+        stem.style.marginLeft = "-0.75px";
+        stem.style.background = "#10b981";
+        stem.style.pointerEvents = "none";
+        box.appendChild(stem);
+      }
 
       const cellW = cell.width || 1;
       const cellH = cell.height || 1;
@@ -3790,6 +4344,7 @@ export class UnifiedGraph {
       };
 
       for (const h of handles) {
+        if (h === "rotate" ? !canRotate : !canResize) continue;
         if (isMidpointOccludingPort(h)) continue;
         const dot = document.createElement("div");
         dot.className = `ms-resize-handle ms-handle-${h}`;
@@ -3838,10 +4393,11 @@ export class UnifiedGraph {
           dot.title = "Drag to rotate (hold Shift for 15° snap)";
         }
         dot.addEventListener("pointerdown", (e) => {
+          if (e.button !== 0) return;
           e.stopPropagation();
           (this.rootEl as { setPointerCapture?: (id: number) => void } | null)?.setPointerCapture?.(e.pointerId);
           const pt = this.clientToLocal(e.clientX, e.clientY);
-          this.fsm.startResize(cell.id, h, pt.x, pt.y);
+          this.fsm.startResize(cell.id, h, pt.x, pt.y, e.pointerId);
         });
         box.appendChild(dot);
       }

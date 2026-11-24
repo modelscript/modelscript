@@ -8,23 +8,88 @@ import {
   type SpatialSurfaceBridge,
 } from "@modelscript/canvas";
 import { Line } from "@react-three/drei";
-import { useFrame, type ThreeEvent } from "@react-three/fiber";
+import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
+import { useXR } from "@react-three/xr";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { paintBoardToTextureCanvas, resolveEffectiveBounds, type DragPreviewState } from "./board-painter.js";
+import {
+  paintBoardToTextureCanvas,
+  resolveEffectiveBounds,
+  type BoardPaintOptions,
+  type DragPreviewState,
+} from "./board-painter.js";
+import { createBrushedAluminumPbr, createRadialContactShadowTexture } from "./procedural-pbr.js";
 import {
   boardBoundsToPlaneBounds,
   buildPodiumSpatialPlane,
   clampNumber,
+  getTileMaximizeButtonRect,
   planeUvToBoard,
+  PODIUM_BACK_BTN_RECT,
   PODIUM_CENTER,
+  PODIUM_HEADER_HEIGHT,
   PODIUM_HEIGHT_METERS,
+  PODIUM_NEXT_TILE_BTN_RECT,
+  PODIUM_PREV_TILE_BTN_RECT,
+  PODIUM_RESET_PAN_BTN_RECT,
   PODIUM_WIDTH_METERS,
+  pointInPodiumRect,
   ROTUNDA_BOARD_CANVAS_HEIGHT,
   ROTUNDA_BOARD_CANVAS_WIDTH,
 } from "./types.js";
 import { playRotundaCue } from "./xr-session.js";
+
+/** Builds a rounded-corner CNC-milled unibody aluminum console shell with real machined chamfers. */
+function createChamferedChassisGeometry(
+  width: number,
+  height: number,
+  depth: number,
+  radius = 0.036,
+): THREE.ExtrudeGeometry {
+  const hw = width * 0.5;
+  const hh = height * 0.5;
+  const r = Math.min(radius, hw * 0.4, hh * 0.4);
+  const shape = new THREE.Shape();
+  shape.moveTo(-hw + r, -hh);
+  shape.lineTo(hw - r, -hh);
+  shape.quadraticCurveTo(hw, -hh, hw, -hh + r);
+  shape.lineTo(hw, hh - r);
+  shape.quadraticCurveTo(hw, hh, hw - r, hh);
+  shape.lineTo(-hw + r, hh);
+  shape.quadraticCurveTo(-hw, hh, -hw, hh - r);
+  shape.lineTo(-hw, -hh + r);
+  shape.quadraticCurveTo(-hw, -hh, -hw + r, -hh);
+
+  const geom = new THREE.ExtrudeGeometry(shape, {
+    depth,
+    bevelEnabled: true,
+    bevelThickness: 0.011,
+    bevelSize: 0.01,
+    bevelSegments: 4,
+    curveSegments: 8,
+  });
+  geom.translate(0, 0, -depth * 0.5);
+  geom.computeVertexNormals();
+  return geom;
+}
+
+/** Builds a CNC-turned chamfered floor base plate for the drafting console pedestal. */
+function createPodiumBasePlateGeometry(): THREE.LatheGeometry {
+  const pts: THREE.Vector2[] = [
+    new THREE.Vector2(0.0, 0.0),
+    new THREE.Vector2(0.45, 0.0),
+    new THREE.Vector2(0.45, 0.016),
+    new THREE.Vector2(0.415, 0.034),
+    new THREE.Vector2(0.24, 0.044),
+    new THREE.Vector2(0.185, 0.082),
+    new THREE.Vector2(0.14, 0.098),
+    new THREE.Vector2(0.0, 0.098),
+  ];
+  const geom = new THREE.LatheGeometry(pts, 48);
+  geom.computeVertexNormals();
+  return geom;
+}
 
 export interface DraftingPodiumProps {
   document: CanvasDocument;
@@ -33,10 +98,12 @@ export interface DraftingPodiumProps {
   simulationTime: number;
   isPlaying: boolean;
   activeHeroTileId: string | null;
+  focusedTileId?: string | null | undefined;
   plinthWorldCenter: [number, number, number];
   visible: boolean;
   onTileSelect?: ((tileId: string) => void) | undefined;
   onFocusTileOnPlinth?: ((tileId: string) => void) | undefined;
+  onFocusTileFullscreen?: ((tileId: string | null) => void) | undefined;
   onMoveTile?: ((tileId: string, x: number, y: number) => void) | undefined;
   onCreateSpatialWire?: ((sourceTileId: string, targetTileId: string, sourceAnchor?: string) => void) | undefined;
   onPageModel?: ((delta: number) => void) | undefined;
@@ -74,10 +141,11 @@ interface CadPortDescriptor {
   portV: number;
 }
 
-const DOUBLE_CLICK_MS = 380;
+const DOUBLE_CLICK_MS = 550;
 const DRAG_THRESHOLD_BOARD_UNITS = 3;
 const BEZEL_RIM_HEIGHT = 0.114;
 const BEZEL_KEYCAP_Y = -(PODIUM_HEIGHT_METERS / 2) - BEZEL_RIM_HEIGHT * 0.5;
+const PODIUM_CANVAS_DPR = 1.25;
 
 function planeUvToWorld3D(plane: SpatialPlane3D, u: number, v: number, liftMeters = 0): [number, number, number] {
   const um = u / plane.unitsPerMeter;
@@ -206,7 +274,7 @@ function BezelKeycapButton({
     canvas.height = 88;
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 8;
+    tex.anisotropy = 4;
     canvasRef.current = canvas;
     textureRef.current = tex;
     setTexture(tex);
@@ -230,47 +298,47 @@ function BezelKeycapButton({
     const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
 
-    // Subtle glass keycap gradient background
+    // Bright frosted light-slate keycap gradient for instant Quest 2 legibility
     const grad = ctx.createLinearGradient(0, 0, 0, h);
-    if (pressed) {
-      grad.addColorStop(0, "#1e293b");
-      grad.addColorStop(1, "#0f172a");
-    } else if (active) {
-      grad.addColorStop(0, "#132c45");
-      grad.addColorStop(1, "#0b192c");
+    if (active) {
+      grad.addColorStop(0, "#0284c7");
+      grad.addColorStop(1, "#0369a1");
+    } else if (pressed) {
+      grad.addColorStop(0, "#cbd5e1");
+      grad.addColorStop(1, "#e2e8f0");
     } else if (hovered) {
-      grad.addColorStop(0, "#1c2b42");
-      grad.addColorStop(1, "#0f1a2d");
+      grad.addColorStop(0, "#e0f2fe");
+      grad.addColorStop(1, "#bae6fd");
     } else {
-      grad.addColorStop(0, "#131d30");
-      grad.addColorStop(1, "#0a111f");
+      grad.addColorStop(0, "#ffffff");
+      grad.addColorStop(1, "#f1f5f9");
     }
 
     drawRoundedRectPath(ctx, 4, 4, w - 8, h - 8, 16);
     ctx.fillStyle = grad;
     ctx.fill();
 
-    // Top specular glass highlight
-    drawRoundedRectPath(ctx, 10, 8, w - 20, 14, 7);
-    ctx.fillStyle = hovered || active ? "rgba(255, 255, 255, 0.14)" : "rgba(255, 255, 255, 0.06)";
+    // Subtle top specular highlight
+    drawRoundedRectPath(ctx, 10, 8, w - 20, 12, 6);
+    ctx.fillStyle = active ? "rgba(255, 255, 255, 0.22)" : "rgba(255, 255, 255, 0.72)";
     ctx.fill();
 
-    // Crisp illuminated border
+    // Crisp rim border
     drawRoundedRectPath(ctx, 4, 4, w - 8, h - 8, 16);
-    ctx.lineWidth = hovered || active ? 3.5 : 2;
-    ctx.strokeStyle = hovered || active ? accentColor : "rgba(148, 163, 184, 0.32)";
+    ctx.lineWidth = hovered || active ? 3.5 : 2.2;
+    ctx.strokeStyle = active ? "#0369a1" : hovered ? accentColor : "#cbd5e1";
     ctx.stroke();
 
     // Small active indicator LED on the bottom center
     if (active) {
-      ctx.fillStyle = accentColor;
-      drawRoundedRectPath(ctx, w * 0.5 - 24, h - 13, 48, 4, 2);
+      ctx.fillStyle = "#e0f2fe";
+      drawRoundedRectPath(ctx, w * 0.5 - 26, h - 13, 52, 4, 2);
       ctx.fill();
     }
 
-    // Keycap typography
-    ctx.fillStyle = hovered || active ? "#f8fafc" : "#cbd5e1";
-    ctx.font = "600 28px Inter, system-ui, -apple-system, sans-serif";
+    // Crisp high-contrast keycap typography
+    ctx.fillStyle = active ? "#ffffff" : "#0f172a";
+    ctx.font = "700 28px Inter, system-ui, -apple-system, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(label, w / 2, active ? h / 2 - 2 : h / 2 + 1);
@@ -327,24 +395,24 @@ function BezelKeycapButton({
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
     >
-      {/* Raised physical keycap chassis */}
+      {/* Raised brushed-silver tactile keycap chassis */}
       <mesh position={[0, 0, 0]}>
         <boxGeometry args={[width, height, 0.016]} />
         <meshStandardMaterial
-          color={hovered || active ? "#17253d" : "#0e1726"}
-          emissive={hovered || active ? accentColor : "#020617"}
-          emissiveIntensity={hovered ? 0.28 : active ? 0.18 : 0.04}
-          roughness={0.28}
-          metalness={0.55}
+          color={active ? "#0284c7" : hovered ? "#bae6fd" : "#cbd5e1"}
+          emissive={active ? "#0284c7" : hovered ? accentColor : "#94a3b8"}
+          emissiveIntensity={active ? 0.24 : hovered ? 0.14 : 0.04}
+          roughness={0.32}
+          metalness={0.35}
         />
       </mesh>
       {/* Crisp high-DPI keycap top faceplate */}
       <mesh position={[0, 0, 0.009]}>
         <planeGeometry args={[width - 0.006, height - 0.006]} />
         {texture ? (
-          <meshBasicMaterial map={texture} transparent toneMapped={false} />
+          <meshBasicMaterial key="keycap-tex" color="#ffffff" map={texture} transparent toneMapped={false} />
         ) : (
-          <meshBasicMaterial color="#0f172a" />
+          <meshBasicMaterial key="keycap-fallback" color="#f8fafc" toneMapped={false} />
         )}
       </mesh>
     </group>
@@ -491,10 +559,12 @@ export function DraftingPodium({
   simulationTime,
   isPlaying,
   activeHeroTileId,
+  focusedTileId = null,
   plinthWorldCenter,
   visible,
   onTileSelect,
   onFocusTileOnPlinth,
+  onFocusTileFullscreen,
   onMoveTile,
   onCreateSpatialWire,
   onPageModel,
@@ -504,21 +574,78 @@ export function DraftingPodium({
   onHudStatusChange,
   onInteractionLockChange,
 }: DraftingPodiumProps): React.ReactElement | null {
+  const camera = useThree((s) => s.camera);
+  const gl = useThree((s) => s.gl);
+  const controls = useThree((s) => s.controls);
+  const controlsRef = useRef(controls);
+  controlsRef.current = controls;
+
   const podiumTiltGroupRef = useRef<THREE.Group | null>(null);
+  const reticleGroupRef = useRef<THREE.Group | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const textureRef = useRef<THREE.CanvasTexture | null>(null);
   const lastClickRef = useRef<{ tileId: string; timeMs: number } | null>(null);
+  const lastFocusedClickMsRef = useRef<number>(0);
+  const lastZoomToggleMsRef = useRef<number>(0);
   const dragStartBoardRef = useRef<{ x: number; y: number } | null>(null);
   const dragMovedRef = useRef(false);
+  const panDragRef = useRef<{
+    startU: number;
+    startV: number;
+    startPanX: number;
+    startPanY: number;
+    moved: boolean;
+  } | null>(null);
+  const windowRaycasterRef = useRef(new THREE.Raycaster());
+  const windowNdcRef = useRef(new THREE.Vector2());
+  const boardCaptureRef = useRef<{
+    target: { setPointerCapture?: (id: number) => void; releasePointerCapture?: (id: number) => void } | null;
+    pointerId: number | null;
+  }>({ target: null, pointerId: null });
+  const capturedImageCacheRef = useRef<Map<string, { url: string; img: HTMLImageElement }>>(new Map());
+  const latestSimTimeRef = useRef(simulationTime);
+  latestSimTimeRef.current = simulationTime;
+  const xrSession = useXR((s) => s.session);
 
   const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null);
-  const [reticlePos, setReticlePos] = useState<[number, number, number] | null>(null);
+  const [wireDragTargetPos, setWireDragTargetPos] = useState<[number, number, number] | null>(null);
   const [dragPreview, setDragPreview] = useState<DragPreviewState | null>(null);
+  const dragPreviewRef = useRef<DragPreviewState | null>(null);
+  dragPreviewRef.current = dragPreview;
+  const [isPanningBoard, setIsPanningBoard] = useState(false);
+  const [boardPan, setBoardPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const boardPanRef = useRef(boardPan);
+  boardPanRef.current = boardPan;
   const [activeWireDrag, setActiveWireDrag] = useState<ActiveSpatialWireDrag | null>(null);
+  const activeWireDragRef = useRef<ActiveSpatialWireDrag | null>(null);
+  activeWireDragRef.current = activeWireDrag;
   const [hoverTargetTileId, setHoverTargetTileId] = useState<string | null>(null);
+  const [hoveredMaximizeTileId, setHoveredMaximizeTileId] = useState<string | null>(null);
+  const [hoveredHeaderBtn, setHoveredHeaderBtn] = useState<BoardPaintOptions["hoveredHeaderBtn"]>(null);
+  const [capturedImages, setCapturedImages] = useState<Map<string, HTMLImageElement>>(() => new Map());
+
+  // Reset board pan cleanly when switching documents
+  useEffect(() => {
+    setBoardPan({ x: 0, y: 0 });
+  }, [doc.id]);
+
+  // Synchronously toggle OrbitControls.enabled on the exact pointerdown tick BEFORE OrbitControls sees the event
+  const setOrbitLockedImmediate = useCallback(
+    (locked: boolean) => {
+      const ctrl = controlsRef.current as unknown as { enabled?: boolean } | null;
+      if (ctrl && typeof ctrl.enabled === "boolean") {
+        ctrl.enabled = !locked;
+      }
+      onInteractionLockChange?.(locked);
+    },
+    [onInteractionLockChange],
+  );
 
   const clampedTiltDeg = clampNumber(tiltDeg, 0, 85);
   const targetTiltRad = -(clampedTiltDeg * Math.PI) / 180;
+
+  // Quantize simulationTime to 0.5s ticks (max 2 Hz, 0 Hz during ref-driven playback) for Quest 2 FPS
+  const quantizedSimHalfSec = Number.isFinite(simulationTime) ? Math.floor(simulationTime * 2) : 0;
 
   // Exact SpatialPlane3D corresponding to the tilted podium surface
   const podiumPlane = useMemo(() => buildPodiumSpatialPlane(clampedTiltDeg), [clampedTiltDeg]);
@@ -528,15 +655,94 @@ export function DraftingPodium({
     bridge.registerPlane(podiumPlane);
   }, [bridge, podiumPlane]);
 
-  // Zero-allocation persistent offscreen 1600x1000 canvas + THREE.CanvasTexture created once
+  // Extract any live browser-captured SVG data URLs attached to tiles
+  const capturedUrlEntries = useMemo(() => {
+    const entries: Array<readonly [string, string]> = [];
+    for (const tile of Object.values(doc.tiles)) {
+      const raw = tile.viewState?.["capturedSvgDataUrl"];
+      if (typeof raw === "string" && raw.length > 0) {
+        entries.push([tile.id, raw] as const);
+      }
+    }
+    return entries;
+  }, [doc.tiles]);
+
+  // Decode tile.viewState["capturedSvgDataUrl"] asynchronously into reusable HTMLImageElements
+  useEffect(() => {
+    if (typeof Image === "undefined") return;
+    let cancelled = false;
+    const cache = capturedImageCacheRef.current;
+    const activeIds = new Set<string>();
+    let removedAny = false;
+
+    for (const [tileId] of capturedUrlEntries) {
+      activeIds.add(tileId);
+    }
+    for (const existingId of Array.from(cache.keys())) {
+      if (!activeIds.has(existingId)) {
+        cache.delete(existingId);
+        removedAny = true;
+      }
+    }
+
+    const buildImageMap = (): Map<string, HTMLImageElement> => {
+      const next = new Map<string, HTMLImageElement>();
+      for (const [id, entry] of cache.entries()) {
+        next.set(id, entry.img);
+      }
+      return next;
+    };
+
+    let pendingDecodes = 0;
+    for (const [tileId, url] of capturedUrlEntries) {
+      const existing = cache.get(tileId);
+      if (existing && existing.url === url) {
+        continue;
+      }
+      pendingDecodes += 1;
+      const img = new Image();
+      img.decoding = "async";
+      img.onload = () => {
+        if (cancelled) return;
+        cache.set(tileId, { url, img });
+        setCapturedImages(buildImageMap());
+      };
+      img.onerror = () => {
+        // Safely ignore invalid/corrupted captures so board-painter falls back to UnifiedGraph
+      };
+      img.src = url;
+    }
+
+    if (removedAny && pendingDecodes === 0) {
+      setCapturedImages(buildImageMap());
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [capturedUrlEntries]);
+
+  useEffect(() => {
+    const cache = capturedImageCacheRef.current;
+    return () => {
+      cache.clear();
+    };
+  }, []);
+
+  // Zero-allocation persistent offscreen Retina 2000x1250 (1.25x logical 1600x1000) canvas + THREE.CanvasTexture
   useEffect(() => {
     if (typeof document === "undefined") return;
     const canvas = document.createElement("canvas");
-    canvas.width = ROTUNDA_BOARD_CANVAS_WIDTH;
-    canvas.height = ROTUNDA_BOARD_CANVAS_HEIGHT;
+    canvas.width = Math.round(ROTUNDA_BOARD_CANVAS_WIDTH * PODIUM_CANVAS_DPR);
+    canvas.height = Math.round(ROTUNDA_BOARD_CANVAS_HEIGHT * PODIUM_CANVAS_DPR);
+    const initCtx = canvas.getContext("2d");
+    if (initCtx) {
+      initCtx.fillStyle = "#f8fafc";
+      initCtx.fillRect(0, 0, canvas.width, canvas.height);
+    }
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 8;
+    tex.anisotropy = 4;
     tex.minFilter = THREE.LinearMipmapLinearFilter;
     tex.magFilter = THREE.LinearFilter;
     canvasRef.current = canvas;
@@ -551,57 +757,281 @@ export function DraftingPodium({
     };
   }, []);
 
-  // Repaint the persistent texture whenever board state or interactions change
+  const validFocusedTileId = focusedTileId && doc.tiles[focusedTileId] ? focusedTileId : null;
+
+  // Repaint and upload only when board state, interactions, focus zoom, pan, decoded SVGs, or 0.5s sim ticks change
   useEffect(() => {
     if (!visible) return;
     const canvas = canvasRef.current;
     const tex = textureRef.current;
     if (!canvas || !tex) return;
-    paintBoardToTextureCanvas(canvas, doc, simulationTime, dragPreview, hoverTargetTileId, activeHeroTileId);
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.setTransform(PODIUM_CANVAS_DPR, 0, 0, PODIUM_CANVAS_DPR, 0, 0);
+    }
+    const latest = latestSimTimeRef.current;
+    const displaySimTime =
+      Number.isFinite(latest) && Math.floor(latest * 2) === quantizedSimHalfSec ? latest : quantizedSimHalfSec * 0.5;
+    paintBoardToTextureCanvas(
+      canvas,
+      doc,
+      displaySimTime,
+      dragPreview,
+      hoverTargetTileId,
+      activeHeroTileId,
+      capturedImages,
+      {
+        focusedTileId: validFocusedTileId,
+        boardPan,
+        hoveredMaximizeTileId,
+        hoveredHeaderBtn,
+      },
+    );
     tex.needsUpdate = true;
-  }, [doc, simulationTime, dragPreview, hoverTargetTileId, activeHeroTileId, texture, visible]);
+  }, [
+    doc,
+    quantizedSimHalfSec,
+    dragPreview,
+    hoverTargetTileId,
+    activeHeroTileId,
+    capturedImages,
+    texture,
+    visible,
+    validFocusedTileId,
+    boardPan,
+    hoveredMaximizeTileId,
+    hoveredHeaderBtn,
+  ]);
 
   // Clear active interactions if podium is hidden
   useEffect(() => {
     if (!visible) {
       setDragPreview(null);
+      dragPreviewRef.current = null;
+      panDragRef.current = null;
+      setIsPanningBoard(false);
       setActiveWireDrag(null);
       setHoverTargetTileId(null);
-      setReticlePos(null);
+      setHoveredMaximizeTileId(null);
+      setHoveredHeaderBtn(null);
+      setWireDragTargetPos(null);
+      if (reticleGroupRef.current) {
+        reticleGroupRef.current.visible = false;
+      }
       dragStartBoardRef.current = null;
       dragMovedRef.current = false;
+      setOrbitLockedImmediate(false);
     }
-  }, [visible]);
+  }, [visible, setOrbitLockedImmediate]);
 
-  // Notify parent when OrbitControls should lock during tile drag or CADPort wire drag
-  const interactionLocked = visible && (dragPreview !== null || activeWireDrag !== null);
+  // Keep OrbitControls lock synchronized during tile drag, background pan, or CADPort wire drag
+  const interactionLocked = visible && (dragPreview !== null || isPanningBoard || activeWireDrag !== null);
   useEffect(() => {
-    onInteractionLockChange?.(interactionLocked);
-  }, [interactionLocked, onInteractionLockChange]);
+    setOrbitLockedImmediate(interactionLocked);
+  }, [interactionLocked, setOrbitLockedImmediate]);
 
   useEffect(() => {
     return () => {
-      onInteractionLockChange?.(false);
+      setOrbitLockedImmediate(false);
+      setDocumentCursor("auto");
     };
-  }, [onInteractionLockChange]);
+  }, [setOrbitLockedImmediate]);
 
-  // Safety release if pointerup happens outside the podium mesh
-  useEffect(() => {
-    if (!interactionLocked || typeof window === "undefined") return;
-    const handleWindowPointerUp = () => {
+  const releaseBoardCapture = useCallback(() => {
+    const { target, pointerId } = boardCaptureRef.current;
+    if (target && pointerId !== null && typeof target.releasePointerCapture === "function") {
+      try {
+        target.releasePointerCapture(pointerId);
+      } catch {
+        // Pointer capture may already have been released
+      }
+    }
+    boardCaptureRef.current = { target: null, pointerId: null };
+  }, []);
+
+  const findTileAtBoardPoint = useCallback(
+    (bx: number, by: number): CanvasTile | undefined => {
+      const sorted = Object.values(doc.tiles).sort((a, b) => b.zIndex - a.zIndex);
+      return sorted.find((t) => {
+        const b = resolveEffectiveBounds(t, dragPreviewRef.current);
+        return bx >= b.x && bx <= b.x + b.width && by >= b.y && by <= b.y + b.height;
+      });
+    },
+    [doc.tiles],
+  );
+
+  const projectClientPointerToPodium = useCallback(
+    (clientX: number, clientY: number) => {
+      const dom = gl.domElement;
+      const rect = dom.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return null;
+      const ndc = windowNdcRef.current;
+      ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -(((clientY - rect.top) / rect.height) * 2 - 1));
+      const raycaster = windowRaycasterRef.current;
+      raycaster.setFromCamera(ndc, camera);
+      const rayOrigin: [number, number, number] = [
+        raycaster.ray.origin.x,
+        raycaster.ray.origin.y,
+        raycaster.ray.origin.z,
+      ];
+      const rayDir: [number, number, number] = [
+        raycaster.ray.direction.x,
+        raycaster.ray.direction.y,
+        raycaster.ray.direction.z,
+      ];
+      const hit = projectRayToPlane(rayOrigin, rayDir, podiumPlane);
+      return hit.hit ? hit : null;
+    },
+    [gl, camera, podiumPlane],
+  );
+
+  const finishActiveInteraction = useCallback(
+    (finalUv?: { u: number; v: number } | null) => {
+      releaseBoardCapture();
+      const pendingWire = activeWireDragRef.current;
+      if (pendingWire && finalUv) {
+        const pan = boardPanRef.current;
+        const boardPt = planeUvToBoard(finalUv.u, finalUv.v, pan.x, pan.y);
+        const targetTile = findTileAtBoardPoint(boardPt.x, boardPt.y);
+        if (targetTile && targetTile.id !== pendingWire.sourceTileId) {
+          onCreateSpatialWire?.(pendingWire.sourceTileId, targetTile.id, pendingWire.sourceAnchor);
+          playRotundaCue("snap");
+        }
+      }
+
+      const pendingDrag = dragPreviewRef.current;
+      if (pendingDrag && dragMovedRef.current) {
+        let finalX = pendingDrag.x;
+        let finalY = pendingDrag.y;
+        if (finalUv) {
+          const pan = boardPanRef.current;
+          const boardPt = planeUvToBoard(finalUv.u, finalUv.v, pan.x, pan.y);
+          finalX = Math.round(clampNumber(boardPt.x - pendingDrag.offsetX, -1200, 3200));
+          finalY = Math.round(clampNumber(boardPt.y - pendingDrag.offsetY, -800, 2200));
+        }
+        onMoveTile?.(pendingDrag.tileId, finalX, finalY);
+        playRotundaCue("tick");
+      }
+
+      dragPreviewRef.current = null;
       setDragPreview(null);
+      panDragRef.current = null;
+      setIsPanningBoard(false);
+      activeWireDragRef.current = null;
       setActiveWireDrag(null);
       setHoverTargetTileId(null);
+      setWireDragTargetPos(null);
       dragStartBoardRef.current = null;
       dragMovedRef.current = false;
-    };
-    window.addEventListener("pointerup", handleWindowPointerUp);
-    return () => {
-      window.removeEventListener("pointerup", handleWindowPointerUp);
-    };
-  }, [interactionLocked]);
+      setOrbitLockedImmediate(false);
+      setDocumentCursor("auto");
+    },
+    [releaseBoardCapture, findTileAtBoardPoint, onCreateSpatialWire, onMoveTile, setOrbitLockedImmediate],
+  );
 
-  // Publish live HUD hint while dragging a tile or wiring a 3D CADPort
+  // Global window raycast tracking while dragging a tile, panning the desk, or pulling a CADPort wire.
+  // Ensures fast drags or drags past the desk bezel stay buttery-smooth and always commit on pointerup.
+  useEffect(() => {
+    if (!interactionLocked) return;
+
+    const handleWindowPointerMove = (ev: PointerEvent) => {
+      const hit = projectClientPointerToPodium(ev.clientX, ev.clientY);
+      if (!hit) return;
+
+      const rx = hit.worldPoint[0] + podiumPlane.normal[0] * 0.004;
+      const ry = hit.worldPoint[1] + podiumPlane.normal[1] * 0.004;
+      const rz = hit.worldPoint[2] + podiumPlane.normal[2] * 0.004;
+      if (reticleGroupRef.current) {
+        reticleGroupRef.current.position.set(rx, ry, rz);
+        reticleGroupRef.current.visible = true;
+      }
+
+      const pendingWire = activeWireDragRef.current;
+      if (pendingWire) {
+        setWireDragTargetPos([rx, ry, rz]);
+        const pan = boardPanRef.current;
+        const boardPt = planeUvToBoard(hit.u, hit.v, pan.x, pan.y);
+        const candidate = findTileAtBoardPoint(boardPt.x, boardPt.y);
+        setHoverTargetTileId(candidate && candidate.id !== pendingWire.sourceTileId ? candidate.id : null);
+        return;
+      }
+
+      const pendingDrag = dragPreviewRef.current;
+      if (pendingDrag) {
+        const pan = boardPanRef.current;
+        const boardPt = planeUvToBoard(hit.u, hit.v, pan.x, pan.y);
+        const startPt = dragStartBoardRef.current;
+        const movedPastThreshold =
+          dragMovedRef.current ||
+          !startPt ||
+          Math.hypot(boardPt.x - startPt.x, boardPt.y - startPt.y) >= DRAG_THRESHOLD_BOARD_UNITS;
+        if (!movedPastThreshold) return;
+        dragMovedRef.current = true;
+        const newX = Math.round(clampNumber(boardPt.x - pendingDrag.offsetX, -1200, 3200));
+        const newY = Math.round(clampNumber(boardPt.y - pendingDrag.offsetY, -800, 2200));
+        if (newX !== pendingDrag.x || newY !== pendingDrag.y) {
+          const next = { ...pendingDrag, x: newX, y: newY };
+          dragPreviewRef.current = next;
+          setDragPreview(next);
+        }
+        return;
+      }
+
+      const pendingPan = panDragRef.current;
+      if (pendingPan) {
+        const du = hit.u - pendingPan.startU;
+        const dv = hit.v - pendingPan.startV;
+        if (!pendingPan.moved && Math.hypot(du, dv) < 4) return;
+        pendingPan.moved = true;
+        const nextPanX = Math.round(clampNumber(pendingPan.startPanX + du, -900, 900));
+        const nextPanY = Math.round(clampNumber(pendingPan.startPanY + dv, -650, 650));
+        if (nextPanX !== boardPanRef.current.x || nextPanY !== boardPanRef.current.y) {
+          const nextPan = { x: nextPanX, y: nextPanY };
+          boardPanRef.current = nextPan;
+          setBoardPan(nextPan);
+        }
+      }
+    };
+
+    const handleWindowPointerUp = (ev: PointerEvent) => {
+      const hit = projectClientPointerToPodium(ev.clientX, ev.clientY);
+      finishActiveInteraction(hit ? { u: hit.u, v: hit.v } : null);
+    };
+
+    const handleRelease = () => {
+      finishActiveInteraction(null);
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("pointermove", handleWindowPointerMove);
+      window.addEventListener("pointerup", handleWindowPointerUp);
+      window.addEventListener("pointercancel", handleRelease);
+    }
+    if (xrSession && typeof xrSession.addEventListener === "function") {
+      xrSession.addEventListener("selectend", handleRelease);
+      xrSession.addEventListener("squeezeend", handleRelease);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("pointermove", handleWindowPointerMove);
+        window.removeEventListener("pointerup", handleWindowPointerUp);
+        window.removeEventListener("pointercancel", handleRelease);
+      }
+      if (xrSession && typeof xrSession.removeEventListener === "function") {
+        xrSession.removeEventListener("selectend", handleRelease);
+        xrSession.removeEventListener("squeezeend", handleRelease);
+      }
+    };
+  }, [
+    interactionLocked,
+    xrSession,
+    projectClientPointerToPodium,
+    podiumPlane,
+    findTileAtBoardPoint,
+    finishActiveInteraction,
+  ]);
+
+  // Publish live HUD hint while dragging a tile, panning, zoomed into a block, or wiring a 3D CADPort
   useEffect(() => {
     if (!onHudStatusChange) return;
     if (!visible) {
@@ -620,10 +1050,28 @@ export function DraftingPodium({
       onHudStatusChange(
         `Moving "${tile?.title ?? dragPreview.tileId}" → (${Math.round(dragPreview.x)}, ${Math.round(dragPreview.y)})`,
       );
+    } else if (isPanningBoard) {
+      onHudStatusChange(`Panning 45° drafting board (${Math.round(boardPan.x)}, ${Math.round(boardPan.y)})`);
+    } else if (validFocusedTileId) {
+      const focusedTile = doc.tiles[validFocusedTileId];
+      onHudStatusChange(
+        `Desk Full-Screen: "${focusedTile?.title ?? validFocusedTileId}" · Click "← All Blocks", double-click, or press Esc to exit`,
+      );
     } else {
       onHudStatusChange(null);
     }
-  }, [activeWireDrag, dragPreview, hoverTargetTileId, doc.tiles, visible, onHudStatusChange]);
+  }, [
+    activeWireDrag,
+    dragPreview,
+    isPanningBoard,
+    boardPan.x,
+    boardPan.y,
+    validFocusedTileId,
+    hoverTargetTileId,
+    doc.tiles,
+    visible,
+    onHudStatusChange,
+  ]);
 
   // Smoothly animate podium tilt angle (45° ↔ 12°) in useFrame
   useFrame((_, delta) => {
@@ -631,19 +1079,31 @@ export function DraftingPodium({
     if (!grp) return;
     const alpha = 1 - Math.exp(-Math.min(delta, 0.05) * 10);
     grp.rotation.x += (targetTiltRad - grp.rotation.x) * alpha;
+    if (reticleGroupRef.current) {
+      reticleGroupRef.current.rotation.x = grp.rotation.x;
+    }
   });
 
-  // Compute interactive CADPort sphere descriptors for all `cad3d` tiles
+  // Compute interactive CADPort sphere descriptors for all `cad3d` tiles (hidden when zoomed into a block)
   const cadPorts = useMemo<CadPortDescriptor[]>(() => {
+    if (validFocusedTileId) return [];
     const tiles = Object.values(doc.tiles);
     const out: CadPortDescriptor[] = [];
     for (const tile of tiles) {
       if (tile.archetype !== "cad3d") continue;
       const effBounds = resolveEffectiveBounds(tile, dragPreview);
-      const planeBounds = boardBoundsToPlaneBounds(effBounds);
+      const planeBounds = boardBoundsToPlaneBounds(effBounds, boardPan.x, boardPan.y);
       // Anchor glowing CADPort sphere near the lower-right corner of the card
       const portU = planeBounds.x + planeBounds.width - 28;
       const portV = planeBounds.y + planeBounds.height - 24;
+      if (
+        portU < 20 ||
+        portU > ROTUNDA_BOARD_CANVAS_WIDTH - 20 ||
+        portV < PODIUM_HEADER_HEIGHT + 10 ||
+        portV > ROTUNDA_BOARD_CANVAS_HEIGHT - 10
+      ) {
+        continue;
+      }
       const liftMeters = 0.044;
       out.push({
         tile,
@@ -654,10 +1114,11 @@ export function DraftingPodium({
       });
     }
     return out;
-  }, [doc.tiles, dragPreview, podiumPlane]);
+  }, [doc.tiles, dragPreview, boardPan.x, boardPan.y, podiumPlane, validFocusedTileId]);
 
   // Compute glowing curved Bezier fiber-optic tethers from `cad3d` tiles & activeHeroTileId up to the circular plinth
   const fiberTethers = useMemo<TetherSpec[]>(() => {
+    if (validFocusedTileId) return [];
     const tiles = Object.values(doc.tiles);
     const seen = new Set<string>();
     const tetheredTiles: CanvasTile[] = [];
@@ -680,9 +1141,13 @@ export function DraftingPodium({
     for (const tile of tetheredTiles) {
       const isHero = tile.id === activeHeroTileId;
       const effBounds = resolveEffectiveBounds(tile, dragPreview);
-      const planeBounds = boardBoundsToPlaneBounds(effBounds);
-      const centerU = planeBounds.x + planeBounds.width * 0.5;
-      const centerV = planeBounds.y + planeBounds.height * 0.5;
+      const planeBounds = boardBoundsToPlaneBounds(effBounds, boardPan.x, boardPan.y);
+      const centerU = clampNumber(planeBounds.x + planeBounds.width * 0.5, 24, ROTUNDA_BOARD_CANVAS_WIDTH - 24);
+      const centerV = clampNumber(
+        planeBounds.y + planeBounds.height * 0.5,
+        PODIUM_HEADER_HEIGHT + 20,
+        ROTUNDA_BOARD_CANVAS_HEIGHT - 20,
+      );
       const p0 = planeUvToWorld3D(podiumPlane, centerU, centerV, 0.022);
 
       // Fan the upper tether endpoints neatly around the front rim of the circular plinth
@@ -721,10 +1186,20 @@ export function DraftingPodium({
       });
     }
     return out;
-  }, [doc.tiles, activeHeroTileId, dragPreview, podiumPlane, plinthWorldCenter]);
+  }, [
+    doc.tiles,
+    activeHeroTileId,
+    dragPreview,
+    boardPan.x,
+    boardPan.y,
+    podiumPlane,
+    plinthWorldCenter,
+    validFocusedTileId,
+  ]);
 
   // Compute 3D-to-2D curved spatial wires from CADPort handles to connected 2D schematic tiles
   const cadSpatialWires = useMemo(() => {
+    if (validFocusedTileId) return [];
     const out: { id: string; points: [number, number, number][]; color: string }[] = [];
     for (const port of cadPorts) {
       for (const wire of Object.values(doc.wires)) {
@@ -737,7 +1212,11 @@ export function DraftingPodium({
         if (!otherId) continue;
         const other = doc.tiles[otherId];
         if (!other) continue;
-        const otherPlaneBounds = boardBoundsToPlaneBounds(resolveEffectiveBounds(other, dragPreview));
+        const otherPlaneBounds = boardBoundsToPlaneBounds(
+          resolveEffectiveBounds(other, dragPreview),
+          boardPan.x,
+          boardPan.y,
+        );
         const toU = otherPlaneBounds.x + otherPlaneBounds.width * 0.5;
         const toV = otherPlaneBounds.y + otherPlaneBounds.height * 0.5;
         const to3D = planeUvToWorld3D(podiumPlane, toU, toV, 0.008);
@@ -754,11 +1233,11 @@ export function DraftingPodium({
       }
     }
     return out;
-  }, [cadPorts, doc.wires, doc.tiles, dragPreview, podiumPlane]);
+  }, [cadPorts, doc.wires, doc.tiles, dragPreview, boardPan.x, boardPan.y, podiumPlane, validFocusedTileId]);
 
   // Sync bridge 3D-to-2D wire registry in useEffect (keeps render pure)
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || validFocusedTileId) return;
     for (const port of cadPorts) {
       for (const wire of Object.values(doc.wires)) {
         const otherId =
@@ -770,54 +1249,69 @@ export function DraftingPodium({
         if (!otherId) continue;
         const other = doc.tiles[otherId];
         if (!other) continue;
-        const otherPlaneBounds = boardBoundsToPlaneBounds(resolveEffectiveBounds(other, dragPreview));
+        const otherPlaneBounds = boardBoundsToPlaneBounds(
+          resolveEffectiveBounds(other, dragPreview),
+          boardPan.x,
+          boardPan.y,
+        );
         bridge.upsert3DTo2DWire(wire.id, port.worldPos, "podium", {
           u: otherPlaneBounds.x + otherPlaneBounds.width * 0.5,
           v: otherPlaneBounds.y + otherPlaneBounds.height * 0.5,
         });
       }
     }
-  }, [bridge, cadPorts, doc.wires, doc.tiles, dragPreview, visible]);
+  }, [bridge, cadPorts, doc.wires, doc.tiles, dragPreview, boardPan.x, boardPan.y, visible, validFocusedTileId]);
 
   // Live curved wire preview while pulling from a CADPort sphere
   const liveWirePreviewPoints = useMemo<[number, number, number][] | null>(() => {
-    if (!activeWireDrag || !reticlePos) return null;
+    if (!activeWireDrag || !wireDragTargetPos) return null;
     const from = activeWireDrag.from3D;
-    const to = reticlePos;
+    const to = wireDragTargetPos;
     const mid: [number, number, number] = [
       (from[0] + to[0]) * 0.5 + podiumPlane.normal[0] * 0.14,
       (from[1] + to[1]) * 0.5 + podiumPlane.normal[1] * 0.14,
       (from[2] + to[2]) * 0.5 + podiumPlane.normal[2] * 0.14,
     ];
     return sampleQuadraticBezier(from, mid, to, 16);
-  }, [activeWireDrag, reticlePos, podiumPlane]);
-
-  const findTileAtBoardPoint = useCallback(
-    (bx: number, by: number): CanvasTile | undefined => {
-      const sorted = Object.values(doc.tiles).sort((a, b) => b.zIndex - a.zIndex);
-      return sorted.find((t) => {
-        const b = resolveEffectiveBounds(t, dragPreview);
-        return bx >= b.x && bx <= b.x + b.width && by >= b.y && by <= b.y + b.height;
-      });
-    },
-    [doc.tiles, dragPreview],
-  );
+  }, [activeWireDrag, wireDragTargetPos, podiumPlane]);
 
   const handleStartWireFromPort = useCallback(
     (descriptor: CadPortDescriptor) => {
+      setOrbitLockedImmediate(true);
+      dragPreviewRef.current = null;
       setDragPreview(null);
+      panDragRef.current = null;
+      setIsPanningBoard(false);
       dragStartBoardRef.current = null;
       dragMovedRef.current = false;
-      setActiveWireDrag({
+      const nextWire: ActiveSpatialWireDrag = {
         sourceTileId: descriptor.tile.id,
         sourceTitle: descriptor.tile.title,
         sourceAnchor: "CADPort",
         from3D: descriptor.worldPos,
-      });
+      };
+      activeWireDragRef.current = nextWire;
+      setActiveWireDrag(nextWire);
       onTileSelect?.(descriptor.tile.id);
       playRotundaCue("click");
     },
-    [onTileSelect],
+    [onTileSelect, setOrbitLockedImmediate],
+  );
+
+  const stepFocusedTile = useCallback(
+    (delta: number) => {
+      const sorted = Object.values(doc.tiles).sort((a, b) => a.zIndex - b.zIndex);
+      if (sorted.length === 0) return;
+      const curIdx = validFocusedTileId ? sorted.findIndex((t) => t.id === validFocusedTileId) : 0;
+      const safeCur = curIdx >= 0 ? curIdx : 0;
+      const nextIdx = (((safeCur + delta) % sorted.length) + sorted.length) % sorted.length;
+      const nextTile = sorted[nextIdx];
+      if (nextTile) {
+        onFocusTileFullscreen?.(nextTile.id);
+        playRotundaCue("page");
+      }
+    },
+    [doc.tiles, validFocusedTileId, onFocusTileFullscreen],
   );
 
   const handleBoardPointer = useCallback(
@@ -829,50 +1323,122 @@ export function DraftingPodium({
 
       const rayOrigin: [number, number, number] = [e.ray.origin.x, e.ray.origin.y, e.ray.origin.z];
       const rayDir: [number, number, number] = [e.ray.direction.x, e.ray.direction.y, e.ray.direction.z];
-
       const dispatchedHit = bridge.dispatchRayPointer(rayOrigin, rayDir, phase);
-      const hit =
-        dispatchedHit && dispatchedHit.planeId === "podium"
-          ? dispatchedHit
-          : (() => {
-              const direct = projectRayToPlane(rayOrigin, rayDir, podiumPlane);
-              return direct.hit ? direct : null;
-            })();
 
-      if (!hit) {
-        if (phase === "up") {
-          setDragPreview(null);
-          setActiveWireDrag(null);
-          setHoverTargetTileId(null);
-          dragStartBoardRef.current = null;
-          dragMovedRef.current = false;
+      // Prefer exact Three.js mesh UV when available (exact even mid-tilt-animation!), fallback to plane projection
+      let u: number;
+      let v: number;
+      let worldPt: [number, number, number];
+      if (e.uv) {
+        u = clampNumber(e.uv.x * ROTUNDA_BOARD_CANVAS_WIDTH, 0, ROTUNDA_BOARD_CANVAS_WIDTH);
+        v = clampNumber((1 - e.uv.y) * ROTUNDA_BOARD_CANVAS_HEIGHT, 0, ROTUNDA_BOARD_CANVAS_HEIGHT);
+        worldPt = [e.point.x, e.point.y, e.point.z];
+      } else {
+        const hit =
+          dispatchedHit && dispatchedHit.planeId === "podium"
+            ? dispatchedHit
+            : (() => {
+                const direct = projectRayToPlane(rayOrigin, rayDir, podiumPlane);
+                return direct.hit ? direct : null;
+              })();
+        if (!hit) {
+          if (phase === "up") finishActiveInteraction(null);
+          return;
         }
-        return;
+        u = hit.u;
+        v = hit.v;
+        worldPt = hit.worldPoint;
       }
 
-      // Lift reticle 4mm along podium normal so it never z-fights with the board surface
-      setReticlePos([
-        hit.worldPoint[0] + podiumPlane.normal[0] * 0.004,
-        hit.worldPoint[1] + podiumPlane.normal[1] * 0.004,
-        hit.worldPoint[2] + podiumPlane.normal[2] * 0.004,
-      ]);
+      // Lift reticle 4mm along podium normal so it never z-fights with the board surface.
+      const rx = worldPt[0] + podiumPlane.normal[0] * 0.004;
+      const ry = worldPt[1] + podiumPlane.normal[1] * 0.004;
+      const rz = worldPt[2] + podiumPlane.normal[2] * 0.004;
+      if (reticleGroupRef.current) {
+        reticleGroupRef.current.position.set(rx, ry, rz);
+        reticleGroupRef.current.visible = true;
+      }
+      if (activeWireDragRef.current) {
+        setWireDragTargetPos([rx, ry, rz]);
+      }
 
-      const boardPt = planeUvToBoard(hit.u, hit.v);
+      const pan = boardPanRef.current;
+      const isPanned = Math.hypot(pan.x, pan.y) > 2;
+      const boardPt = planeUvToBoard(u, v, pan.x, pan.y);
 
       if (phase === "down") {
-        const hitTile = findTileAtBoardPoint(boardPt.x, boardPt.y);
-
-        if (activeWireDrag) {
-          if (hitTile && hitTile.id !== activeWireDrag.sourceTileId) {
-            onCreateSpatialWire?.(activeWireDrag.sourceTileId, hitTile.id, activeWireDrag.sourceAnchor);
-            playRotundaCue("snap");
+        // 1. Header strip button hits (works identically in both Overview and Full-Screen Zoom modes)
+        if (v <= PODIUM_HEADER_HEIGHT) {
+          if (validFocusedTileId) {
+            if (pointInPodiumRect(u, v, PODIUM_BACK_BTN_RECT, 6)) {
+              setOrbitLockedImmediate(true);
+              onFocusTileFullscreen?.(null);
+              playRotundaCue("click");
+              window.setTimeout(() => setOrbitLockedImmediate(false), 60);
+              return;
+            }
+            if (pointInPodiumRect(u, v, PODIUM_PREV_TILE_BTN_RECT, 6)) {
+              setOrbitLockedImmediate(true);
+              stepFocusedTile(-1);
+              window.setTimeout(() => setOrbitLockedImmediate(false), 60);
+              return;
+            }
+            if (pointInPodiumRect(u, v, PODIUM_NEXT_TILE_BTN_RECT, 6)) {
+              setOrbitLockedImmediate(true);
+              stepFocusedTile(1);
+              window.setTimeout(() => setOrbitLockedImmediate(false), 60);
+              return;
+            }
+            return;
           }
-          setActiveWireDrag(null);
-          setHoverTargetTileId(null);
+          if (isPanned && pointInPodiumRect(u, v, PODIUM_RESET_PAN_BTN_RECT, 6)) {
+            setOrbitLockedImmediate(true);
+            boardPanRef.current = { x: 0, y: 0 };
+            setBoardPan({ x: 0, y: 0 });
+            playRotundaCue("snap");
+            window.setTimeout(() => setOrbitLockedImmediate(false), 60);
+            return;
+          }
           return;
         }
 
+        // 2. Full-screen zoomed block mode: double-click anywhere on the zoomed block to exit back to board
+        if (validFocusedTileId) {
+          const nowMs = typeof performance !== "undefined" ? performance.now() : Date.now();
+          if (nowMs - lastFocusedClickMsRef.current < DOUBLE_CLICK_MS) {
+            lastFocusedClickMsRef.current = 0;
+            lastZoomToggleMsRef.current = nowMs;
+            onFocusTileFullscreen?.(null);
+            playRotundaCue("click");
+          } else {
+            lastFocusedClickMsRef.current = nowMs;
+          }
+          return;
+        }
+
+        // 3. Complete active CADPort 3D-to-2D wire drop
+        if (activeWireDragRef.current) {
+          finishActiveInteraction({ u, v });
+          return;
+        }
+
+        const hitTile = findTileAtBoardPoint(boardPt.x, boardPt.y);
+
         if (hitTile) {
+          const isHero = Boolean(activeHeroTileId && activeHeroTileId === hitTile.id);
+          const maxBtnRect = getTileMaximizeButtonRect(hitTile.bounds, isHero);
+
+          // 3A. Explicit `[⤢]` maximize button click -> Zoom this block full-screen on the 45° desk!
+          if (pointInPodiumRect(boardPt.x, boardPt.y, maxBtnRect, 12)) {
+            lastZoomToggleMsRef.current = typeof performance !== "undefined" ? performance.now() : Date.now();
+            setOrbitLockedImmediate(true);
+            onTileSelect?.(hitTile.id);
+            onFocusTileFullscreen?.(hitTile.id);
+            playRotundaCue("page");
+            window.setTimeout(() => setOrbitLockedImmediate(false), 60);
+            return;
+          }
+
           onTileSelect?.(hitTile.id);
 
           const nowMs = typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -881,108 +1447,226 @@ export function DraftingPodium({
             prevClick !== null && prevClick.tileId === hitTile.id && nowMs - prevClick.timeMs < DOUBLE_CLICK_MS;
           lastClickRef.current = { tileId: hitTile.id, timeMs: nowMs };
 
+          // 3B. Double-click any tile -> Zoom full-screen on the desk (and sync CAD plinth if applicable)
+          if (isDoubleClick) {
+            lastClickRef.current = null;
+            lastZoomToggleMsRef.current = nowMs;
+            setOrbitLockedImmediate(true);
+            onFocusTileFullscreen?.(hitTile.id);
+            if (hitTile.archetype === "cad3d" || hitTile.archetype === "schematic" || hitTile.archetype === "fmu") {
+              onFocusTileOnPlinth?.(hitTile.id);
+            }
+            playRotundaCue("page");
+            window.setTimeout(() => setOrbitLockedImmediate(false), 60);
+            return;
+          }
+
           const hasCadTiles = Object.values(doc.tiles).some((t) => t.archetype === "cad3d");
           const isPlinthLinked =
             hitTile.archetype === "cad3d" ||
             hitTile.id === activeHeroTileId ||
             (!hasCadTiles && (hitTile.archetype === "schematic" || hitTile.archetype === "fmu"));
 
-          if (isPlinthLinked || isDoubleClick) {
+          if (isPlinthLinked) {
             onFocusTileOnPlinth?.(hitTile.id);
             playRotundaCue("page");
           } else {
             playRotundaCue("click");
           }
 
+          // 3C. Start tile drag with synchronous OrbitControls lock!
           if (!hitTile.locked) {
+            setOrbitLockedImmediate(true);
+            setDocumentCursor("grabbing");
             dragStartBoardRef.current = { x: boardPt.x, y: boardPt.y };
             dragMovedRef.current = false;
-            setDragPreview({
+            const nextDrag: DragPreviewState = {
               tileId: hitTile.id,
               offsetX: boardPt.x - hitTile.bounds.x,
               offsetY: boardPt.y - hitTile.bounds.y,
               x: hitTile.bounds.x,
               y: hitTile.bounds.y,
-            });
+            };
+            dragPreviewRef.current = nextDrag;
+            setDragPreview(nextDrag);
           }
+          return;
         }
+
+        // 4. Pressed on empty desk grid -> smoothly pan the drafting canvas (synchronously locking OrbitControls!)
+        setOrbitLockedImmediate(true);
+        setDocumentCursor("grabbing");
+        panDragRef.current = {
+          startU: u,
+          startV: v,
+          startPanX: pan.x,
+          startPanY: pan.y,
+          moved: false,
+        };
+        setIsPanningBoard(true);
         return;
       }
 
       if (phase === "move") {
-        if (activeWireDrag) {
-          const candidate = findTileAtBoardPoint(boardPt.x, boardPt.y);
-          setHoverTargetTileId(candidate && candidate.id !== activeWireDrag.sourceTileId ? candidate.id : null);
+        // Active drags/pans are handled smoothly via global window pointermove; here handle hover highlights & cursor
+        if (activeWireDragRef.current || dragPreviewRef.current || panDragRef.current) {
           return;
         }
-        if (dragPreview) {
-          const startPt = dragStartBoardRef.current;
-          const movedPastThreshold =
-            dragMovedRef.current ||
-            !startPt ||
-            Math.hypot(boardPt.x - startPt.x, boardPt.y - startPt.y) >= DRAG_THRESHOLD_BOARD_UNITS;
-          if (!movedPastThreshold) return;
-          dragMovedRef.current = true;
-          const newX = Math.round(boardPt.x - dragPreview.offsetX);
-          const newY = Math.round(boardPt.y - dragPreview.offsetY);
-          if (newX !== dragPreview.x || newY !== dragPreview.y) {
-            setDragPreview({ ...dragPreview, x: newX, y: newY });
-            onMoveTile?.(dragPreview.tileId, newX, newY);
+
+        if (v <= PODIUM_HEADER_HEIGHT) {
+          let nextBtn: BoardPaintOptions["hoveredHeaderBtn"] = null;
+          if (validFocusedTileId) {
+            if (pointInPodiumRect(u, v, PODIUM_BACK_BTN_RECT, 6)) nextBtn = "back";
+            else if (pointInPodiumRect(u, v, PODIUM_PREV_TILE_BTN_RECT, 6)) nextBtn = "prev";
+            else if (pointInPodiumRect(u, v, PODIUM_NEXT_TILE_BTN_RECT, 6)) nextBtn = "next";
+          } else if (isPanned && pointInPodiumRect(u, v, PODIUM_RESET_PAN_BTN_RECT, 6)) {
+            nextBtn = "reset-pan";
           }
+          setHoveredHeaderBtn((prev) => (prev === nextBtn ? prev : nextBtn));
+          setHoveredMaximizeTileId((prev) => (prev === null ? prev : null));
+          setDocumentCursor(nextBtn ? "pointer" : "default");
+          return;
+        }
+
+        setHoveredHeaderBtn((prev) => (prev === null ? prev : null));
+
+        if (validFocusedTileId) {
+          setHoveredMaximizeTileId((prev) => (prev === null ? prev : null));
+          setDocumentCursor("zoom-out");
+          return;
+        }
+
+        const hitTile = findTileAtBoardPoint(boardPt.x, boardPt.y);
+        if (hitTile) {
+          const isHero = Boolean(activeHeroTileId && activeHeroTileId === hitTile.id);
+          const maxBtnRect = getTileMaximizeButtonRect(hitTile.bounds, isHero);
+          if (pointInPodiumRect(boardPt.x, boardPt.y, maxBtnRect, 10)) {
+            setHoveredMaximizeTileId((prev) => (prev === hitTile.id ? prev : hitTile.id));
+            setDocumentCursor("pointer");
+          } else {
+            setHoveredMaximizeTileId((prev) => (prev === null ? prev : null));
+            setDocumentCursor(hitTile.locked ? "default" : "grab");
+          }
+        } else {
+          setHoveredMaximizeTileId((prev) => (prev === null ? prev : null));
+          setDocumentCursor("grab");
         }
         return;
       }
 
       if (phase === "up") {
-        if (activeWireDrag) {
-          const targetTile = findTileAtBoardPoint(boardPt.x, boardPt.y);
-          if (targetTile && targetTile.id !== activeWireDrag.sourceTileId) {
-            onCreateSpatialWire?.(activeWireDrag.sourceTileId, targetTile.id, activeWireDrag.sourceAnchor);
-            playRotundaCue("snap");
-          }
-          setActiveWireDrag(null);
-          setHoverTargetTileId(null);
-          return;
-        }
-        if (dragPreview) {
-          if (dragMovedRef.current) {
-            const finalX = Math.round(boardPt.x - dragPreview.offsetX);
-            const finalY = Math.round(boardPt.y - dragPreview.offsetY);
-            onMoveTile?.(dragPreview.tileId, finalX, finalY);
-            playRotundaCue("tick");
-          }
-          setDragPreview(null);
-          dragStartBoardRef.current = null;
-          dragMovedRef.current = false;
-        }
+        finishActiveInteraction({ u, v });
       }
     },
     [
       bridge,
       podiumPlane,
+      validFocusedTileId,
       findTileAtBoardPoint,
-      activeWireDrag,
-      onCreateSpatialWire,
-      onTileSelect,
-      doc.tiles,
       activeHeroTileId,
+      doc.tiles,
+      onTileSelect,
       onFocusTileOnPlinth,
-      dragPreview,
-      onMoveTile,
+      onFocusTileFullscreen,
+      stepFocusedTile,
+      setOrbitLockedImmediate,
+      finishActiveInteraction,
     ],
   );
 
-  if (!visible) {
-    return null;
-  }
+  // Native DOM dblclick backup on the board mesh so double-clicking a tile always zooms full-screen
+  // even when GPU frame rendering stretches the pointerdown interval slightly past DOUBLE_CLICK_MS.
+  const handleBoardDoubleClick = useCallback(
+    (e: ThreeEvent<MouseEvent>) => {
+      e.stopPropagation();
+      const nowMs = typeof performance !== "undefined" ? performance.now() : Date.now();
+      if (nowMs - lastZoomToggleMsRef.current < 320) return;
 
-  // Chassis geometry constants
+      let u: number;
+      let v: number;
+      if (e.uv) {
+        u = clampNumber(e.uv.x * ROTUNDA_BOARD_CANVAS_WIDTH, 0, ROTUNDA_BOARD_CANVAS_WIDTH);
+        v = clampNumber((1 - e.uv.y) * ROTUNDA_BOARD_CANVAS_HEIGHT, 0, ROTUNDA_BOARD_CANVAS_HEIGHT);
+      } else {
+        const direct = projectRayToPlane(
+          [e.ray.origin.x, e.ray.origin.y, e.ray.origin.z],
+          [e.ray.direction.x, e.ray.direction.y, e.ray.direction.z],
+          podiumPlane,
+        );
+        if (!direct.hit) return;
+        u = direct.u;
+        v = direct.v;
+      }
+      if (v <= PODIUM_HEADER_HEIGHT) return;
+
+      if (validFocusedTileId) {
+        lastZoomToggleMsRef.current = nowMs;
+        onFocusTileFullscreen?.(null);
+        playRotundaCue("click");
+        return;
+      }
+
+      const pan = boardPanRef.current;
+      const boardPt = planeUvToBoard(u, v, pan.x, pan.y);
+      const hitTile = findTileAtBoardPoint(boardPt.x, boardPt.y);
+      if (hitTile) {
+        lastZoomToggleMsRef.current = nowMs;
+        finishActiveInteraction(null);
+        onTileSelect?.(hitTile.id);
+        onFocusTileFullscreen?.(hitTile.id);
+        if (hitTile.archetype === "cad3d" || hitTile.archetype === "schematic" || hitTile.archetype === "fmu") {
+          onFocusTileOnPlinth?.(hitTile.id);
+        }
+        playRotundaCue("page");
+      }
+    },
+    [
+      podiumPlane,
+      validFocusedTileId,
+      findTileAtBoardPoint,
+      finishActiveInteraction,
+      onTileSelect,
+      onFocusTileFullscreen,
+      onFocusTileOnPlinth,
+    ],
+  );
+
+  // Chassis geometry constants (computed unconditionally before hooks & visibility guard)
   const topBezel = 0.044;
   const sideBezel = 0.048;
   const totalWidth = PODIUM_WIDTH_METERS + sideBezel * 2;
   const totalHeight = PODIUM_HEIGHT_METERS + topBezel + BEZEL_RIM_HEIGHT;
   const chassisCenterY = (topBezel - BEZEL_RIM_HEIGHT) * 0.5;
-  const accentColor = activeWireDrag ? "#f59e0b" : "#38bdf8";
+  const accentColor = activeWireDrag ? "#f59e0b" : "#0284c7";
+
+  // Procedural CNC bead-blasted brushed-aluminum PBR maps, chamfered unibody geometries & floor contact shadow
+  const chassisPbr = useMemo(() => createBrushedAluminumPbr(3, 2, "#8794a4", 256), []);
+  const trimSilverPbr = useMemo(() => createBrushedAluminumPbr(2, 4, "#d2dbe6", 256), []);
+  const floorShadowTex = useMemo(() => createRadialContactShadowTexture(0.46, 0.22, 128), []);
+  const chassisGeom = useMemo(
+    () => createChamferedChassisGeometry(totalWidth - 0.02, totalHeight - 0.02, 0.022, 0.034),
+    [totalWidth, totalHeight],
+  );
+  const shroudGeom = useMemo(
+    () => createChamferedChassisGeometry(totalWidth - 0.18, totalHeight - 0.16, 0.012, 0.028),
+    [totalWidth, totalHeight],
+  );
+  const basePlateGeom = useMemo(() => createPodiumBasePlateGeometry(), []);
+
+  useEffect(() => {
+    return () => {
+      chassisPbr.dispose();
+      trimSilverPbr.dispose();
+      floorShadowTex.dispose();
+      chassisGeom.dispose();
+      shroudGeom.dispose();
+      basePlateGeom.dispose();
+    };
+  }, [chassisPbr, trimSilverPbr, floorShadowTex, chassisGeom, shroudGeom, basePlateGeom]);
+
+  if (!visible) {
+    return null;
+  }
 
   // 5 tactile bezel buttons distributed evenly along the lower control rim
   const keycapWidth = 0.258;
@@ -993,150 +1677,289 @@ export function DraftingPodium({
 
   return (
     <group name="rotunda-drafting-podium">
-      {/* Floor-Anchored Architectural Pedestal Column & Tilt Yoke (stationary in world space) */}
+      {/* Floor-Anchored CNC Brushed Titanium Pedestal Column & Articulated Tilt Yoke */}
       <group position={[PODIUM_CENTER[0], 0, PODIUM_CENTER[2]]}>
-        {/* Grounded octagonal obsidian base plate */}
-        <mesh position={[0, 0.016, -0.08]} receiveShadow castShadow>
-          <cylinderGeometry args={[0.36, 0.42, 0.032, 8]} />
-          <meshStandardMaterial color="#0b1120" roughness={0.34} metalness={0.78} />
+        {/* Baked soft radial floor contact shadow under weighted pedestal base (zero shadow-map GPU cost) */}
+        <mesh position={[0, 0.004, -0.08]} rotation={[-Math.PI / 2, 0, 0]}>
+          <circleGeometry args={[0.72, 32]} />
+          <meshBasicMaterial map={floorShadowTex} transparent depthWrite={false} />
         </mesh>
-        {/* Subtle glowing cyan base collar ring */}
-        <mesh position={[0, 0.033, -0.08]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[0.31, 0.33, 32]} />
-          <meshBasicMaterial color={accentColor} transparent opacity={0.42} side={THREE.DoubleSide} />
+        {/* Chamfered CNC-turned weighted anodized steel floor base plate */}
+        <mesh geometry={basePlateGeom} position={[0, 0.002, -0.08]}>
+          <meshStandardMaterial
+            map={chassisPbr.map}
+            normalMap={chassisPbr.normalMap}
+            normalScale={new THREE.Vector2(0.16, 0.16)}
+            roughnessMap={chassisPbr.roughnessMap}
+            roughness={1.0}
+            metalness={0.82}
+          />
         </mesh>
-        {/* Inner machined base riser */}
-        <mesh position={[0, 0.068, -0.08]} castShadow>
-          <cylinderGeometry args={[0.14, 0.21, 0.078, 16]} />
-          <meshStandardMaterial color="#111827" roughness={0.3} metalness={0.82} />
+        {/* Subtle anodized recessed collar ring */}
+        <mesh position={[0, 0.046, -0.08]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.24, 0.258, 48]} />
+          <meshBasicMaterial
+            color={accentColor}
+            transparent
+            opacity={0.55}
+            side={THREE.DoubleSide}
+            toneMapped={false}
+          />
         </mesh>
-        {/* Angled twin-ribbed obsidian pedestal column */}
-        <mesh position={[0, 0.47, -0.095]} rotation={[-0.08, 0, 0]} castShadow receiveShadow>
+        {/* Angled twin-ribbed brushed aluminum pedestal column */}
+        <mesh position={[0, 0.47, -0.095]} rotation={[-0.08, 0, 0]}>
           <boxGeometry args={[0.16, 0.8, 0.11]} />
-          <meshStandardMaterial color="#0f172a" roughness={0.32} metalness={0.76} />
+          <meshStandardMaterial
+            map={chassisPbr.map}
+            normalMap={chassisPbr.normalMap}
+            normalScale={new THREE.Vector2(0.14, 0.14)}
+            roughnessMap={chassisPbr.roughnessMap}
+            roughness={1.0}
+            metalness={0.8}
+          />
         </mesh>
-        {/* Brushed titanium front/rear vertical structural ribs */}
+        {/* Brushed bead-blasted silver titanium structural ribs */}
         <mesh position={[-0.086, 0.47, -0.095]} rotation={[-0.08, 0, 0]}>
           <boxGeometry args={[0.018, 0.78, 0.125]} />
-          <meshStandardMaterial color="#334155" roughness={0.28} metalness={0.86} />
+          <meshStandardMaterial
+            map={trimSilverPbr.map}
+            normalMap={trimSilverPbr.normalMap}
+            normalScale={new THREE.Vector2(0.12, 0.12)}
+            roughnessMap={trimSilverPbr.roughnessMap}
+            roughness={1.0}
+            metalness={0.86}
+          />
         </mesh>
         <mesh position={[0.086, 0.47, -0.095]} rotation={[-0.08, 0, 0]}>
           <boxGeometry args={[0.018, 0.78, 0.125]} />
-          <meshStandardMaterial color="#334155" roughness={0.28} metalness={0.86} />
+          <meshStandardMaterial
+            map={trimSilverPbr.map}
+            normalMap={trimSilverPbr.normalMap}
+            normalScale={new THREE.Vector2(0.12, 0.12)}
+            roughnessMap={trimSilverPbr.roughnessMap}
+            roughness={1.0}
+            metalness={0.86}
+          />
         </mesh>
         {/* Subtle front accent strip on column */}
         <mesh position={[0, 0.46, -0.038]} rotation={[-0.08, 0, 0]}>
-          <boxGeometry args={[0.01, 0.62, 0.006]} />
-          <meshStandardMaterial color={accentColor} emissive={accentColor} emissiveIntensity={1.1} />
+          <boxGeometry args={[0.008, 0.62, 0.006]} />
+          <meshStandardMaterial color={accentColor} emissive={accentColor} emissiveIntensity={1.0} toneMapped={false} />
         </mesh>
-        {/* Machined horizontal tilt-hinge axle & twin yoke brackets */}
+        {/* Machined stainless horizontal tilt-hinge axle, chamfered end caps & twin yoke brackets */}
         <mesh position={[0, 0.865, -0.06]} rotation={[0, 0, Math.PI / 2]}>
-          <cylinderGeometry args={[0.032, 0.032, 0.46, 20]} />
-          <meshStandardMaterial color="#475569" roughness={0.25} metalness={0.88} />
+          <cylinderGeometry args={[0.032, 0.032, 0.48, 28]} />
+          <meshStandardMaterial
+            map={trimSilverPbr.map}
+            normalMap={trimSilverPbr.normalMap}
+            normalScale={new THREE.Vector2(0.12, 0.12)}
+            roughnessMap={trimSilverPbr.roughnessMap}
+            roughness={0.85}
+            metalness={0.9}
+          />
         </mesh>
+        {[-0.245, 0.245].map((capX) => (
+          <mesh key={capX} position={[capX, 0.865, -0.06]} rotation={[0, 0, Math.PI / 2]}>
+            <cylinderGeometry args={[0.036, 0.036, 0.016, 24]} />
+            <meshStandardMaterial color="#334155" metalness={0.88} roughness={0.24} />
+          </mesh>
+        ))}
         <mesh position={[-0.19, 0.855, -0.06]}>
           <boxGeometry args={[0.042, 0.09, 0.09]} />
-          <meshStandardMaterial color="#1e293b" roughness={0.32} metalness={0.8} />
+          <meshStandardMaterial
+            map={chassisPbr.map}
+            normalMap={chassisPbr.normalMap}
+            normalScale={new THREE.Vector2(0.14, 0.14)}
+            roughnessMap={chassisPbr.roughnessMap}
+            roughness={1.0}
+            metalness={0.82}
+          />
         </mesh>
         <mesh position={[0.19, 0.855, -0.06]}>
           <boxGeometry args={[0.042, 0.09, 0.09]} />
-          <meshStandardMaterial color="#1e293b" roughness={0.32} metalness={0.8} />
+          <meshStandardMaterial
+            map={chassisPbr.map}
+            normalMap={chassisPbr.normalMap}
+            normalScale={new THREE.Vector2(0.14, 0.14)}
+            roughnessMap={chassisPbr.roughnessMap}
+            roughness={1.0}
+            metalness={0.82}
+          />
         </mesh>
       </group>
 
-      {/* Tilted 45° Architectural Drafting Console Desk */}
+      {/* Tilted 45° Architectural CNC Unibody Studio Drafting Console Desk */}
       <group ref={podiumTiltGroupRef} position={PODIUM_CENTER} rotation={[targetTiltRad, 0, 0]}>
-        {/* Main rear obsidian aluminum chassis body */}
-        <mesh position={[0, chassisCenterY, -0.024]} castShadow receiveShadow>
-          <boxGeometry args={[totalWidth, totalHeight, 0.036]} />
-          <meshStandardMaterial color="#0b1220" roughness={0.32} metalness={0.76} />
+        {/* Main CNC-milled rounded chamfered unibody aluminum shell (recessed cleanly behind z=0 screen) */}
+        <mesh geometry={chassisGeom} position={[0, chassisCenterY, -0.036]}>
+          <meshStandardMaterial
+            map={chassisPbr.map}
+            normalMap={chassisPbr.normalMap}
+            normalScale={new THREE.Vector2(0.14, 0.14)}
+            roughnessMap={chassisPbr.roughnessMap}
+            roughness={1.0}
+            metalness={0.82}
+          />
         </mesh>
 
-        {/* Chamfered rear stiffening shroud */}
-        <mesh position={[0, chassisCenterY + 0.02, -0.048]} castShadow>
-          <boxGeometry args={[totalWidth - 0.16, totalHeight - 0.14, 0.018]} />
-          <meshStandardMaterial color="#111827" roughness={0.36} metalness={0.78} />
+        {/* Chamfered rear stiffening plate */}
+        <mesh geometry={shroudGeom} position={[0, chassisCenterY + 0.02, -0.062]}>
+          <meshStandardMaterial
+            map={trimSilverPbr.map}
+            normalMap={trimSilverPbr.normalMap}
+            normalScale={new THREE.Vector2(0.12, 0.12)}
+            roughnessMap={trimSilverPbr.roughnessMap}
+            roughness={1.0}
+            metalness={0.8}
+          />
         </mesh>
 
-        {/* Perimeter chamfered anodized aluminum bezel rails */}
-        {/* Top bezel rail */}
-        <mesh position={[0, PODIUM_HEIGHT_METERS / 2 + topBezel / 2, 0.002]}>
-          <boxGeometry args={[totalWidth, topBezel, 0.02]} />
-          <meshStandardMaterial color="#111827" roughness={0.26} metalness={0.82} />
+        {/* Machined brushed-aluminum perimeter bezel rails framing the optical glass screen */}
+        <mesh position={[0, PODIUM_HEIGHT_METERS / 2 + topBezel / 2, -0.002]}>
+          <boxGeometry args={[totalWidth - 0.04, topBezel, 0.018]} />
+          <meshStandardMaterial
+            map={chassisPbr.map}
+            normalMap={chassisPbr.normalMap}
+            normalScale={new THREE.Vector2(0.14, 0.14)}
+            roughnessMap={chassisPbr.roughnessMap}
+            roughness={1.0}
+            metalness={0.82}
+          />
         </mesh>
-        {/* Left bezel rail */}
-        <mesh position={[-(PODIUM_WIDTH_METERS / 2 + sideBezel / 2), chassisCenterY, 0.002]}>
-          <boxGeometry args={[sideBezel, totalHeight, 0.02]} />
-          <meshStandardMaterial color="#111827" roughness={0.26} metalness={0.82} />
+        <mesh position={[-(PODIUM_WIDTH_METERS / 2 + sideBezel / 2), chassisCenterY, -0.002]}>
+          <boxGeometry args={[sideBezel, totalHeight - 0.04, 0.018]} />
+          <meshStandardMaterial
+            map={chassisPbr.map}
+            normalMap={chassisPbr.normalMap}
+            normalScale={new THREE.Vector2(0.14, 0.14)}
+            roughnessMap={chassisPbr.roughnessMap}
+            roughness={1.0}
+            metalness={0.82}
+          />
         </mesh>
-        {/* Right bezel rail */}
-        <mesh position={[PODIUM_WIDTH_METERS / 2 + sideBezel / 2, chassisCenterY, 0.002]}>
-          <boxGeometry args={[sideBezel, totalHeight, 0.02]} />
-          <meshStandardMaterial color="#111827" roughness={0.26} metalness={0.82} />
+        <mesh position={[PODIUM_WIDTH_METERS / 2 + sideBezel / 2, chassisCenterY, -0.002]}>
+          <boxGeometry args={[sideBezel, totalHeight - 0.04, 0.018]} />
+          <meshStandardMaterial
+            map={chassisPbr.map}
+            normalMap={chassisPbr.normalMap}
+            normalScale={new THREE.Vector2(0.14, 0.14)}
+            roughnessMap={chassisPbr.roughnessMap}
+            roughness={1.0}
+            metalness={0.82}
+          />
         </mesh>
-        {/* Ergonomic lower palm-rest & physical controls rim */}
+        {/* Diamond-cut anodized silver inner display trim */}
+        <mesh position={[0, PODIUM_HEIGHT_METERS / 2 + 0.005, 0.011]}>
+          <boxGeometry args={[PODIUM_WIDTH_METERS + 0.014, 0.01, 0.004]} />
+          <meshStandardMaterial
+            map={trimSilverPbr.map}
+            normalMap={trimSilverPbr.normalMap}
+            roughnessMap={trimSilverPbr.roughnessMap}
+            roughness={0.85}
+            metalness={0.88}
+          />
+        </mesh>
+        <mesh position={[-(PODIUM_WIDTH_METERS / 2 + 0.005), 0, 0.011]}>
+          <boxGeometry args={[0.01, PODIUM_HEIGHT_METERS + 0.01, 0.004]} />
+          <meshStandardMaterial
+            map={trimSilverPbr.map}
+            normalMap={trimSilverPbr.normalMap}
+            roughnessMap={trimSilverPbr.roughnessMap}
+            roughness={0.85}
+            metalness={0.88}
+          />
+        </mesh>
+        <mesh position={[PODIUM_WIDTH_METERS / 2 + 0.005, 0, 0.011]}>
+          <boxGeometry args={[0.01, PODIUM_HEIGHT_METERS + 0.01, 0.004]} />
+          <meshStandardMaterial
+            map={trimSilverPbr.map}
+            normalMap={trimSilverPbr.normalMap}
+            roughnessMap={trimSilverPbr.roughnessMap}
+            roughness={0.85}
+            metalness={0.88}
+          />
+        </mesh>
+        {/* Ergonomic lower bead-blasted silver aluminum palm-rest & physical controls bay */}
         <mesh position={[0, BEZEL_KEYCAP_Y, 0.003]}>
-          <boxGeometry args={[PODIUM_WIDTH_METERS, BEZEL_RIM_HEIGHT, 0.022]} />
-          <meshStandardMaterial color="#0d1526" roughness={0.3} metalness={0.78} />
+          <boxGeometry args={[PODIUM_WIDTH_METERS, BEZEL_RIM_HEIGHT, 0.02]} />
+          <meshStandardMaterial
+            map={trimSilverPbr.map}
+            normalMap={trimSilverPbr.normalMap}
+            normalScale={new THREE.Vector2(0.32, 0.32)}
+            roughnessMap={trimSilverPbr.roughnessMap}
+            roughness={1.0}
+            metalness={0.78}
+          />
         </mesh>
 
-        {/* Soft glowing edge accent strips along top, sides, and lower lip */}
-        <mesh position={[0, PODIUM_HEIGHT_METERS / 2 + topBezel - 0.004, 0.013]}>
-          <boxGeometry args={[totalWidth - 0.02, 0.005, 0.004]} />
+        {/* Subtle recessed architectural edge light accent strips */}
+        <mesh position={[0, PODIUM_HEIGHT_METERS / 2 + topBezel - 0.005, 0.012]}>
+          <boxGeometry args={[totalWidth - 0.06, 0.004, 0.003]} />
           <meshStandardMaterial
             color={accentColor}
             emissive={accentColor}
-            emissiveIntensity={1.25}
+            emissiveIntensity={1.05}
             toneMapped={false}
           />
         </mesh>
-        <mesh position={[-(PODIUM_WIDTH_METERS / 2 + sideBezel - 0.004), chassisCenterY, 0.013]}>
-          <boxGeometry args={[0.005, totalHeight - 0.02, 0.004]} />
-          <meshStandardMaterial color={accentColor} emissive={accentColor} emissiveIntensity={1.0} toneMapped={false} />
-        </mesh>
-        <mesh position={[PODIUM_WIDTH_METERS / 2 + sideBezel - 0.004, chassisCenterY, 0.013]}>
-          <boxGeometry args={[0.005, totalHeight - 0.02, 0.004]} />
-          <meshStandardMaterial color={accentColor} emissive={accentColor} emissiveIntensity={1.0} toneMapped={false} />
-        </mesh>
-        <mesh position={[0, -(PODIUM_HEIGHT_METERS / 2) - BEZEL_RIM_HEIGHT + 0.004, 0.015]}>
-          <boxGeometry args={[totalWidth - 0.02, 0.005, 0.004]} />
+        <mesh position={[-(PODIUM_WIDTH_METERS / 2 + sideBezel - 0.005), chassisCenterY, 0.012]}>
+          <boxGeometry args={[0.004, totalHeight - 0.06, 0.003]} />
           <meshStandardMaterial
             color={accentColor}
             emissive={accentColor}
-            emissiveIntensity={0.95}
+            emissiveIntensity={0.85}
             toneMapped={false}
           />
         </mesh>
-        {/* Subtle inner hairline separating board glass from lower keycap bay */}
-        <mesh position={[0, -(PODIUM_HEIGHT_METERS / 2) - 0.002, 0.014]}>
+        <mesh position={[PODIUM_WIDTH_METERS / 2 + sideBezel - 0.005, chassisCenterY, 0.012]}>
+          <boxGeometry args={[0.004, totalHeight - 0.06, 0.003]} />
+          <meshStandardMaterial
+            color={accentColor}
+            emissive={accentColor}
+            emissiveIntensity={0.85}
+            toneMapped={false}
+          />
+        </mesh>
+        <mesh position={[0, -(PODIUM_HEIGHT_METERS / 2) - BEZEL_RIM_HEIGHT + 0.005, 0.014]}>
+          <boxGeometry args={[totalWidth - 0.06, 0.004, 0.003]} />
+          <meshStandardMaterial
+            color={accentColor}
+            emissive={accentColor}
+            emissiveIntensity={0.85}
+            toneMapped={false}
+          />
+        </mesh>
+        {/* Crisp inner hairline separating backlit glass board from lower keycap bay */}
+        <mesh position={[0, -(PODIUM_HEIGHT_METERS / 2) - 0.002, 0.013]}>
           <boxGeometry args={[PODIUM_WIDTH_METERS, 0.003, 0.003]} />
-          <meshStandardMaterial color="#1e293b" emissive={accentColor} emissiveIntensity={0.45} />
+          <meshBasicMaterial color="#cbd5e1" toneMapped={false} />
         </mesh>
 
-        {/* Live Interactive `.mscanvas` Board Mesh (Zero-Allocation Persistent CanvasTexture) */}
+        {/* Live Backlit Retina `.mscanvas` Studio Glass Display (Zero-Allocation Persistent CanvasTexture) */}
         <mesh
           name="rotunda-podium-board"
           position={[0, 0, 0]}
           onPointerDown={(e) => handleBoardPointer("down", e)}
           onPointerMove={(e) => handleBoardPointer("move", e)}
           onPointerUp={(e) => handleBoardPointer("up", e)}
+          onDoubleClick={handleBoardDoubleClick}
+          onPointerCancel={() => finishActiveInteraction(null)}
           onPointerOut={() => {
-            if (!dragPreview && !activeWireDrag) {
-              setReticlePos(null);
+            if (!dragPreviewRef.current && !activeWireDragRef.current && !panDragRef.current) {
+              if (reticleGroupRef.current) {
+                reticleGroupRef.current.visible = false;
+              }
+              setHoveredMaximizeTileId(null);
+              setHoveredHeaderBtn(null);
+              setDocumentCursor("auto");
             }
           }}
         >
           <planeGeometry args={[PODIUM_WIDTH_METERS, PODIUM_HEIGHT_METERS]} />
           {texture ? (
-            <meshStandardMaterial
-              map={texture}
-              roughness={0.42}
-              metalness={0.05}
-              emissive="#091322"
-              emissiveIntensity={0.14}
-            />
+            <meshBasicMaterial key="podium-tex" color="#ffffff" map={texture} toneMapped={false} />
           ) : (
-            <meshStandardMaterial color="#0f172a" roughness={0.5} />
+            <meshBasicMaterial key="podium-fallback" color="#f8fafc" toneMapped={false} />
           )}
         </mesh>
 
@@ -1151,15 +1974,14 @@ export function DraftingPodium({
           />
         ))}
 
-        {/* 5 Tactile Physical Bezel Controls along the lower rim */}
+        {/* 5 Tactile Bright Frosted Bezel Controls along the lower rim */}
         <BezelKeycapButton
           label="◀ Prev Model"
           position={[keycapStartX + keycapStride * 0, BEZEL_KEYCAP_Y, 0.01]}
           width={keycapWidth}
           height={keycapHeight}
-          accentColor="#38bdf8"
+          accentColor="#0284c7"
           onPress={() => {
-            playRotundaCue("page");
             onPageModel?.(-1);
           }}
         />
@@ -1168,9 +1990,8 @@ export function DraftingPodium({
           position={[keycapStartX + keycapStride * 1, BEZEL_KEYCAP_Y, 0.01]}
           width={keycapWidth}
           height={keycapHeight}
-          accentColor="#38bdf8"
+          accentColor="#0284c7"
           onPress={() => {
-            playRotundaCue("page");
             onPageModel?.(1);
           }}
         />
@@ -1179,10 +2000,9 @@ export function DraftingPodium({
           position={[keycapStartX + keycapStride * 2, BEZEL_KEYCAP_Y, 0.01]}
           width={keycapWidth}
           height={keycapHeight}
-          accentColor={isPlaying ? "#10b981" : "#f59e0b"}
+          accentColor={isPlaying ? "#059669" : "#d97706"}
           active={isPlaying}
           onPress={() => {
-            playRotundaCue("click");
             onTogglePlaying?.();
           }}
         />
@@ -1191,10 +2011,9 @@ export function DraftingPodium({
           position={[keycapStartX + keycapStride * 3, BEZEL_KEYCAP_Y, 0.01]}
           width={keycapWidth}
           height={keycapHeight}
-          accentColor="#38bdf8"
+          accentColor="#0284c7"
           active={clampedTiltDeg >= 30}
           onPress={() => {
-            playRotundaCue("tick");
             onToggleTilt?.();
           }}
         />
@@ -1203,9 +2022,11 @@ export function DraftingPodium({
           position={[keycapStartX + keycapStride * 4, BEZEL_KEYCAP_Y, 0.01]}
           width={keycapWidth}
           height={keycapHeight}
-          accentColor="#a855f7"
+          accentColor="#7c3aed"
           onPress={() => {
-            playRotundaCue("snap");
+            boardPanRef.current = { x: 0, y: 0 };
+            setBoardPan({ x: 0, y: 0 });
+            onFocusTileFullscreen?.(null);
             onResetView?.();
           }}
         />
@@ -1244,28 +2065,26 @@ export function DraftingPodium({
         <Line points={liveWirePreviewPoints} color="#f59e0b" lineWidth={2.6} transparent opacity={0.95} />
       )}
 
-      {/* Live 3D / WebXR Ray Laser Reticle on the Angled Drafting Desk */}
-      {reticlePos && (
-        <group position={reticlePos} rotation={[targetTiltRad, 0, 0]}>
-          <mesh>
-            <sphereGeometry args={[0.01, 14, 14]} />
-            <meshBasicMaterial
-              color={activeWireDrag ? "#f59e0b" : dragPreview ? "#38bdf8" : "#10b981"}
-              toneMapped={false}
-            />
-          </mesh>
-          <mesh position={[0, 0, 0.001]}>
-            <ringGeometry args={[0.017, 0.023, 24]} />
-            <meshBasicMaterial
-              color={activeWireDrag ? "#fbbf24" : dragPreview ? "#7dd3fc" : "#34d399"}
-              transparent
-              opacity={0.85}
-              side={THREE.DoubleSide}
-              toneMapped={false}
-            />
-          </mesh>
-        </group>
-      )}
+      {/* Live 3D / WebXR Ray Laser Reticle on the Angled Drafting Desk (kept mounted; updated via ref) */}
+      <group ref={reticleGroupRef} visible={false} rotation={[targetTiltRad, 0, 0]}>
+        <mesh>
+          <sphereGeometry args={[0.01, 14, 14]} />
+          <meshBasicMaterial
+            color={activeWireDrag ? "#f59e0b" : dragPreview ? "#38bdf8" : "#10b981"}
+            toneMapped={false}
+          />
+        </mesh>
+        <mesh position={[0, 0, 0.001]}>
+          <ringGeometry args={[0.017, 0.023, 24]} />
+          <meshBasicMaterial
+            color={activeWireDrag ? "#fbbf24" : dragPreview ? "#7dd3fc" : "#34d399"}
+            transparent
+            opacity={0.85}
+            side={THREE.DoubleSide}
+            toneMapped={false}
+          />
+        </mesh>
+      </group>
     </group>
   );
 }

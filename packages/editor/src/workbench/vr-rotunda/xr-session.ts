@@ -111,14 +111,25 @@ export function useXrCapabilities(): XrCapabilities {
   return caps;
 }
 
-export type RotundaCueKind = "tick" | "page" | "snap" | "click" | "env";
+export type RotundaCueKind =
+  | "tick"
+  | "page"
+  | "snap"
+  | "click"
+  | "env"
+  | "grab"
+  | "release"
+  | "magnet-lock"
+  | "magnet-reject"
+  | "materialize"
+  | "wire-pop";
 
 let sharedAudioCtx: AudioContext | null = null;
 
 /**
  * Plays a subtle, muted procedural micro-audio cue (mechanical detent tick, orbital page whoosh,
- * glass click, or environment shimmer) using Web Audio API with zero asset downloads.
- * Silently no-ops in headless/SSR or when audio autoplay is locked.
+ * glass click, environment shimmer, magnetic wire latch, or 3D component materialization chime)
+ * using Web Audio API with zero asset downloads. Silently no-ops in headless/SSR or when autoplay is locked.
  */
 export function playRotundaCue(kind: RotundaCueKind): void {
   if (typeof window === "undefined") return;
@@ -180,6 +191,90 @@ export function playRotundaCue(kind: RotundaCueKind): void {
         osc.stop(now + 0.23);
         break;
       }
+      case "grab": {
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(340, now);
+        osc.frequency.exponentialRampToValueAtTime(510, now + 0.036);
+        gain.gain.setValueAtTime(0.032, now);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.042);
+        osc.start(now);
+        osc.stop(now + 0.048);
+        break;
+      }
+      case "release": {
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(420, now);
+        osc.frequency.exponentialRampToValueAtTime(250, now + 0.042);
+        gain.gain.setValueAtTime(0.026, now);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.048);
+        osc.start(now);
+        osc.stop(now + 0.052);
+        break;
+      }
+      case "magnet-lock": {
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(740, now);
+        osc.frequency.exponentialRampToValueAtTime(1180, now + 0.055);
+        gain.gain.setValueAtTime(0.036, now);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.075);
+        osc.start(now);
+        osc.stop(now + 0.08);
+        // Subtle harmonic overtone latch
+        const osc2 = sharedAudioCtx.createOscillator();
+        const gain2 = sharedAudioCtx.createGain();
+        osc2.connect(gain2);
+        gain2.connect(sharedAudioCtx.destination);
+        osc2.type = "triangle";
+        osc2.frequency.setValueAtTime(1480, now + 0.01);
+        osc2.frequency.exponentialRampToValueAtTime(1760, now + 0.06);
+        gain2.gain.setValueAtTime(0.018, now + 0.01);
+        gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
+        osc2.start(now + 0.01);
+        osc2.stop(now + 0.075);
+        break;
+      }
+      case "magnet-reject": {
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(195, now);
+        osc.frequency.exponentialRampToValueAtTime(142, now + 0.075);
+        gain.gain.setValueAtTime(0.02, now);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.085);
+        osc.start(now);
+        osc.stop(now + 0.09);
+        break;
+      }
+      case "materialize": {
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(440, now);
+        osc.frequency.exponentialRampToValueAtTime(660, now + 0.055);
+        osc.frequency.exponentialRampToValueAtTime(880, now + 0.12);
+        gain.gain.setValueAtTime(0.036, now);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.15);
+        osc.start(now);
+        osc.stop(now + 0.16);
+        const shimmer = sharedAudioCtx.createOscillator();
+        const shimmerGain = sharedAudioCtx.createGain();
+        shimmer.connect(shimmerGain);
+        shimmerGain.connect(sharedAudioCtx.destination);
+        shimmer.type = "triangle";
+        shimmer.frequency.setValueAtTime(1320, now + 0.04);
+        shimmer.frequency.exponentialRampToValueAtTime(1760, now + 0.13);
+        shimmerGain.gain.setValueAtTime(0.018, now + 0.04);
+        shimmerGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
+        shimmer.start(now + 0.04);
+        shimmer.stop(now + 0.15);
+        break;
+      }
+      case "wire-pop": {
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(620, now);
+        osc.frequency.exponentialRampToValueAtTime(260, now + 0.048);
+        gain.gain.setValueAtTime(0.032, now);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.055);
+        osc.start(now);
+        osc.stop(now + 0.06);
+        break;
+      }
       case "click":
       default: {
         osc.type = "sine";
@@ -197,14 +292,77 @@ export function playRotundaCue(kind: RotundaCueKind): void {
   }
 }
 
+export interface XrSessionResult {
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Formats a WebXR session start failure into a concise, actionable user-facing message.
+ */
+export function formatXrSessionError(err: unknown, mode: "vr" | "ar"): string {
+  const modeLabel = mode === "ar" ? "MR passthrough" : "VR";
+  if (err && typeof err === "object") {
+    const name = "name" in err && typeof err.name === "string" ? err.name : "";
+    const message = "message" in err && typeof err.message === "string" ? err.message : "";
+    if (name === "NotAllowedError" || name === "SecurityError") {
+      return `WebXR ${modeLabel} permission was denied or blocked by iframe policy.`;
+    }
+    if (name === "NotSupportedError") {
+      return `WebXR ${modeLabel} is not supported on this device or browser.`;
+    }
+    if (name === "InvalidStateError") {
+      return `A WebXR session is already active or transitioning.`;
+    }
+    if (message.trim()) {
+      return `Unable to start ${modeLabel} session: ${message.trim()}`;
+    }
+  }
+  return `Unable to start ${modeLabel} session. Connect a WebXR headset or open in a VR browser.`;
+}
+
+/**
+ * Starts an immersive WebXR VR or AR session with structured error reporting instead of silent rejections.
+ */
+export async function enterXrSession(store: XRStore, mode: "vr" | "ar"): Promise<XrSessionResult> {
+  try {
+    const session = mode === "ar" ? await store.enterAR() : await store.enterVR();
+    if (!session) {
+      return {
+        ok: false,
+        error: `WebXR ${mode === "ar" ? "MR passthrough" : "VR"} session could not be started.`,
+      };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: formatXrSessionError(err, mode) };
+  }
+}
+
+/**
+ * Cleanly terminates an active WebXR session from inside the headset or desktop HUD.
+ */
+export async function exitXrSession(store: XRStore): Promise<boolean> {
+  try {
+    const session = store.getState().session;
+    if (!session) return false;
+    await session.end();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Triggers a brief haptic pulse on active WebXR gamepad actuators if an XR session is running.
+ * When `handedness` is provided, only pulses the matching hand's actuator.
  */
-export function pulseXrHaptics(store: XRStore, intensity = 0.25, durationMs = 28): void {
+export function pulseXrHaptics(store: XRStore, intensity = 0.25, durationMs = 28, handedness?: "left" | "right"): void {
   try {
     const session = store.getState().session;
     if (!session) return;
     for (const source of session.inputSources) {
+      if (handedness && source.handedness !== handedness) continue;
       const actuator = source.gamepad?.hapticActuators?.[0] as
         { pulse?: (value: number, duration: number) => Promise<boolean> } | undefined;
       if (actuator && typeof actuator.pulse === "function") {

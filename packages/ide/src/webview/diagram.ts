@@ -214,23 +214,15 @@ function initDiagramBridge() {
 
   let isPointerOverCanvas = false;
 
-  window.addEventListener(
-    "mouseenter",
-    () => {
-      isPointerOverCanvas = true;
-      diagramWindow.__setPointerOverCanvas?.(true);
-    },
-    true,
-  );
+  document.documentElement.addEventListener("mouseenter", () => {
+    isPointerOverCanvas = true;
+    diagramWindow.__setPointerOverCanvas?.(true);
+  });
 
-  window.addEventListener(
-    "mouseleave",
-    () => {
-      isPointerOverCanvas = false;
-      diagramWindow.__setPointerOverCanvas?.(false);
-    },
-    true,
-  );
+  document.documentElement.addEventListener("mouseleave", () => {
+    isPointerOverCanvas = false;
+    diagramWindow.__setPointerOverCanvas?.(false);
+  });
 
   const onDragEnterOrOver = (e: DragEvent) => {
     e.preventDefault();
@@ -243,8 +235,6 @@ function initDiagramBridge() {
 
   window.addEventListener("dragenter", onDragEnterOrOver, true);
   window.addEventListener("dragover", onDragEnterOrOver, true);
-  container.addEventListener("dragenter", onDragEnterOrOver, true);
-  container.addEventListener("dragover", onDragEnterOrOver, true);
 
   window.addEventListener(
     "mousemove",
@@ -869,7 +859,7 @@ function updateScopeCard(id: string, bodyEl: HTMLElement) {
         return `${((crossings - 1) / (lastT - firstT)).toFixed(2)} Hz`;
       }
     }
-    return "60 Hz";
+    return "—";
   })();
 
   bodyEl.innerHTML = `
@@ -922,7 +912,7 @@ function showProbeTooltip(clientX: number, clientY: number, id: string, name?: s
         return `${((crossings - 1) / (lastT - firstT)).toFixed(2)} Hz`;
       }
     }
-    return "60 Hz";
+    return "—";
   })();
 
   tooltip.innerHTML = `
@@ -952,6 +942,7 @@ function hideProbeTooltip() {
 function initContextMenu() {
   const menu = document.getElementById("diagram-context-menu");
   if (!menu) return;
+  menu.setAttribute("role", "menu");
 
   const hideMenu = () => {
     menu.style.display = "none";
@@ -959,6 +950,15 @@ function initContextMenu() {
 
   document.addEventListener("click", hideMenu);
   window.addEventListener("blur", hideMenu);
+  window.addEventListener("resize", hideMenu);
+  window.addEventListener("wheel", hideMenu, { passive: true });
+  document.addEventListener("scroll", hideMenu, true);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && menu.style.display !== "none") {
+      e.stopPropagation();
+      hideMenu();
+    }
+  });
 
   const showMenuAt = (x: number, y: number, items: ContextMenuItem[]) => {
     menu.innerHTML = "";
@@ -966,11 +966,14 @@ function initContextMenu() {
       if (item.isDivider) {
         const div = document.createElement("div");
         div.className = "context-menu-divider";
+        div.setAttribute("role", "separator");
         menu.appendChild(div);
         continue;
       }
       const el = document.createElement("div");
       el.className = "context-menu-item";
+      el.setAttribute("role", "menuitem");
+      el.tabIndex = 0;
       const labelSpan = document.createElement("span");
       labelSpan.textContent = item.label;
       el.appendChild(labelSpan);
@@ -985,19 +988,43 @@ function initContextMenu() {
         hideMenu();
         item.action();
       };
+      el.onkeydown = (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          e.stopPropagation();
+          hideMenu();
+          item.action();
+        }
+      };
       menu.appendChild(el);
     }
-    menu.style.left = `${Math.min(x, window.innerWidth - 210)}px`;
-    menu.style.top = `${Math.min(y, window.innerHeight - 260)}px`;
+    menu.style.visibility = "hidden";
     menu.style.display = "block";
+    const rect = menu.getBoundingClientRect();
+    const pad = 8;
+    const clampedX = Math.max(pad, Math.min(x, window.innerWidth - rect.width - pad));
+    const clampedY = Math.max(pad, Math.min(y, window.innerHeight - rect.height - pad));
+    menu.style.left = `${clampedX}px`;
+    menu.style.top = `${clampedY}px`;
+    menu.style.visibility = "visible";
   };
+
+  const boundGraphs = new WeakSet<object>();
+  let bindAttempts = 0;
+  const MAX_BIND_ATTEMPTS = 100;
 
   const bindGraphEvents = () => {
     const g = getGraph();
     if (!g) {
-      setTimeout(bindGraphEvents, 100);
+      if (bindAttempts++ < MAX_BIND_ATTEMPTS) {
+        setTimeout(bindGraphEvents, 100);
+      }
       return;
     }
+    if (boundGraphs.has(g)) return;
+    boundGraphs.add(g);
+    g.on("scale", hideMenu);
+    g.on("translate", hideMenu);
 
     g.on("node:click", ({ node }: { node: DiagramNodeCell }) => {
       if (!isPscadLanguage(activeLanguage)) return;
@@ -1290,7 +1317,7 @@ function initContextMenu() {
         {
           label: "Export SVG",
           action: () => {
-            const svgEl = document.querySelector("#container .x6-graph-svg") as SVGSVGElement | null;
+            const svgEl = document.querySelector("#container svg.ms-graph-svg, #container svg") as SVGSVGElement | null;
             if (!svgEl) return;
             const darkNow =
               document.documentElement.classList.contains("vscode-dark") ||
@@ -1434,9 +1461,13 @@ function showSpotlight(x: number, y: number) {
 
 function initKeyboardAccelerators() {
   window.addEventListener("keydown", (e) => {
-    const active = document.activeElement;
+    const active = document.activeElement as HTMLElement | null;
     const isEditingText =
-      active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.tagName === "SELECT");
+      active &&
+      (active.tagName === "INPUT" ||
+        active.tagName === "TEXTAREA" ||
+        active.tagName === "SELECT" ||
+        active.isContentEditable);
 
     // Close Spotlight or Wire Mode on Escape
     const spotlight = document.getElementById("spotlight-omni-insert");
@@ -1456,8 +1487,8 @@ function initKeyboardAccelerators() {
     const g = getGraph();
     if (!g) return;
 
-    // Shift+A or Tab -> Open Spotlight Omni-Insert
-    if ((e.shiftKey && e.key.toLowerCase() === "a") || e.key === "Tab") {
+    // Shift+A or / -> Open Spotlight Omni-Insert (preserve Tab for keyboard focus navigation)
+    if ((e.shiftKey && e.key.toLowerCase() === "a") || (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey)) {
       e.preventDefault();
       showSpotlight(window.innerWidth / 2 - 150, 80);
       return;

@@ -73,6 +73,7 @@ export function groupSelectedNodesOnGraph(
   const id = `group_${Date.now()}_${++groupSeq}`;
 
   let createdGroup: GroupableCell | null = null;
+  const groupLabel = options?.label ?? "Group";
   runBatch(g, "group-nodes", () => {
     const groupNode = g.addNode({
       id,
@@ -81,20 +82,21 @@ export function groupSelectedNodesOnGraph(
       y: gy,
       width: gw,
       height: gh,
-      zIndex: 0,
-      label: options?.label ?? "Group",
+      zIndex: -1,
+      label: groupLabel,
       data: { isGroup: true },
       attrs: {
         body: {
-          fill: "rgba(88, 166, 255, 0.06)",
-          stroke: "#58a6ff",
+          fill: "var(--ms-accent-soft, rgba(88, 166, 255, 0.08))",
+          stroke: "var(--ms-accent, #58a6ff)",
           strokeWidth: 1.5,
           strokeDasharray: "6 3",
           rx: 8,
           ry: 8,
         },
         label: {
-          fill: "#8b949e",
+          text: groupLabel,
+          fill: "var(--ms-text-2, #8b949e)",
           fontSize: 11,
           fontWeight: 600,
           refY: 12,

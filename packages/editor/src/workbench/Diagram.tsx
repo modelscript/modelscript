@@ -5,7 +5,7 @@ import {
   disposeDiagram,
   dropComponentGhost,
   flipSelectedNodes,
-  getGraph,
+  getGraphFor,
   hydrateDiagramWasm,
   initGraph,
   isEphemeralDiagramNode,
@@ -119,6 +119,7 @@ export interface DiagramEditorHandle {
   playSimulation: () => void;
   pauseSimulation: () => void;
   seekSimulation: (time: number) => void;
+  exportSvgDataUrl?: () => string | null;
 }
 
 interface DiagramEditorProps {
@@ -365,7 +366,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
   }, [props]);
 
   const syncEmbeddedPortals = useCallback(() => {
-    const g = getGraph(containerRef.current) as DiagramGraphInstance | null;
+    const g = getGraphFor(containerRef.current) as DiagramGraphInstance | null;
     if (!g || typeof g.computeEmbedded3DScissorRects !== "function") {
       setEmbeddedPortals((prev) => (prev.length === 0 ? prev : []));
       return;
@@ -397,13 +398,30 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     setEmbeddedPortals((prev) => (arePortalListsEqual(prev, next) ? prev : next));
   }, []);
 
-  const handlePortalViewportChange = useCallback(() => {
-    syncEmbeddedPortals();
+  const portalSyncRafRef = useRef<number | null>(null);
+  const centerCellHaloTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleSyncEmbeddedPortals = useCallback(() => {
+    if (typeof requestAnimationFrame !== "function") {
+      syncEmbeddedPortals();
+      return;
+    }
+    if (portalSyncRafRef.current !== null) return;
+    portalSyncRafRef.current = requestAnimationFrame(() => {
+      portalSyncRafRef.current = null;
+      if (mountedRef.current) {
+        syncEmbeddedPortals();
+      }
+    });
   }, [syncEmbeddedPortals]);
+
+  const handlePortalViewportChange = useCallback(() => {
+    scheduleSyncEmbeddedPortals();
+  }, [scheduleSyncEmbeddedPortals]);
 
   const handlePortalNodeGeometryChange = useCallback(
     (payload?: { node?: unknown; cell?: unknown }) => {
-      const g = getGraph(containerRef.current) as DiagramGraphInstance | null;
+      const g = getGraphFor(containerRef.current) as DiagramGraphInstance | null;
       const targetCell = (payload?.node ?? payload?.cell) as
         { id?: string; getBBox?: () => { x: number; y: number; width: number; height: number } } | undefined;
       if (
@@ -414,14 +432,14 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       ) {
         g.portal3DManager.updatePortalBounds(targetCell.id, targetCell.getBBox());
       }
-      syncEmbeddedPortals();
+      scheduleSyncEmbeddedPortals();
     },
-    [syncEmbeddedPortals],
+    [scheduleSyncEmbeddedPortals],
   );
 
   const handleNodeDblClick = useCallback(({ node }: any) => {
     if (!node || isEphemeralDiagramNode(node.id)) return;
-    const g = getGraph(containerRef.current) as DiagramGraphInstance | null;
+    const g = getGraphFor(containerRef.current) as DiagramGraphInstance | null;
     const hasPortal =
       Boolean(g?.portal3DManager?.getPortal?.(node.id)) ||
       Boolean(g?.computeEmbedded3DScissorRects?.().some((r) => r.portalId === node.id));
@@ -444,7 +462,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
   );
 
   const attachGraphListeners = () => {
-    const g = getGraph(containerRef.current) as DiagramGraphInstance | null;
+    const g = getGraphFor(containerRef.current) as DiagramGraphInstance | null;
     if (g && typeof g.on === "function") {
       g.off?.("node:dblclick", handleNodeDblClick);
       g.on("node:dblclick", handleNodeDblClick);
@@ -612,7 +630,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 
   const pinPlotWidget = useCallback(
     (spec: PinPlotWidgetInput): string | null => {
-      const g = (getGraph(containerRef.current) ?? getGraph()) as DiagramGraphInstance | null;
+      const g = getGraphFor(containerRef.current) as DiagramGraphInstance | null;
       if (!g || typeof g.registerCanvasWidget !== "function") return null;
       widgetCounterRef.current += 1;
       const id = spec.id ?? `pinned_plot_${widgetCounterRef.current}`;
@@ -639,7 +657,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 
   const pinStickyWidget = useCallback(
     (spec: PinStickyWidgetInput): string | null => {
-      const g = (getGraph(containerRef.current) ?? getGraph()) as DiagramGraphInstance | null;
+      const g = getGraphFor(containerRef.current) as DiagramGraphInstance | null;
       if (!g || typeof g.registerCanvasWidget !== "function") return null;
       widgetCounterRef.current += 1;
       const id = spec.id ?? `pinned_sticky_${widgetCounterRef.current}`;
@@ -728,7 +746,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       simStateRef.current = nextState;
       setSimPlayback(nextState);
 
-      const g = (getGraph(containerRef.current) ?? getGraph()) as DiagramGraphInstance | null;
+      const g = getGraphFor(containerRef.current) as DiagramGraphInstance | null;
       g?.animationEngine?.bindVariableIndices?.(normalized.varIndexMap);
       if (typeof g?.loadSimulationResult === "function") {
         g.loadSimulationResult({ time: normalized.time, signals: normalized.signals });
@@ -753,7 +771,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     const prev = simStateRef.current;
     const targetTime = prev ? Math.max(prev.start, Math.min(prev.end, time)) : time;
 
-    const g = (getGraph(containerRef.current) ?? getGraph()) as DiagramGraphInstance | null;
+    const g = getGraphFor(containerRef.current) as DiagramGraphInstance | null;
     if (typeof g?.seekSimulation === "function") {
       g.seekSimulation(targetTime);
     }
@@ -790,7 +808,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       simStateRef.current = nextState;
       setSimPlayback(nextState);
     }
-    const g = (getGraph(containerRef.current) ?? getGraph()) as DiagramGraphInstance | null;
+    const g = getGraphFor(containerRef.current) as DiagramGraphInstance | null;
     if (typeof g?.pauseSimulation === "function") {
       g.pauseSimulation();
     } else {
@@ -807,7 +825,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     simStateRef.current = nextState;
     setSimPlayback(nextState);
 
-    const g = (getGraph(containerRef.current) ?? getGraph()) as DiagramGraphInstance | null;
+    const g = getGraphFor(containerRef.current) as DiagramGraphInstance | null;
     const graphHasNativePlayback = typeof g?.playSimulation === "function";
     if (graphHasNativePlayback) {
       g.playSimulation?.();
@@ -818,6 +836,8 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     if (typeof requestAnimationFrame !== "function") return;
 
     let lastTs = typeof performance !== "undefined" ? performance.now() : Date.now();
+    let lastUiCommitTs = 0;
+    const UI_COMMIT_INTERVAL_MS = 80; // ~12.5 Hz for React scrubber UI; canvas ticks at full 60 FPS
     const step = (now: number) => {
       const state = simStateRef.current;
       if (!mountedRef.current || !state || !state.isPlaying) {
@@ -828,7 +848,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       const dt = Math.min(0.1, Math.max(0, (now - lastTs) / 1000));
       lastTs = now;
 
-      const activeGraph = (getGraph(containerRef.current) ?? getGraph()) as DiagramGraphInstance | null;
+      const activeGraph = getGraphFor(containerRef.current) as DiagramGraphInstance | null;
       const graphTickedRecently = graphHasNativePlayback && now - lastGraphTimelineTickRef.current < 150;
 
       if (!graphTickedRecently && dt > 0) {
@@ -842,19 +862,27 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 
         const updated: SimulationPlaybackState = { ...state, current: nextTime };
         simStateRef.current = updated;
-        setSimPlayback(updated);
+        const shouldCommitUi = now - lastUiCommitTs >= UI_COMMIT_INTERVAL_MS;
 
         const data = simDataRef.current;
         if (data) {
           const sampled = sampleSimulationAtTime(data, nextTime);
-          setScrubbedPoint({ time: nextTime, values: sampled.values });
           if (!graphHasNativePlayback) {
             activeGraph?.tickAnimations?.(sampled.frame, dt);
           }
           activeGraph?.syncPlotCrosshair?.(nextTime);
+          if (shouldCommitUi) {
+            lastUiCommitTs = now;
+            setSimPlayback(updated);
+            setScrubbedPoint({ time: nextTime, values: sampled.values });
+          }
         } else {
-          setScrubbedPoint((cur) => ({ time: nextTime, values: cur.values }));
           activeGraph?.syncPlotCrosshair?.(nextTime);
+          if (shouldCommitUi) {
+            lastUiCommitTs = now;
+            setSimPlayback(updated);
+            setScrubbedPoint((cur) => ({ time: nextTime, values: cur.values }));
+          }
         }
       }
 
@@ -868,7 +896,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     fitContent: () => {
       syncDiagramOptions();
       const container = containerRef.current;
-      const g = getGraph(container) ?? (container ? initGraph(props.theme === "vs-dark", container) : null);
+      const g = getGraphFor(container) ?? (container ? initGraph(props.theme === "vs-dark", container) : null);
       if (g && container) {
         try {
           const parent = container.parentElement;
@@ -891,7 +919,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     },
     layout: async () => {
       const container = containerRef.current;
-      const g = (getGraph(container) ?? getGraph()) as any;
+      const g = getGraphFor(container) as any;
       if (g) {
         return autoLayoutDiagramAsync(g);
       } else if (typeof window !== "undefined") {
@@ -902,7 +930,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     },
     zoomIn: (factor = 0.15) => {
       const container = containerRef.current;
-      const g = (getGraph(container) ?? getGraph()) as any;
+      const g = getGraphFor(container) as any;
       if (g && typeof g.zoom === "function") {
         const current = g.zoom();
         const next = Math.min(10.0, Math.round((current + factor) * 100) / 100);
@@ -919,7 +947,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     },
     zoomOut: (factor = 0.15) => {
       const container = containerRef.current;
-      const g = (getGraph(container) ?? getGraph()) as any;
+      const g = getGraphFor(container) as any;
       if (g && typeof g.zoom === "function") {
         const current = g.zoom();
         const next = Math.max(0.1, Math.round((current - factor) * 100) / 100);
@@ -936,7 +964,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     },
     zoomTo: (scale: number) => {
       const container = containerRef.current;
-      const g = (getGraph(container) ?? getGraph()) as any;
+      const g = getGraphFor(container) as any;
       if (g && (typeof g.zoomTo === "function" || typeof g.zoom === "function")) {
         const clamped = Math.max(0.1, Math.min(10.0, scale));
         if (typeof g.zoomTo === "function") {
@@ -951,7 +979,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     zoomToFit: () => {
       syncDiagramOptions();
       const container = containerRef.current;
-      const g = (getGraph(container) ?? getGraph()) as any;
+      const g = getGraphFor(container) as any;
       if (g && typeof g.zoomToFit === "function") {
         const parent = container?.parentElement;
         const parentW = parent?.clientWidth ?? 0;
@@ -971,19 +999,19 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       }
     },
     getZoom: () => {
-      const g = (getGraph(containerRef.current) ?? getGraph()) as any;
+      const g = getGraphFor(containerRef.current) as any;
       if (g && typeof g.zoom === "function") {
         return Math.round(g.zoom() * 100) / 100;
       }
       return 1;
     },
     rotateSelected: (deltaDegrees = 90) => {
-      const g = (getGraph(containerRef.current) ?? getGraph()) as any;
+      const g = getGraphFor(containerRef.current) as any;
       if (!g) return;
       rotateSelectedNodes(deltaDegrees, g);
     },
     flipSelected: (axis: "x" | "y" = "x") => {
-      const g = (getGraph(containerRef.current) ?? getGraph()) as any;
+      const g = getGraphFor(containerRef.current) as any;
       if (!g) return;
       flipSelectedNodes(axis, g);
     },
@@ -997,21 +1025,26 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       return isMinimapVisible(containerRef.current);
     },
     setGridMode: (mode: DiagramGridMode) => {
-      setDiagramGrid(mode, (getGraph(containerRef.current) ?? getGraph()) as any);
+      setDiagramGrid(mode, getGraphFor(containerRef.current) as any);
     },
     setSnapToGrid: (enabled: boolean) => {
-      setDiagramSnap(enabled, (getGraph(containerRef.current) ?? getGraph()) as any);
+      setDiagramSnap(enabled, getGraphFor(containerRef.current) as any);
     },
     centerCell: (cellId: string) => {
-      const g = (getGraph(containerRef.current) ?? getGraph()) as any;
+      const g = getGraphFor(containerRef.current) as any;
       if (!g || !cellId) return;
       const cell = g.getCellById?.(cellId);
       if (cell) {
         try {
           const cellView = g.findViewByCell(cell);
           if (cellView?.container) {
+            if (centerCellHaloTimerRef.current) {
+              clearTimeout(centerCellHaloTimerRef.current);
+              centerCellHaloTimerRef.current = null;
+            }
             cellView.container.classList.add("modelscript-anchor-halo");
-            setTimeout(() => {
+            centerCellHaloTimerRef.current = setTimeout(() => {
+              centerCellHaloTimerRef.current = null;
               cellView.container?.classList.remove("modelscript-anchor-halo");
             }, 3000);
           }
@@ -1028,6 +1061,160 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     playSimulation,
     pauseSimulation,
     seekSimulation,
+    exportSvgDataUrl: () => {
+      if (typeof document === "undefined" || typeof XMLSerializer === "undefined") {
+        return null;
+      }
+      const container = containerRef.current;
+      if (!container) return null;
+
+      const svg =
+        container.querySelector<SVGSVGElement>("svg.x6-graph-svg, svg.ms-graph-svg") ??
+        container.querySelector<SVGSVGElement>(":scope > svg") ??
+        container.querySelector<SVGSVGElement>("svg");
+      if (!svg) return null;
+
+      const viewportEl = svg.querySelector<SVGGElement>(".ms-canvas-viewport, .x6-graph-svg-viewport");
+      const edgesLayer = svg.querySelector<SVGGElement>(".ms-edges-layer");
+      const nodesLayer = svg.querySelector<SVGGElement>(".ms-nodes-layer");
+
+      const contentElementCount =
+        (nodesLayer?.children.length ?? 0) +
+        (edgesLayer?.children.length ?? 0) +
+        (!nodesLayer && !edgesLayer ? (viewportEl?.children.length ?? 0) : 0);
+
+      if (viewportEl && contentElementCount === 0) {
+        const canvas2d = container.querySelector<HTMLCanvasElement>("canvas.ms-canvas2d-layer");
+        if (canvas2d && canvas2d.width > 0 && canvas2d.height > 0 && canvas2d.style.display !== "none") {
+          try {
+            return canvas2d.toDataURL("image/png");
+          } catch {
+            return null;
+          }
+        }
+        return null;
+      }
+      if (!viewportEl && svg.children.length === 0) {
+        return null;
+      }
+
+      let minX = Number.POSITIVE_INFINITY;
+      let minY = Number.POSITIVE_INFINITY;
+      let maxX = Number.NEGATIVE_INFINITY;
+      let maxY = Number.NEGATIVE_INFINITY;
+      let measuredInViewportSpace = false;
+
+      const includeBBox = (el: SVGGraphicsElement | null): void => {
+        if (!el || typeof el.getBBox !== "function") return;
+        try {
+          const box = el.getBBox();
+          if (
+            Number.isFinite(box.x) &&
+            Number.isFinite(box.y) &&
+            Number.isFinite(box.width) &&
+            Number.isFinite(box.height) &&
+            (box.width > 0 || box.height > 0)
+          ) {
+            if (box.x < minX) minX = box.x;
+            if (box.y < minY) minY = box.y;
+            if (box.x + box.width > maxX) maxX = box.x + box.width;
+            if (box.y + box.height > maxY) maxY = box.y + box.height;
+          }
+        } catch {
+          // Ignore getBBox errors in headless/detached SVG subtrees
+        }
+      };
+
+      if (nodesLayer || edgesLayer) {
+        includeBBox(edgesLayer);
+        includeBBox(nodesLayer);
+        if (Number.isFinite(minX) && maxX > minX && maxY > minY) {
+          measuredInViewportSpace = true;
+        }
+      }
+      if (!measuredInViewportSpace && viewportEl) {
+        includeBBox(viewportEl);
+        if (Number.isFinite(minX) && maxX > minX && maxY > minY) {
+          measuredInViewportSpace = true;
+        }
+      }
+      if (!Number.isFinite(minX) || maxX <= minX || maxY <= minY) {
+        includeBBox(svg);
+      }
+      if (!Number.isFinite(minX) || maxX <= minX || maxY <= minY) {
+        const rect = svg.getBoundingClientRect();
+        if (rect.width > 1 && rect.height > 1) {
+          minX = 0;
+          minY = 0;
+          maxX = rect.width;
+          maxY = rect.height;
+        } else {
+          return null;
+        }
+      }
+
+      const rawW = maxX - minX;
+      const rawH = maxY - minY;
+      if (!Number.isFinite(rawW) || !Number.isFinite(rawH) || rawW <= 1 || rawH <= 1) {
+        return null;
+      }
+
+      const pad = Math.max(18, Math.min(48, Math.max(rawW, rawH) * 0.05));
+      const vbX = Math.floor(minX - pad);
+      const vbY = Math.floor(minY - pad);
+      const vbW = Math.ceil(rawW + pad * 2);
+      const vbH = Math.ceil(rawH + pad * 2);
+
+      const clone = svg.cloneNode(true) as SVGSVGElement;
+      clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      clone.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
+      clone.removeAttribute("style");
+
+      clone
+        .querySelectorAll(".ms-tools-layer, .ms-marquee-rect, .ms-alignment-guides, .x6-graph-svg-decorator")
+        .forEach((el) => el.remove());
+
+      for (const child of Array.from(clone.children)) {
+        if (
+          child.tagName.toLowerCase() === "rect" &&
+          child.getAttribute("width") === "100%" &&
+          child.getAttribute("height") === "100%"
+        ) {
+          child.remove();
+        }
+      }
+
+      if (measuredInViewportSpace) {
+        const cloneViewport = clone.querySelector<SVGGElement>(".ms-canvas-viewport, .x6-graph-svg-viewport");
+        if (cloneViewport) {
+          cloneViewport.removeAttribute("transform");
+        }
+      }
+
+      const bgRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      bgRect.setAttribute("x", String(vbX));
+      bgRect.setAttribute("y", String(vbY));
+      bgRect.setAttribute("width", String(vbW));
+      bgRect.setAttribute("height", String(vbH));
+      bgRect.setAttribute("fill", propsRef.current.theme === "vs-dark" ? "#121214" : "#ffffff");
+      const firstNonDefs = Array.from(clone.children).find((el) => el.tagName.toLowerCase() !== "defs") ?? null;
+      clone.insertBefore(bgRect, firstNonDefs);
+
+      const maxDim = Math.max(vbW, vbH);
+      const targetMax = Math.max(1280, Math.min(2048, maxDim));
+      const rasterScale = maxDim > 0 ? targetMax / maxDim : 1;
+      clone.setAttribute("width", String(Math.round(vbW * rasterScale)));
+      clone.setAttribute("height", String(Math.round(vbH * rasterScale)));
+      clone.setAttribute("viewBox", `${vbX} ${vbY} ${vbW} ${vbH}`);
+
+      try {
+        const svgStr = new XMLSerializer().serializeToString(clone);
+        if (!svgStr || svgStr.length === 0) return null;
+        return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgStr)}`;
+      } catch {
+        return null;
+      }
+    },
   }));
 
   useEffect(() => {
@@ -1059,7 +1246,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 
             if (resizeTimer) clearTimeout(resizeTimer);
             resizeTimer = setTimeout(() => {
-              const g = getGraph(container);
+              const g = getGraphFor(container);
               const zoomable = g as unknown as {
                 isDisposed?: () => boolean;
                 zoomToRect?: (rect: unknown, options?: unknown) => void;
@@ -1092,13 +1279,21 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 
     return () => {
       if (resizeTimer) clearTimeout(resizeTimer);
+      if (portalSyncRafRef.current !== null && typeof cancelAnimationFrame === "function") {
+        cancelAnimationFrame(portalSyncRafRef.current);
+        portalSyncRafRef.current = null;
+      }
+      if (centerCellHaloTimerRef.current) {
+        clearTimeout(centerCellHaloTimerRef.current);
+        centerCellHaloTimerRef.current = null;
+      }
       ro?.disconnect();
       disposeDiagram(container);
     };
   }, []);
 
   useEffect(() => {
-    if (containerRef.current && getGraph(containerRef.current)) {
+    if (containerRef.current && getGraphFor(containerRef.current)) {
       syncDiagramOptions();
     }
   }, [props.fitInsets?.top, props.fitInsets?.right, props.fitInsets?.bottom, props.fitInsets?.left]);
@@ -1117,7 +1312,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 
     if (props.diagramData && containerRef.current) {
       try {
-        const existingGraph = getGraph(containerRef.current) as {
+        const existingGraph = getGraphFor(containerRef.current) as {
           zoom?: () => number;
           zoomTo?: (s: number) => void;
           translate?: (tx?: number, ty?: number) => { tx: number; ty: number };
@@ -1130,7 +1325,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         attachGraphListeners();
 
         if (isThemeOnlyChange && savedScale !== null && savedTranslate) {
-          const nextGraph = getGraph(containerRef.current) as {
+          const nextGraph = getGraphFor(containerRef.current) as {
             zoomTo?: (s: number) => void;
             zoom?: (s: number, opts?: { absolute?: boolean }) => number;
             translate?: (tx: number, ty: number) => void;
@@ -1171,7 +1366,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
   }, [props.diagramData, props.theme]);
 
   useEffect(() => {
-    const g = getGraph(containerRef.current) as DiagramGraphInstance | null;
+    const g = getGraphFor(containerRef.current) as DiagramGraphInstance | null;
     g?.portal3DManager?.setFocusedPortal?.(focusedPortalId);
     syncEmbeddedPortals();
 
@@ -1191,7 +1386,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 
   useEffect(() => {
     if (props.selectedName !== undefined) {
-      const g = getGraph(containerRef.current) as DiagramGraphInstance | null;
+      const g = getGraphFor(containerRef.current) as DiagramGraphInstance | null;
       if (!g) return;
       if (!props.selectedName || isEphemeralDiagramNode(props.selectedName)) {
         isInternalSelectionRef.current = null;
@@ -1242,6 +1437,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 
     const gen = mountGenRef.current;
     const uniqueUris = Array.from(new Set(urisToFetch));
+    const abortController = typeof AbortController !== "undefined" ? new AbortController() : null;
     for (const uri of uniqueUris) {
       vtkFetchStateRef.current.add(uri);
       const fetchBytes = async (): Promise<Uint8Array | null> => {
@@ -1251,7 +1447,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           if (customBytes && customBytes.length > 0) return customBytes;
         }
         if (typeof fetch === "function" && isHttpOrRootUri(uri)) {
-          const response = await fetch(uri);
+          const response = await fetch(uri, abortController ? { signal: abortController.signal } : undefined);
           if (!response.ok) return null;
           const arrayBuf = await response.arrayBuffer();
           return arrayBuf.byteLength > 0 ? new Uint8Array(arrayBuf) : null;
@@ -1266,21 +1462,24 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           }
           if (bytes && bytes.length > 0) {
             setFetchedVtkBuffers((prev) => (prev[uri] === bytes ? prev : { ...prev, [uri]: bytes }));
+          } else {
+            vtkFetchStateRef.current.delete(uri);
           }
         })
         .catch(() => {
-          if (!mountedRef.current || mountGenRef.current !== gen) {
-            vtkFetchStateRef.current.delete(uri);
-          }
+          vtkFetchStateRef.current.delete(uri);
         });
     }
+    return () => {
+      abortController?.abort();
+    };
   }, [embeddedPortals, fetchedVtkBuffers, props.onFetchArtifactBytes]);
 
   // Bake offscreen ImageBitmap snapshots from the shared WebGL scissor canvas while portals are live
   // so zoomed-out / idle portals stamp crisp frozen frames on Layer 0 at 0 GPU cost.
   useEffect(() => {
     if (embeddedPortals.length === 0 || typeof document === "undefined") return;
-    const g = (getGraph(containerRef.current) ?? getGraph()) as DiagramGraphInstance | null;
+    const g = getGraphFor(containerRef.current) as DiagramGraphInstance | null;
     const baker = g?.snapshotBaker;
     if (!baker?.captureFromCanvas) return;
 
@@ -1421,7 +1620,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     if (typeof window === "undefined") return;
     const handleTimeScrub = (e: Event) => {
       const detail = (e as CustomEvent<{ time?: number | null; values?: Record<string, number> | null }>).detail;
-      const g = containerRef.current ? (getGraph(containerRef.current) as DiagramGraphInstance | null) : null;
+      const g = containerRef.current ? (getGraphFor(containerRef.current) as DiagramGraphInstance | null) : null;
 
       if (detail && detail.time != null && Number.isFinite(detail.time)) {
         const scrubTime = detail.time;
@@ -1445,18 +1644,34 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           }
         }
         g?.syncPlotCrosshair?.(scrubTime);
-        if (detail.values && g?.tickAnimations && g.animationEngine?.bindVariableIndices) {
-          const entries = Object.entries(detail.values);
-          const varMap = new Map<string, number>();
-          const frame = new Float64Array(entries.length);
-          for (let i = 0; i < entries.length; i++) {
-            const entry = entries[i];
-            if (!entry) continue;
-            varMap.set(entry[0], i);
-            frame[i] = entry[1];
+        if (detail.values && g?.tickAnimations) {
+          const existingMap =
+            (
+              g as unknown as { timelineStore?: { getVarIndexMap?: () => Map<string, number> } }
+            ).timelineStore?.getVarIndexMap?.() ?? simDataRef.current?.varIndexMap;
+          if (existingMap && existingMap.size > 0) {
+            const frame = new Float64Array(existingMap.size);
+            frame.fill(Number.NaN);
+            for (const [k, v] of Object.entries(detail.values)) {
+              const idx = existingMap.get(k);
+              if (idx !== undefined && idx >= 0 && idx < frame.length && Number.isFinite(v)) {
+                frame[idx] = v;
+              }
+            }
+            g.tickAnimations(frame, 1 / 60);
+          } else if (g.animationEngine?.bindVariableIndices) {
+            const entries = Object.entries(detail.values);
+            const varMap = new Map<string, number>();
+            const frame = new Float64Array(entries.length);
+            for (let i = 0; i < entries.length; i++) {
+              const entry = entries[i];
+              if (!entry) continue;
+              varMap.set(entry[0], i);
+              frame[i] = entry[1];
+            }
+            g.animationEngine.bindVariableIndices(varMap);
+            g.tickAnimations(frame, 1 / 60);
           }
-          g.animationEngine.bindVariableIndices(varMap);
-          g.tickAnimations(frame, 1 / 60);
         }
       } else {
         setScrubbedPoint({ time: null, values: null });
@@ -1490,7 +1705,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       clearHighlight();
 
       if (targetName && containerRef.current) {
-        const g = getGraph(containerRef.current) as DiagramGraphInstance | null;
+        const g = getGraphFor(containerRef.current) as DiagramGraphInstance | null;
         if (g) {
           const cell = g.getCellById?.(targetName);
           if (cell) {
@@ -1569,7 +1784,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     const handler = (ev: Event) => {
       clearPsseHighlights();
       const detail = (ev as CustomEvent<{ buses?: number[]; branches?: string[] }>).detail;
-      const g = getGraph(containerRef.current) as
+      const g = getGraphFor(containerRef.current) as
         | (DiagramGraphInstance & {
             getNodes?: () => Array<{ id?: string }>;
             getEdges?: () => Array<{ id?: string }>;
@@ -1614,12 +1829,14 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden" }}>
         <div
           ref={containerRef}
-          style={{ width: "100%", height: "100%", maxWidth: "100%", maxHeight: "100%", outline: "none" }}
+          role="application"
+          aria-label="Schematic diagram canvas"
+          style={{ width: "100%", height: "100%", maxWidth: "100%", maxHeight: "100%" }}
           tabIndex={0}
           onDragOver={(e) => {
             e.preventDefault();
             e.dataTransfer.dropEffect = "copy";
-            const g = getGraph(containerRef.current);
+            const g = getGraphFor(containerRef.current);
             if (g && containerRef.current) {
               const p = g.clientToLocal(e.clientX, e.clientY);
               movePlacementGhost(p.x, p.y);
@@ -1646,7 +1863,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 
             if (className && containerRef.current) {
               syncDiagramOptions();
-              const g = getGraph(containerRef.current) ?? initGraph(props.theme === "vs-dark", containerRef.current);
+              const g = getGraphFor(containerRef.current) ?? initGraph(props.theme === "vs-dark", containerRef.current);
               if (!g) return;
               const p = g.clientToLocal(e.clientX, e.clientY);
 
@@ -1908,7 +2125,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         )}
         {props.isLoading &&
           (() => {
-            const g = getGraph(containerRef.current) as {
+            const g = getGraphFor(containerRef.current) as {
               scale?: () => { sx: number; sy: number };
               translate?: () => { tx: number; ty: number };
             } | null;

@@ -21,7 +21,7 @@ export class CollabOverlayRenderer {
     for (const peer of peers) {
       if (!peer.cursor) continue;
       const { x, y } = peer.cursor;
-      const color = peer.color || "#007acc";
+      const color = escapeXml(peer.color || "#007acc");
       const name = peer.name || "Peer";
 
       parts.push(`
@@ -38,14 +38,16 @@ export class CollabOverlayRenderer {
     // 2. Sticky Notes / Comments
     for (const comment of comments) {
       const { id, x, y, authorName, text } = comment;
+      const truncatedText = text.length > 48 ? `${text.slice(0, 47)}…` : text;
+      const cardWidth = Math.max(160, Math.min(280, Math.ceil(truncatedText.length * 6.2) + 20));
       parts.push(`
-        <g class="collab-comment-pin" transform="translate(${x}, ${y})" pointer-events="auto" data-comment-id="${id}">
+        <g class="collab-comment-pin" transform="translate(${x}, ${y})" pointer-events="auto" data-comment-id="${escapeXml(id)}">
           <circle r="10" fill="#ff9800" stroke="#ffffff" stroke-width="2" />
           <text text-anchor="middle" y="4" fill="#ffffff" font-size="11" font-weight="bold">💬</text>
           <g class="collab-comment-card" transform="translate(14, -14)">
-            <rect rx="6" ry="6" width="160" height="60" fill="#252526" stroke="#ff9800" stroke-width="1.5" filter="drop-shadow(0 4px 12px rgba(0,0,0,0.5))" />
+            <rect rx="6" ry="6" width="${cardWidth}" height="60" fill="#252526" stroke="#ff9800" stroke-width="1.5" filter="drop-shadow(0 4px 12px rgba(0,0,0,0.5))" />
             <text x="8" y="16" fill="#ff9800" font-size="10" font-weight="bold">${escapeXml(authorName)}</text>
-            <text x="8" y="32" fill="#cccccc" font-size="11">${escapeXml(text)}</text>
+            <text x="8" y="32" fill="#cccccc" font-size="11">${escapeXml(truncatedText)}</text>
           </g>
         </g>
       `);
@@ -72,6 +74,11 @@ export class CollabOverlayRenderer {
       }
       @keyframes collabDash {
         to { stroke-dashoffset: -8; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .collab-selection-lock {
+          animation: none;
+        }
       }
     `;
   }

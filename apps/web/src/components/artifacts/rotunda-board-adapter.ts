@@ -18,10 +18,42 @@ import { parseModelicaParameters } from "../../util/modelica-params";
 const VALID_ENVIRONMENTS = new Set<string>(ROTUNDA_ENVIRONMENTS.map((env) => env.id));
 const VALID_SURFACE_MODES = new Set<string>(["desktop-2d", "spatial-3d", "webxr-vr"]);
 
+const INDUSTRIAL_ARTIFACT_PATTERN =
+  /(?:^|[\s._/-])(cad|cad3d|step|stp|fea|cfd|gcode|g-code|nc|vtk|vtu|vtp|stl|obj|iges|igs|dxf|scad|usd|mesh|3d-cad)(?:$|[\s._/-])/i;
+
+/**
+ * Chooses a bright default VR Rotunda environment for an artifact when no explicit
+ * environment is specified: `"warehouse"` (Factory floor) for CAD/STEP/FEA/CFD/GCode
+ * mechanical artifacts, and `"outdoors"` (Grassy Proving Ground) otherwise.
+ */
+export function resolveDefaultArtifactEnvironment(
+  viewType?: string | null | undefined,
+  viewConfig?: Record<string, unknown> | null | undefined,
+): RotundaEnvironmentId {
+  const candidates: string[] = [];
+  if (typeof viewType === "string" && viewType.trim()) {
+    candidates.push(viewType.trim());
+  }
+  if (viewConfig) {
+    for (const key of ["dialect", "language", "filename", "artifactUri", "url"] as const) {
+      const raw = viewConfig[key];
+      if (typeof raw === "string" && raw.trim()) {
+        candidates.push(raw.trim());
+      }
+    }
+  }
+  for (const token of candidates) {
+    if (INDUSTRIAL_ARTIFACT_PATTERN.test(token)) {
+      return "warehouse";
+    }
+  }
+  return "outdoors";
+}
+
 /** Validates an untrusted string into a supported `RotundaEnvironmentId`, falling back cleanly. */
 export function parseRotundaEnvironmentId(
   raw: unknown,
-  fallback: RotundaEnvironmentId = "dark-lab",
+  fallback: RotundaEnvironmentId = "outdoors",
 ): RotundaEnvironmentId {
   if (typeof raw === "string") {
     const normalized = raw.trim().toLowerCase();

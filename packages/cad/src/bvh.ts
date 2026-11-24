@@ -249,6 +249,117 @@ export class AssemblyBVH {
   }
 
   /**
+   * Incrementally refits the BVH in-place after moving/articulated parts change poses.
+   * Updates leaf item AABBs, propagates bounds bottom-up through `root`, and refreshes
+   * `flatAABBs` and `flatNodes` without reallocating the tree structure.
+   */
+  refit(updatedBounds: ReadonlyMap<number, AABB> | ((id: number) => AABB | null | undefined)): void {
+    if (this.totalItems === 0) return;
+
+    const lookup = typeof updatedBounds === "function" ? updatedBounds : (id: number) => updatedBounds.get(id) ?? null;
+
+    // 1. Update flatAABBs buffer in-place
+    for (let i = 0; i < this.totalItems; i++) {
+      const id = this.flatItemIds[i]!;
+      const next = lookup(id);
+      if (!next) continue;
+      const off = i * 6;
+      this.flatAABBs[off] = next.min[0];
+      this.flatAABBs[off + 1] = next.min[1];
+      this.flatAABBs[off + 2] = next.min[2];
+      this.flatAABBs[off + 3] = next.max[0];
+      this.flatAABBs[off + 4] = next.max[1];
+      this.flatAABBs[off + 5] = next.max[2];
+    }
+
+    // 2. Bottom-up refit of JS BVH tree
+    const refitNode = (node: BVHNode): void => {
+      if (node.items) {
+        if (node.items.length === 0) return;
+        let minX = Infinity;
+        let minY = Infinity;
+        let minZ = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        let maxZ = -Infinity;
+        for (let i = 0; i < node.items.length; i++) {
+          const item = node.items[i]!;
+          const next = lookup(item.id);
+          if (next) {
+            item.aabb = {
+              min: [next.min[0], next.min[1], next.min[2]],
+              max: [next.max[0], next.max[1], next.max[2]],
+            };
+          }
+          const b = item.aabb;
+          if (b.min[0] < minX) minX = b.min[0];
+          if (b.min[1] < minY) minY = b.min[1];
+          if (b.min[2] < minZ) minZ = b.min[2];
+          if (b.max[0] > maxX) maxX = b.max[0];
+          if (b.max[1] > maxY) maxY = b.max[1];
+          if (b.max[2] > maxZ) maxZ = b.max[2];
+        }
+        node.aabb = { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
+        return;
+      }
+
+      if (node.left) refitNode(node.left);
+      if (node.right) refitNode(node.right);
+      if (node.left && node.right) {
+        const l = node.left.aabb;
+        const r = node.right.aabb;
+        node.aabb = {
+          min: [Math.min(l.min[0], r.min[0]), Math.min(l.min[1], r.min[1]), Math.min(l.min[2], r.min[2])],
+          max: [Math.max(l.max[0], r.max[0]), Math.max(l.max[1], r.max[1]), Math.max(l.max[2], r.max[2])],
+        };
+      } else if (node.left) {
+        node.aabb = { min: [...node.left.aabb.min], max: [...node.left.aabb.max] };
+      } else if (node.right) {
+        node.aabb = { min: [...node.right.aabb.min], max: [...node.right.aabb.max] };
+      }
+    };
+    refitNode(this.root);
+
+    // 3. Bottom-up refit of 64-byte flatNodes buffer (preorder indices guarantee children > parent)
+    if (this.totalNodes > 0) {
+      const nodeF64 = this.flatNodes;
+      const nodeI32 = new Int32Array(nodeF64.buffer, nodeF64.byteOffset, this.totalNodes * 16);
+      for (let idx = this.totalNodes - 1; idx >= 0; idx--) {
+        const f64Off = idx * 8;
+        const i32Off = idx * 16;
+        const leftIdx = nodeI32[i32Off + 12]!;
+        const rightIdx = nodeI32[i32Off + 13]!;
+        if (leftIdx < 0 && rightIdx < 0) {
+          const itemId = nodeI32[i32Off + 14]!;
+          const next = itemId >= 0 ? lookup(itemId) : null;
+          if (next) {
+            nodeF64[f64Off + 0] = next.min[0];
+            nodeF64[f64Off + 1] = next.min[1];
+            nodeF64[f64Off + 2] = next.min[2];
+            nodeF64[f64Off + 3] = next.max[0];
+            nodeF64[f64Off + 4] = next.max[1];
+            nodeF64[f64Off + 5] = next.max[2];
+          }
+        } else if (leftIdx >= 0 && rightIdx >= 0) {
+          const lOff = leftIdx * 8;
+          const rOff = rightIdx * 8;
+          nodeF64[f64Off + 0] = Math.min(nodeF64[lOff + 0]!, nodeF64[rOff + 0]!);
+          nodeF64[f64Off + 1] = Math.min(nodeF64[lOff + 1]!, nodeF64[rOff + 1]!);
+          nodeF64[f64Off + 2] = Math.min(nodeF64[lOff + 2]!, nodeF64[rOff + 2]!);
+          nodeF64[f64Off + 3] = Math.max(nodeF64[lOff + 3]!, nodeF64[rOff + 3]!);
+          nodeF64[f64Off + 4] = Math.max(nodeF64[lOff + 4]!, nodeF64[rOff + 4]!);
+          nodeF64[f64Off + 5] = Math.max(nodeF64[lOff + 5]!, nodeF64[rOff + 5]!);
+        } else {
+          const cOff = (leftIdx >= 0 ? leftIdx : rightIdx) * 8;
+          for (let k = 0; k < 6; k++) {
+            nodeF64[f64Off + k] = nodeF64[cOff + k]!;
+          }
+        }
+      }
+    }
+  }
+
+  /**
    * Culls instances against camera view frustum planes.
    * Returns list of visible item IDs.
    */

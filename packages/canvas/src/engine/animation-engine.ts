@@ -156,7 +156,7 @@ export class SimulationTimelineStore {
   public loadTrajectories(time: Float64Array | number[], signals: Record<string, Float64Array | number[]>): void {
     this.timeAxis = time instanceof Float64Array ? time : Float64Array.from(time);
     this.signalSeries.clear();
-    this.varIndexMap.clear();
+    this.varIndexMap = new Map<string, number>();
 
     let idx = 0;
     for (const [name, arr] of Object.entries(signals)) {
@@ -178,10 +178,15 @@ export class SimulationTimelineStore {
     this.sampleAtTime(startTime);
   }
 
-  /** Pushes a real-time streaming SCADA / co-simulation state vector with zero allocations. */
+  /** Pushes a real-time streaming SCADA / co-simulation state vector with zero allocations after warmup. */
   public pushLiveFrame(time: number, frame: Float64Array, varIndexMap: Map<string, number>): void {
-    this.varIndexMap = varIndexMap;
-    this.scratchFrame = frame;
+    if (this.varIndexMap !== varIndexMap) {
+      this.varIndexMap = new Map(varIndexMap);
+    }
+    if (this.scratchFrame.length !== frame.length) {
+      this.scratchFrame = new Float64Array(frame.length);
+    }
+    this.scratchFrame.set(frame);
     this.state = {
       ...this.state,
       currentTime: time,
@@ -327,7 +332,7 @@ export class CompiledAnimationEngine {
       this.selectors[i] = b.selector ?? defaultSelector;
       this.varNames[i] = b.variableName;
       this.units[i] = b.unit;
-      this.precisions[i] = b.precision ?? 2;
+      this.precisions[i] = Math.max(0, Math.min(20, Math.round(b.precision ?? 2)));
       this.propKinds[i] = propKind;
       this.varIndices[i] = varIndexMap?.get(b.variableName) ?? -1;
       this.minVals[i] = b.min ?? 0;
@@ -352,6 +357,7 @@ export class CompiledAnimationEngine {
    */
   public tick(frame: Float64Array, dtSeconds: number, apply: (update: CompiledAnimationUpdate) => void): number {
     let mutated = 0;
+    const safeDt = Number.isFinite(dtSeconds) ? dtSeconds : 0;
     // Reuse a single scratch object to maintain zero GC pressure in tight 60-120 FPS loops
     const scratch: CompiledAnimationUpdate = {
       targetId: "",
@@ -369,7 +375,9 @@ export class CompiledAnimationEngine {
       if (varIdx < 0 || varIdx >= frame.length) continue;
 
       const raw = frame[varIdx]!;
+      if (!Number.isFinite(raw)) continue;
       const val = raw * this.scales[i]! + this.offsets[i]!;
+      if (!Number.isFinite(val)) continue;
       const propKind = this.propKinds[i]! as AnimationPropKindValue;
 
       if (propKind !== AnimationPropKind.FLOW_SPEED && val === this.lastAppliedValues[i]) {
@@ -395,10 +403,13 @@ export class CompiledAnimationEngine {
         scratch.color = evaluateTurboColormap(norm);
       } else if (propKind === AnimationPropKind.TEXT) {
         const unit = this.units[i];
-        const digits = this.precisions[i] ?? 2;
+        const digits = Math.min(20, this.precisions[i] ?? 2);
         scratch.formattedValue = unit ? `${val.toFixed(digits)} ${unit}` : val.toFixed(digits);
       } else if (propKind === AnimationPropKind.FLOW_SPEED) {
-        this.flowPhases[i] = (this.flowPhases[i]! + val * dtSeconds * 24) % 10000;
+        const nextPhase = (this.flowPhases[i]! + val * safeDt * 24) % 10000;
+        if (Number.isFinite(nextPhase)) {
+          this.flowPhases[i] = nextPhase;
+        }
         scratch.numericValue = this.flowPhases[i]!;
       }
 

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { CanvasDocument, CanvasPeerPresence, SurfacePresentationMode } from "@modelscript/canvas";
+import type { DiagramEditAction } from "@modelscript/diagram/protocol";
+import type { GalleryComponentItem } from "@modelscript/editor/workbench/componentGalleryCatalog.js";
 import { EngineeringRotunda } from "@modelscript/editor/workbench/vr-rotunda/EngineeringRotunda.js";
+import type { SpatialNodePose3D } from "@modelscript/editor/workbench/vr-rotunda/spatial-diagram-state.js";
 import type {
   RotundaAnimationControllerLike,
   RotundaEnvironmentId,
@@ -29,13 +32,26 @@ export interface SpatialVrSurfaceProps {
   onTileSelect?: ((tileId: string) => void) | undefined;
   onMoveTile?: ((tileId: string, x: number, y: number) => void) | undefined;
   onCreateSpatialWire?: ((sourceTileId: string, targetTileId: string, sourceAnchor?: string) => void) | undefined;
+  initialDiagramEditorEnabled?: boolean | undefined;
+  libraryCatalog?: readonly GalleryComponentItem[] | undefined;
+  onDiagramEdit?:
+    | ((
+        actions: DiagramEditAction[],
+        context: {
+          tileId: string;
+          spatial3DLayout: Record<string, SpatialNodePose3D>;
+          diagramData: { nodes: unknown[]; edges: unknown[] };
+        },
+      ) => void)
+    | undefined;
 }
 
 /**
  * Unified 3D Spatial & WebXR VR Editing Surface delegating directly to the
  * Engineering Rotunda workstation (`@modelscript/editor/workbench/vr-rotunda/EngineeringRotunda`).
  * Preserves full backward compatibility for `.mscanvas` spatial boards, SSR markup,
- * JSDOM fallback Canvas2D painting, ray drag write-back, and 3D CADPort-to-2D wiring.
+ * JSDOM fallback Canvas2D painting, ray drag write-back, 3D CADPort-to-2D wiring,
+ * and full 3D extruded schematic diagram authoring.
  */
 export function SpatialVrSurface({
   document: doc,
@@ -54,6 +70,9 @@ export function SpatialVrSurface({
   onTileSelect,
   onMoveTile,
   onCreateSpatialWire,
+  initialDiagramEditorEnabled,
+  libraryCatalog,
+  onDiagramEdit,
 }: SpatialVrSurfaceProps): React.ReactElement {
   return (
     <EngineeringRotunda
@@ -73,6 +92,9 @@ export function SpatialVrSurface({
       onTileSelect={onTileSelect}
       onMoveTile={onMoveTile}
       onCreateSpatialWire={onCreateSpatialWire}
+      initialDiagramEditorEnabled={initialDiagramEditorEnabled}
+      libraryCatalog={libraryCatalog}
+      onDiagramEdit={onDiagramEdit}
     />
   );
 }

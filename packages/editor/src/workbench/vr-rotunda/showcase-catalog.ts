@@ -78,8 +78,16 @@ const SHOWCASE_CFD_TURBOFAN: RotundaModelEntry = {
   accentColor: "#0ea5e9",
 };
 
+const SHOWCASE_OCTOPUS_ROV: RotundaModelEntry = {
+  id: "showcase-octopus-rov",
+  title: "Pelagos OC-8 Robotic Octopus",
+  subtitle: "8-Arm Subsea Drone · 202 Links · 489 Wheels · 7-Piston Pump",
+  kind: "octopus-rov",
+  accentColor: "#f97316",
+};
+
 /**
- * Canonical catalog of all 9 distinct procedural multi-part 3D engineering assemblies
+ * Canonical catalog of all 10 distinct procedural multi-part 3D engineering assemblies
  * hosted on the Engineering Rotunda Circular Metrology Plinth & Orbital Carousel.
  */
 export const ROTUNDA_SHOWCASE_MODELS: readonly RotundaModelEntry[] = [
@@ -92,6 +100,7 @@ export const ROTUNDA_SHOWCASE_MODELS: readonly RotundaModelEntry[] = [
   SHOWCASE_CNC_IMPELLER,
   SHOWCASE_FEA_BRACKET,
   SHOWCASE_CFD_TURBOFAN,
+  SHOWCASE_OCTOPUS_ROV,
 ] as const;
 
 // ── Domain Schematic & Telemetry Synthesis Helpers ──────────────────────────
@@ -829,18 +838,200 @@ function createOrbitalSpacecraftBoard(): CanvasDocument {
  * Curated multi-domain VR engineering scenarios pairing a tailored `.mscanvas` 45° podium board,
  * curated 3D model carousel, ideal procedural environment, CAE physics overlay, and scale mode.
  */
+function createSubseaOctopusBoard(): CanvasDocument {
+  const diagramData = buildScenarioDiagramData(
+    [
+      {
+        id: "mission_ctrl",
+        title: "Mission Autonomy",
+        subtitle: "25s 4-Phase Seq",
+        x: 24,
+        y: 26,
+        width: 142,
+        height: 54,
+        stroke: "#38bdf8",
+        ports: [
+          { id: "out_spd", x: 142, y: 18, color: "#10b981" },
+          { id: "out_dep", x: 142, y: 38, color: "#38bdf8" },
+        ],
+      },
+      {
+        id: "seawater_intake",
+        title: "Seawater Intake",
+        subtitle: "p = patm + rho·g·z",
+        x: 24,
+        y: 122,
+        width: 142,
+        height: 54,
+        stroke: "#06b6d4",
+        ports: [{ id: "port_out", x: 142, y: 27, color: "#06b6d4" }],
+      },
+      {
+        id: "pump_core",
+        title: "7-Piston Pump",
+        subtitle: "Swashplate 0.28 rad",
+        x: 204,
+        y: 108,
+        width: 152,
+        height: 62,
+        stroke: "#10b981",
+        ports: [
+          { id: "port_in", x: 0, y: 40, color: "#06b6d4" },
+          { id: "shaft", x: 76, y: 0, color: "#10b981" },
+          { id: "port_out", x: 152, y: 31, color: "#0284c7" },
+        ],
+      },
+      {
+        id: "siphon_nozzle",
+        title: "Siphon Nozzle",
+        subtitle: "2.68 m/s · 6.0 N",
+        x: 392,
+        y: 108,
+        width: 146,
+        height: 62,
+        stroke: "#f97316",
+        ports: [
+          { id: "port_in", x: 0, y: 31, color: "#0284c7" },
+          { id: "flange_hull", x: 146, y: 31, color: "#f97316" },
+        ],
+      },
+      {
+        id: "mantle_hull",
+        title: "Mantle 4-DOF Body",
+        subtitle: "Surge · Heave · Att",
+        x: 410,
+        y: 20,
+        width: 156,
+        height: 58,
+        stroke: "#cbd5e1",
+        ports: [
+          { id: "flange_surge", x: 0, y: 42, color: "#f97316" },
+          { id: "flange_heave", x: 0, y: 18, color: "#38bdf8" },
+          { id: "flange_arms", x: 78, y: 58, color: "#a855f7" },
+        ],
+      },
+      {
+        id: "arm_bank",
+        title: "8 Arm Chains",
+        subtitle: "202 Links · Arm 3 Detach",
+        x: 386,
+        y: 204,
+        width: 176,
+        height: 58,
+        stroke: "#a855f7",
+        ports: [{ id: "flange_mantle", x: 88, y: 0, color: "#a855f7" }],
+      },
+    ],
+    [
+      {
+        id: "e_mission_pump",
+        sourceCell: "mission_ctrl",
+        sourcePort: "out_spd",
+        targetCell: "pump_core",
+        targetPort: "shaft",
+        stroke: "#10b981",
+      },
+      {
+        id: "e_mission_hull",
+        sourceCell: "mission_ctrl",
+        sourcePort: "out_dep",
+        targetCell: "mantle_hull",
+        targetPort: "flange_heave",
+        stroke: "#38bdf8",
+      },
+      {
+        id: "e_intake_pump",
+        sourceCell: "seawater_intake",
+        sourcePort: "port_out",
+        targetCell: "pump_core",
+        targetPort: "port_in",
+        stroke: "#06b6d4",
+      },
+      {
+        id: "e_pump_siphon",
+        sourceCell: "pump_core",
+        sourcePort: "port_out",
+        targetCell: "siphon_nozzle",
+        targetPort: "port_in",
+        stroke: "#0284c7",
+      },
+      {
+        id: "e_siphon_hull",
+        sourceCell: "siphon_nozzle",
+        sourcePort: "flange_hull",
+        targetCell: "mantle_hull",
+        targetPort: "flange_surge",
+        stroke: "#f97316",
+      },
+      {
+        id: "e_arms_hull",
+        sourceCell: "arm_bank",
+        sourcePort: "flange_mantle",
+        targetCell: "mantle_hull",
+        targetPort: "flange_arms",
+        stroke: "#a855f7",
+      },
+    ],
+  );
+
+  const t = Array.from({ length: 51 }, (_, i) => i * 0.5);
+  const thrust = t.map((sec) => {
+    const burst = sec >= 13 && sec <= 20 ? 1 : 0.15;
+    return Number((6.0 * burst * (0.9 + 0.1 * Math.sin(sec * 2.4))).toFixed(2));
+  });
+  const jetVel = thrust.map((f) => Number((2.68 * Math.sqrt(Math.max(0, f / 6.0))).toFixed(2)));
+  const pumpTemp = t.map((sec) => Number((23 + (sec >= 13 && sec <= 20 ? 12 : 2) + Math.sin(sec * 0.6)).toFixed(1)));
+
+  return buildRotundaCanvasDocument({
+    title: "Pelagos OC-8 Subsea Robotic Octopus",
+    languageId: "modelica",
+    artifactUri: "PelagosOC8Octopus.mo",
+    diagramData,
+    parameters: [
+      { name: "arm_segments", value: 202, unit: "links" },
+      { name: "traction_wheels", value: 489, unit: "rollers" },
+      { name: "pump_pistons", value: 7, unit: "cyl" },
+      { name: "siphon_vmax", value: 2.68, unit: "m/s" },
+      { name: "burst_thrust", value: 6.0, unit: "N" },
+      { name: "detach_mode", value: "AUTO", unit: "arm3" },
+    ],
+    simulationSeries: [
+      { id: "siphon_thrust", label: "Siphon Thrust (N)", color: "#f97316", unit: "N", x: t, y: thrust },
+      { id: "jet_velocity", label: "Jet Velocity (m/s)", color: "#06b6d4", unit: "m/s", x: t, y: jetVel },
+      { id: "pump_temp", label: "7-Piston Core Temp (°C)", color: "#10b981", unit: "°C", x: t, y: pumpTemp },
+    ],
+  });
+}
+
 export const ROTUNDA_SHOWCASE_SCENARIOS: readonly RotundaScenarioPreset[] = [
   {
     id: "all-showcase",
-    label: "Full VR Showcase (9 Models)",
-    shortLabel: "All 9 Models",
+    label: "Full VR Showcase (10 Models)",
+    shortLabel: "All 10 Models",
     description:
-      "Complete 9-assembly multi-domain showcase paired with the canonical polyglot electro-mechanical system board.",
-    recommendedEnvironment: "dark-lab",
+      "Complete 10-assembly multi-domain showcase including the 691-part Pelagos OC-8 Robotic Octopus paired with the canonical polyglot electro-mechanical system board.",
+    recommendedEnvironment: "outdoors",
     recommendedScaleMode: "tabletop",
     recommendedCaeOverlay: "none",
     models: ROTUNDA_SHOWCASE_MODELS,
     createDocument: () => createCanonicalPolyglotDemoBoard(),
+  },
+  {
+    id: "subsea-octopus",
+    label: "Pelagos OC-8 Subsea Octopus Field Sim",
+    shortLabel: "Subsea ROV",
+    description:
+      "Bright studio inspection of the 8-arm Pelagos OC-8 robotic octopus (202 linked segments, 489 wheels, internal 7-piston swashplate pump, 2.68 m/s siphon jet, and autonomous Arm 3 detach/reconnect).",
+    recommendedEnvironment: "office",
+    recommendedScaleMode: "tabletop",
+    recommendedCaeOverlay: "none",
+    models: [
+      { ...SHOWCASE_OCTOPUS_ROV, sourceTileId: "tile_primary_schematic" },
+      SHOWCASE_CFD_TURBOFAN,
+      SHOWCASE_ROBOT_ARM,
+      SHOWCASE_ACTUATOR,
+    ],
+    createDocument: createSubseaOctopusBoard,
   },
   {
     id: "aerospace-proving-ground",

@@ -352,6 +352,8 @@ export const FLAG_VAR_FINAL = 1 << 8;
 export const FLAG_VAR_VIRTUAL = 1 << 9;
 /** Bitmask flag indicating a parameter marked with `annotation(Evaluate = true)` or structural evaluation. */
 export const FLAG_VAR_EVALUATE = 1 << 10;
+/** Bitmask flag indicating a parameter explicitly annotated with `annotation(Evaluate = true)` (MLS §18.3). */
+export const FLAG_VAR_EVALUATE_EXPLICIT = 1 << 11;
 
 /** Bitmask flag indicating an `initial equation`. */
 export const FLAG_EQ_INITIAL = 1 << 0;

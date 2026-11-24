@@ -4,7 +4,16 @@ import { Line, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import React, { Suspense, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import type { AssemblyVisibilityState } from "../cad-viewer/assembly-visibility.js";
+import { useRetainGltfUrl } from "../cad-viewer/gltf-cache-guard.js";
 import { VtkRenderer } from "../cad-viewer/VtkRenderer.js";
+import { OctopusShowcaseAssembly } from "./OctopusShowcaseAssembly.js";
+import {
+  computeGeometryCaeVertexColors,
+  createCaeFieldGradientTexture,
+  sampleCaeFieldRgb,
+  type CaeFieldOverlayMode,
+} from "./procedural-pbr.js";
 import {
   EvBatteryPackAssembly,
   HexacopterDroneAssembly,
@@ -27,11 +36,21 @@ export interface HeroModelAssetProps {
   caeOverlay: RotundaCaeOverlay; // "none" | "fea-stress" | "cfd-flow" | "thermal"
   renderStyle: RotundaRenderStyle; // "shaded" | "wireframe" | "xray"
   simulationTime: number;
+  simulationTimeRef?: React.RefObject<number> | undefined;
   isPlaying: boolean;
   clippingPlanes: THREE.Plane[];
   animationController?: RotundaAnimationControllerLike | null | undefined;
   isGhost?: boolean | undefined; // translucent hologram styling for prev/next carousel previews
   ghostOpacity?: number | undefined;
+  visibility?: AssemblyVisibilityState | undefined;
+  isInXr?: boolean | undefined;
+  dark?: boolean | undefined;
+  onSelectSubsystem?: ((subsystemId: string) => void) | undefined;
+}
+
+function readLiveSimTime(simulationTime: number, simulationTimeRef?: React.RefObject<number> | undefined): number {
+  const refVal = simulationTimeRef?.current;
+  return typeof refVal === "number" && Number.isFinite(refVal) ? refVal : simulationTime;
 }
 
 // ── Color Palettes & Material Resolution ────────────────────────────────────
@@ -51,6 +70,17 @@ const THERMAL_STOPS: ReadonlyArray<[number, number, number]> = [
   [0xf5 / 255, 0x9e / 255, 0x0b / 255], // amber
   [0xfe / 255, 0xf9 / 255, 0xc3 / 255], // white-hot core
 ];
+
+const SHARED_CAE_GRADIENT_TEXTURES: Partial<Record<CaeFieldOverlayMode, THREE.DataTexture>> = {};
+
+function getSharedCaeGradientTexture(mode: CaeFieldOverlayMode): THREE.DataTexture {
+  let tex = SHARED_CAE_GRADIENT_TEXTURES[mode];
+  if (!tex) {
+    tex = createCaeFieldGradientTexture(mode, 128);
+    SHARED_CAE_GRADIENT_TEXTURES[mode] = tex;
+  }
+  return tex;
+}
 
 function sampleGradientHex(stops: ReadonlyArray<[number, number, number]>, tRaw: number): string {
   const t = clampNumber(tRaw, 0, 1);
@@ -84,6 +114,7 @@ export interface PartMaterialProps {
   stressFactor?: number | undefined;
   thermalFactor?: number | undefined;
   doubleSide?: boolean | undefined;
+  useVertexColors?: boolean | undefined;
   renderStyle: RotundaRenderStyle;
   caeOverlay: RotundaCaeOverlay;
   isGhost: boolean;
@@ -94,7 +125,9 @@ export interface PartMaterialProps {
 
 /**
  * Shared PBR/CAE/Hologram material component that cleanly honors clipping planes,
- * render styles (shaded/wireframe/xray), live CAE overlays, and ghost hologram styling.
+ * render styles (shaded/wireframe/xray), live scientific CAE contour overlays (both
+ * geometry-aware per-vertex stress/Cp fields and procedural UV contour maps), and
+ * ghost hologram styling.
  */
 export function PartMaterial({
   baseColor,
@@ -105,6 +138,7 @@ export function PartMaterial({
   stressFactor = 0.45,
   thermalFactor = 0.45,
   doubleSide = false,
+  useVertexColors = false,
   renderStyle,
   caeOverlay,
   isGhost,
@@ -115,14 +149,39 @@ export function PartMaterial({
   const matRef = useRef<THREE.MeshStandardMaterial | null>(null);
   const effectivePlanes = isGhost ? EMPTY_PLANES : clippingPlanes;
   const hasClipping = effectivePlanes.length > 0;
+  const activeVertexColors = !isGhost && useVertexColors && caeOverlay !== "none" && renderStyle === "shaded";
+  const activeContourMap: THREE.DataTexture | null =
+    !isGhost &&
+    !activeVertexColors &&
+    renderStyle === "shaded" &&
+    (caeOverlay === "fea-stress" || caeOverlay === "thermal")
+      ? getSharedCaeGradientTexture(caeOverlay)
+      : null;
 
-  // Ensure Three.js recompiles shader when NUM_CLIPPING_PLANES toggles between 0 and >0
+  const prevStateRef = useRef<{
+    hasClipping: boolean;
+    vertexColors: boolean;
+    hasMap: boolean;
+  }>({
+    hasClipping,
+    vertexColors: activeVertexColors,
+    hasMap: activeContourMap !== null,
+  });
+
+  // Ensure Three.js recompiles shader ONLY when shader-define flags actually toggle
   useEffect(() => {
     const mat = matRef.current;
     if (!mat) return;
     mat.clippingPlanes = effectivePlanes;
-    mat.needsUpdate = true;
-  }, [effectivePlanes, hasClipping]);
+    mat.vertexColors = activeVertexColors;
+    mat.map = activeContourMap;
+    const prev = prevStateRef.current;
+    const hasMap = activeContourMap !== null;
+    if (prev.hasClipping !== hasClipping || prev.vertexColors !== activeVertexColors || prev.hasMap !== hasMap) {
+      prevStateRef.current = { hasClipping, vertexColors: activeVertexColors, hasMap };
+      mat.needsUpdate = true;
+    }
+  }, [effectivePlanes, hasClipping, activeVertexColors, activeContourMap]);
 
   if (isGhost) {
     return (
@@ -148,27 +207,34 @@ export function PartMaterial({
   let resolvedMetalness = metalness;
   let resolvedRoughness = roughness;
 
-  if (caeOverlay === "fea-stress") {
-    const dynamicStress = clampNumber(stressFactor + 0.07 * Math.sin(simulationTime * 2.4 + stressFactor * 4.2), 0, 1);
-    resolvedColor = sampleTurboStressColor(dynamicStress);
-    resolvedEmissive = resolvedColor;
-    resolvedEmissiveIntensity = 0.22 + dynamicStress * 0.34;
-    resolvedMetalness = 0.24;
-    resolvedRoughness = 0.42;
+  if (activeVertexColors) {
+    // Let the true per-vertex Von Mises / CFD Cp / Thermal colors define the surface cleanly
+    resolvedColor = "#ffffff";
+    resolvedEmissive = "#000000";
+    resolvedEmissiveIntensity = 0;
+    resolvedMetalness = caeOverlay === "cfd-flow" ? 0.24 : 0.14;
+    resolvedRoughness = caeOverlay === "cfd-flow" ? 0.36 : 0.42;
+  } else if (caeOverlay === "fea-stress") {
+    const dynamicStress = clampNumber(stressFactor + 0.05 * Math.sin(simulationTime * 1.8 + stressFactor * 4.2), 0, 1);
+    resolvedColor = activeContourMap ? "#ffffff" : sampleTurboStressColor(dynamicStress);
+    resolvedEmissive = activeContourMap ? "#000000" : resolvedColor;
+    resolvedEmissiveIntensity = activeContourMap ? 0 : 0.16 + dynamicStress * 0.24;
+    resolvedMetalness = 0.16;
+    resolvedRoughness = 0.44;
   } else if (caeOverlay === "thermal") {
     const dynamicThermal = clampNumber(
-      thermalFactor + 0.08 * Math.sin(simulationTime * 1.9 + thermalFactor * 3.1),
+      thermalFactor + 0.06 * Math.sin(simulationTime * 1.6 + thermalFactor * 3.1),
       0,
       1,
     );
-    resolvedColor = sampleThermalColor(dynamicThermal);
-    resolvedEmissive = resolvedColor;
-    resolvedEmissiveIntensity = 0.34 + dynamicThermal * 0.54;
-    resolvedMetalness = 0.16;
+    resolvedColor = activeContourMap ? "#ffffff" : sampleThermalColor(dynamicThermal);
+    resolvedEmissive = activeContourMap ? "#000000" : resolvedColor;
+    resolvedEmissiveIntensity = activeContourMap ? 0 : 0.24 + dynamicThermal * 0.4;
+    resolvedMetalness = 0.14;
     resolvedRoughness = 0.46;
   } else if (caeOverlay === "cfd-flow") {
     resolvedEmissive = "#0284c7";
-    resolvedEmissiveIntensity = Math.max(emissiveIntensity, 0.12);
+    resolvedEmissiveIntensity = Math.max(emissiveIntensity, 0.08);
   }
 
   if (renderStyle === "wireframe") {
@@ -214,6 +280,8 @@ export function PartMaterial({
     <meshStandardMaterial
       ref={matRef}
       color={resolvedColor}
+      map={activeContourMap}
+      vertexColors={activeVertexColors}
       emissive={resolvedEmissive}
       emissiveIntensity={resolvedEmissiveIntensity}
       metalness={resolvedMetalness}
@@ -299,6 +367,7 @@ interface ProceduralAssemblyProps {
   caeOverlay: RotundaCaeOverlay;
   renderStyle: RotundaRenderStyle;
   simulationTime: number;
+  simulationTimeRef?: React.RefObject<number> | undefined;
   clippingPlanes: THREE.Plane[];
   isGhost: boolean;
   ghostOpacity: number;
@@ -315,15 +384,21 @@ function HarmonicServoActuator({
   caeOverlay,
   renderStyle,
   simulationTime,
+  simulationTimeRef,
   clippingPlanes,
   isGhost,
   ghostOpacity,
   accentColor,
 }: ProceduralAssemblyProps): React.ReactElement {
   const e = clampNumber(explodeFactor, 0, 1);
-  const carrierAngle = simulationTime * 0.85;
-  const satelliteSpin = -simulationTime * 2.55;
-  const shaftSpin = simulationTime * 1.45;
+  const carrierGroupRef = useRef<THREE.Group | null>(null);
+  const shaftGroupRef = useRef<THREE.Group | null>(null);
+  const satGroupRefs = useRef<Array<THREE.Group | null>>([]);
+
+  const initialTime = readLiveSimTime(simulationTime, simulationTimeRef);
+  const carrierAngle = initialTime * 0.85;
+  const satelliteSpin = -initialTime * 2.55;
+  const shaftSpin = initialTime * 1.45;
 
   const baseY = 0.04 - e * 0.16;
   const statorY = 0.21;
@@ -335,6 +410,26 @@ function HarmonicServoActuator({
   const shaftY = 0.45 + e * 0.44;
   const capY = 0.56 + e * 0.58;
   const fastenerY = 0.62 + e * 0.72;
+
+  useFrame(() => {
+    const t = readLiveSimTime(simulationTime, simulationTimeRef);
+    const liveCarrier = t * 0.85;
+    const liveSatSpin = -t * 2.55;
+    const liveShaftSpin = t * 1.45;
+    if (carrierGroupRef.current) {
+      carrierGroupRef.current.rotation.y = liveCarrier;
+    }
+    if (shaftGroupRef.current) {
+      shaftGroupRef.current.rotation.y = liveShaftSpin;
+    }
+    for (let i = 0; i < SERVO_ANGLES_3.length; i++) {
+      const sat = satGroupRefs.current[i];
+      if (!sat) continue;
+      const orbitAngle = (SERVO_ANGLES_3[i] ?? 0) + liveCarrier;
+      sat.position.set(Math.cos(orbitAngle) * satOrbitR, 0, Math.sin(orbitAngle) * satOrbitR);
+      sat.rotation.y = liveSatSpin;
+    }
+  });
 
   const leaderLines = useMemo<LeaderLineSpec[]>(() => {
     if (e <= 0.04 || isGhost) return [];
@@ -370,7 +465,7 @@ function HarmonicServoActuator({
     <group>
       {/* 1. Base Mounting Flange Ring + 6 perimeter bolt bosses */}
       <group position={[0, baseY, 0]}>
-        <mesh castShadow receiveShadow>
+        <mesh>
           <cylinderGeometry args={[0.31, 0.33, 0.06, 40]} />
           <PartMaterial
             {...sharedMat}
@@ -382,11 +477,7 @@ function HarmonicServoActuator({
           />
         </mesh>
         {SERVO_ANGLES_6.map((angle, idx) => (
-          <mesh
-            key={`flange-boss-${idx}`}
-            position={[Math.cos(angle) * 0.275, 0.036, Math.sin(angle) * 0.275]}
-            castShadow
-          >
+          <mesh key={`flange-boss-${idx}`} position={[Math.cos(angle) * 0.275, 0.036, Math.sin(angle) * 0.275]}>
             <cylinderGeometry args={[0.022, 0.022, 0.026, 12]} />
             <PartMaterial
               {...sharedMat}
@@ -402,7 +493,7 @@ function HarmonicServoActuator({
 
       {/* 2. Stator Housing Shell with cooling ribs */}
       <group position={[0, statorY, 0]}>
-        <mesh castShadow receiveShadow>
+        <mesh>
           <cylinderGeometry args={[0.255, 0.265, 0.26, 36]} />
           <PartMaterial
             {...sharedMat}
@@ -414,7 +505,7 @@ function HarmonicServoActuator({
           />
         </mesh>
         {[-0.08, -0.025, 0.03, 0.085].map((finY, idx) => (
-          <mesh key={`fin-${idx}`} position={[0, finY, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+          <mesh key={`fin-${idx}`} position={[0, finY, 0]} rotation={[Math.PI / 2, 0, 0]}>
             <torusGeometry args={[0.268, 0.013, 10, 40]} />
             <PartMaterial
               {...sharedMat}
@@ -438,7 +529,7 @@ function HarmonicServoActuator({
               position={[Math.cos(angle) * r, 0, Math.sin(angle) * r]}
               rotation={[0, -angle, 0]}
             >
-              <mesh castShadow>
+              <mesh>
                 <boxGeometry args={[0.068, 0.15, 0.078]} />
                 <PartMaterial
                   {...sharedMat}
@@ -457,8 +548,8 @@ function HarmonicServoActuator({
       </group>
 
       {/* 4. Planetary Carrier Gear & Ring */}
-      <group position={[0, carrierY, 0]} rotation={[0, carrierAngle, 0]}>
-        <mesh castShadow receiveShadow>
+      <group ref={carrierGroupRef} position={[0, carrierY, 0]} rotation={[0, carrierAngle, 0]}>
+        <mesh>
           <cylinderGeometry args={[0.21, 0.21, 0.044, 32]} />
           <PartMaterial
             {...sharedMat}
@@ -469,7 +560,7 @@ function HarmonicServoActuator({
             thermalFactor={0.74}
           />
         </mesh>
-        <mesh position={[0, 0.032, 0]} castShadow>
+        <mesh position={[0, 0.032, 0]}>
           <cylinderGeometry args={[0.065, 0.065, 0.056, 18]} />
           <PartMaterial
             {...sharedMat}
@@ -482,17 +573,20 @@ function HarmonicServoActuator({
         </mesh>
       </group>
 
-      {/* 5. Three Satellite Planetary Gears (orbit + spin with simulationTime) */}
+      {/* 5. Three Satellite Planetary Gears (orbit + spin smoothly at 72Hz via ref) */}
       <group position={[0, satY, 0]}>
         {SERVO_ANGLES_3.map((baseAngle, idx) => {
           const orbitAngle = baseAngle + carrierAngle;
           return (
             <group
               key={`sat-${idx}`}
+              ref={(el) => {
+                satGroupRefs.current[idx] = el;
+              }}
               position={[Math.cos(orbitAngle) * satOrbitR, 0, Math.sin(orbitAngle) * satOrbitR]}
               rotation={[0, satelliteSpin, 0]}
             >
-              <mesh castShadow>
+              <mesh>
                 <cylinderGeometry args={[0.054, 0.054, 0.052, 16]} />
                 <PartMaterial
                   {...sharedMat}
@@ -520,8 +614,8 @@ function HarmonicServoActuator({
       </group>
 
       {/* 6. Output Shaft Spline */}
-      <group position={[0, shaftY, 0]} rotation={[0, shaftSpin, 0]}>
-        <mesh castShadow>
+      <group ref={shaftGroupRef} position={[0, shaftY, 0]} rotation={[0, shaftSpin, 0]}>
+        <mesh>
           <cylinderGeometry args={[0.048, 0.058, 0.22, 16]} />
           <PartMaterial
             {...sharedMat}
@@ -556,7 +650,7 @@ function HarmonicServoActuator({
 
       {/* 7. Top Optical Encoder Cap + Accent Ring */}
       <group position={[0, capY, 0]}>
-        <mesh castShadow receiveShadow>
+        <mesh>
           <cylinderGeometry args={[0.205, 0.23, 0.068, 36]} />
           <PartMaterial
             {...sharedMat}
@@ -587,7 +681,7 @@ function HarmonicServoActuator({
         {SERVO_ANGLES_6.map((angle, idx) => {
           const r = 0.17 + e * 0.04;
           return (
-            <mesh key={`cap-bolt-${idx}`} position={[Math.cos(angle) * r, 0, Math.sin(angle) * r]} castShadow>
+            <mesh key={`cap-bolt-${idx}`} position={[Math.cos(angle) * r, 0, Math.sin(angle) * r]}>
               <cylinderGeometry args={[0.016, 0.016, 0.034, 6]} />
               <PartMaterial
                 {...sharedMat}
@@ -621,20 +715,35 @@ function AerospaceCantileverBracket({
   caeOverlay,
   renderStyle,
   simulationTime,
+  simulationTimeRef,
   clippingPlanes,
   isGhost,
   ghostOpacity,
 }: ProceduralAssemblyProps): React.ReactElement {
   const e = clampNumber(explodeFactor, 0, 1);
-  // Subtle modal elastic cantilever deflection synced with simulationTime
-  const flexAngle = Math.sin(simulationTime * 2.5) * 0.048;
-  const hotspotPulse = 0.5 + 0.5 * Math.sin(simulationTime * 4.2);
+  const beamGroupRef = useRef<THREE.Group | null>(null);
+  const clevisGroupRef = useRef<THREE.Group | null>(null);
+
+  const initialTime = readLiveSimTime(simulationTime, simulationTimeRef);
+  const flexAngle = Math.sin(initialTime * 2.5) * 0.048;
 
   const plateX = -0.26 - e * 0.2;
   const boltsX = -0.32 - e * 0.36;
   const beamX = -0.02 + e * 0.08;
   const clevisX = 0.31 + e * 0.34;
   const centerY = 0.34;
+
+  useFrame(() => {
+    const t = readLiveSimTime(simulationTime, simulationTimeRef);
+    const liveFlex = Math.sin(t * 2.5) * 0.048;
+    if (beamGroupRef.current) {
+      beamGroupRef.current.rotation.z = liveFlex;
+    }
+    if (clevisGroupRef.current) {
+      clevisGroupRef.current.position.y = centerY + e * 0.18 + Math.sin(liveFlex) * 0.32;
+      clevisGroupRef.current.rotation.z = liveFlex * 1.15;
+    }
+  });
 
   const leaderLines = useMemo<LeaderLineSpec[]>(() => {
     if (e <= 0.04 || isGhost) return [];
@@ -658,7 +767,7 @@ function AerospaceCantileverBracket({
   return (
     <group>
       {/* Plinth fixture pedestal block */}
-      <mesh position={[plateX + 0.02, 0.045, 0]} castShadow receiveShadow>
+      <mesh position={[plateX + 0.02, 0.045, 0]}>
         <boxGeometry args={[0.16, 0.09, 0.42]} />
         <PartMaterial
           {...sharedMat}
@@ -672,7 +781,7 @@ function AerospaceCantileverBracket({
 
       {/* 1. Base Mounting Plate */}
       <group position={[plateX, centerY, 0]}>
-        <mesh castShadow receiveShadow>
+        <mesh>
           <boxGeometry args={[0.07, 0.46, 0.42]} />
           <PartMaterial
             {...sharedMat}
@@ -689,7 +798,7 @@ function AerospaceCantileverBracket({
       <group position={[boltsX, centerY, 0]}>
         {BRACKET_BOLT_CORNERS.map(([dy, dz], idx) => (
           <group key={`bolt-${idx}`} position={[0, dy, dz]} rotation={[0, 0, Math.PI / 2]}>
-            <mesh castShadow>
+            <mesh>
               <cylinderGeometry args={[0.026, 0.026, 0.07, 6]} />
               <PartMaterial
                 {...sharedMat}
@@ -716,9 +825,9 @@ function AerospaceCantileverBracket({
       </group>
 
       {/* 3. Cantilever Ribbed Web & Gussets (pivoting near root for elastic flex) */}
-      <group position={[beamX, centerY + e * 0.12, 0]} rotation={[0, 0, flexAngle]}>
+      <group ref={beamGroupRef} position={[beamX, centerY + e * 0.12, 0]} rotation={[0, 0, flexAngle]}>
         {/* Central web spine */}
-        <mesh position={[0.06, 0, 0]} castShadow receiveShadow>
+        <mesh position={[0.06, 0, 0]}>
           <boxGeometry args={[0.48, 0.22, 0.048]} />
           <PartMaterial
             {...sharedMat}
@@ -730,7 +839,7 @@ function AerospaceCantileverBracket({
           />
         </mesh>
         {/* Top & bottom tapered flanges */}
-        <mesh position={[0.05, 0.12, 0]} rotation={[0, 0, -0.14]} castShadow>
+        <mesh position={[0.05, 0.12, 0]} rotation={[0, 0, -0.14]}>
           <boxGeometry args={[0.48, 0.04, 0.22]} />
           <PartMaterial
             {...sharedMat}
@@ -741,7 +850,7 @@ function AerospaceCantileverBracket({
             thermalFactor={0.74}
           />
         </mesh>
-        <mesh position={[0.05, -0.12, 0]} rotation={[0, 0, 0.14]} castShadow>
+        <mesh position={[0.05, -0.12, 0]} rotation={[0, 0, 0.14]}>
           <boxGeometry args={[0.48, 0.04, 0.22]} />
           <PartMaterial
             {...sharedMat}
@@ -754,7 +863,7 @@ function AerospaceCantileverBracket({
         </mesh>
         {/* Diagonal gusseted web ribs */}
         {[-0.08, 0.08].map((zOff, idx) => (
-          <mesh key={`rib-${idx}`} position={[-0.04, 0, zOff]} rotation={[0, 0, 0.32]} castShadow>
+          <mesh key={`rib-${idx}`} position={[-0.04, 0, zOff]} rotation={[0, 0, 0.32]}>
             <boxGeometry args={[0.3, 0.032, 0.028]} />
             <PartMaterial
               {...sharedMat}
@@ -766,45 +875,16 @@ function AerospaceCantileverBracket({
             />
           </mesh>
         ))}
-
-        {/* Built-in Von Mises Root Fillet Hotspot Marker */}
-        {!isGhost && (
-          <group position={[-0.14, -0.1, 0]}>
-            <mesh>
-              <sphereGeometry args={[0.036 + hotspotPulse * 0.012, 16, 16]} />
-              <meshStandardMaterial
-                color="#ef4444"
-                emissive="#ef4444"
-                emissiveIntensity={1.1 + hotspotPulse * 0.8}
-                transparent={true}
-                opacity={caeOverlay === "fea-stress" ? 0.88 : 0.45}
-                depthWrite={false}
-                clippingPlanes={clippingPlanes}
-              />
-            </mesh>
-            <mesh rotation={[Math.PI / 2, 0, 0]}>
-              <torusGeometry args={[0.062 + hotspotPulse * 0.025, 0.005, 8, 28]} />
-              <meshStandardMaterial
-                color="#facc15"
-                emissive="#f97316"
-                emissiveIntensity={1.2}
-                transparent={true}
-                opacity={0.72 - hotspotPulse * 0.25}
-                depthWrite={false}
-                clippingPlanes={clippingPlanes}
-              />
-            </mesh>
-          </group>
-        )}
       </group>
 
       {/* 4. Clevis Lug & Load Bearing Pin */}
       <group
+        ref={clevisGroupRef}
         position={[clevisX, centerY + e * 0.18 + Math.sin(flexAngle) * 0.32, 0]}
         rotation={[0, 0, flexAngle * 1.15]}
       >
         {[-0.075, 0.075].map((zEar, idx) => (
-          <mesh key={`ear-${idx}`} position={[0, 0, zEar]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+          <mesh key={`ear-${idx}`} position={[0, 0, zEar]} rotation={[Math.PI / 2, 0, 0]}>
             <cylinderGeometry args={[0.095, 0.095, 0.036, 24]} />
             <PartMaterial
               {...sharedMat}
@@ -817,7 +897,7 @@ function AerospaceCantileverBracket({
           </mesh>
         ))}
         {/* Bronze bushing & clevis pin */}
-        <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
           <cylinderGeometry args={[0.044, 0.044, 0.23, 20]} />
           <PartMaterial
             {...sharedMat}
@@ -845,6 +925,7 @@ function TurbofanDuctedRotor({
   caeOverlay,
   renderStyle,
   simulationTime,
+  simulationTimeRef,
   clippingPlanes,
   isGhost,
   ghostOpacity,
@@ -852,7 +933,19 @@ function TurbofanDuctedRotor({
 }: ProceduralAssemblyProps): React.ReactElement {
   const e = clampNumber(explodeFactor, 0, 1);
   const centerY = 0.36;
-  const rotorSpin = simulationTime * 4.2;
+  const spinnerGroupRef = useRef<THREE.Group | null>(null);
+  const rotorGroupRef = useRef<THREE.Group | null>(null);
+  const rotorSpin = readLiveSimTime(simulationTime, simulationTimeRef) * 4.2;
+
+  useFrame(() => {
+    const liveSpin = readLiveSimTime(simulationTime, simulationTimeRef) * 4.2;
+    if (spinnerGroupRef.current) {
+      spinnerGroupRef.current.rotation.z = liveSpin;
+    }
+    if (rotorGroupRef.current) {
+      rotorGroupRef.current.rotation.z = liveSpin;
+    }
+  });
 
   const shroudZ = 0.04 + e * 0.22;
   const spinnerZ = 0.23 + e * 0.44;
@@ -882,7 +975,7 @@ function TurbofanDuctedRotor({
   return (
     <group>
       {/* Low-profile test cradle pylon */}
-      <mesh position={[0, 0.04, 0]} castShadow receiveShadow>
+      <mesh position={[0, 0.04, 0]}>
         <boxGeometry args={[0.14, 0.08, 0.34]} />
         <PartMaterial
           {...sharedMat}
@@ -896,7 +989,7 @@ function TurbofanDuctedRotor({
 
       {/* 1. Inlet Shroud Cowl (open annular nacelle) */}
       <group position={[0, centerY + e * 0.14, shroudZ]}>
-        <mesh rotation={[Math.PI / 2, 0, 0]} castShadow receiveShadow>
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
           <cylinderGeometry args={[0.295, 0.28, 0.38, 40, 1, true]} />
           <PartMaterial
             {...sharedMat}
@@ -908,7 +1001,7 @@ function TurbofanDuctedRotor({
           />
         </mesh>
         {/* Aerodynamic inlet lip torus */}
-        <mesh position={[0, 0, 0.19]} castShadow>
+        <mesh position={[0, 0, 0.19]}>
           <torusGeometry args={[0.295, 0.024, 14, 44]} />
           <PartMaterial
             {...sharedMat}
@@ -936,8 +1029,8 @@ function TurbofanDuctedRotor({
       </group>
 
       {/* 2. Nose Cone Spinner */}
-      <group position={[0, centerY, spinnerZ]} rotation={[0, 0, rotorSpin]}>
-        <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
+      <group ref={spinnerGroupRef} position={[0, centerY, spinnerZ]} rotation={[0, 0, rotorSpin]}>
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
           <coneGeometry args={[0.082, 0.17, 28]} />
           <PartMaterial
             {...sharedMat}
@@ -951,8 +1044,8 @@ function TurbofanDuctedRotor({
       </group>
 
       {/* 3. Eight Angled Fan Rotor Blades + Hub */}
-      <group position={[0, centerY, rotorZ]} rotation={[0, 0, rotorSpin]}>
-        <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
+      <group ref={rotorGroupRef} position={[0, centerY, rotorZ]} rotation={[0, 0, rotorSpin]}>
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
           <cylinderGeometry args={[0.084, 0.09, 0.09, 24]} />
           <PartMaterial
             {...sharedMat}
@@ -965,7 +1058,7 @@ function TurbofanDuctedRotor({
         </mesh>
         {ROTOR_BLADE_ANGLES.map((angle, idx) => (
           <group key={`blade-${idx}`} rotation={[0, 0, angle]}>
-            <mesh position={[0.17, 0, 0]} rotation={[0.48, 0.14, 0]} castShadow>
+            <mesh position={[0.17, 0, 0]} rotation={[0.48, 0.14, 0]}>
               <boxGeometry args={[0.185, 0.056, 0.012]} />
               <PartMaterial
                 {...sharedMat}
@@ -982,7 +1075,7 @@ function TurbofanDuctedRotor({
 
       {/* 4. Stator Guide Vanes & Bypass Core */}
       <group position={[0, centerY, statorZ]}>
-        <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
           <cylinderGeometry args={[0.125, 0.14, 0.26, 28]} />
           <PartMaterial
             {...sharedMat}
@@ -995,7 +1088,7 @@ function TurbofanDuctedRotor({
         </mesh>
         {STATOR_VANE_ANGLES.map((angle, idx) => (
           <group key={`stator-${idx}`} rotation={[0, 0, angle]}>
-            <mesh position={[0.195, 0, 0]} rotation={[-0.36, 0, 0]} castShadow>
+            <mesh position={[0.195, 0, 0]} rotation={[-0.36, 0, 0]}>
               <boxGeometry args={[0.145, 0.044, 0.014]} />
               <PartMaterial
                 {...sharedMat}
@@ -1012,7 +1105,7 @@ function TurbofanDuctedRotor({
 
       {/* 5. Convergent Exhaust Nozzle */}
       <group position={[0, centerY, nozzleZ]}>
-        <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
           <cylinderGeometry args={[0.25, 0.165, 0.22, 32, 1, true]} />
           <PartMaterial
             {...sharedMat}
@@ -1025,7 +1118,7 @@ function TurbofanDuctedRotor({
             thermalFactor={0.98}
           />
         </mesh>
-        <mesh position={[0, 0, -0.05]} rotation={[-Math.PI / 2, 0, 0]} castShadow>
+        <mesh position={[0, 0, -0.05]} rotation={[-Math.PI / 2, 0, 0]}>
           <coneGeometry args={[0.09, 0.18, 24]} />
           <PartMaterial
             {...sharedMat}
@@ -1052,19 +1145,37 @@ function ArticulatedRoboticArm({
   caeOverlay,
   renderStyle,
   simulationTime,
+  simulationTimeRef,
   clippingPlanes,
   isGhost,
   ghostOpacity,
   accentColor,
 }: ProceduralAssemblyProps): React.ReactElement {
   const e = clampNumber(explodeFactor, 0, 1);
+  const waistGroupRef = useRef<THREE.Group | null>(null);
+  const shoulderGroupRef = useRef<THREE.Group | null>(null);
+  const elbowGroupRef = useRef<THREE.Group | null>(null);
+  const wristGroupRef = useRef<THREE.Group | null>(null);
+  const leftFingerRef = useRef<THREE.Mesh | null>(null);
+  const rightFingerRef = useRef<THREE.Mesh | null>(null);
 
-  // Smooth 4-DOF kinematic articulation driven by simulationTime
-  const waistYaw = Math.sin(simulationTime * 0.72) * 0.7;
-  const shoulderPitch = -0.22 + Math.sin(simulationTime * 1.15) * 0.28;
-  const elbowPitch = 0.72 + Math.cos(simulationTime * 1.15) * 0.34;
-  const wristRoll = simulationTime * 1.25;
-  const gripperHalfGap = 0.022 + 0.024 * (0.5 + 0.5 * Math.sin(simulationTime * 2.2));
+  const initialTime = readLiveSimTime(simulationTime, simulationTimeRef);
+  const waistYaw = Math.sin(initialTime * 0.72) * 0.7;
+  const shoulderPitch = -0.22 + Math.sin(initialTime * 1.15) * 0.28;
+  const elbowPitch = 0.72 + Math.cos(initialTime * 1.15) * 0.34;
+  const wristRoll = initialTime * 1.25;
+  const gripperHalfGap = 0.022 + 0.024 * (0.5 + 0.5 * Math.sin(initialTime * 2.2));
+
+  useFrame(() => {
+    const t = readLiveSimTime(simulationTime, simulationTimeRef);
+    if (waistGroupRef.current) waistGroupRef.current.rotation.y = Math.sin(t * 0.72) * 0.7;
+    if (shoulderGroupRef.current) shoulderGroupRef.current.rotation.z = -0.22 + Math.sin(t * 1.15) * 0.28;
+    if (elbowGroupRef.current) elbowGroupRef.current.rotation.z = 0.72 + Math.cos(t * 1.15) * 0.34;
+    if (wristGroupRef.current) wristGroupRef.current.rotation.y = t * 1.25;
+    const gap = 0.022 + 0.024 * (0.5 + 0.5 * Math.sin(t * 2.2));
+    if (leftFingerRef.current) leftFingerRef.current.position.x = -gap;
+    if (rightFingerRef.current) rightFingerRef.current.position.x = gap;
+  });
 
   const sharedMat = {
     renderStyle,
@@ -1088,7 +1199,7 @@ function ArticulatedRoboticArm({
     <group>
       {/* 1. Pedestal Base */}
       <group position={[0, 0.045 - e * 0.06, 0]}>
-        <mesh castShadow receiveShadow>
+        <mesh>
           <cylinderGeometry args={[0.21, 0.24, 0.09, 32]} />
           <PartMaterial
             {...sharedMat}
@@ -1102,8 +1213,8 @@ function ArticulatedRoboticArm({
       </group>
 
       {/* 2. Waist Turret (Joint 1 - Yaw) */}
-      <group position={[0, 0.11 + e * 0.1, 0]} rotation={[0, waistYaw, 0]}>
-        <mesh position={[0, 0.055, 0]} castShadow>
+      <group ref={waistGroupRef} position={[0, 0.11 + e * 0.1, 0]} rotation={[0, waistYaw, 0]}>
+        <mesh position={[0, 0.055, 0]}>
           <cylinderGeometry args={[0.135, 0.155, 0.12, 28]} />
           <PartMaterial
             {...sharedMat}
@@ -1129,9 +1240,9 @@ function ArticulatedRoboticArm({
         </mesh>
 
         {/* 3. Shoulder Joint & Upper Link (Joint 2 - Pitch) */}
-        <group position={[0, 0.145 + e * 0.14, 0]} rotation={[0, 0, shoulderPitch]}>
+        <group ref={shoulderGroupRef} position={[0, 0.145 + e * 0.14, 0]} rotation={[0, 0, shoulderPitch]}>
           {/* Harmonic shoulder drum */}
-          <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
             <cylinderGeometry args={[0.072, 0.072, 0.16, 24]} />
             <PartMaterial
               {...sharedMat}
@@ -1143,7 +1254,7 @@ function ArticulatedRoboticArm({
             />
           </mesh>
           {/* Upper arm box spar */}
-          <mesh position={[0, 0.155, 0]} castShadow>
+          <mesh position={[0, 0.155, 0]}>
             <boxGeometry args={[0.078, 0.29, 0.088]} />
             <PartMaterial
               {...sharedMat}
@@ -1170,8 +1281,8 @@ function ArticulatedRoboticArm({
           </mesh>
 
           {/* 4. Elbow Joint & Forearm Link (Joint 3 - Pitch) */}
-          <group position={[0, 0.305 + e * 0.14, 0]} rotation={[0, 0, elbowPitch]}>
-            <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
+          <group ref={elbowGroupRef} position={[0, 0.305 + e * 0.14, 0]} rotation={[0, 0, elbowPitch]}>
+            <mesh rotation={[Math.PI / 2, 0, 0]}>
               <cylinderGeometry args={[0.058, 0.058, 0.13, 22]} />
               <PartMaterial
                 {...sharedMat}
@@ -1182,7 +1293,7 @@ function ArticulatedRoboticArm({
                 thermalFactor={0.76}
               />
             </mesh>
-            <mesh position={[0, 0.13, 0]} castShadow>
+            <mesh position={[0, 0.13, 0]}>
               <cylinderGeometry args={[0.036, 0.048, 0.24, 20]} />
               <PartMaterial
                 {...sharedMat}
@@ -1195,8 +1306,8 @@ function ArticulatedRoboticArm({
             </mesh>
 
             {/* 5. Wrist Roll & Parallel Gripper (Joint 4) */}
-            <group position={[0, 0.255 + e * 0.12, 0]} rotation={[0, wristRoll, 0]}>
-              <mesh castShadow>
+            <group ref={wristGroupRef} position={[0, 0.255 + e * 0.12, 0]} rotation={[0, wristRoll, 0]}>
+              <mesh>
                 <cylinderGeometry args={[0.042, 0.038, 0.055, 18]} />
                 <PartMaterial
                   {...sharedMat}
@@ -1208,7 +1319,7 @@ function ArticulatedRoboticArm({
                 />
               </mesh>
               {/* Gripper crossbar */}
-              <mesh position={[0, 0.04, 0]} castShadow>
+              <mesh position={[0, 0.04, 0]}>
                 <boxGeometry args={[0.125, 0.024, 0.042]} />
                 <PartMaterial
                   {...sharedMat}
@@ -1220,7 +1331,7 @@ function ArticulatedRoboticArm({
                 />
               </mesh>
               {/* Left & Right Parallel Fingers */}
-              <mesh position={[-gripperHalfGap, 0.088, 0]} castShadow>
+              <mesh ref={leftFingerRef} position={[-gripperHalfGap, 0.088, 0]}>
                 <boxGeometry args={[0.016, 0.08, 0.026]} />
                 <PartMaterial
                   {...sharedMat}
@@ -1233,7 +1344,7 @@ function ArticulatedRoboticArm({
                   thermalFactor={0.42}
                 />
               </mesh>
-              <mesh position={[gripperHalfGap, 0.088, 0]} castShadow>
+              <mesh ref={rightFingerRef} position={[gripperHalfGap, 0.088, 0]}>
                 <boxGeometry args={[0.016, 0.08, 0.026]} />
                 <PartMaterial
                   {...sharedMat}
@@ -1274,11 +1385,14 @@ function CncMachinedImpeller({
   caeOverlay,
   renderStyle,
   simulationTime,
+  simulationTimeRef,
   clippingPlanes,
   isGhost,
   ghostOpacity,
 }: ProceduralAssemblyProps): React.ReactElement {
   const e = clampNumber(explodeFactor, 0, 1);
+  const spindleGroupRef = useRef<THREE.Group | null>(null);
+  const cutterMeshRef = useRef<THREE.Mesh | null>(null);
 
   const toolpathPoints = useMemo<Array<[number, number, number]>>(() => {
     const pts: Array<[number, number, number]> = [];
@@ -1290,7 +1404,8 @@ function CncMachinedImpeller({
   }, []);
 
   // Trace spindle head smoothly along the helical 5-axis path
-  const rawPhase = (simulationTime * 0.14) % 2;
+  const initialTime = readLiveSimTime(simulationTime, simulationTimeRef);
+  const rawPhase = (initialTime * 0.14) % 2;
   const pathU = rawPhase <= 1 ? rawPhase : 2 - rawPhase;
   const [tx, ty, tz] = evaluateCncToolpathPoint(pathU);
   const radialAngle = Math.atan2(tz, tx);
@@ -1300,6 +1415,21 @@ function CncMachinedImpeller({
   const impellerY = 0.1 + e * 0.06;
   const toolpathYOffset = e * 0.24;
   const spindleYOffset = e * 0.42;
+
+  useFrame(() => {
+    const t = readLiveSimTime(simulationTime, simulationTimeRef);
+    const livePhase = (t * 0.14) % 2;
+    const u = livePhase <= 1 ? livePhase : 2 - livePhase;
+    const [lx, ly, lz] = evaluateCncToolpathPoint(u);
+    const rAngle = Math.atan2(lz, lx);
+    if (spindleGroupRef.current) {
+      spindleGroupRef.current.position.set(lx, ly + spindleYOffset, lz);
+      spindleGroupRef.current.rotation.set(Math.sin(rAngle) * spindleTilt, 0, -Math.cos(rAngle) * spindleTilt);
+    }
+    if (cutterMeshRef.current) {
+      cutterMeshRef.current.rotation.y = t * 18;
+    }
+  });
 
   const leaderLines = useMemo<LeaderLineSpec[]>(() => {
     if (e <= 0.04 || isGhost) return [];
@@ -1324,7 +1454,7 @@ function CncMachinedImpeller({
     <group>
       {/* 1. 5-Axis Rotary Fixture Chuck */}
       <group position={[0, chuckY, 0]}>
-        <mesh castShadow receiveShadow>
+        <mesh>
           <cylinderGeometry args={[0.29, 0.31, 0.075, 36]} />
           <PartMaterial
             {...sharedMat}
@@ -1340,7 +1470,6 @@ function CncMachinedImpeller({
             key={`jaw-${idx}`}
             position={[Math.cos(angle) * 0.23, 0.052, Math.sin(angle) * 0.23]}
             rotation={[0, -angle, 0]}
-            castShadow
           >
             <boxGeometry args={[0.095, 0.042, 0.056]} />
             <PartMaterial
@@ -1357,7 +1486,7 @@ function CncMachinedImpeller({
 
       {/* 2. Machined Billet Impeller Hub + 7 Swept Blades */}
       <group position={[0, impellerY, 0]}>
-        <mesh position={[0, 0.025, 0]} castShadow receiveShadow>
+        <mesh position={[0, 0.025, 0]}>
           <cylinderGeometry args={[0.25, 0.265, 0.045, 36]} />
           <PartMaterial
             {...sharedMat}
@@ -1368,7 +1497,7 @@ function CncMachinedImpeller({
             thermalFactor={0.7}
           />
         </mesh>
-        <mesh position={[0, 0.145, 0]} castShadow>
+        <mesh position={[0, 0.145, 0]}>
           <cylinderGeometry args={[0.068, 0.165, 0.22, 32]} />
           <PartMaterial
             {...sharedMat}
@@ -1381,7 +1510,7 @@ function CncMachinedImpeller({
         </mesh>
         {IMPELLER_BLADE_ANGLES.map((angle, idx) => (
           <group key={`imp-blade-${idx}`} rotation={[0, angle, 0]}>
-            <mesh position={[0.145, 0.125, 0.024]} rotation={[0.38, 0.42, -0.32]} castShadow>
+            <mesh position={[0.145, 0.125, 0.024]} rotation={[0.38, 0.42, -0.32]}>
               <boxGeometry args={[0.155, 0.175, 0.014]} />
               <PartMaterial
                 {...sharedMat}
@@ -1409,11 +1538,12 @@ function CncMachinedImpeller({
 
       {/* 4. Animated 5-Axis Spindle Head & Ball-End Mill */}
       <group
+        ref={spindleGroupRef}
         position={[tx, ty + spindleYOffset, tz]}
         rotation={[Math.sin(radialAngle) * spindleTilt, 0, -Math.cos(radialAngle) * spindleTilt]}
       >
         {/* Carbide ball-end mill cutter */}
-        <mesh position={[0, 0.065, 0]} rotation={[0, simulationTime * 18, 0]} castShadow>
+        <mesh ref={cutterMeshRef} position={[0, 0.065, 0]} rotation={[0, initialTime * 18, 0]}>
           <cylinderGeometry args={[0.011, 0.009, 0.13, 12]} />
           <PartMaterial
             {...sharedMat}
@@ -1425,7 +1555,7 @@ function CncMachinedImpeller({
           />
         </mesh>
         {/* ER Collet nut */}
-        <mesh position={[0, 0.15, 0]} castShadow>
+        <mesh position={[0, 0.15, 0]}>
           <cylinderGeometry args={[0.036, 0.024, 0.055, 16]} />
           <PartMaterial
             {...sharedMat}
@@ -1437,7 +1567,7 @@ function CncMachinedImpeller({
           />
         </mesh>
         {/* High-speed spindle housing */}
-        <mesh position={[0, 0.245, 0]} castShadow>
+        <mesh position={[0, 0.245, 0]}>
           <cylinderGeometry args={[0.056, 0.048, 0.14, 24]} />
           <PartMaterial
             {...sharedMat}
@@ -1566,6 +1696,8 @@ function buildProceduralBufferGeometry(
 interface NormalizedCadPart {
   part: RotundaCadPartInput;
   geometry: THREE.BufferGeometry | null;
+  edgesGeometry: THREE.EdgesGeometry | null;
+  caeColorCache: Partial<Record<CaeFieldOverlayMode, Float32Array>>;
   home: [number, number, number];
   visualCenter: [number, number, number];
   baseRotation: [number, number, number];
@@ -1601,16 +1733,25 @@ function CadComponentsAssembly({
   const prepared = useMemo<{ items: NormalizedCadPart[]; createdGeometries: THREE.BufferGeometry[] }>(() => {
     const count = Math.max(1, parts.length);
     const createdGeometries: THREE.BufferGeometry[] = [];
-    const partGeometries: Array<THREE.BufferGeometry | null> = parts.map((part) => {
-      if (part.proceduralMesh && part.proceduralMesh.vertices.length >= 9) {
-        const geo = buildProceduralBufferGeometry(part.proceduralMesh);
-        if (geo) {
-          createdGeometries.push(geo);
-          return geo;
+    const partGeometries: Array<{ geo: THREE.BufferGeometry; edges: THREE.EdgesGeometry | null } | null> = parts.map(
+      (part) => {
+        if (part.proceduralMesh && part.proceduralMesh.vertices.length >= 9) {
+          const geo = buildProceduralBufferGeometry(part.proceduralMesh);
+          if (geo) {
+            createdGeometries.push(geo);
+            let edges: THREE.EdgesGeometry | null = null;
+            try {
+              edges = new THREE.EdgesGeometry(geo, 22);
+              createdGeometries.push(edges);
+            } catch {
+              edges = null;
+            }
+            return { geo, edges };
+          }
         }
-      }
-      return null;
-    });
+        return null;
+      },
+    );
 
     const hasProceduralMeshes = createdGeometries.length > 0;
 
@@ -1627,7 +1768,9 @@ function CadComponentsAssembly({
       );
 
       const perPartRaw = parts.map((part, idx) => {
-        const geo = partGeometries[idx] ?? null;
+        const pair = partGeometries[idx] ?? null;
+        const geo = pair?.geo ?? null;
+        const edges = pair?.edges ?? null;
         const rawPos = sanitizeVec3(part.position, [0, 0, 0]);
         const rawRot = sanitizeVec3(part.rotation, [0, 0, 0]);
         const rawScale = sanitizeVec3(part.scale, [1, 1, 1]);
@@ -1645,7 +1788,7 @@ function CadComponentsAssembly({
         combinedBox.union(partBox);
         const worldCenter = partBox.getCenter(new THREE.Vector3());
 
-        return { part, geo, rawPos, rawRot, rawScale, worldCenter };
+        return { part, geo, edges, rawPos, rawRot, rawScale, worldCenter };
       });
 
       const sizeVec = new THREE.Vector3();
@@ -1668,62 +1811,66 @@ function CadComponentsAssembly({
       const cz = Number.isFinite(centerVec.z) ? centerVec.z : 0;
       const assemblyPlinthCenterY = (cy - minY) * normScale + PROCEDURAL_PLINTH_FLOOR_Y;
 
-      const items: NormalizedCadPart[] = perPartRaw.map(({ part, geo, rawPos, rawRot, rawScale, worldCenter }, idx) => {
-        const home: [number, number, number] = [
-          (rawPos[0] - cx) * normScale,
-          (rawPos[1] - minY) * normScale + PROCEDURAL_PLINTH_FLOOR_Y,
-          (rawPos[2] - cz) * normScale,
-        ];
-        const visualCenter: [number, number, number] = [
-          (worldCenter.x - cx) * normScale,
-          (worldCenter.y - minY) * normScale + PROCEDURAL_PLINTH_FLOOR_Y,
-          (worldCenter.z - cz) * normScale,
-        ];
+      const items: NormalizedCadPart[] = perPartRaw.map(
+        ({ part, geo, edges, rawPos, rawRot, rawScale, worldCenter }, idx) => {
+          const home: [number, number, number] = [
+            (rawPos[0] - cx) * normScale,
+            (rawPos[1] - minY) * normScale + PROCEDURAL_PLINTH_FLOOR_Y,
+            (rawPos[2] - cz) * normScale,
+          ];
+          const visualCenter: [number, number, number] = [
+            (worldCenter.x - cx) * normScale,
+            (worldCenter.y - minY) * normScale + PROCEDURAL_PLINTH_FLOOR_Y,
+            (worldCenter.z - cz) * normScale,
+          ];
 
-        let dx = visualCenter[0];
-        let dy = visualCenter[1] - assemblyPlinthCenterY;
-        let dz = visualCenter[2];
-        const len = Math.hypot(dx, dy, dz);
-        if (len < 0.015) {
-          if (count <= 1) {
-            dx = 0;
-            dy = 0.22;
-            dz = 0;
+          let dx = visualCenter[0];
+          let dy = visualCenter[1] - assemblyPlinthCenterY;
+          let dz = visualCenter[2];
+          const len = Math.hypot(dx, dy, dz);
+          if (len < 0.015) {
+            if (count <= 1) {
+              dx = 0;
+              dy = 0.22;
+              dz = 0;
+            } else {
+              const a = (idx / count) * Math.PI * 2;
+              dx = Math.cos(a) * 0.7;
+              dy = 0.45 + (idx % 3) * 0.2;
+              dz = Math.sin(a) * 0.7;
+              const fallbackLen = Math.hypot(dx, dy, dz) || 1;
+              dx /= fallbackLen;
+              dy /= fallbackLen;
+              dz /= fallbackLen;
+            }
           } else {
-            const a = (idx / count) * Math.PI * 2;
-            dx = Math.cos(a) * 0.7;
-            dy = 0.45 + (idx % 3) * 0.2;
-            dz = Math.sin(a) * 0.7;
-            const fallbackLen = Math.hypot(dx, dy, dz) || 1;
-            dx /= fallbackLen;
-            dy /= fallbackLen;
-            dz /= fallbackLen;
+            dx /= len;
+            dy /= len;
+            dz /= len;
           }
-        } else {
-          dx /= len;
-          dy /= len;
-          dz /= len;
-        }
 
-        const scale: [number, number, number] = [
-          rawScale[0] * normScale,
-          rawScale[1] * normScale,
-          rawScale[2] * normScale,
-        ];
+          const scale: [number, number, number] = [
+            rawScale[0] * normScale,
+            rawScale[1] * normScale,
+            rawScale[2] * normScale,
+          ];
 
-        return {
-          part,
-          geometry: geo,
-          home,
-          visualCenter,
-          baseRotation: rawRot,
-          explodeDir: [dx, dy, dz],
-          scale,
-          fitScale: normScale,
-          stressFactor: clampNumber(0.25 + ((idx * 0.6180339) % 1) * 0.7, 0, 1),
-          thermalFactor: clampNumber(0.25 + (((idx + 2) * 0.381966) % 1) * 0.72, 0, 1),
-        };
-      });
+          return {
+            part,
+            geometry: geo,
+            edgesGeometry: edges,
+            caeColorCache: {},
+            home,
+            visualCenter,
+            baseRotation: rawRot,
+            explodeDir: [dx, dy, dz],
+            scale,
+            fitScale: normScale,
+            stressFactor: clampNumber(0.25 + ((idx * 0.6180339) % 1) * 0.7, 0, 1),
+            thermalFactor: clampNumber(0.25 + (((idx + 2) * 0.381966) % 1) * 0.72, 0, 1),
+          };
+        },
+      );
 
       return { items, createdGeometries };
     }
@@ -1792,6 +1939,8 @@ function CadComponentsAssembly({
       return {
         part,
         geometry: null,
+        edgesGeometry: null,
+        caeColorCache: {},
         home,
         visualCenter: home,
         baseRotation,
@@ -1807,6 +1956,29 @@ function CadComponentsAssembly({
   }, [parts]);
 
   const normalizedParts = prepared.items;
+
+  // Populate geometry-aware per-vertex Von Mises / CFD Cp / Thermal colors on procedural meshes
+  useEffect(() => {
+    if (isGhost || caeOverlay === "none") return;
+    const mode = caeOverlay as CaeFieldOverlayMode;
+    for (const item of normalizedParts) {
+      if (!item.geometry) continue;
+      let colors = item.caeColorCache[mode];
+      if (!colors) {
+        colors = computeGeometryCaeVertexColors(item.geometry, mode);
+        item.caeColorCache[mode] = colors;
+      }
+      if (colors.length > 0) {
+        const existing = item.geometry.getAttribute("color") as THREE.BufferAttribute | undefined;
+        if (existing && existing.array.length === colors.length) {
+          (existing.array as Float32Array).set(colors);
+          existing.needsUpdate = true;
+        } else {
+          item.geometry.setAttribute("color", new THREE.BufferAttribute(colors.slice(), 3));
+        }
+      }
+    }
+  }, [normalizedParts, caeOverlay, isGhost]);
 
   // Dispose synthesized BufferGeometry instances cleanly on parts change or unmount
   useEffect(() => {
@@ -1930,25 +2102,38 @@ function CadComponentsAssembly({
             scale={item.scale}
           >
             {item.geometry ? (
-              <mesh geometry={item.geometry} castShadow={!isGhost} receiveShadow={!isGhost}>
-                <PartMaterial
-                  baseColor={proceduralBaseColor}
-                  metalness={0.76}
-                  roughness={0.28}
-                  stressFactor={item.stressFactor}
-                  thermalFactor={item.thermalFactor}
-                  doubleSide={true}
-                  renderStyle={renderStyle}
-                  caeOverlay={caeOverlay}
-                  isGhost={isGhost}
-                  ghostOpacity={ghostOpacity}
-                  clippingPlanes={clippingPlanes}
-                  simulationTime={simulationTime}
-                />
-              </mesh>
+              <>
+                <mesh geometry={item.geometry}>
+                  <PartMaterial
+                    baseColor={proceduralBaseColor}
+                    metalness={0.76}
+                    roughness={0.28}
+                    stressFactor={item.stressFactor}
+                    thermalFactor={item.thermalFactor}
+                    doubleSide={true}
+                    useVertexColors={caeOverlay !== "none"}
+                    renderStyle={renderStyle}
+                    caeOverlay={caeOverlay}
+                    isGhost={isGhost}
+                    ghostOpacity={ghostOpacity}
+                    clippingPlanes={clippingPlanes}
+                    simulationTime={simulationTime}
+                  />
+                </mesh>
+                {!isGhost && caeOverlay === "fea-stress" && renderStyle === "shaded" && item.edgesGeometry && (
+                  <lineSegments geometry={item.edgesGeometry}>
+                    <lineBasicMaterial
+                      color="#0f172a"
+                      transparent={true}
+                      opacity={0.22}
+                      clippingPlanes={clippingPlanes}
+                    />
+                  </lineSegments>
+                )}
+              </>
             ) : (
               <>
-                <mesh castShadow={!isGhost} receiveShadow={!isGhost}>
+                <mesh>
                   <CadPartGeometry shape={item.part.shape} />
                   <PartMaterial
                     baseColor={item.part.color ?? (idx % 2 === 0 ? "#64748b" : "#94a3b8")}
@@ -2009,10 +2194,21 @@ interface GltfClonedMaterialRecord {
   originalEmissiveIntensity: number;
   originalMetalness: number;
   originalRoughness: number;
+  originalMap: THREE.Texture | null;
   originalOpacity: number;
   originalTransparent: boolean;
   stressWeight: number;
   thermalWeight: number;
+}
+
+interface GltfMeshCaeRecord {
+  mesh: THREE.Mesh;
+  geometry: THREE.BufferGeometry;
+  hasOriginalVertexColors: boolean;
+  originalColorAttr: THREE.BufferAttribute | THREE.InterleavedBufferAttribute | null;
+  caeColorCache: Partial<Record<CaeFieldOverlayMode, Float32Array>>;
+  feaEdgeLines: THREE.LineSegments | null;
+  feaEdgeMat: THREE.LineBasicMaterial | null;
 }
 
 function GltfHeroModel({
@@ -2020,7 +2216,7 @@ function GltfHeroModel({
   explodeFactor,
   caeOverlay,
   renderStyle,
-  simulationTime,
+  simulationTime: _simulationTime,
   clippingPlanes,
   isGhost,
   ghostOpacity,
@@ -2034,6 +2230,7 @@ function GltfHeroModel({
   isGhost: boolean;
   ghostOpacity: number;
 }): React.ReactElement {
+  useRetainGltfUrl(url);
   const { scene } = useGLTF(url);
   const currentExplodeRef = useRef(explodeFactor);
   const tmpColorRef = useRef(new THREE.Color());
@@ -2059,6 +2256,8 @@ function GltfHeroModel({
 
     const explodeTargets: GltfExplodeTarget[] = [];
     const materials: GltfClonedMaterialRecord[] = [];
+    const meshRecords: GltfMeshCaeRecord[] = [];
+    const createdGeometries: THREE.BufferGeometry[] = [];
     const worldCenter = new THREE.Vector3(0, (size.y * normScale) / 2, 0);
     const candidateGroups: THREE.Object3D[] =
       cloned.children.length > 1
@@ -2089,13 +2288,55 @@ function GltfHeroModel({
       });
     });
 
-    let meshIdx = 0;
+    const sourceMeshes: THREE.Mesh[] = [];
     cloned.traverse((node: THREE.Object3D) => {
-      const mesh = node as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      mesh.castShadow = !isGhost;
-      mesh.receiveShadow = !isGhost;
-      const idx = meshIdx++;
+      if ((node as THREE.Mesh).isMesh) {
+        sourceMeshes.push(node as THREE.Mesh);
+      }
+    });
+
+    sourceMeshes.forEach((mesh, idx) => {
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+
+      // Clone geometry so per-vertex CAE color attributes never mutate shared useGLTF cache
+      const clonedGeom = mesh.geometry.clone();
+      mesh.geometry = clonedGeom;
+      createdGeometries.push(clonedGeom);
+
+      const originalColorAttr =
+        (clonedGeom.getAttribute("color") as THREE.BufferAttribute | THREE.InterleavedBufferAttribute | undefined) ??
+        null;
+
+      // Subtle FEA mesh contour edges attached directly to the mesh (toggled visible only in FEA mode)
+      let feaEdgeLines: THREE.LineSegments | null = null;
+      let feaEdgeMat: THREE.LineBasicMaterial | null = null;
+      try {
+        const edgesGeo = new THREE.EdgesGeometry(clonedGeom, 22);
+        createdGeometries.push(edgesGeo);
+        feaEdgeMat = new THREE.LineBasicMaterial({
+          color: "#0f172a",
+          transparent: true,
+          opacity: 0.22,
+        });
+        feaEdgeLines = new THREE.LineSegments(edgesGeo, feaEdgeMat);
+        feaEdgeLines.visible = false;
+        feaEdgeLines.raycast = () => undefined;
+        mesh.add(feaEdgeLines);
+      } catch {
+        feaEdgeLines = null;
+        feaEdgeMat = null;
+      }
+
+      meshRecords.push({
+        mesh,
+        geometry: clonedGeom,
+        hasOriginalVertexColors: originalColorAttr !== null,
+        originalColorAttr: originalColorAttr ? originalColorAttr.clone() : null,
+        caeColorCache: {},
+        feaEdgeLines,
+        feaEdgeMat,
+      });
 
       const cloneOne = (src: THREE.Material): THREE.MeshStandardMaterial => {
         const stdSrc = src as THREE.MeshStandardMaterial;
@@ -2119,6 +2360,7 @@ function GltfHeroModel({
           originalEmissiveIntensity: next.emissiveIntensity,
           originalMetalness: next.metalness,
           originalRoughness: next.roughness,
+          originalMap: next.map,
           originalOpacity: next.opacity,
           originalTransparent: next.transparent,
           stressWeight: clampNumber(0.2 + ((idx * 0.6180339) % 1) * 0.78, 0, 1),
@@ -2134,26 +2376,72 @@ function GltfHeroModel({
       }
     });
 
-    return { root, explodeTargets, materials, normScale };
-  }, [scene, isGhost]);
+    return { root, explodeTargets, materials, meshRecords, createdGeometries, normScale };
+  }, [scene]);
 
-  // Dispose cloned materials cleanly on unmount
+  // Dispose cloned materials, geometries, and edge lines cleanly on unmount
   useEffect(() => {
     return () => {
       for (const rec of prepared.materials) {
         rec.mat.dispose();
       }
+      for (const mRec of prepared.meshRecords) {
+        mRec.feaEdgeMat?.dispose();
+      }
+      for (const geo of prepared.createdGeometries) {
+        geo.dispose();
+      }
     };
   }, [prepared]);
 
-  // Synchronize renderStyle, caeOverlay, clippingPlanes, and ghost styling
+  // Synchronize renderStyle, caeOverlay (per-vertex field contours), clippingPlanes, and ghost styling
   useEffect(() => {
     const planes = isGhost ? EMPTY_PLANES : clippingPlanes;
     const hasClipping = planes.length > 0;
     const tmpColor = tmpColorRef.current;
+    const applyVertexCae = !isGhost && caeOverlay !== "none" && renderStyle === "shaded";
+
+    for (const mRec of prepared.meshRecords) {
+      if (applyVertexCae) {
+        const mode = caeOverlay as CaeFieldOverlayMode;
+        let colors = mRec.caeColorCache[mode];
+        if (!colors) {
+          colors = computeGeometryCaeVertexColors(mRec.geometry, mode);
+          mRec.caeColorCache[mode] = colors;
+        }
+        if (colors.length > 0) {
+          const existing = mRec.geometry.getAttribute("color") as THREE.BufferAttribute | undefined;
+          if (existing && existing.array.length === colors.length) {
+            (existing.array as Float32Array).set(colors);
+            existing.needsUpdate = true;
+          } else {
+            mRec.geometry.setAttribute("color", new THREE.BufferAttribute(colors.slice(), 3));
+          }
+        }
+      } else if (mRec.originalColorAttr) {
+        mRec.geometry.setAttribute("color", mRec.originalColorAttr.clone());
+      } else if (mRec.geometry.getAttribute("color")) {
+        mRec.geometry.deleteAttribute("color");
+      }
+
+      if (mRec.feaEdgeLines && mRec.feaEdgeMat) {
+        mRec.feaEdgeLines.visible = !isGhost && caeOverlay === "fea-stress" && renderStyle === "shaded";
+        const prevEdgeClip = Array.isArray(mRec.feaEdgeMat.clippingPlanes) && mRec.feaEdgeMat.clippingPlanes.length > 0;
+        mRec.feaEdgeMat.clippingPlanes = planes;
+        if (prevEdgeClip !== hasClipping) {
+          mRec.feaEdgeMat.needsUpdate = true;
+        }
+      }
+    }
 
     for (const rec of prepared.materials) {
       const m = rec.mat;
+      const prevHasClip = Array.isArray(m.clippingPlanes) && m.clippingPlanes.length > 0;
+      const prevTransparent = m.transparent;
+      const prevWireframe = m.wireframe;
+      const prevSide = m.side;
+      const prevVertexColors = m.vertexColors;
+      const prevHasMap = m.map !== null;
       m.clippingPlanes = planes;
       m.clipShadows = true;
 
@@ -2163,6 +2451,8 @@ function GltfHeroModel({
         m.emissiveIntensity = 0.55;
         m.metalness = 0.2;
         m.roughness = 0.25;
+        m.vertexColors = false;
+        m.map = null;
         m.transparent = true;
         m.opacity = clampNumber(ghostOpacity, 0.05, 0.85);
         m.depthWrite = false;
@@ -2174,8 +2464,19 @@ function GltfHeroModel({
         m.emissiveIntensity = rec.originalEmissiveIntensity;
         m.metalness = rec.originalMetalness;
         m.roughness = rec.originalRoughness;
+        m.vertexColors = false;
+        m.map = rec.originalMap;
 
-        if (caeOverlay === "fea-stress") {
+        if (applyVertexCae) {
+          // Real geometry-aware per-vertex Von Mises / CFD Cp / Thermal field colors
+          m.color.set("#ffffff");
+          m.emissive.set("#000000");
+          m.emissiveIntensity = 0;
+          m.vertexColors = true;
+          m.map = null;
+          m.metalness = caeOverlay === "cfd-flow" ? 0.16 : 0.08;
+          m.roughness = caeOverlay === "cfd-flow" ? 0.42 : 0.54;
+        } else if (caeOverlay === "fea-stress") {
           tmpColor.set(sampleTurboStressColor(rec.stressWeight));
           m.color.copy(tmpColor);
           m.emissive.copy(tmpColor);
@@ -2191,7 +2492,7 @@ function GltfHeroModel({
           m.roughness = 0.45;
         } else if (caeOverlay === "cfd-flow") {
           m.emissive.set("#0284c7");
-          m.emissiveIntensity = Math.max(rec.originalEmissiveIntensity, 0.12);
+          m.emissiveIntensity = Math.max(rec.originalEmissiveIntensity, 0.1);
         }
 
         if (renderStyle === "wireframe") {
@@ -2224,9 +2525,18 @@ function GltfHeroModel({
           m.side = hasClipping ? THREE.DoubleSide : THREE.FrontSide;
         }
       }
-      m.needsUpdate = true;
+      if (
+        prevHasClip !== hasClipping ||
+        prevTransparent !== m.transparent ||
+        prevWireframe !== m.wireframe ||
+        prevSide !== m.side ||
+        prevVertexColors !== m.vertexColors ||
+        prevHasMap !== (m.map !== null)
+      ) {
+        m.needsUpdate = true;
+      }
     }
-  }, [prepared, renderStyle, caeOverlay, clippingPlanes, isGhost, ghostOpacity, simulationTime]);
+  }, [prepared, renderStyle, caeOverlay, clippingPlanes, isGhost, ghostOpacity]);
 
   // Smoothly animate radial explosion displacements on child groups
   useFrame((_, delta) => {
@@ -2243,87 +2553,41 @@ function GltfHeroModel({
   return <primitive object={prepared.root} />;
 }
 
-// ── Live Universal CAE Overlays (applied cleanly over ANY model kind) ───────
+// ── Live Universal Volumetric CFD & Thermal Overlays ────────────────────────
+// Note: FEA Von Mises stress is rendered directly on the real 3D geometry via
+// per-vertex stress contour fields & mesh edges (no detached mid-air spheres).
 
-const FEA_HOTSPOT_ANCHORS: ReadonlyArray<[number, number, number]> = [
-  [0.14, 0.36, 0.12],
-  [-0.16, 0.24, -0.09],
-  [0.02, 0.48, -0.14],
-];
+const STREAMLINE_COUNT = 10;
+const PARTICLES_PER_STREAMLINE = 3;
+const TOTAL_CFD_PARTICLES = STREAMLINE_COUNT * PARTICLES_PER_STREAMLINE; // 30 directional velocity cones
 
-function FeaStressHotspotsOverlay({
-  simulationTime,
-  clippingPlanes,
-}: {
-  simulationTime: number;
-  clippingPlanes: THREE.Plane[];
-}): React.ReactElement {
-  return (
-    <group>
-      {FEA_HOTSPOT_ANCHORS.map((pos, idx) => {
-        const pulse = 0.5 + 0.5 * Math.sin(simulationTime * 3.8 + idx * 1.9);
-        const ringRadius = 0.048 + pulse * 0.042;
-        return (
-          <group key={`fea-hs-${idx}`} position={pos}>
-            <mesh>
-              <sphereGeometry args={[0.024 + pulse * 0.008, 16, 16]} />
-              <meshStandardMaterial
-                color="#ef4444"
-                emissive="#ef4444"
-                emissiveIntensity={1.6 + pulse * 0.8}
-                transparent={true}
-                opacity={0.92}
-                clippingPlanes={clippingPlanes}
-              />
-            </mesh>
-            <mesh rotation={[Math.PI / 2, 0, 0]}>
-              <torusGeometry args={[ringRadius, 0.0055, 8, 32]} />
-              <meshStandardMaterial
-                color="#facc15"
-                emissive="#f97316"
-                emissiveIntensity={1.5}
-                transparent={true}
-                opacity={0.85 - pulse * 0.55}
-                depthWrite={false}
-                clippingPlanes={clippingPlanes}
-              />
-            </mesh>
-            <mesh rotation={[0, Math.PI / 2, 0]}>
-              <torusGeometry args={[ringRadius * 0.78, 0.004, 8, 28]} />
-              <meshStandardMaterial
-                color="#ef4444"
-                emissive="#ef4444"
-                emissiveIntensity={1.3}
-                transparent={true}
-                opacity={0.7 - pulse * 0.45}
-                depthWrite={false}
-                clippingPlanes={clippingPlanes}
-              />
-            </mesh>
-          </group>
-        );
-      })}
-    </group>
-  );
-}
-
-const STREAMLINE_COUNT = 6;
-const PARTICLES_PER_STREAMLINE = 4;
-const TOTAL_CFD_PARTICLES = STREAMLINE_COUNT * PARTICLES_PER_STREAMLINE; // 24 animated tracer particles
-
-interface CfdStreamlineData {
+interface CfdVolumetricStreamline {
   id: string;
   curve: THREE.CatmullRomCurve3;
-  points: Array<[number, number, number]>;
-  vertexColors: Array<[number, number, number]>;
+  tubeGeometry: THREE.TubeGeometry;
 }
 
+function positiveMod1(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  const m = v % 1;
+  return m < 0 ? m + 1 : m;
+}
+
+/**
+ * Volumetric 3D CFD velocity streamlines rendered with native `THREE.TubeGeometry` ribbons
+ * and directional velocity-colored `InstancedMesh` arrowheads.
+ *
+ * Intentionally avoids `three-stdlib` `<Line vertexColors transparent>` (whose `USE_LINE_COLOR_ALPHA`
+ * shader define reads `vec4` from 3-component `itemSize=3` buffers and crashes WebGL2 GPUs).
+ */
 function CfdFlowStreamlinesOverlay({
   simulationTime,
+  simulationTimeRef,
   isPlaying,
   clippingPlanes,
 }: {
   simulationTime: number;
+  simulationTimeRef?: React.RefObject<number> | undefined;
   isPlaying: boolean;
   clippingPlanes: THREE.Plane[];
 }): React.ReactElement {
@@ -2332,143 +2596,255 @@ function CfdFlowStreamlinesOverlay({
   const dummyObjRef = useRef(new THREE.Object3D());
   const tmpPosRef = useRef(new THREE.Vector3());
   const tmpTanRef = useRef(new THREE.Vector3());
+  const tmpColorRef = useRef(new THREE.Color());
   const upVecRef = useRef(new THREE.Vector3(0, 1, 0));
 
-  const streamlines = useMemo<CfdStreamlineData[]>(() => {
-    const result: CfdStreamlineData[] = [];
-    const centerY = 0.36;
+  const resources = useMemo(() => {
+    const streamlines: CfdVolumetricStreamline[] = [];
+    const centerY = 0.34;
+    const radialSegments = 6;
+    const tubularSegments = 40;
+    const tmpCol = new THREE.Color();
+
     for (let s = 0; s < STREAMLINE_COUNT; s++) {
-      const azimuth = (s / STREAMLINE_COUNT) * Math.PI * 2 + 0.26;
+      // Arrange two concentric aerodynamic flow shells (inner boundary layer + outer slipstream)
+      const isOuter = s >= 6;
+      const ringCount = isOuter ? STREAMLINE_COUNT - 6 : 6;
+      const ringIdx = isOuter ? s - 6 : s;
+      const azimuth = (ringIdx / ringCount) * Math.PI * 2 + (isOuter ? 0.42 : 0.14);
       const cosA = Math.cos(azimuth);
       const sinA = Math.sin(azimuth);
-      const swirlCos = Math.cos(azimuth + 0.55);
-      const swirlSin = Math.sin(azimuth + 0.55);
+      const wakeSwirl = azimuth + (isOuter ? 0.38 : 0.62);
+      const swirlCos = Math.cos(wakeSwirl);
+      const swirlSin = Math.sin(wakeSwirl);
+
+      const baseR = isOuter ? 0.34 : 0.21;
+      const waistR = isOuter ? 0.56 : 0.44;
+      const wakeR = isOuter ? 0.31 : 0.2;
 
       const controlPts = [
-        new THREE.Vector3(cosA * 0.22, Math.max(0.08, centerY + sinA * 0.16), 0.62),
-        new THREE.Vector3(cosA * 0.34, Math.max(0.1, centerY + sinA * 0.24), 0.28),
-        new THREE.Vector3(cosA * 0.44, Math.max(0.12, centerY + sinA * 0.28), 0.0),
-        new THREE.Vector3(swirlCos * 0.35, Math.max(0.1, centerY + swirlSin * 0.23), -0.28),
-        new THREE.Vector3(swirlCos * 0.21, Math.max(0.08, centerY + swirlSin * 0.15), -0.62),
+        new THREE.Vector3(cosA * baseR, Math.max(0.06, centerY + sinA * baseR * 0.72), 0.72),
+        new THREE.Vector3(cosA * (baseR + waistR) * 0.5, Math.max(0.08, centerY + sinA * waistR * 0.62), 0.32),
+        new THREE.Vector3(cosA * waistR, Math.max(0.11, centerY + sinA * waistR * 0.68), 0.0),
+        new THREE.Vector3(swirlCos * (waistR * 0.78), Math.max(0.09, centerY + swirlSin * waistR * 0.58), -0.32),
+        new THREE.Vector3(swirlCos * wakeR, Math.max(0.06, centerY + swirlSin * wakeR * 0.72), -0.72),
       ];
+
       const curve = new THREE.CatmullRomCurve3(controlPts, false, "catmullrom", 0.5);
-      const sampled = curve.getPoints(36);
-      const points: Array<[number, number, number]> = [];
-      const vertexColors: Array<[number, number, number]> = [];
-      const c = new THREE.Color();
-
-      for (let i = 0; i < sampled.length; i++) {
-        const pt = sampled[i]!;
-        points.push([pt.x, pt.y, pt.z]);
-        // Velocity peaks as flow accelerates around the waist (u ≈ 0.5)
-        const u = i / (sampled.length - 1);
-        const speedNorm = 0.25 + 0.72 * Math.sin(u * Math.PI);
-        c.set(sampleTurboStressColor(speedNorm * 0.78));
-        vertexColors.push([c.r, c.g, c.b]);
-      }
-
-      result.push({
-        id: `cfd-stream-${s}`,
+      const tubeGeometry = new THREE.TubeGeometry(
         curve,
-        points,
-        vertexColors,
+        tubularSegments,
+        isOuter ? 0.0032 : 0.0042,
+        radialSegments,
+        false,
+      );
+
+      // Attach true linear per-vertex velocity-magnitude colors along the tube (itemSize = 3)
+      const posAttr = tubeGeometry.getAttribute("position");
+      const uvAttr = tubeGeometry.getAttribute("uv");
+      const vertCount = posAttr.count;
+      const colors = new Float32Array(vertCount * 3);
+      for (let i = 0; i < vertCount; i++) {
+        const u = uvAttr ? clampNumber(uvAttr.getX(i), 0, 1) : i / Math.max(1, vertCount - 1);
+        const speedNorm = clampNumber(0.18 + 0.8 * Math.sin(u * Math.PI) * (isOuter ? 0.78 : 1.0), 0, 1);
+        const [sr, sg, sb] = sampleCaeFieldRgb("fea-stress", speedNorm * 0.88, false);
+        tmpCol.setRGB(sr, sg, sb, THREE.SRGBColorSpace);
+        colors[i * 3] = tmpCol.r;
+        colors[i * 3 + 1] = tmpCol.g;
+        colors[i * 3 + 2] = tmpCol.b;
+      }
+      tubeGeometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+
+      streamlines.push({
+        id: `cfd-tube-${s}`,
+        curve,
+        tubeGeometry,
       });
     }
-    return result;
+
+    const tubeMaterial = new THREE.MeshStandardMaterial({
+      color: "#ffffff",
+      vertexColors: true,
+      roughness: 0.28,
+      metalness: 0.06,
+      transparent: true,
+      opacity: 0.82,
+    });
+
+    const coneGeometry = new THREE.ConeGeometry(0.011, 0.036, 8);
+    const coneMaterial = new THREE.MeshStandardMaterial({
+      color: "#ffffff",
+      roughness: 0.22,
+      metalness: 0.08,
+      emissive: "#0ea5e9",
+      emissiveIntensity: 0.32,
+      transparent: true,
+      opacity: 0.94,
+    });
+
+    return { streamlines, tubeMaterial, coneGeometry, coneMaterial };
   }, []);
 
-  useFrame((_, delta) => {
+  // Clean GPU resource disposal on unmount
+  useEffect(() => {
+    return () => {
+      for (const s of resources.streamlines) {
+        s.tubeGeometry.dispose();
+      }
+      resources.tubeMaterial.dispose();
+      resources.coneGeometry.dispose();
+      resources.coneMaterial.dispose();
+    };
+  }, [resources]);
+
+  // Sync section-cut clipping planes onto both tube and arrowhead materials
+  const hasClipping = clippingPlanes.length > 0;
+  const prevClippingRef = useRef(hasClipping);
+  useEffect(() => {
+    resources.tubeMaterial.clippingPlanes = clippingPlanes;
+    resources.coneMaterial.clippingPlanes = clippingPlanes;
+    if (prevClippingRef.current !== hasClipping) {
+      prevClippingRef.current = hasClipping;
+      resources.tubeMaterial.needsUpdate = true;
+      resources.coneMaterial.needsUpdate = true;
+    }
+  }, [resources, clippingPlanes, hasClipping]);
+
+  const updateArrowInstances = useRef((phase: number) => {
     const mesh = instancedRef.current;
     if (!mesh) return;
-    if (isPlaying) {
-      flowPhaseRef.current = (flowPhaseRef.current + Math.min(delta, 0.1) * 0.44) % 1;
-    }
-
-    const combinedPhase = (flowPhaseRef.current + simulationTime * 0.08) % 1;
     const dummy = dummyObjRef.current;
     const pos = tmpPosRef.current;
     const tan = tmpTanRef.current;
     const up = upVecRef.current;
+    const col = tmpColorRef.current;
 
     let instanceIdx = 0;
-    for (let s = 0; s < streamlines.length; s++) {
-      const stream = streamlines[s]!;
+    for (let s = 0; s < resources.streamlines.length; s++) {
+      const stream = resources.streamlines[s]!;
+      const isOuter = s >= 6;
       for (let p = 0; p < PARTICLES_PER_STREAMLINE; p++) {
-        const u = (combinedPhase + p / PARTICLES_PER_STREAMLINE + s * 0.13) % 1;
+        const uRaw = positiveMod1(phase + p / PARTICLES_PER_STREAMLINE + s * 0.11);
+        const u = clampNumber(uRaw, 0.002, 0.998);
         stream.curve.getPointAt(u, pos);
         stream.curve.getTangentAt(u, tan);
 
         dummy.position.copy(pos);
-        dummy.quaternion.setFromUnitVectors(up, tan.normalize());
+        if (tan.lengthSq() > 1e-8) {
+          tan.normalize();
+          if (tan.y < -0.9995) {
+            dummy.quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI);
+          } else {
+            dummy.quaternion.setFromUnitVectors(up, tan);
+          }
+        } else {
+          dummy.quaternion.identity();
+        }
+
         const taper = Math.sin(u * Math.PI);
-        const scaleLen = 0.65 + taper * 0.85;
-        dummy.scale.set(1, scaleLen, 1);
+        const scaleLen = 0.65 + taper * 0.72;
+        dummy.scale.set(0.95, scaleLen, 0.95);
         dummy.updateMatrix();
-        mesh.setMatrixAt(instanceIdx++, dummy.matrix);
+        mesh.setMatrixAt(instanceIdx, dummy.matrix);
+
+        const speedNorm = clampNumber(0.18 + 0.8 * taper * (isOuter ? 0.78 : 1.0), 0, 1);
+        const [sr, sg, sb] = sampleCaeFieldRgb("fea-stress", speedNorm * 0.88, false);
+        col.setRGB(sr, sg, sb, THREE.SRGBColorSpace);
+        mesh.setColorAt(instanceIdx, col);
+        instanceIdx += 1;
       }
     }
     mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) {
+      mesh.instanceColor.needsUpdate = true;
+    }
+  });
+
+  // Populate initial transforms & velocity colors immediately on mount (even if paused)
+  useEffect(() => {
+    const liveTime = readLiveSimTime(simulationTime, simulationTimeRef);
+    updateArrowInstances.current(positiveMod1(flowPhaseRef.current + liveTime * 0.08));
+  }, [resources, simulationTime, simulationTimeRef]);
+
+  useFrame((_, delta) => {
+    if (isPlaying) {
+      flowPhaseRef.current = positiveMod1(flowPhaseRef.current + Math.min(delta, 0.1) * 0.42);
+    }
+    const liveTime = readLiveSimTime(simulationTime, simulationTimeRef);
+    updateArrowInstances.current(positiveMod1(flowPhaseRef.current + liveTime * 0.08));
   });
 
   return (
-    <group>
-      {streamlines.map((stream) => (
-        <Line
-          key={stream.id}
-          points={stream.points}
-          vertexColors={stream.vertexColors}
-          lineWidth={2.0}
-          transparent={true}
-          opacity={0.78}
-        />
+    <group name="cfd-volumetric-streamlines">
+      {resources.streamlines.map((stream) => (
+        <mesh key={stream.id} geometry={stream.tubeGeometry} material={resources.tubeMaterial} />
       ))}
-      <instancedMesh ref={instancedRef} args={[undefined, undefined, TOTAL_CFD_PARTICLES]} frustumCulled={false}>
-        <capsuleGeometry args={[0.012, 0.032, 6, 10]} />
-        <meshStandardMaterial
-          color="#67e8f9"
-          emissive="#22d3ee"
-          emissiveIntensity={1.65}
-          roughness={0.2}
-          metalness={0.1}
-          transparent={true}
-          opacity={0.94}
-          clippingPlanes={clippingPlanes}
-        />
-      </instancedMesh>
+      <instancedMesh
+        ref={instancedRef}
+        args={[resources.coneGeometry, resources.coneMaterial, TOTAL_CFD_PARTICLES]}
+        frustumCulled={false}
+      />
     </group>
   );
 }
 
 function ThermalFieldOverlay({
   simulationTime,
+  simulationTimeRef,
   clippingPlanes,
 }: {
   simulationTime: number;
+  simulationTimeRef?: React.RefObject<number> | undefined;
   clippingPlanes: THREE.Plane[];
 }): React.ReactElement {
-  const pulse = 0.5 + 0.5 * Math.sin(simulationTime * 2.1);
+  const ringRefs = useRef<Array<THREE.Mesh | null>>([]);
+  const matRefs = useRef<Array<THREE.MeshStandardMaterial | null>>([]);
+
+  useFrame(() => {
+    const t = readLiveSimTime(simulationTime, simulationTimeRef);
+    const pulse = 0.5 + 0.5 * Math.sin(t * 2.1);
+    for (let idx = 0; idx < 3; idx++) {
+      const cycle = (((t * 0.35 + idx / 3) % 1) + 1) % 1;
+      const ring = ringRefs.current[idx];
+      if (ring) {
+        ring.position.y = -0.14 + cycle * 0.42;
+        const scale = 1 + cycle * 0.4;
+        ring.scale.set(scale, scale, 1);
+      }
+      const mat = matRefs.current[idx];
+      if (mat) {
+        mat.opacity = Math.sin(cycle * Math.PI) * 0.46;
+        mat.emissiveIntensity = 1.4 + pulse * 0.4;
+      }
+    }
+  });
+
   return (
     <group position={[0, 0.34, 0]}>
-      {[0, 1, 2].map((idx) => {
-        const cycle = (simulationTime * 0.35 + idx / 3) % 1;
-        const yOff = -0.14 + cycle * 0.42;
-        const radius = 0.3 + cycle * 0.12;
-        const opacity = Math.sin(cycle * Math.PI) * 0.46;
-        return (
-          <mesh key={`thermal-ring-${idx}`} position={[0, yOff, 0]} rotation={[Math.PI / 2, 0, 0]}>
-            <torusGeometry args={[radius, 0.005, 8, 40]} />
-            <meshStandardMaterial
-              color="#f59e0b"
-              emissive="#fbbf24"
-              emissiveIntensity={1.4 + pulse * 0.4}
-              transparent={true}
-              opacity={opacity}
-              depthWrite={false}
-              clippingPlanes={clippingPlanes}
-            />
-          </mesh>
-        );
-      })}
+      {[0, 1, 2].map((idx) => (
+        <mesh
+          key={`thermal-ring-${idx}`}
+          ref={(el) => {
+            ringRefs.current[idx] = el;
+          }}
+          position={[0, -0.14 + (idx / 3) * 0.42, 0]}
+          rotation={[Math.PI / 2, 0, 0]}
+        >
+          <torusGeometry args={[0.3, 0.005, 8, 36]} />
+          <meshStandardMaterial
+            ref={(el) => {
+              matRefs.current[idx] = el;
+            }}
+            color="#f59e0b"
+            emissive="#fbbf24"
+            emissiveIntensity={1.5}
+            transparent={true}
+            opacity={0.32}
+            depthWrite={false}
+            clippingPlanes={clippingPlanes}
+          />
+        </mesh>
+      ))}
     </group>
   );
 }
@@ -2481,18 +2857,57 @@ export function HeroModelAsset({
   caeOverlay,
   renderStyle,
   simulationTime,
+  simulationTimeRef,
   isPlaying,
   clippingPlanes,
   animationController,
   isGhost = false,
   ghostOpacity = 0.38,
+  visibility,
+  isInXr = false,
+  dark = true,
+  onSelectSubsystem,
 }: HeroModelAssetProps): React.ReactElement {
   const safeExplode = clampNumber(explodeFactor, 0, 1);
   const accentColor = model.accentColor ?? "#38bdf8";
   const effectivePlanes = isGhost ? EMPTY_PLANES : clippingPlanes;
+  const liveMotionGroupRef = useRef<THREE.Group | null>(null);
+
+  // Smooth 72 Hz ref-driven motion for showcase/external assemblies when React isn't re-rendering per frame
+  const hasInternalRefMotion =
+    !model.renderCustomContent &&
+    !(model.vtkBuffer && model.vtkBuffer.byteLength > 0) &&
+    !isLoadableGltfUri(model.artifactUri) &&
+    !(model.cadComponents && model.cadComponents.length > 0) &&
+    model.kind !== "drone" &&
+    model.kind !== "wind-turbine" &&
+    model.kind !== "satellite" &&
+    model.kind !== "ev-battery";
+
+  useFrame(() => {
+    const grp = liveMotionGroupRef.current;
+    if (!grp) return;
+    if (isGhost || hasInternalRefMotion || !simulationTimeRef) {
+      grp.position.set(0, 0, 0);
+      grp.rotation.set(0, 0, 0);
+      return;
+    }
+
+    const t = readLiveSimTime(simulationTime, simulationTimeRef);
+    if (model.kind === "drone") {
+      grp.position.set(0, Math.sin(t * 2.2) * 0.018, 0);
+      grp.rotation.set(Math.sin(t * 1.4) * 0.022, Math.sin(t * 0.5) * 0.08, Math.cos(t * 1.1) * 0.022);
+    } else if (model.kind === "satellite") {
+      grp.position.set(0, Math.sin(t * 1.1) * 0.016, 0);
+      grp.rotation.set(Math.sin(t * 0.6) * 0.018, t * 0.16, 0);
+    } else if (isPlaying) {
+      grp.position.set(0, 0, 0);
+      grp.rotation.set(0, Math.sin(t * 0.35) * 0.16, 0);
+    }
+  });
 
   const proceduralAssembly = (() => {
-    const assemblyProps: ProceduralAssemblyProps = {
+    const showcaseProps = {
       explodeFactor: safeExplode,
       caeOverlay,
       renderStyle,
@@ -2503,15 +2918,37 @@ export function HeroModelAsset({
       accentColor,
     };
 
+    const assemblyProps: ProceduralAssemblyProps = {
+      ...showcaseProps,
+      simulationTimeRef,
+    };
+
     switch (model.kind) {
+      case "octopus-rov":
+        return (
+          <OctopusShowcaseAssembly
+            explodeFactor={safeExplode}
+            caeOverlay={caeOverlay}
+            renderStyle={renderStyle}
+            simulationTime={simulationTime}
+            simulationTimeRef={simulationTimeRef}
+            clippingPlanes={effectivePlanes}
+            isGhost={isGhost}
+            ghostOpacity={ghostOpacity}
+            visibility={visibility}
+            isInXr={isInXr}
+            dark={dark}
+            onSelectSubsystem={onSelectSubsystem}
+          />
+        );
       case "drone":
-        return <HexacopterDroneAssembly {...assemblyProps} />;
+        return <HexacopterDroneAssembly {...showcaseProps} />;
       case "wind-turbine":
-        return <WindTurbineAssembly {...assemblyProps} />;
+        return <WindTurbineAssembly {...showcaseProps} />;
       case "satellite":
-        return <OrbitalSatelliteAssembly {...assemblyProps} />;
+        return <OrbitalSatelliteAssembly {...showcaseProps} />;
       case "ev-battery":
-        return <EvBatteryPackAssembly {...assemblyProps} />;
+        return <EvBatteryPackAssembly {...showcaseProps} />;
       case "fea":
         return <AerospaceCantileverBracket {...assemblyProps} />;
       case "cfd":
@@ -2604,21 +3041,23 @@ export function HeroModelAsset({
 
   return (
     <group name={`hero-model-${model.id}`}>
-      {modelContent}
+      <group ref={liveMotionGroupRef}>{modelContent}</group>
 
-      {/* Live CAE field overlays applied cleanly over any active model kind */}
-      {!isGhost && caeOverlay === "fea-stress" && (
-        <FeaStressHotspotsOverlay simulationTime={simulationTime} clippingPlanes={effectivePlanes} />
-      )}
+      {/* Live volumetric CFD & Thermal field overlays (FEA stress renders directly on the 3D geometry & mesh edges) */}
       {!isGhost && caeOverlay === "cfd-flow" && (
         <CfdFlowStreamlinesOverlay
           simulationTime={simulationTime}
+          simulationTimeRef={simulationTimeRef}
           isPlaying={isPlaying}
           clippingPlanes={effectivePlanes}
         />
       )}
       {!isGhost && caeOverlay === "thermal" && (
-        <ThermalFieldOverlay simulationTime={simulationTime} clippingPlanes={effectivePlanes} />
+        <ThermalFieldOverlay
+          simulationTime={simulationTime}
+          simulationTimeRef={simulationTimeRef}
+          clippingPlanes={effectivePlanes}
+        />
       )}
     </group>
   );

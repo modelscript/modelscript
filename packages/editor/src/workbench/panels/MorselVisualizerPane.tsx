@@ -347,6 +347,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   const showAnalysisView = controlledShowAnalysisView ?? internalShowAnalysisView;
   const setShowAnalysisView = controlledSetShowAnalysisView ?? setInternalShowAnalysisView;
   const [showVrRotunda, setShowVrRotunda] = useState(false);
+  const [capturedDiagramSvgUrl, setCapturedDiagramSvgUrl] = useState<string | null>(null);
   const prevCenterPaneKeyRef = useRef(`${showResultsView ? 1 : 0}:${showCadView ? 1 : 0}:${showAnalysisView ? 1 : 0}`);
   useEffect(() => {
     const nextKey = `${showResultsView ? 1 : 0}:${showCadView ? 1 : 0}:${showAnalysisView ? 1 : 0}`;
@@ -393,6 +394,29 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   }, [showPalette, dialect, documentUri, lspPaletteCategories.length]);
   const internalDiagramRef = useRef<DiagramEditorHandle>(null);
   const effectiveDiagramRef = diagramEditorRef ?? internalDiagramRef;
+  const openVrRotunda = useCallback(() => {
+    const svgUrl = effectiveDiagramRef.current?.exportSvgDataUrl?.() ?? null;
+    setCapturedDiagramSvgUrl(svgUrl);
+    setShowVrRotunda(true);
+  }, [effectiveDiagramRef]);
+  const toggleVrRotunda = useCallback(() => {
+    if (showVrRotunda) {
+      setShowVrRotunda(false);
+    } else {
+      openVrRotunda();
+    }
+  }, [showVrRotunda, openVrRotunda]);
+  useEffect(() => {
+    if (!showVrRotunda) return;
+    if (isDiagramLoading || !diagramData || diagramData.isLoading) return;
+    const timer = window.setTimeout(() => {
+      const svgUrl = effectiveDiagramRef.current?.exportSvgDataUrl?.() ?? null;
+      if (svgUrl) {
+        setCapturedDiagramSvgUrl(svgUrl);
+      }
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [showVrRotunda, isDiagramLoading, diagramData, effectiveDiagramRef]);
   const [currentZoom, setCurrentZoom] = useState(1);
   const [showZoomMenu, setShowZoomMenu] = useState(false);
   const zoomMenuRef = useRef<HTMLDivElement>(null);
@@ -763,7 +787,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
     !showAnalysisView &&
     !showVrRotunda;
 
-  const rotundaTitle = selectedTreeClassName || activeFileName || activeLangInfo.label;
+  const rotundaTitle = selectedTreeClassName || activeFileName || activeLangInfo.name || dialect || "Model";
 
   const rotundaParameters = useMemo(() => {
     const params: Array<{ name: string; value: string | number; unit?: string | undefined }> = [];
@@ -836,28 +860,40 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
     return series.length > 0 ? series : undefined;
   }, [localSimulationData, selectedSimulationVariables]);
 
-  const rotundaDocument = useMemo(
-    () =>
-      buildRotundaCanvasDocument({
-        title: rotundaTitle,
-        languageId: dialect || "modelica",
-        artifactUri: activeFileName || documentUri,
-        diagramData: diagramData && typeof diagramData === "object" ? (diagramData as Record<string, unknown>) : null,
-        simulationSeries: rotundaSimulationSeries,
-        parameters: rotundaParameters,
-        vtkBuffer: vtkBuffer ?? null,
-      }),
-    [
-      rotundaTitle,
-      dialect,
-      activeFileName,
-      documentUri,
-      diagramData,
-      rotundaSimulationSeries,
-      rotundaParameters,
-      vtkBuffer,
-    ],
-  );
+  const rotundaDocument = useMemo(() => {
+    const doc = buildRotundaCanvasDocument({
+      title: rotundaTitle,
+      languageId: dialect || "modelica",
+      artifactUri: activeFileName || documentUri,
+      diagramData: diagramData && typeof diagramData === "object" ? (diagramData as Record<string, unknown>) : null,
+      simulationSeries: rotundaSimulationSeries,
+      parameters: rotundaParameters,
+      vtkBuffer: vtkBuffer ?? null,
+    });
+    if (capturedDiagramSvgUrl) {
+      const primaryTile = doc.tiles["tile_primary_schematic"];
+      if (primaryTile) {
+        doc.tiles["tile_primary_schematic"] = {
+          ...primaryTile,
+          viewState: {
+            ...primaryTile.viewState,
+            capturedSvgDataUrl: capturedDiagramSvgUrl,
+          },
+        };
+      }
+    }
+    return doc;
+  }, [
+    rotundaTitle,
+    dialect,
+    activeFileName,
+    documentUri,
+    diagramData,
+    rotundaSimulationSeries,
+    rotundaParameters,
+    vtkBuffer,
+    capturedDiagramSvgUrl,
+  ]);
 
   const rotundaModels = useMemo<RotundaModelEntry[]>(() => {
     const normalizedDialect = (dialect || "modelica").toLowerCase();
@@ -921,6 +957,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
 
     const firstGltfUri = cadComponents.find((c) => {
       const u = (c.cad?.uri ?? "").trim().toLowerCase();
+      if (u.startsWith("data:model/gltf")) return true;
       return (
         (u.startsWith("/") || u.startsWith("http") || u.startsWith("blob:")) &&
         (u.endsWith(".glb") || u.endsWith(".gltf"))
@@ -947,7 +984,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
             ? `${cadComponents.length} Active 3D CAD ${cadComponents.length === 1 ? "Part" : "Parts"}`
             : vtkBuffer
               ? "Live VTK Volumetric Field"
-              : `${activeLangInfo.label} 3D Digital Twin`,
+              : `${activeLangInfo.name || normalizedDialect.toUpperCase()} 3D Digital Twin`,
         kind: primaryKind,
         artifactUri: firstGltfUri ?? activeFileName ?? documentUri,
         vtkBuffer: vtkBuffer ?? null,
@@ -991,7 +1028,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
     }
 
     return models;
-  }, [dialect, activeFileName, documentUri, rotundaTitle, activeLangInfo.label, cadComponents, vtkBuffer]);
+  }, [dialect, activeFileName, documentUri, rotundaTitle, activeLangInfo.name, cadComponents, vtkBuffer]);
 
   const editorHost = useEditorHost();
   const starterExamples = useMemo(() => {
@@ -1128,7 +1165,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
     return [
       {
         id: `sim-${selectedTreeClassName || dialect}-latest`,
-        name: `Local Simulation Buffer: ${selectedTreeClassName || activeLangInfo.label} (${localSimulationData.length} pts)`,
+        name: `Local Simulation Buffer: ${selectedTreeClassName || activeLangInfo.name || dialect} (${localSimulationData.length} pts)`,
         recordedAt: nowStr,
         durationSeconds: Number(durationSec),
         participantCount: 1,
@@ -1140,18 +1177,67 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
     localSimulationData,
     selectedTreeClassName,
     dialect,
-    activeLangInfo.label,
+    activeLangInfo.name,
     simulationVariables,
   ]);
-
-  if (!((view === MorselView.DIAGRAM || isSplit(view)) && (!isNarrow || mobileTab !== "code"))) {
-    return null;
-  }
 
   const isFullScreenSplitCanvas = !isNarrow && (hideCenterFloatingToolbar || isPlaygroundRoute) && isSplit(view);
   const isFloatingLayout =
     !isNarrow && (hideCenterFloatingToolbar || isPlaygroundRoute) && (!isSplit(view) || isFullScreenSplitCanvas);
   const floatingLeftOffset = treeVisible ? treeWidth + 24 : 12;
+
+  const cadFitInsets = useMemo(
+    () =>
+      isFloatingLayout
+        ? {
+            top: 84,
+            left: floatingLeftOffset + 12,
+            right:
+              24 +
+              (isFullScreenSplitCanvas && view === MorselView.SPLIT_COLUMNS
+                ? Math.round((1 - splitRatio) * (typeof window !== "undefined" ? window.innerWidth : 1200))
+                : 0),
+            bottom:
+              56 +
+              (isFullScreenSplitCanvas && view === MorselView.SPLIT_ROWS
+                ? Math.round((1 - splitRatio) * (typeof window !== "undefined" ? window.innerHeight : 800))
+                : 0),
+          }
+        : undefined,
+    [isFloatingLayout, floatingLeftOffset, isFullScreenSplitCanvas, view, splitRatio],
+  );
+
+  // When full-bleed VR Rotunda is active in Playground/floating mode, suppress
+  // the global `html { overflow-y: scroll; scrollbar-gutter: stable }` strip so
+  // the 3D canvas stretches literally 100% edge-to-edge behind the floating navbar.
+  useEffect(() => {
+    if (!showVrRotunda || !(isPlaygroundRoute || isFloatingLayout)) return;
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    const body = document.body;
+    const prevRootOverflow = root.style.overflow;
+    const prevRootGutter = root.style.getPropertyValue("scrollbar-gutter");
+    const prevBodyOverflow = body.style.overflow;
+
+    root.style.overflow = "hidden";
+    root.style.setProperty("scrollbar-gutter", "auto");
+    body.style.overflow = "hidden";
+
+    return () => {
+      root.style.overflow = prevRootOverflow;
+      if (prevRootGutter) {
+        root.style.setProperty("scrollbar-gutter", prevRootGutter);
+      } else {
+        root.style.removeProperty("scrollbar-gutter");
+      }
+      body.style.overflow = prevBodyOverflow;
+    };
+  }, [showVrRotunda, isPlaygroundRoute, isFloatingLayout]);
+
+  if (!((view === MorselView.DIAGRAM || isSplit(view)) && (!isNarrow || mobileTab !== "code"))) {
+    return null;
+  }
+
   const floatingCardShadow =
     colorMode === "dark"
       ? "0 12px 36px rgba(0, 0, 0, 0.48), 0 2px 8px rgba(0, 0, 0, 0.28)"
@@ -1436,7 +1522,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
               <button
                 type="button"
                 data-testid="morsel-vr-rotunda-toggle"
-                onClick={() => setShowVrRotunda((prev) => !prev)}
+                onClick={toggleVrRotunda}
                 aria-pressed={showVrRotunda}
                 style={{
                   display: "flex",
@@ -3509,25 +3595,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                     targetEditor.setValue(nextCode);
                   }
                 }}
-                onOpenVrRotunda={() => setShowVrRotunda(true)}
-                fitInsets={
-                  isFloatingLayout
-                    ? {
-                        top: 84,
-                        left: floatingLeftOffset + 12,
-                        right:
-                          24 +
-                          (isFullScreenSplitCanvas && view === MorselView.SPLIT_COLUMNS
-                            ? Math.round((1 - splitRatio) * (typeof window !== "undefined" ? window.innerWidth : 1200))
-                            : 0),
-                        bottom:
-                          56 +
-                          (isFullScreenSplitCanvas && view === MorselView.SPLIT_ROWS
-                            ? Math.round((1 - splitRatio) * (typeof window !== "undefined" ? window.innerHeight : 800))
-                            : 0),
-                      }
-                    : undefined
-                }
+                onOpenVrRotunda={openVrRotunda}
+                fitInsets={cadFitInsets}
               />
             </Suspense>
           </div>
@@ -3537,22 +3606,31 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
         {showVrRotunda && (
           <div
             data-testid="morsel-vr-rotunda-pane"
-            style={{
-              position: "absolute",
-              inset: 0,
-              paddingTop: isFloatingLayout ? 68 : hideCenterFloatingToolbar ? 0 : 56,
-              paddingRight:
-                isFullScreenSplitCanvas && view === MorselView.SPLIT_COLUMNS
-                  ? `calc(${(1 - splitRatio) * 100}% + 12px)`
-                  : 0,
-              boxSizing: "border-box",
-              display: "flex",
-              flexDirection: "column",
-              overflow: "hidden",
-              minHeight: 0,
-              zIndex: 35,
-              backgroundColor: "#050914",
-            }}
+            style={
+              isPlaygroundRoute || isFloatingLayout
+                ? {
+                    position: "fixed",
+                    inset: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    overflow: "hidden",
+                    minHeight: 0,
+                    zIndex: 38,
+                    backgroundColor: "#050914",
+                  }
+                : {
+                    position: "absolute",
+                    inset: 0,
+                    paddingTop: hideCenterFloatingToolbar ? 0 : 56,
+                    boxSizing: "border-box",
+                    display: "flex",
+                    flexDirection: "column",
+                    overflow: "hidden",
+                    minHeight: 0,
+                    zIndex: 35,
+                    backgroundColor: "#050914",
+                  }
+            }
           >
             <Suspense
               fallback={
@@ -3575,6 +3653,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 mode="spatial-3d"
                 title={rotundaTitle}
                 animationController={animationControllerRef.current}
+                topOverlayInset={isPlaygroundRoute || isFloatingLayout ? 72 : 12}
                 onExitTo2D={() => setShowVrRotunda(false)}
               />
             </Suspense>

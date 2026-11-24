@@ -5112,6 +5112,8 @@ export class WasmExprVisitor {
   inEquationContext: boolean;
   /** True while lowering arguments of a user/package function call (preserves symbolic `[:, k]` slices in newInst). */
   inUserCallArg: boolean;
+  /** True while lowering connector references in `connect(a, b)` (never constant-fold constant connectors). */
+  inConnectRef: boolean;
   /** Keep `a:b` / `a:s:b` as `Range` nodes instead of expanding them to array constructors (used for `for`-statement ranges, which OMC prints verbatim). */
   keepRanges: boolean;
   /** Internal traversal flag set when a bounded CST walk reaches `stopLoc`. */
@@ -5160,6 +5162,7 @@ export class WasmExprVisitor {
     this.symbolicSubscripts = false;
     this.inEquationContext = false;
     this.inUserCallArg = false;
+    this.inConnectRef = false;
     this.keepRanges = false;
     this.stopLocReached = false;
     this.visitDepth = 0;
@@ -5193,6 +5196,7 @@ export class WasmExprVisitor {
     this.symbolicSubscripts = false;
     this.inEquationContext = false;
     this.inUserCallArg = false;
+    this.inConnectRef = false;
     this.keepRanges = false;
     this.stopLocReached = false;
   }
@@ -5878,13 +5882,14 @@ export class WasmExprVisitor {
             if (bVal != 0x7fffffffffffffff) return bVal;
             if (this.flattenerPtr != 0) {
               let fl = changetype<ModelicaFlattener>(this.flattenerPtr);
-              if (fl.evalConstScalar(bExpr, depth + 1)) {
+              if (fl.evalConstScalar(bExpr, depth + 1, false, false, false, true)) {
                 let sv = fl.scalarOutVal;
                 if (isFinite<f64>(sv) && sv >= -2147483648.0 && sv <= 2147483647.0) {
                   return Math.floor(sv + (sv >= 0.0 ? 1e-9 : -1e-9)) as i64;
                 }
               }
             }
+            return 0x7fffffffffffffff;
           }
           return (va.startValue as i32) as i64;
         }
@@ -9656,6 +9661,10 @@ export class WasmExprVisitor {
     }
     if (ok1 == 0) {
       ok1 = parseForIndexRange(fi1, this.dae, pool, rangeInfo, rangePrefixPathId, this.scopeStackPtr);
+      if (ok1 == 2) {
+        ok1 = 0;
+        rangeInfo.length = 0;
+      }
     }
     if (ok1 == 0 && locIsNull(fi2)) {
       let varIdLoc = locFindDescendant(fi1, SyntaxType.IDENTIFIER);
@@ -9802,6 +9811,52 @@ export class WasmExprVisitor {
               }
               this.scratchBuffer.length = scanStart;
               this.removeLoopVar(var1);
+            } else if (this.flattenerPtr != 0) {
+              // Iteration over an enumeration type: e.g. `max(e for e in E)`
+              let fl = changetype<ModelicaFlattener>(this.flattenerPtr);
+              let enumLoc = fl.findClassLoc(fl.currentClassLoc, colNameId, pool);
+              if (locIsNull(enumLoc)) enumLoc = fl.findClassLoc(fl.rootProgramLoc, colNameId, pool);
+              let enumListLoc: u64 = !locIsNull(enumLoc) ? locFindDescendant(enumLoc, SyntaxType.ENUM_LIST) : 0;
+              if (!locIsNull(enumListLoc)) {
+                let lits = new Array<u32>();
+                let stk = new Array<u64>();
+                stk.push(enumListLoc);
+                while (stk.length > 0) {
+                  let cur = stk.pop();
+                  if (locType(cur) == SyntaxType.ENUMERATION_LITERAL) {
+                    let idLoc = locFindDescendant(cur, SyntaxType.IDENTIFIER);
+                    if (locIsNull(idLoc)) idLoc = locFindDescendant(cur, SyntaxType.TOKEN_IDENTIFIER_ALT);
+                    if (!locIsNull(idLoc)) lits.push(locIntern(pool, idLoc));
+                    continue;
+                  }
+                  let sibs = new Array<u64>();
+                  let ch = locFirstChild(cur);
+                  while (!locIsNull(ch)) {
+                    sibs.push(ch);
+                    ch = locNextSibling(ch);
+                  }
+                  for (let si = sibs.length - 1; si >= 0; si--) stk.push(sibs[si]);
+                }
+                if (lits.length > 0) {
+                  for (let li: i32 = 0; li < lits.length; li++) {
+                    let fullLitId = pool.concatIds(colNameId, lits[li]);
+                    let itemExpr = this.dae.addExpression(ExprKind.EnumLiteral, li + 1, fullLitId);
+                    this.setLoopVar(var1, itemExpr);
+                    let elemId = this.visitLoc(bodyLoc);
+                    if (elemId == 0xffffffff) {
+                      this.removeLoopVar(var1);
+                      this.tempBuffer.length = elemStart;
+                      return 0xffffffff;
+                    }
+                    this.tempBuffer.push(elemId);
+                  }
+                  this.removeLoopVar(var1);
+                } else {
+                  return 0xffffffff;
+                }
+              } else {
+                return 0xffffffff;
+              }
             } else {
               return 0xffffffff;
             }
@@ -11672,7 +11727,7 @@ export class WasmExprVisitor {
           let varIdx = this.dae.lookupVariableByName(prefixedId);
           if (varIdx >= 0) {
             let varAcc = VarAccessor.at(this.dae.getVarData(), varIdx as u32);
-            if (varAcc.variability == Variability.Constant) {
+            if (varAcc.variability == Variability.Constant && !this.inConnectRef) {
               let bExpr = this.dae.getVarAttrExpr(varIdx as u32, VarAttrKind.Binding as u32);
               if (bExpr != 0xffffffff) {
                 let bk = this.dae.getExprKind(bExpr);
@@ -11709,9 +11764,11 @@ export class WasmExprVisitor {
               }
             }
             if (!pool.hasDot(nameId)) {
-              let localMod = ss.lookupCurrentPrefix(nameId, prefixId);
-              if (localMod != 0xffffffff) {
-                return localMod;
+              if (!this.inConnectRef) {
+                let localMod = ss.lookupCurrentPrefix(nameId, prefixId);
+                if (localMod != 0xffffffff) {
+                  return localMod;
+                }
               }
               let directPrefixedId = pool.concatIds(prefixId, nameId);
               if (prefixedId == directPrefixedId && !locIsNull(flattener.currentClassLoc)) {
@@ -11743,7 +11800,7 @@ export class WasmExprVisitor {
             topVarAcc.variability != Variability.Constant &&
             topVarAcc.variability != Variability.Parameter;
         }
-        if (!isTopNonParamVar) {
+        if (!isTopNonParamVar && !this.inConnectRef) {
           let modExpr = ss.lookup(nameId);
           if (modExpr != 0xffffffff) {
             return modExpr;
@@ -11754,7 +11811,7 @@ export class WasmExprVisitor {
       let varIdx = this.dae.lookupVariableByName(resolvedSimpleId);
       if (varIdx >= 0) {
         let varAcc = VarAccessor.at(this.dae.getVarData(), varIdx as u32);
-        if (varAcc.variability == Variability.Constant) {
+        if (varAcc.variability == Variability.Constant && !this.inConnectRef) {
           let bExpr = this.dae.getVarAttrExpr(varIdx as u32, VarAttrKind.Binding as u32);
           if (bExpr != 0xffffffff) {
             let bk = this.dae.getExprKind(bExpr);
@@ -17484,7 +17541,7 @@ export class ModelicaFlattener {
     return 0xffffffff;
   }
 
-  evalConstScalar(exprId: u32, depth: i32 = 0, markFinal: boolean = false, constOnly: boolean = false, noMutableRealParams: boolean = false): bool {
+  evalConstScalar(exprId: u32, depth: i32 = 0, markFinal: boolean = false, constOnly: boolean = false, noMutableRealParams: boolean = false, fromDaeBinding: boolean = false): bool {
     if (exprId >= this.dae.exprCount || depth > 30) return false;
     let k = this.dae.getExprKind(exprId);
     if (k == ExprKind.RealLiteral) {
@@ -17506,14 +17563,58 @@ export class ModelicaFlattener {
     if (k == ExprKind.Name) {
       let nameId = this.dae.getExprData1(exprId);
       let pool = this.dae.getStringPool();
-      let resolvedNameId = this.exprVisitor.resolveVarName(nameId);
+      let enumVal = this.lookupEnumLiteral(nameId);
+      if (enumVal != 0) {
+        let ord = (enumVal >> 32) as i32;
+        if (ord >= 1) {
+          this.scalarOutVal = ord as f64;
+          return true;
+        }
+      }
+      if (pool.hasDot(nameId)) {
+        let enumTypeId = pool.getParentPrefix(nameId);
+        let targetLitId = getPathLastPart(pool, nameId);
+        let enumLoc = this.findClassLoc(this.currentClassLoc, enumTypeId, pool);
+        if (locIsNull(enumLoc)) enumLoc = this.findClassLoc(this.rootProgramLoc, enumTypeId, pool);
+        let enumListLoc: u64 = !locIsNull(enumLoc) ? locFindDescendant(enumLoc, SyntaxType.ENUM_LIST) : 0;
+        if (!locIsNull(enumListLoc)) {
+          let stk = new Array<u64>();
+          stk.push(enumListLoc);
+          let curOrd: i32 = 0;
+          while (stk.length > 0) {
+            let cur = stk.pop();
+            if (locType(cur) == SyntaxType.ENUMERATION_LITERAL) {
+              curOrd++;
+              let idLoc = locFindDescendant(cur, SyntaxType.IDENTIFIER);
+              if (locIsNull(idLoc)) idLoc = locFindDescendant(cur, SyntaxType.TOKEN_IDENTIFIER_ALT);
+              if (!locIsNull(idLoc) && locIntern(pool, idLoc) == targetLitId) {
+                this.scalarOutVal = curOrd as f64;
+                return true;
+              }
+              continue;
+            }
+            let sibs = new Array<u64>();
+            let ch = locFirstChild(cur);
+            while (!locIsNull(ch)) {
+              sibs.push(ch);
+              ch = locNextSibling(ch);
+            }
+            for (let si = sibs.length - 1; si >= 0; si--) stk.push(sibs[si]);
+          }
+        }
+      }
+      let resolvedNameId = fromDaeBinding ? nameId : this.exprVisitor.resolveVarName(nameId);
       let varIdx: i32 = -1;
       let pfx: u32 = this.scopeStackPtr != 0 ? changetype<ScopeStack>(this.scopeStackPtr).currentPrefixPathId : 0;
-      if (pfx != 0 && !pool.hasDot(nameId)) {
-        varIdx = this.dae.lookupVariableByName(this.exprVisitor.resolveVarName(pool.concatIds(pfx, nameId)));
+      if (fromDaeBinding) {
+        varIdx = this.dae.lookupVariableByName(nameId);
+      } else {
+        if (pfx != 0 && !pool.hasDot(nameId)) {
+          varIdx = this.dae.lookupVariableByName(this.exprVisitor.resolveVarName(pool.concatIds(pfx, nameId)));
+        }
+        if (varIdx < 0) varIdx = this.dae.lookupVariableByName(resolvedNameId);
+        if (varIdx < 0) varIdx = this.dae.lookupVariableByName(nameId);
       }
-      if (varIdx < 0) varIdx = this.dae.lookupVariableByName(resolvedNameId);
-      if (varIdx < 0) varIdx = this.dae.lookupVariableByName(nameId);
       if (constOnly && varIdx >= 0) {
         let vVarCheck = VarAccessor.at(this.dae.getVarData(), varIdx as u32).variability;
         if (vVarCheck != Variability.Constant) return false;
@@ -17528,10 +17629,10 @@ export class ModelicaFlattener {
           return false;
         }
       }
-      if (this.scopeStackPtr != 0) {
+      if (!fromDaeBinding && this.scopeStackPtr != 0) {
         let ss = changetype<ScopeStack>(this.scopeStackPtr);
         let modVal = ss.lookup(nameId);
-        if (modVal != 0xffffffff && modVal != exprId && this.evalConstScalar(modVal, depth + 1, markFinal, constOnly, noMutableRealParams)) {
+        if (modVal != 0xffffffff && modVal != exprId && this.evalConstScalar(modVal, depth + 1, markFinal, constOnly, noMutableRealParams, true)) {
           return true;
         }
       }
@@ -17548,7 +17649,7 @@ export class ModelicaFlattener {
           }
           let bExpr = this.dae.getVarAttrExpr(varIdx as u32, VarAttrKind.Binding as u32);
           if (bExpr != 0xffffffff && bExpr != exprId) {
-            if (this.evalConstScalar(bExpr, depth + 1, markFinal, constOnly, noMutableRealParams)) {
+            if (this.evalConstScalar(bExpr, depth + 1, markFinal, constOnly, noMutableRealParams, true)) {
               if (markFinal && g_isOmcNewInst && vVar == Variability.Parameter) varAcc.setFlag(FLAG_VAR_FINAL | FLAG_VAR_EVALUATE);
               return true;
             }
@@ -17629,9 +17730,9 @@ export class ModelicaFlattener {
       return false;
     }
     if (k == ExprKind.IfElse) {
-      let c = this.evalCondExpr(this.dae.getExprData1(exprId), depth + 1, markFinal, constOnly, noMutableRealParams);
-      if (c == 1) return this.evalConstScalar(this.dae.getExprLeft(exprId), depth + 1, markFinal, constOnly, noMutableRealParams);
-      if (c == 0) return this.evalConstScalar(this.dae.getExprRight(exprId), depth + 1, markFinal, constOnly, noMutableRealParams);
+      let c = this.evalCondExpr(this.dae.getExprData1(exprId), depth + 1, markFinal, constOnly, noMutableRealParams, fromDaeBinding);
+      if (c == 1) return this.evalConstScalar(this.dae.getExprLeft(exprId), depth + 1, markFinal, constOnly, noMutableRealParams, fromDaeBinding);
+      if (c == 0) return this.evalConstScalar(this.dae.getExprRight(exprId), depth + 1, markFinal, constOnly, noMutableRealParams, fromDaeBinding);
       return false;
     }
     if (k == ExprKind.Call) {
@@ -17739,7 +17840,7 @@ export class ModelicaFlattener {
       }
       if (argc == 1) {
         let a0 = this.dae.getExprLeft(exprId);
-        if (!this.evalConstScalar(a0, depth + 1, markFinal, constOnly, noMutableRealParams)) return false;
+        if (!this.evalConstScalar(a0, depth + 1, markFinal, constOnly, noMutableRealParams, fromDaeBinding)) return false;
         let v = this.scalarOutVal;
         if (poolMatchesSimple(pool, fnId, "integer")) { this.scalarOutVal = Math.floor(v); return true; }
         if (poolMatchesSimple(pool, fnId, "Integer")) { this.scalarOutVal = v; return true; }
@@ -17756,13 +17857,13 @@ export class ModelicaFlattener {
       }
       let tailFnIdMulti = getPathLastPart(pool, fnId);
       if ((argc == 2 || argc == 3) && (poolMatchesSimple(pool, fnId, "realFFTsamplePoints") || poolMatchesSimple(pool, tailFnIdMulti, "realFFTsamplePoints"))) {
-        if (!this.evalConstScalar(this.dae.getCallArgExprId(exprId, 0), depth + 1, markFinal, constOnly, noMutableRealParams)) return false;
+        if (!this.evalConstScalar(this.dae.getCallArgExprId(exprId, 0), depth + 1, markFinal, constOnly, noMutableRealParams, fromDaeBinding)) return false;
         let fMax = this.scalarOutVal;
-        if (!this.evalConstScalar(this.dae.getCallArgExprId(exprId, 1), depth + 1, markFinal, constOnly, noMutableRealParams)) return false;
+        if (!this.evalConstScalar(this.dae.getCallArgExprId(exprId, 1), depth + 1, markFinal, constOnly, noMutableRealParams, fromDaeBinding)) return false;
         let fRes = this.scalarOutVal;
         let fFactor: f64 = 5.0;
         if (argc == 3) {
-          if (!this.evalConstScalar(this.dae.getCallArgExprId(exprId, 2), depth + 1, markFinal, constOnly, noMutableRealParams)) return false;
+          if (!this.evalConstScalar(this.dae.getCallArgExprId(exprId, 2), depth + 1, markFinal, constOnly, noMutableRealParams, fromDaeBinding)) return false;
           fFactor = this.scalarOutVal;
         }
         if (fRes > 0.0 && fMax > fRes && fFactor >= 1.0) {
@@ -17783,9 +17884,9 @@ export class ModelicaFlattener {
         return false;
       }
       if (argc == 2) {
-        if (!this.evalConstScalar(this.dae.getCallArgExprId(exprId, 0), depth + 1, markFinal, constOnly, noMutableRealParams)) return false;
+        if (!this.evalConstScalar(this.dae.getCallArgExprId(exprId, 0), depth + 1, markFinal, constOnly, noMutableRealParams, fromDaeBinding)) return false;
         let lVal = this.scalarOutVal;
-        if (!this.evalConstScalar(this.dae.getCallArgExprId(exprId, 1), depth + 1, markFinal, constOnly, noMutableRealParams)) return false;
+        if (!this.evalConstScalar(this.dae.getCallArgExprId(exprId, 1), depth + 1, markFinal, constOnly, noMutableRealParams, fromDaeBinding)) return false;
         let rVal = this.scalarOutVal;
         if (poolMatchesSimple(pool, fnId, "min")) { this.scalarOutVal = lVal < rVal ? lVal : rVal; return true; }
         if (poolMatchesSimple(pool, fnId, "max")) { this.scalarOutVal = lVal > rVal ? lVal : rVal; return true; }
@@ -17799,7 +17900,7 @@ export class ModelicaFlattener {
       return false;
     }
     if (k == ExprKind.Negate) {
-      if (this.evalConstScalar(this.dae.getExprLeft(exprId), depth + 1, markFinal, constOnly, noMutableRealParams)) {
+      if (this.evalConstScalar(this.dae.getExprLeft(exprId), depth + 1, markFinal, constOnly, noMutableRealParams, fromDaeBinding)) {
         this.scalarOutVal = -this.scalarOutVal;
         return true;
       }
@@ -17808,7 +17909,7 @@ export class ModelicaFlattener {
     if (k == ExprKind.Unary) {
       let op = this.dae.getExprData1(exprId);
       if (op == UnaryOp.Negate) {
-        if (this.evalConstScalar(this.dae.getExprLeft(exprId), depth + 1, markFinal, constOnly, noMutableRealParams)) {
+        if (this.evalConstScalar(this.dae.getExprLeft(exprId), depth + 1, markFinal, constOnly, noMutableRealParams, fromDaeBinding)) {
           this.scalarOutVal = -this.scalarOutVal;
           return true;
         }
@@ -17817,9 +17918,9 @@ export class ModelicaFlattener {
     }
     if (k == ExprKind.Binary) {
       let op = this.dae.getExprData1(exprId);
-      if (!this.evalConstScalar(this.dae.getExprLeft(exprId), depth + 1, markFinal, constOnly, noMutableRealParams)) return false;
+      if (!this.evalConstScalar(this.dae.getExprLeft(exprId), depth + 1, markFinal, constOnly, noMutableRealParams, fromDaeBinding)) return false;
       let lVal = this.scalarOutVal;
-      if (!this.evalConstScalar(this.dae.getExprRight(exprId), depth + 1, markFinal, constOnly, noMutableRealParams)) return false;
+      if (!this.evalConstScalar(this.dae.getExprRight(exprId), depth + 1, markFinal, constOnly, noMutableRealParams, fromDaeBinding)) return false;
       let rVal = this.scalarOutVal;
       if (op == BinOp.Add) { this.scalarOutVal = lVal + rVal; return true; }
       if (op == BinOp.Sub) { this.scalarOutVal = lVal - rVal; return true; }
@@ -17904,7 +18005,7 @@ export class ModelicaFlattener {
     return 0xffffffff;
   }
 
-  evalCondExpr(exprId: u32, depth: i32 = 0, markFinal: boolean = true, constOnly: boolean = false, noMutableRealParams: boolean = false): i32 {
+  evalCondExpr(exprId: u32, depth: i32 = 0, markFinal: boolean = true, constOnly: boolean = false, noMutableRealParams: boolean = false, fromDaeBinding: boolean = false): i32 {
     if (exprId >= this.dae.exprCount || depth > 30) return 2;
     let k = this.dae.getExprKind(exprId);
     if (k == ExprKind.BoolLiteral) {
@@ -17915,20 +18016,29 @@ export class ModelicaFlattener {
       let fnId = this.dae.getExprData1(exprId);
       let pool = this.dae.getStringPool();
       if (poolMatchesSimple(pool, fnId, "noEvent") && this.dae.getExprRight(exprId) == 1) {
-        return this.evalCondExpr(this.dae.getExprLeft(exprId), depth + 1, markFinal, true, noMutableRealParams);
+        return this.evalCondExpr(this.dae.getExprLeft(exprId), depth + 1, markFinal, true, noMutableRealParams, fromDaeBinding);
       }
       return 2;
     }
     if (k == ExprKind.Name) {
       let nameId = this.dae.getExprData1(exprId);
-      let resolvedNameId = this.exprVisitor.resolveVarName(nameId);
-      let varIdx = this.dae.lookupVariableByName(resolvedNameId);
-      if (varIdx < 0) varIdx = this.dae.lookupVariableByName(nameId);
-      if (varIdx < 0 && this.scopeStackPtr != 0) {
-        let pfx = changetype<ScopeStack>(this.scopeStackPtr).currentPrefixPathId;
-        if (pfx != 0) {
-          let pool = this.dae.getStringPool();
-          varIdx = this.dae.lookupVariableByName(this.exprVisitor.resolveVarName(pool.concatIds(pfx, nameId)));
+      let varIdx: i32 = -1;
+      if (fromDaeBinding) {
+        varIdx = this.dae.lookupVariableByName(nameId);
+        if (varIdx < 0) {
+          let resolvedNameId = this.exprVisitor.resolveVarName(nameId);
+          if (resolvedNameId != nameId) varIdx = this.dae.lookupVariableByName(resolvedNameId);
+        }
+      } else {
+        let resolvedNameId = this.exprVisitor.resolveVarName(nameId);
+        varIdx = this.dae.lookupVariableByName(resolvedNameId);
+        if (varIdx < 0) varIdx = this.dae.lookupVariableByName(nameId);
+        if (varIdx < 0 && this.scopeStackPtr != 0) {
+          let pfx = changetype<ScopeStack>(this.scopeStackPtr).currentPrefixPathId;
+          if (pfx != 0) {
+            let pool = this.dae.getStringPool();
+            varIdx = this.dae.lookupVariableByName(this.exprVisitor.resolveVarName(pool.concatIds(pfx, nameId)));
+          }
         }
       }
       if (constOnly && varIdx >= 0) {
@@ -17941,11 +18051,11 @@ export class ModelicaFlattener {
           return 2;
         }
       }
-      if (this.scopeStackPtr != 0) {
+      if (!fromDaeBinding && this.scopeStackPtr != 0) {
         let ss = changetype<ScopeStack>(this.scopeStackPtr);
         let modVal = ss.lookup(nameId);
         if (modVal != 0xffffffff && modVal != exprId) {
-          let res = this.evalCondExpr(modVal, depth + 1, markFinal, constOnly, noMutableRealParams);
+          let res = this.evalCondExpr(modVal, depth + 1, markFinal, constOnly, noMutableRealParams, true);
           if (res != 2) return res;
         }
       }
@@ -17955,7 +18065,7 @@ export class ModelicaFlattener {
         if (vVar == Variability.Constant || (!constOnly && vVar == Variability.Parameter)) {
           let bExpr = this.dae.getVarAttrExpr(varIdx as u32, VarAttrKind.Binding as u32);
           if (bExpr != 0xffffffff && bExpr != exprId) {
-            let res = this.evalCondExpr(bExpr, depth + 1, markFinal, constOnly, noMutableRealParams);
+            let res = this.evalCondExpr(bExpr, depth + 1, markFinal, constOnly, noMutableRealParams, true);
             if (res != 2) {
               if (markFinal && g_isOmcNewInst && vVar == Variability.Parameter) varAcc.setFlag(FLAG_VAR_FINAL | FLAG_VAR_EVALUATE);
               return res;
@@ -17976,7 +18086,7 @@ export class ModelicaFlattener {
         if (!constOnly) {
           let derBExpr = this.lookupDerivedClassParamBinding(nameId, pool);
           if (derBExpr != 0xffffffff && derBExpr != exprId) {
-            let res = this.evalCondExpr(derBExpr, depth + 1, markFinal, constOnly, noMutableRealParams);
+            let res = this.evalCondExpr(derBExpr, depth + 1, markFinal, constOnly, noMutableRealParams, true);
             if (res != 2) return res;
           }
         }
@@ -17990,7 +18100,7 @@ export class ModelicaFlattener {
     if (k == ExprKind.Unary) {
       let op = this.dae.getExprData1(exprId);
       if (op == UnaryOp.Not) {
-        let sub = this.evalCondExpr(this.dae.getExprLeft(exprId), depth + 1, markFinal, constOnly, noMutableRealParams);
+        let sub = this.evalCondExpr(this.dae.getExprLeft(exprId), depth + 1, markFinal, constOnly, noMutableRealParams, fromDaeBinding);
         if (sub == 0) return 1;
         if (sub == 1) return 0;
         return 2;
@@ -18001,24 +18111,34 @@ export class ModelicaFlattener {
       let left = this.dae.getExprLeft(exprId);
       let right = this.dae.getExprRight(exprId);
       if (op == BinOp.And) {
-        let l = this.evalCondExpr(left, depth + 1, markFinal, constOnly, noMutableRealParams);
-        if (l == 0) return 0;
-        let r = this.evalCondExpr(right, depth + 1, markFinal, constOnly, noMutableRealParams);
+        let l = this.evalCondExpr(left, depth + 1, markFinal, constOnly, noMutableRealParams, fromDaeBinding);
+        if (l == 0) {
+          if (markFinal && g_isOmcNewInst) {
+            this.evalCondExpr(right, depth + 1, markFinal, constOnly, noMutableRealParams, fromDaeBinding);
+          }
+          return 0;
+        }
+        let r = this.evalCondExpr(right, depth + 1, markFinal, constOnly, noMutableRealParams, fromDaeBinding);
         if (r == 0) return 0;
         if (l == 1 && r == 1) return 1;
         return 2;
       }
       if (op == BinOp.Or) {
-        let l = this.evalCondExpr(left, depth + 1, markFinal, constOnly, noMutableRealParams);
-        if (l == 1) return 1;
-        let r = this.evalCondExpr(right, depth + 1, markFinal, constOnly, noMutableRealParams);
+        let l = this.evalCondExpr(left, depth + 1, markFinal, constOnly, noMutableRealParams, fromDaeBinding);
+        if (l == 1) {
+          if (markFinal && g_isOmcNewInst) {
+            this.evalCondExpr(right, depth + 1, markFinal, constOnly, noMutableRealParams, fromDaeBinding);
+          }
+          return 1;
+        }
+        let r = this.evalCondExpr(right, depth + 1, markFinal, constOnly, noMutableRealParams, fromDaeBinding);
         if (r == 1) return 1;
         if (l == 0 && r == 0) return 0;
         return 2;
       }
-      if (this.evalConstScalar(left, depth + 1, markFinal, constOnly, noMutableRealParams)) {
+      if (this.evalConstScalar(left, depth + 1, markFinal, constOnly, noMutableRealParams, fromDaeBinding)) {
         let lVal = this.scalarOutVal;
-        if (this.evalConstScalar(right, depth + 1, markFinal, constOnly, noMutableRealParams)) {
+        if (this.evalConstScalar(right, depth + 1, markFinal, constOnly, noMutableRealParams, fromDaeBinding)) {
           let rVal = this.scalarOutVal;
           let diff = lVal - rVal;
           if (op == BinOp.Eq) return Math.abs(diff) < 1e-12 ? 1 : 0;
@@ -18644,8 +18764,11 @@ export class ModelicaFlattener {
       }
     }
 
+    let prevConnRef = this.exprVisitor.inConnectRef;
+    this.exprVisitor.inConnectRef = true;
     let e1 = this.exprVisitor.visitLoc(c1);
     let e2 = this.exprVisitor.visitLoc(c2);
+    this.exprVisitor.inConnectRef = prevConnRef;
     if (e1 == 0xffffffff || e2 == 0xffffffff) {
       this.setErrorAt(WasmBailReason.ConnectRefExpr, eqLoc);
       return 0;
@@ -20737,9 +20860,12 @@ export class ModelicaFlattener {
 
     this.bindFunctionInputs(fnClassLoc, 0, argCount, callExprId, fnEnv, pool);
 
+    let prevCls = this.currentClassLoc;
+    this.currentClassLoc = fnClassLoc;
     this.scopeStack.push(0, fnEnvPtr, 0, 1);
     let dims = parseArrayDimensionsLoc(declSubLoc, this.dae, pool, 0, this.scopeStackPtr as usize);
     this.scopeStack.pop();
+    this.currentClassLoc = prevCls;
     this.evalDimDepth--;
 
     if (dims != 0 && dims != 0xffffffffffffffff) {
@@ -20764,6 +20890,8 @@ export class ModelicaFlattener {
     let fnEnvPtr = flattener_envCreate(0);
     let fnEnv = changetype<ModificationEnvironment>(fnEnvPtr);
     this.bindFunctionInputs(fnClassLoc, 0, argCount, callExprId, fnEnv, pool);
+    let prevCls = this.currentClassLoc;
+    this.currentClassLoc = fnClassLoc;
     this.scopeStack.push(0, fnEnvPtr, 0, 1);
     let valId = this.exprVisitor.visitLoc(exprLoc);
     let dims: u64 = 0;
@@ -20782,6 +20910,7 @@ export class ModelicaFlattener {
       }
     }
     this.scopeStack.pop();
+    this.currentClassLoc = prevCls;
     this.evalDimDepth--;
     return dims;
   }

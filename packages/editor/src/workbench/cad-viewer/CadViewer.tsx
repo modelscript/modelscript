@@ -8,7 +8,13 @@
  * interactions via CADPort annotations.
  */
 
-import type { DynamicBindingConfig, GdtOverlayPayload, Verification3DOverlayPayload } from "@modelscript/cad";
+import type {
+  DynamicBindingConfig,
+  GdtOverlayPayload,
+  MissionPhaseBand,
+  OperationLogEvent,
+  Verification3DOverlayPayload,
+} from "@modelscript/cad";
 import {
   ContactShadows,
   GizmoHelper,
@@ -22,12 +28,19 @@ import {
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useXR, XR } from "@react-three/xr";
 import type React from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { generateLocalTetMeshAsync, runLocalCfdStudyAsync, runLocalFeaStudyAsync } from "../util/cae-local-runner";
-import { getSharedXrStore, useXrCapabilities } from "../vr-rotunda/xr-session";
+import { enterXrSession, getSharedXrStore, useXrCapabilities } from "../vr-rotunda/xr-session";
 import type { AnimationController } from "./animation-controller";
 import { AnimationTimeline } from "./AnimationTimeline";
+import {
+  createDefaultAssemblyVisibility,
+  inferSubsystemsFromPartNames,
+  resolvePartPresentation,
+  type AssemblyVisibilityState,
+} from "./assembly-visibility";
+import { AssemblyInspectorPanel } from "./AssemblyInspectorPanel";
 import { CadBindingPickerModal } from "./CadBindingPickerModal";
 import {
   buildCaeSimulationModel,
@@ -36,6 +49,7 @@ import {
   ScalarColorbarLegend,
   type CaeSimulationRunEntry,
 } from "./CaeSimulationTree";
+import { useRetainGltfUrl } from "./gltf-cache-guard";
 import {
   CadEdgeOverlay,
   ensureGeometryBrushedUvs,
@@ -47,6 +61,7 @@ import {
   StudioSsaoPass,
 } from "./HeroCadMaterials";
 import { InstancedCadAssembly } from "./InstancedCadAssembly";
+import { JetPlumeRenderer, type JetPlumeRendererProps } from "./JetPlumeRenderer";
 import { sampleVtkCutLine, VtkRenderer } from "./VtkRenderer";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -213,6 +228,12 @@ interface CadViewerProps {
   onInsertCaeSnippet?: ((snippet: string) => void) | undefined;
   /** Launch the full Engineering VR Rotunda workstation from the 3D CAD viewer */
   onOpenVrRotunda?: (() => void) | undefined;
+  /** Optional mission phase bands displayed along the AnimationTimeline scrubber */
+  missionPhases?: readonly MissionPhaseBand[] | undefined;
+  /** Optional operator-action / autonomy keyframe events for click-to-seek Operation Log */
+  operationLog?: readonly OperationLogEvent[] | undefined;
+  /** Optional real-time GPU particle jet plume configuration bound to a fluid outlet */
+  jetPlume?: Omit<JetPlumeRendererProps, "isInXr"> | null | undefined;
 }
 
 function computeSceneBounds(components: CadComponent[]): {
@@ -315,6 +336,9 @@ function PortIndicator({
   );
 }
 
+const DEFAULT_MESH_COLOR: [number, number, number, number] = [0.27, 0.51, 0.71, 1.0];
+const EMPTY_CLIP_PLANES: THREE.Plane[] = [];
+
 /** Procedural triangle mesh built directly from MSL Visualizer or CSG evaluation arrays. */
 function ProceduralMeshObject({
   mesh,
@@ -356,12 +380,12 @@ function ProceduralMeshObject({
     };
   }, [geometry]);
 
-  const rgba = mesh.color ?? [0.27, 0.51, 0.71, 1.0];
+  const rgba = mesh.color ?? DEFAULT_MESH_COLOR;
   const alloyProps = useMemo(
     () => resolveHeroAlloyConfig(gl, name, rgba, dark, mesh.material),
     [gl, name, rgba, dark, mesh.material],
   );
-  const clipPlanes = useMemo(() => (solidPlane ? [solidPlane] : []), [solidPlane]);
+  const clipPlanes = useMemo(() => (solidPlane ? [solidPlane] : EMPTY_CLIP_PLANES), [solidPlane]);
   const isTranslucent = rgba[3] < 1.0;
 
   return (
@@ -414,11 +438,36 @@ function GltfMeshObject({
   showEdges?: boolean | undefined;
   dark?: boolean | undefined;
 }) {
+  useRetainGltfUrl(url);
   const { scene } = useGLTF(url);
-  const cloned = useMemo(() => scene.clone(true), [scene]);
+
+  // Clone scene graph AND materials so clipping/polygonOffset edits never mutate the shared cached scene
+  const { cloned, clonedMaterials } = useMemo(() => {
+    const root = scene.clone(true);
+    const mats: THREE.Material[] = [];
+    root.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const mesh = child as THREE.Mesh;
+        if (Array.isArray(mesh.material)) {
+          const next = mesh.material.map((m) => {
+            const c = m.clone();
+            mats.push(c);
+            return c;
+          });
+          mesh.material = next;
+        } else if (mesh.material) {
+          const c = mesh.material.clone();
+          mats.push(c);
+          mesh.material = c;
+        }
+      }
+    });
+    return { cloned: root, clonedMaterials: mats };
+  }, [scene]);
 
   useEffect(() => {
-    const planes = solidPlane ? [solidPlane] : [];
+    const planes = solidPlane ? [solidPlane] : EMPTY_CLIP_PLANES;
+    const hasClip = planes.length > 0;
     const createdEdges: THREE.LineSegments[] = [];
     cloned.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
@@ -426,12 +475,15 @@ function GltfMeshObject({
         const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
         for (const m of mats) {
           if (m) {
+            const prevHasClip = Array.isArray(m.clippingPlanes) && m.clippingPlanes.length > 0;
             m.clippingPlanes = planes;
             m.clipShadows = true;
             m.polygonOffset = showEdges;
             m.polygonOffsetFactor = 1;
             m.polygonOffsetUnits = 1;
-            m.needsUpdate = true;
+            if (prevHasClip !== hasClip) {
+              m.needsUpdate = true;
+            }
           }
         }
         if (showEdges && mesh.geometry) {
@@ -460,32 +512,15 @@ function GltfMeshObject({
     };
   }, [cloned, solidPlane, showEdges, dark]);
 
+  // Only dispose cloned materials created by this instance; never dispose shared
+  // cached scene geometries/textures or synchronously call useGLTF.clear(url).
   useEffect(() => {
     return () => {
-      if (!url.startsWith("data:") && !url.startsWith("blob:")) return;
-      const disposeObject = (root: THREE.Object3D) => {
-        root.traverse((child) => {
-          const mesh = child as THREE.Mesh;
-          if (mesh.geometry) {
-            mesh.geometry.dispose();
-          }
-          const mats = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
-          for (const mat of mats) {
-            if (!mat) continue;
-            for (const val of Object.values(mat)) {
-              if (val && typeof val === "object" && (val as THREE.Texture).isTexture) {
-                (val as THREE.Texture).dispose();
-              }
-            }
-            mat.dispose();
-          }
-        });
-      };
-      disposeObject(cloned);
-      disposeObject(scene);
-      useGLTF.clear(url);
+      for (const mat of clonedMaterials) {
+        mat.dispose();
+      }
     };
-  }, [url, scene, cloned]);
+  }, [clonedMaterials]);
 
   return <primitive object={cloned} />;
 }
@@ -831,9 +866,15 @@ function CadModel({
         }}
         onPointerOver={(e) => {
           e.stopPropagation();
-          setHovered(true);
+          if (animationController && animationController.mode !== "stopped") {
+            setHovered(true);
+          }
         }}
-        onPointerOut={() => setHovered(false)}
+        onPointerOut={() => {
+          if (hovered) {
+            setHovered(false);
+          }
+        }}
       >
         {component.proceduralMesh ? (
           <ProceduralMeshObject
@@ -846,7 +887,9 @@ function CadModel({
             showEdges={showEdges}
           />
         ) : !component.cad.uri.startsWith("procedural://") ? (
-          <GltfMeshObject url={url} solidPlane={solidPlane} showEdges={showEdges} dark={dark} />
+          <Suspense fallback={null}>
+            <GltfMeshObject url={url} solidPlane={solidPlane} showEdges={showEdges} dark={dark} />
+          </Suspense>
         ) : null}
 
         {showInspector && (
@@ -967,6 +1010,9 @@ interface SceneContentsProps {
   sceneBounds: { center: [number, number, number]; radius: number; minY: number };
   fitInsets?: { top: number; right: number; bottom: number; left: number } | undefined;
   isInXr?: boolean | undefined;
+  autoTurntable?: boolean | undefined;
+  jetPlume?: Omit<JetPlumeRendererProps, "isInXr"> | null | undefined;
+  assemblyVisibility?: AssemblyVisibilityState | null | undefined;
 }
 
 /** Scene contents: lights, grid, models. */
@@ -998,6 +1044,9 @@ function SceneContents({
   sceneBounds,
   fitInsets,
   isInXr = false,
+  autoTurntable = false,
+  jetPlume = null,
+  assemblyVisibility = null,
 }: SceneContentsProps) {
   const { gl, scene, camera, size } = useThree();
   const controlsRef = useRef<any>(null);
@@ -1171,6 +1220,7 @@ function SceneContents({
           selectedName={selectedName}
           onSelect={onSelect}
           animationController={animationController}
+          visibility={assemblyVisibility}
           renderSingleton={(comp) => (
             <CadModel
               key={comp.name}
@@ -1219,6 +1269,9 @@ function SceneContents({
         />
       )}
 
+      {/* GPU Fluid Jet / Siphon Plume (single draw call, XR particle-budgeted) */}
+      {jetPlume && <JetPlumeRenderer {...jetPlume} isInXr={isInXr} />}
+
       {/* Cavity Ambient Occlusion (SSAO) — disabled during WebXR stereo rendering */}
       {!isInXr && <StudioSsaoPass enabled={Boolean(enableSsao)} />}
 
@@ -1230,6 +1283,8 @@ function SceneContents({
           enabled={!isDraggingGizmo}
           enableDamping
           dampingFactor={0.1}
+          autoRotate={Boolean(autoTurntable)}
+          autoRotateSpeed={1.6}
           touches={touchScrollPassThrough ? { ONE: undefined as any, TWO: THREE.TOUCH.DOLLY_PAN } : undefined}
         />
       )}
@@ -1320,6 +1375,9 @@ export default function CadViewer({
   onRevealLine,
   onInsertCaeSnippet,
   onOpenVrRotunda,
+  missionPhases,
+  operationLog,
+  jetPlume = null,
 }: CadViewerProps) {
   const xrStore = useMemo(() => (onOpenVrRotunda ? null : getSharedXrStore()), [onOpenVrRotunda]);
   const xrCaps = useXrCapabilities();
@@ -1348,6 +1406,11 @@ export default function CadViewer({
   const [showGdt, setShowGdt] = useState<boolean>(true);
   const [showEdges, setShowEdges] = useState<boolean>(true);
   const [enableSsao, setEnableSsao] = useState<boolean>(false);
+  const [autoTurntable, setAutoTurntable] = useState<boolean>(false);
+  const [showSubsystems, setShowSubsystems] = useState<boolean>(false);
+  const [assemblyVisibility, setAssemblyVisibility] = useState<AssemblyVisibilityState>(() =>
+    createDefaultAssemblyVisibility(),
+  );
   const [showInstances, setShowInstances] = useState<boolean>(false);
   const [showSimTree, setShowSimTree] = useState<boolean>(Boolean(caeSourceCode || vtkBuffer));
   const [selectedTreeId, setSelectedTreeId] = useState<string | null>(null);
@@ -1769,15 +1832,18 @@ export default function CadViewer({
           position: "absolute",
           top: fitInsets ? fitInsets.top : 14,
           right: fitInsets ? fitInsets.right : 14,
+          maxWidth: fitInsets ? `calc(100% - ${fitInsets.left + fitInsets.right}px)` : "calc(100% - 28px)",
+          boxSizing: "border-box",
           zIndex: 10,
           display: "flex",
           alignItems: "center",
+          justifyContent: "flex-end",
           gap: 6,
           padding: "5px 10px",
           background: dark ? "rgba(15, 23, 42, 0.82)" : "rgba(255, 255, 255, 0.9)",
           backdropFilter: "blur(10px)",
           WebkitBackdropFilter: "blur(10px)",
-          borderRadius: 20,
+          borderRadius: 18,
           border: `1px solid ${dark ? "rgba(255, 255, 255, 0.14)" : "rgba(0, 0, 0, 0.12)"}`,
           boxShadow: "0 4px 16px rgba(0, 0, 0, 0.25)",
           fontFamily: "var(--font-mono, monospace)",
@@ -1967,6 +2033,46 @@ export default function CadViewer({
         >
           AO
         </button>
+        <button
+          type="button"
+          onClick={() => {
+            const next = !autoTurntable;
+            setAutoTurntable(next);
+            setAssemblyVisibility((v) => ({ ...v, autoTurntable: next }));
+          }}
+          title="Toggle Turntable Auto-Rotate"
+          style={{
+            background: autoTurntable ? "rgba(34, 197, 94, 0.22)" : "transparent",
+            color: autoTurntable ? "#22c55e" : "inherit",
+            border: autoTurntable ? "1px solid rgba(34, 197, 94, 0.45)" : "1px solid transparent",
+            borderRadius: 12,
+            padding: "2px 7px",
+            fontSize: 10,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          TURNTABLE
+        </button>
+        {components.length > 1 && (
+          <button
+            type="button"
+            onClick={() => setShowSubsystems((s) => !s)}
+            title="Toggle Assembly Subsystem Isolation Inspector"
+            style={{
+              background: showSubsystems ? "rgba(249, 115, 22, 0.22)" : "transparent",
+              color: showSubsystems ? "#f97316" : "inherit",
+              border: showSubsystems ? "1px solid rgba(249, 115, 22, 0.45)" : "1px solid transparent",
+              borderRadius: 12,
+              padding: "2px 7px",
+              fontSize: 10,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            SUBSYSTEMS
+          </button>
+        )}
         {hasCaeContext && (
           <button
             type="button"
@@ -2058,7 +2164,11 @@ export default function CadViewer({
                   type="button"
                   data-testid="cad-viewer-enter-vr"
                   onClick={() => {
-                    void xrStore.enterVR();
+                    void enterXrSession(xrStore, "vr").then((result) => {
+                      if (!result.ok && result.error) {
+                        setError(result.error);
+                      }
+                    });
                   }}
                   title="Enter immersive WebXR VR headset session"
                   style={{
@@ -2963,20 +3073,73 @@ export default function CadViewer({
             onPickFace: hasCaeContext ? (label) => setPickedFaceSet(label) : undefined,
             sceneBounds,
             fitInsets,
+            autoTurntable: autoTurntable || assemblyVisibility.autoTurntable,
+            jetPlume,
+            assemblyVisibility,
           };
-          return xrStore ? (
-            <XR store={xrStore}>
-              <XrSceneContentsBridge {...sceneProps} />
-            </XR>
-          ) : (
-            <SceneContents {...sceneProps} isInXr={false} />
+          return (
+            <Suspense fallback={null}>
+              {xrStore ? (
+                <XR store={xrStore}>
+                  <Suspense fallback={null}>
+                    <XrSceneContentsBridge {...sceneProps} />
+                  </Suspense>
+                </XR>
+              ) : (
+                <SceneContents {...sceneProps} isInXr={false} />
+              )}
+            </Suspense>
           );
         })()}
       </Canvas>
 
+      {/* Floating Assembly Subsystem Isolation & Display Inspector */}
+      {showSubsystems && components.length > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            top: (fitInsets?.top ?? 0) + 52,
+            right: (fitInsets?.right ?? 0) + 12,
+            zIndex: 25,
+          }}
+        >
+          <AssemblyInspectorPanel
+            subsystems={inferSubsystemsFromPartNames(components.map((c) => ({ name: c.name })))}
+            visibility={assemblyVisibility}
+            dark={dark}
+            onChangeVisibility={(next) => {
+              setAssemblyVisibility(next);
+              setAutoTurntable(next.autoTurntable);
+              setPartOverrides((prev) => {
+                const updated = { ...prev };
+                for (const c of components) {
+                  const subId = inferSubsystemsFromPartNames([{ name: c.name }])[0]?.id ?? "general";
+                  const pres = resolvePartPresentation(subId, next, {
+                    isDefaultGhostable: subId === "shell" || subId === "mantle",
+                    ghostNonIsolated: true,
+                  });
+                  updated[c.name] = {
+                    ...updated[c.name],
+                    visible: pres.visible,
+                    ghost: pres.ghosted,
+                  };
+                }
+                return updated;
+              });
+            }}
+          />
+        </div>
+      )}
+
       {/* Animation timeline overlay */}
       {animationController && (
-        <AnimationTimeline controller={animationController} breachMarkers={breachMarkers} fitInsets={fitInsets} />
+        <AnimationTimeline
+          controller={animationController}
+          breachMarkers={breachMarkers}
+          missionPhases={missionPhases}
+          operationLog={operationLog}
+          fitInsets={fitInsets}
+        />
       )}
 
       {/* Interactive Geometry-to-Variable Binding Picker Modal */}

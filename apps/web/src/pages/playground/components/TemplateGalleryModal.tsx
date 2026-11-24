@@ -141,7 +141,7 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
   // Sync selected language, mounted packages & focus search input when modal opens
   useEffect(() => {
     if (!isOpen) return;
-    setSelectedLang(currentLang || "modelica");
+    setSelectedLang(lockedLanguage || currentLang || "modelica");
     setLangSearch("");
     setErrorMsg(null);
     void getMountedLibraries()
@@ -151,7 +151,7 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
       });
     const timer = setTimeout(() => searchInputRef.current?.focus(), 60);
     return () => clearTimeout(timer);
-  }, [isOpen, currentLang]);
+  }, [isOpen, currentLang, lockedLanguage]);
 
   // Escape key to close
   useEffect(() => {
@@ -302,16 +302,37 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
     };
   }, [isOpen, filteredRegistryModels, livePreviews, isDark]);
 
-  const selectedLangOption = useMemo(
-    () =>
+  const VR_SHOWCASE_LANG_ID = "__vr_showcase__";
+  const isVrShowcaseSelected = selectedLang === VR_SHOWCASE_LANG_ID;
+
+  const selectedLangOption = useMemo(() => {
+    if (isVrShowcaseSelected) {
+      return {
+        id: VR_SHOWCASE_LANG_ID,
+        label: "3D & VR Showcase",
+        ext: "VR",
+      };
+    }
+    return (
       visiblePlaygroundLanguages.find((l) => l.id === selectedLang) || {
         id: selectedLang,
         label: selectedLang.toUpperCase(),
         ext: `.${selectedLang}`,
-      },
-    [visiblePlaygroundLanguages, selectedLang],
+      }
+    );
+  }, [isVrShowcaseSelected, visiblePlaygroundLanguages, selectedLang]);
+  const selectedLangInfo = useMemo(
+    () => getLanguageInfo(isVrShowcaseSelected ? "scad" : selectedLang),
+    [isVrShowcaseSelected, selectedLang],
   );
-  const selectedLangInfo = useMemo(() => getLanguageInfo(selectedLang), [selectedLang]);
+
+  const vrShowcaseExamples = useMemo(
+    () =>
+      HERO_EXAMPLES.filter(
+        (ex) => Boolean(ex.tags?.some((t) => t.toLowerCase() === "vr")) || ex.id === "scad-flanged-hub",
+      ),
+    [],
+  );
 
   const exampleCountsByLang = useMemo(() => {
     const counts = new Map<string, number>();
@@ -361,28 +382,46 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
     return groups;
   }, [visiblePlaygroundLanguages]);
 
-  // Curated starters for the selected language (and fallback when Modelica registry is offline)
+  // Curated starters for the selected language (always surfacing VR 3D showcase starters even when registry is online)
   const fallbackStarters = useMemo(() => {
-    if (isModelicaSelected && registryFromApi !== false) return [];
     const q = searchQuery.trim().toLowerCase();
-    const langMatches = HERO_EXAMPLES.filter((ex) => ex.lang.toLowerCase() === selectedLang.toLowerCase());
-    const baseList: HeroExample[] =
-      langMatches.length > 0
-        ? langMatches
-        : selectedLangInfo.defaultCode
-          ? [
-              {
-                id: `starter-${selectedLang}`,
-                title: `${selectedLangOption.label} Starter`,
-                category: getPlaygroundLanguageDomain(selectedLang),
-                lang: selectedLang,
-                description: `Minimal starter ${selectedLangOption.label} (${selectedLangOption.ext}) model`,
-                code: selectedLangInfo.defaultCode,
-              },
-            ]
-          : [];
+    let baseList: HeroExample[];
+    if (isVrShowcaseSelected) {
+      baseList = vrShowcaseExamples;
+    } else if (isModelicaSelected && registryFromApi !== false) {
+      // Surface curated VR & featured Modelica examples above streamed registry cards unless filtered to a specific package
+      if (packageFilter || mountedOnlyFilter) {
+        return [];
+      }
+      baseList = HERO_EXAMPLES.filter(
+        (ex) => ex.lang.toLowerCase() === "modelica" && Boolean(ex.tags?.some((t) => t.toLowerCase() === "vr")),
+      );
+    } else {
+      const langMatches = HERO_EXAMPLES.filter((ex) => ex.lang.toLowerCase() === selectedLang.toLowerCase());
+      baseList =
+        langMatches.length > 0
+          ? langMatches
+          : selectedLangInfo.defaultCode
+            ? [
+                {
+                  id: `starter-${selectedLang}`,
+                  title: `${selectedLangOption.label} Starter`,
+                  category: getPlaygroundLanguageDomain(selectedLang),
+                  lang: selectedLang,
+                  description: `Minimal starter ${selectedLangOption.label} (${selectedLangOption.ext}) model`,
+                  code: selectedLangInfo.defaultCode,
+                },
+              ]
+            : [];
+    }
     return baseList.filter((ex) => {
-      if (isModelicaSelected && selectedDomain !== "all" && mapHeroDomain(ex) !== selectedDomain) return false;
+      if (
+        (isModelicaSelected || isVrShowcaseSelected) &&
+        selectedDomain !== "all" &&
+        mapHeroDomain(ex) !== selectedDomain
+      ) {
+        return false;
+      }
       if (!q) return true;
       return (
         ex.title.toLowerCase().includes(q) ||
@@ -393,8 +432,12 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
       );
     });
   }, [
+    isVrShowcaseSelected,
+    vrShowcaseExamples,
     isModelicaSelected,
     registryFromApi,
+    packageFilter,
+    mountedOnlyFilter,
     searchQuery,
     selectedDomain,
     selectedLang,
@@ -508,16 +551,20 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
   const totalCount = isModelicaSelected
     ? registryFromApi === false
       ? fallbackStarters.length
-      : Math.max(filteredRegistryModels.length, !mountedOnlyFilter && registryTotal !== null ? registryTotal : 0)
+      : Math.max(
+          filteredRegistryModels.length + fallbackStarters.length,
+          !mountedOnlyFilter && registryTotal !== null ? registryTotal + fallbackStarters.length : 0,
+        )
     : fallbackStarters.length;
 
   const handleCreateBlank = () => {
+    const blankLang = isVrShowcaseSelected ? "scad" : selectedLang;
     const blankCode = selectedLangInfo.defaultCode || (isModelicaSelected ? DEFAULT_EMPTY_MODELICA_CODE : "");
     onSelectTemplate({
-      id: `blank-${selectedLang}`,
+      id: `blank-${blankLang}`,
       title: "Untitled Model",
       category: "Blank",
-      lang: selectedLang,
+      lang: blankLang,
       code: blankCode,
       ...(selectedLangInfo.defaultFiles ? { files: { ...selectedLangInfo.defaultFiles } } : {}),
       ...(selectedLangInfo.defaultActiveFile ? { activeFile: selectedLangInfo.defaultActiveFile } : {}),
@@ -751,6 +798,77 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
             </div>
 
             <div style={{ flex: 1, overflowY: "auto", padding: "8px 8px 16px 8px" }}>
+              {!lockedLanguage && !normalizedLangQuery && vrShowcaseExamples.length > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <button
+                    type="button"
+                    data-testid="template-gallery-vr-showcase"
+                    onClick={() => {
+                      setSelectedLang(VR_SHOWCASE_LANG_ID);
+                      setSelectedDomain("all");
+                      setPackageFilter(null);
+                      setMountedOnlyFilter(false);
+                    }}
+                    style={{
+                      width: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      padding: "8px 10px",
+                      borderRadius: 10,
+                      border: isVrShowcaseSelected
+                        ? "1px solid rgba(14, 165, 233, 0.72)"
+                        : `1px solid ${isDark ? "rgba(56, 189, 248, 0.28)" : "rgba(2, 132, 199, 0.25)"}`,
+                      background: isVrShowcaseSelected
+                        ? isDark
+                          ? "linear-gradient(135deg, rgba(14, 165, 233, 0.28), rgba(99, 102, 241, 0.28))"
+                          : "linear-gradient(135deg, rgba(14, 165, 233, 0.16), rgba(99, 102, 241, 0.14))"
+                        : isDark
+                          ? "linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(99, 102, 241, 0.10))"
+                          : "linear-gradient(135deg, rgba(240, 249, 255, 0.95), rgba(238, 242, 255, 0.92))",
+                      color: isVrShowcaseSelected ? (isDark ? "#e0f2fe" : "#0369a1") : palette.fg,
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      textAlign: "left",
+                      transition: "border-color 0.14s ease, background 0.14s ease",
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <span aria-hidden="true">🥽</span>
+                      <span>3D &amp; VR Showcase</span>
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 10.5,
+                        fontWeight: 700,
+                        padding: "1px 6px",
+                        borderRadius: 999,
+                        backgroundColor: isVrShowcaseSelected
+                          ? "rgba(2, 132, 199, 0.85)"
+                          : isDark
+                            ? "rgba(56, 189, 248, 0.22)"
+                            : "rgba(2, 132, 199, 0.14)",
+                        color: isVrShowcaseSelected ? "#ffffff" : isDark ? "#7dd3fc" : "#0369a1",
+                        fontVariantNumeric: "tabular-nums",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {vrShowcaseExamples.length}
+                    </span>
+                  </button>
+                </div>
+              )}
               {filteredLanguages.length === 0 ? (
                 <div style={{ padding: "20px 12px", textAlign: "center", fontSize: 12, color: palette.muted }}>
                   No languages matching "{langSearch}"
@@ -914,10 +1032,14 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                   </div>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 13.5, fontWeight: 650, color: palette.fg }}>
-                      Blank {selectedLangOption.label} Model
+                      {isVrShowcaseSelected
+                        ? "Blank 3D CAD Model (OpenSCAD)"
+                        : `Blank ${selectedLangOption.label} Model`}
                     </div>
                     <div style={{ fontSize: 11.5, color: palette.muted, marginTop: 2 }}>
-                      Start with an empty canvas &amp; editor ({selectedLangOption.ext})
+                      {isVrShowcaseSelected
+                        ? "Start a fresh parametric 3D CAD & WebXR VR model (.scad), or pick any curated showcase below"
+                        : `Start with an empty canvas & editor (${selectedLangOption.ext})`}
                     </div>
                   </div>
                 </div>
@@ -1186,6 +1308,178 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                     gap: 12,
                   }}
                 >
+                  {/* Curated VR 3D Showcase & Language Starters (always visible at top) */}
+                  {fallbackStarters.map((ex) => {
+                    const isCurrent = currentTemplateId === ex.id;
+                    const isVrFeatured = Boolean(ex.tags?.some((t) => t.toLowerCase() === "vr"));
+                    const previewSvg = buildEquationFallbackPreviewSvg(ex.title, ex.category, isDark);
+
+                    return (
+                      <div
+                        key={ex.id}
+                        className="ms-modal-tile"
+                        data-testid={`template-card-${ex.id}`}
+                        role="button"
+                        tabIndex={0}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("text/plain", ex.code);
+                          e.dataTransfer.setData("application/modelscript-template", JSON.stringify(ex));
+                          e.dataTransfer.effectAllowed = "copy";
+                        }}
+                        onClick={() => {
+                          onSelectTemplate(ex);
+                          onClose();
+                        }}
+                        onDoubleClick={() => {
+                          onSelectTemplate(ex);
+                          onClose();
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onSelectTemplate(ex);
+                            onClose();
+                          }
+                        }}
+                        title={`${ex.title}\nClick to open or drag onto workspace`}
+                        style={{
+                          border: `1px solid ${isCurrent ? palette.accent : isVrFeatured ? (isDark ? "rgba(56, 189, 248, 0.38)" : "rgba(2, 132, 199, 0.32)") : palette.border}`,
+                          borderRadius: 12,
+                          backgroundColor: palette.cardBg,
+                          display: "flex",
+                          flexDirection: "column",
+                          overflow: "hidden",
+                          cursor: "pointer",
+                          boxShadow: isCurrent ? `0 0 0 2px ${palette.accentSoft}` : "none",
+                        }}
+                      >
+                        <div
+                          style={{
+                            height: 124,
+                            backgroundColor: palette.stageBg,
+                            backgroundImage: isDark
+                              ? "radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px)"
+                              : "radial-gradient(rgba(15,23,42,0.08) 1px, transparent 1px)",
+                            backgroundSize: "12px 12px",
+                            borderBottom: `1px solid ${palette.subtleBorder}`,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            position: "relative",
+                            padding: "8px 10px",
+                            overflow: "hidden",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                            dangerouslySetInnerHTML={{
+                              __html: sanitizeSvgMarkup(previewSvg, { isDark, maxHeight: "108px" }),
+                            }}
+                          />
+                          {isVrFeatured && (
+                            <span
+                              style={{
+                                position: "absolute",
+                                top: 6,
+                                left: 7,
+                                fontSize: 9.5,
+                                fontWeight: 700,
+                                letterSpacing: "0.03em",
+                                padding: "2px 6px",
+                                borderRadius: 999,
+                                background: "linear-gradient(135deg, #0284c7, #6366f1)",
+                                color: "#ffffff",
+                                boxShadow: "0 2px 6px rgba(2, 132, 199, 0.35)",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 3,
+                              }}
+                            >
+                              <span aria-hidden="true">🥽</span>
+                              <span>VR 3D</span>
+                            </span>
+                          )}
+                          <span
+                            style={{
+                              position: "absolute",
+                              top: 6,
+                              right: 7,
+                              fontSize: 9.5,
+                              fontWeight: 600,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.03em",
+                              padding: "1px 5px",
+                              borderRadius: 4,
+                              backgroundColor: isDark ? "rgba(15, 23, 42, 0.85)" : "rgba(255, 255, 255, 0.9)",
+                              border: `1px solid ${palette.subtleBorder}`,
+                              color: palette.muted,
+                              fontFamily: "var(--ms-font-mono, monospace)",
+                            }}
+                          >
+                            {ex.lang}
+                          </span>
+                        </div>
+
+                        <div
+                          style={{
+                            padding: "10px 12px",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 5,
+                            flex: 1,
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: 13.5,
+                              fontWeight: 650,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {ex.title}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 11.5,
+                              color: palette.muted,
+                              lineHeight: 1.35,
+                              display: "-webkit-box",
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                              minHeight: 31,
+                            }}
+                          >
+                            {ex.description || ex.category}
+                          </div>
+
+                          <div
+                            style={{
+                              marginTop: "auto",
+                              paddingTop: 7,
+                              borderTop: `1px solid ${palette.subtleBorder}`,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 6,
+                            }}
+                          >
+                            <span style={{ fontSize: 11, color: palette.muted }}>{ex.category}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
                   {filteredRegistryModels.map((model) => {
                     const isPkgMounted = mountedMap.has(model.packageName.toLowerCase());
                     const isBusy = busyId === model.id;
@@ -1407,153 +1701,6 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                                 Opening…
                               </span>
                             )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {/* Fallback Curated Starters when offline / registry unreachable */}
-                  {fallbackStarters.map((ex) => {
-                    const isCurrent = currentTemplateId === ex.id;
-                    const previewSvg = buildEquationFallbackPreviewSvg(ex.title, ex.category, isDark);
-
-                    return (
-                      <div
-                        key={ex.id}
-                        className="ms-modal-tile"
-                        role="button"
-                        tabIndex={0}
-                        draggable
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData("text/plain", ex.code);
-                          e.dataTransfer.setData("application/modelscript-template", JSON.stringify(ex));
-                          e.dataTransfer.effectAllowed = "copy";
-                        }}
-                        onClick={() => {
-                          onSelectTemplate(ex);
-                          onClose();
-                        }}
-                        onDoubleClick={() => {
-                          onSelectTemplate(ex);
-                          onClose();
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            onSelectTemplate(ex);
-                            onClose();
-                          }
-                        }}
-                        title={`${ex.title}\nClick to open or drag onto workspace`}
-                        style={{
-                          border: `1px solid ${isCurrent ? palette.accent : palette.border}`,
-                          borderRadius: 12,
-                          backgroundColor: palette.cardBg,
-                          display: "flex",
-                          flexDirection: "column",
-                          overflow: "hidden",
-                          cursor: "pointer",
-                          boxShadow: isCurrent ? `0 0 0 2px ${palette.accentSoft}` : "none",
-                        }}
-                      >
-                        <div
-                          style={{
-                            height: 124,
-                            backgroundColor: palette.stageBg,
-                            backgroundImage: isDark
-                              ? "radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px)"
-                              : "radial-gradient(rgba(15,23,42,0.08) 1px, transparent 1px)",
-                            backgroundSize: "12px 12px",
-                            borderBottom: `1px solid ${palette.subtleBorder}`,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            position: "relative",
-                            padding: "8px 10px",
-                            overflow: "hidden",
-                          }}
-                        >
-                          <div
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                            }}
-                            dangerouslySetInnerHTML={{
-                              __html: sanitizeSvgMarkup(previewSvg, { isDark, maxHeight: "108px" }),
-                            }}
-                          />
-                          <span
-                            style={{
-                              position: "absolute",
-                              top: 6,
-                              right: 7,
-                              fontSize: 9.5,
-                              fontWeight: 600,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.03em",
-                              padding: "1px 5px",
-                              borderRadius: 4,
-                              backgroundColor: isDark ? "rgba(15, 23, 42, 0.85)" : "rgba(255, 255, 255, 0.9)",
-                              border: `1px solid ${palette.subtleBorder}`,
-                              color: palette.muted,
-                              fontFamily: "var(--ms-font-mono, monospace)",
-                            }}
-                          >
-                            {ex.lang}
-                          </span>
-                        </div>
-
-                        <div
-                          style={{
-                            padding: "10px 12px",
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 5,
-                            flex: 1,
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontSize: 13.5,
-                              fontWeight: 650,
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {ex.title}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: 11.5,
-                              color: palette.muted,
-                              lineHeight: 1.35,
-                              display: "-webkit-box",
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: "vertical",
-                              overflow: "hidden",
-                              minHeight: 31,
-                            }}
-                          >
-                            {ex.description || ex.category}
-                          </div>
-
-                          <div
-                            style={{
-                              marginTop: "auto",
-                              paddingTop: 7,
-                              borderTop: `1px solid ${palette.subtleBorder}`,
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: 6,
-                            }}
-                          >
-                            <span style={{ fontSize: 11, color: palette.muted }}>{ex.category}</span>
                           </div>
                         </div>
                       </div>

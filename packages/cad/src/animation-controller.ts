@@ -39,10 +39,28 @@ export type CadDynamicProperty =
   | "shapeOffset"
   | "lengthDirection"
   | "widthDirection"
-  | "vectorCoordinates";
+  | "vectorCoordinates"
+  | "visible"
+  | "attached";
+
+/** Rule governing runtime variable-topology detach/reconnect transitions for a component or sub-chain. */
+export interface DynamicAttachmentRule {
+  /** Component name whose attachment state can toggle dynamically. */
+  readonly componentName: string;
+  /** Parent component name when attached (`attached === true`). */
+  readonly parentName: string;
+  /** Simulation variable driving attachment (`>= threshold` means attached, `< threshold` means detached). */
+  readonly attachmentVariable: string;
+  /** Threshold separating attached from detached state (default `0.5`). */
+  readonly threshold?: number | undefined;
+  /** Optional local mounting offset relative to the parent frame when attached. */
+  readonly mountOffset?: [number, number, number] | undefined;
+  /** Optional local mounting quaternion relative to the parent frame when attached. */
+  readonly mountQuaternion?: Quat | undefined;
+}
 
 export interface CadDynamicBinding {
-  /** Property being animated: position, rotation, scale, deformation, color, or MSL shape local frame attributes */
+  /** Property being animated: position, rotation, scale, deformation, color, visibility, attachment, or MSL frame attributes */
   property: CadDynamicProperty;
   /** Index within property array (0=x, 1=y, 2=z, or 0..8 for 3×3 matrix) */
   index?: number | undefined;
@@ -65,6 +83,8 @@ export interface ComponentDefaultTransform {
   vectorCoordinates?: [number, number, number] | undefined;
   headAtOrigin?: boolean | undefined;
   color?: [number, number, number] | undefined;
+  visible?: boolean | undefined;
+  attached?: boolean | undefined;
 }
 
 /** Dynamic deformation configuration for compliant soft-tissue structures or modal elastodynamics. */
@@ -110,6 +130,8 @@ export interface ComponentTransform {
   quaternion: [number, number, number, number]; // [x, y, z, w]
   scale: [number, number, number];
   color?: [number, number, number] | undefined;
+  visible?: boolean | undefined;
+  attached?: boolean | undefined;
   matrix: Mat4;
 }
 
@@ -143,9 +165,10 @@ export class AnimationController {
   private _stopTime = 0;
   private _loop = true;
 
-  // ── Bindings & Defaults ──
+  // ── Bindings, Defaults & Variable-Topology Attachment Rules ──
   private bindings = new Map<string, CadDynamicBinding[]>();
   private deformationConfigs = new Map<string, DynamicDeformationConfig>();
+  private attachmentRules = new Map<string, DynamicAttachmentRule>();
   private defaults = new Map<
     string,
     {
@@ -159,6 +182,8 @@ export class AnimationController {
       vectorCoordinates?: [number, number, number] | undefined;
       headAtOrigin?: boolean | undefined;
       color?: [number, number, number] | undefined;
+      visible?: boolean | undefined;
+      attached?: boolean | undefined;
     }
   >();
 
@@ -235,21 +260,47 @@ export class AnimationController {
   }
 
   /**
-   * Set dynamic bindings for components.
+   * Set dynamic bindings for components (replaces existing bindings).
    */
   setBindings(bindings: AnimationBinding[]): void {
     this.bindings.clear();
     this.deformationConfigs.clear();
 
     for (const b of bindings) {
-      this.bindings.set(b.componentName, b.bindings);
-      if (b.defaults) {
-        this.setDefault(b.componentName, b.defaults);
-      }
-      const def = b.deformationConfig || b.deformation;
-      if (def) {
-        this.deformationConfigs.set(b.componentName, def);
-      }
+      this.updateBinding(b);
+    }
+  }
+
+  /**
+   * Incrementally add or update dynamic bindings for a single component without resetting others.
+   */
+  updateBinding(binding: AnimationBinding): void {
+    this.bindings.set(binding.componentName, binding.bindings);
+    if (binding.defaults) {
+      this.setDefault(binding.componentName, binding.defaults);
+    }
+    const def = binding.deformationConfig || binding.deformation;
+    if (def) {
+      this.deformationConfigs.set(binding.componentName, def);
+    }
+  }
+
+  /**
+   * Remove dynamic bindings for a single component.
+   */
+  removeBinding(componentName: string): void {
+    this.bindings.delete(componentName);
+    this.deformationConfigs.delete(componentName);
+    this.attachmentRules.delete(componentName);
+  }
+
+  /**
+   * Register runtime variable-topology attachment rules (e.g., autonomous arm detach/reconnect).
+   */
+  setAttachmentRules(rules: readonly DynamicAttachmentRule[]): void {
+    this.attachmentRules.clear();
+    for (const rule of rules) {
+      this.attachmentRules.set(rule.componentName, rule);
     }
   }
 
@@ -275,6 +326,8 @@ export class AnimationController {
       vectorCoordinates: transform.vectorCoordinates ? [...transform.vectorCoordinates] : undefined,
       headAtOrigin: transform.headAtOrigin,
       color: transform.color ? [...transform.color] : undefined,
+      visible: transform.visible,
+      attached: transform.attached,
     });
   }
 
@@ -367,7 +420,7 @@ export class AnimationController {
   /**
    * Get the interpolated transform for a component at the current simulation time.
    */
-  getTransform(componentName: string): ComponentTransform {
+  getTransform(componentName: string, _visited?: Set<string>): ComponentTransform {
     const def = this.defaults.get(componentName) ?? {
       position: [0, 0, 0] as [number, number, number],
       rotation: [0, 0, 0] as [number, number, number],
@@ -377,17 +430,20 @@ export class AnimationController {
 
     const componentBindings = this.bindings.get(componentName);
     const defConfig = this.deformationConfigs.get(componentName);
+    const attachRule = this.attachmentRules.get(componentName);
     const hasLocalFrameDefaults = Boolean(
       def.shapeOffset || def.lengthDirection || def.widthDirection || def.vectorCoordinates,
     );
 
-    if ((!componentBindings || componentBindings.length === 0) && !defConfig && !hasLocalFrameDefaults) {
+    if ((!componentBindings || componentBindings.length === 0) && !defConfig && !attachRule && !hasLocalFrameDefaults) {
       return {
         position: [...def.position],
         rotation: [...def.rotation],
         quaternion: [...def.quaternion],
         scale: [...def.scale],
         color: def.color ? [...def.color] : undefined,
+        visible: def.visible ?? true,
+        attached: def.attached ?? true,
         matrix: composeTransformMatrix(def.position, def.quaternion, def.scale),
       };
     }
@@ -405,6 +461,8 @@ export class AnimationController {
       : [0, 0, 0];
     let hasVectorCoords = Array.isArray(def.vectorCoordinates);
     let color: [number, number, number] | undefined = def.color ? [...def.color] : undefined;
+    let visible: boolean = def.visible ?? true;
+    let attached: boolean = def.attached ?? true;
 
     // Check for 3×3 rotation matrix bindings
     const rotMatrixBindings = (componentBindings || []).filter(
@@ -482,6 +540,10 @@ export class AnimationController {
             if (!color) color = [0.7, 0.7, 0.7];
             color[idx] = val > 1.0 ? Math.min(1, Math.max(0, val / 255)) : Math.min(1, Math.max(0, val));
           }
+        } else if (b.property === "visible") {
+          visible = val >= 0.5;
+        } else if (b.property === "attached") {
+          attached = val >= 0.5;
         }
       }
     }
@@ -491,6 +553,32 @@ export class AnimationController {
       quat = quaternionFromMatrix3x3(rMatrix, true);
     } else if (hasEuler) {
       quat = quaternionFromEuler(eulerAngles[0], eulerAngles[1], eulerAngles[2], "XYZ", true);
+    }
+
+    // Resolve variable-topology parent coupling when an attachment rule is active
+    if (attachRule) {
+      const attVal = this.getVariableValue(attachRule.attachmentVariable);
+      const threshold = attachRule.threshold ?? 0.5;
+      if (attVal !== null) {
+        attached = attVal >= threshold;
+      }
+      if (attached && (!_visited || !_visited.has(attachRule.parentName))) {
+        const visited = _visited ? new Set(_visited) : new Set<string>();
+        visited.add(componentName);
+        const parentTf = this.getTransform(attachRule.parentName, visited);
+        const mountOffset = attachRule.mountOffset ?? [0, 0, 0];
+        const localPos: [number, number, number] = [
+          pos[0] + mountOffset[0],
+          pos[1] + mountOffset[1],
+          pos[2] + mountOffset[2],
+        ];
+        const rotatedOffset = rotateVectorByQuaternion(localPos, parentTf.quaternion);
+        pos[0] = parentTf.position[0] + rotatedOffset[0];
+        pos[1] = parentTf.position[1] + rotatedOffset[1];
+        pos[2] = parentTf.position[2] + rotatedOffset[2];
+        const mountQuat = attachRule.mountQuaternion ?? [0, 0, 0, 1];
+        quat = quaternionMultiply(parentTf.quaternion, quaternionMultiply(mountQuat, quat));
+      }
     }
 
     // Resolve MSL PartialVector (coordinates[1..3] -> length and lengthDirection)
@@ -548,6 +636,8 @@ export class AnimationController {
       quaternion: quat,
       scale: scl,
       color,
+      visible,
+      attached,
       matrix: composeTransformMatrix(pos, quat, scl),
     };
   }

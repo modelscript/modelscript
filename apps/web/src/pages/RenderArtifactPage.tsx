@@ -18,11 +18,12 @@ import {
   buildArtifactRotundaDocument,
   parseRotundaEnvironmentId,
   parseSurfacePresentationMode,
+  resolveDefaultArtifactEnvironment,
 } from "../components/artifacts/rotunda-board-adapter";
 import {
   buildLiveArtifactRotundaRenderer,
   useArtifactRotundaGeometry,
-} from "../components/artifacts/rotunda-geometry-bridge";
+} from "../components/artifacts/RotundaGeometryBridge";
 import Box from "../components/Box";
 import Spinner from "../components/Spinner";
 import { useFeatureFlag } from "../FeatureFlagContext";
@@ -112,8 +113,11 @@ export default function RenderArtifactPage() {
 
   const rotundaEnvironment = useMemo(
     () =>
-      parseRotundaEnvironmentId(searchParams.get("env") ?? viewConfig["environment"] ?? viewConfig["env"], "dark-lab"),
-    [searchParams, viewConfig],
+      parseRotundaEnvironmentId(
+        searchParams.get("env") ?? viewConfig["environment"] ?? viewConfig["env"],
+        resolveDefaultArtifactEnvironment(artifact?.view_type, viewConfig),
+      ),
+    [searchParams, viewConfig, artifact?.view_type],
   );
 
   const rotundaDocument = useMemo(() => {
@@ -501,6 +505,7 @@ export default function RenderArtifactPage() {
           mode={rotundaSurfaceMode}
           initialEnvironment={rotundaEnvironment}
           onExitTo2D={() => setIsVrRotundaMode(false)}
+          exitTo2DLabel="Return to Artifact"
           title={String(
             artifact.title ||
               (artifact as unknown as { name?: string }).name ||

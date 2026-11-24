@@ -82,7 +82,7 @@ export class SoaSceneGraph {
   private count = 0;
 
   /** Packed [x, y, width, height, angleDeg, flipX(0|1), flipY(0|1), opacity] per handle. */
-  public nodeTransforms: Float32Array;
+  public nodeTransforms: Float64Array;
   public nodeFlags: Uint32Array;
   public nodeZIndex: Int32Array;
   public nodeParent: Int32Array;
@@ -90,7 +90,8 @@ export class SoaSceneGraph {
   /** Packed [worldX, worldY, normalX, normalY] per port slot. */
   private portCapacity: number;
   private portCount = 0;
-  public portWorldCoords: Float32Array;
+  private freePortSlots: number[] = [];
+  public portWorldCoords: Float64Array;
 
   private idToHandle = new Map<string, number>();
   private handleToId: (string | null)[] = [];
@@ -105,14 +106,14 @@ export class SoaSceneGraph {
 
   constructor(initialCapacity = 1024, gridCellSize = 256) {
     this.capacity = Math.max(64, initialCapacity);
-    this.nodeTransforms = new Float32Array(this.capacity * TRANSFORM_STRIDE);
+    this.nodeTransforms = new Float64Array(this.capacity * TRANSFORM_STRIDE);
     this.nodeFlags = new Uint32Array(this.capacity);
     this.nodeZIndex = new Int32Array(this.capacity);
     this.nodeParent = new Int32Array(this.capacity);
     this.nodeParent.fill(-1);
 
     this.portCapacity = Math.max(128, initialCapacity * 2);
-    this.portWorldCoords = new Float32Array(this.portCapacity * PORT_STRIDE);
+    this.portWorldCoords = new Float64Array(this.portCapacity * PORT_STRIDE);
 
     this.spatialIndex = new CanvasSpatialIndex<SpatialNodeItem>(gridCellSize);
   }
@@ -130,7 +131,7 @@ export class SoaSceneGraph {
     let nextCap = this.capacity;
     while (nextCap <= neededHandle) nextCap *= 2;
 
-    const nextTransforms = new Float32Array(nextCap * TRANSFORM_STRIDE);
+    const nextTransforms = new Float64Array(nextCap * TRANSFORM_STRIDE);
     nextTransforms.set(this.nodeTransforms);
     this.nodeTransforms = nextTransforms;
 
@@ -154,10 +155,24 @@ export class SoaSceneGraph {
     if (neededSlot < this.portCapacity) return;
     let nextCap = this.portCapacity;
     while (nextCap <= neededSlot) nextCap *= 2;
-    const nextCoords = new Float32Array(nextCap * PORT_STRIDE);
+    const nextCoords = new Float64Array(nextCap * PORT_STRIDE);
     nextCoords.set(this.portWorldCoords);
     this.portWorldCoords = nextCoords;
     this.portCapacity = nextCap;
+  }
+
+  private syncSpatialNode(id: string, handle: number): void {
+    if (this.spatialDirty) return;
+    if (((this.nodeFlags[handle] ?? 0) & SceneNodeFlags.VISIBLE) === 0) {
+      this.spatialIndex.remove(id);
+      return;
+    }
+    this.spatialIndex.upsert({
+      id,
+      handle,
+      bounds: this.getNodeWorldAABB(handle),
+      zIndex: this.nodeZIndex[handle] ?? 0,
+    });
   }
 
   public upsertNode(spec: {
@@ -175,11 +190,14 @@ export class SoaSceneGraph {
     parentId?: string | null | undefined;
   }): number {
     let handle = this.idToHandle.get(spec.id);
+    let preservedSelected = 0;
     if (handle === undefined) {
       handle = this.freeHandles.length > 0 ? this.freeHandles.pop()! : this.count++;
       this.ensureNodeCapacity(handle);
       this.idToHandle.set(spec.id, handle);
       this.handleToId[handle] = spec.id;
+    } else {
+      preservedSelected = (this.nodeFlags[handle] ?? 0) & SceneNodeFlags.SELECTED;
     }
 
     const base = handle * TRANSFORM_STRIDE;
@@ -192,7 +210,7 @@ export class SoaSceneGraph {
     this.nodeTransforms[base + 6] = spec.flipY ? 1 : 0;
     this.nodeTransforms[base + 7] = spec.opacity ?? 1;
 
-    this.nodeFlags[handle] = (spec.flags ?? SceneNodeFlags.VISIBLE) | SceneNodeFlags.DIRTY;
+    this.nodeFlags[handle] = (spec.flags ?? SceneNodeFlags.VISIBLE) | preservedSelected | SceneNodeFlags.DIRTY;
     this.nodeZIndex[handle] = spec.zIndex ?? 0;
 
     if (spec.parentId !== undefined) {
@@ -200,7 +218,7 @@ export class SoaSceneGraph {
     }
 
     this.recomputePortsForNode(spec.id);
-    this.spatialDirty = true;
+    this.syncSpatialNode(spec.id, handle);
     return handle;
   }
 
@@ -220,14 +238,23 @@ export class SoaSceneGraph {
       this.childrenOf.delete(handle);
     }
 
+    const oldPorts = this.nodePorts.get(id);
+    if (oldPorts) {
+      for (const p of oldPorts) {
+        this.freePortSlots.push(p.slot);
+      }
+      this.nodePorts.delete(id);
+    }
+
     this.idToHandle.delete(id);
     this.handleToId[handle] = null;
     this.nodeFlags[handle] = 0;
     this.nodeParent[handle] = -1;
     this.freeHandles.push(handle);
-    this.nodePorts.delete(id);
     this.nodeConnectedEdges.delete(id);
-    this.spatialDirty = true;
+    if (!this.spatialDirty) {
+      this.spatialIndex.remove(id);
+    }
     return true;
   }
 
@@ -278,6 +305,7 @@ export class SoaSceneGraph {
     this.nodeTransforms[base + 1] = y;
     this.nodeFlags[handle] = (this.nodeFlags[handle] ?? 0) | SceneNodeFlags.DIRTY;
     this.recomputePortsForNode(id);
+    this.syncSpatialNode(id, handle);
 
     // Move children rigidly when parent moves
     const kids = this.childrenOf.get(handle);
@@ -294,7 +322,6 @@ export class SoaSceneGraph {
       }
     }
 
-    this.spatialDirty = true;
     return true;
   }
 
@@ -306,7 +333,7 @@ export class SoaSceneGraph {
     this.nodeTransforms[base + 3] = Math.max(0, height);
     this.nodeFlags[handle] = (this.nodeFlags[handle] ?? 0) | SceneNodeFlags.DIRTY;
     this.recomputePortsForNode(id);
-    this.spatialDirty = true;
+    this.syncSpatialNode(id, handle);
     return true;
   }
 
@@ -317,7 +344,16 @@ export class SoaSceneGraph {
     this.nodeTransforms[base + 4] = ((angleDeg % 360) + 360) % 360;
     this.nodeFlags[handle] = (this.nodeFlags[handle] ?? 0) | SceneNodeFlags.DIRTY;
     this.recomputePortsForNode(id);
-    this.spatialDirty = true;
+    this.syncSpatialNode(id, handle);
+    return true;
+  }
+
+  public setNodeZIndex(id: string, zIndex: number): boolean {
+    const handle = this.idToHandle.get(id);
+    if (handle === undefined) return false;
+    this.nodeZIndex[handle] = zIndex;
+    this.nodeFlags[handle] = (this.nodeFlags[handle] ?? 0) | SceneNodeFlags.DIRTY;
+    this.syncSpatialNode(id, handle);
     return true;
   }
 
@@ -337,6 +373,9 @@ export class SoaSceneGraph {
     if (handle === undefined) return;
     const cur = this.nodeFlags[handle] ?? 0;
     this.nodeFlags[handle] = enabled ? cur | flag : cur & ~flag;
+    if (flag === SceneNodeFlags.VISIBLE) {
+      this.syncSpatialNode(id, handle);
+    }
   }
 
   public hasNodeFlag(id: string, flag: number): boolean {
@@ -349,6 +388,22 @@ export class SoaSceneGraph {
     const childHandle = this.idToHandle.get(childId);
     if (childHandle === undefined) return;
 
+    if (parentId !== null) {
+      const candidateParent = this.idToHandle.get(parentId);
+      if (candidateParent === undefined || candidateParent === childHandle) {
+        const oldParent = this.nodeParent[childHandle] ?? -1;
+        if (oldParent >= 0) this.childrenOf.get(oldParent)?.delete(childHandle);
+        this.nodeParent[childHandle] = -1;
+        return;
+      }
+      // Prevent cycles: walk up from candidateParent to ensure childHandle is not an ancestor
+      let anc = candidateParent;
+      while (anc >= 0) {
+        if (anc === childHandle) return;
+        anc = this.nodeParent[anc] ?? -1;
+      }
+    }
+
     const oldParent = this.nodeParent[childHandle] ?? -1;
     if (oldParent >= 0) {
       this.childrenOf.get(oldParent)?.delete(childHandle);
@@ -359,12 +414,7 @@ export class SoaSceneGraph {
       return;
     }
 
-    const parentHandle = this.idToHandle.get(parentId);
-    if (parentHandle === undefined || parentHandle === childHandle) {
-      this.nodeParent[childHandle] = -1;
-      return;
-    }
-
+    const parentHandle = this.idToHandle.get(parentId)!;
     this.nodeParent[childHandle] = parentHandle;
     let kids = this.childrenOf.get(parentHandle);
     if (!kids) {
@@ -387,6 +437,33 @@ export class SoaSceneGraph {
     return out;
   }
 
+  /** Returns true if `ancestorId` is an ancestor of `nodeId` in the parent hierarchy. */
+  public isDescendantOf(nodeId: string, ancestorId: string): boolean {
+    const startHandle = this.idToHandle.get(nodeId);
+    const ancHandle = this.idToHandle.get(ancestorId);
+    if (startHandle === undefined || ancHandle === undefined) return false;
+    let cur = this.nodeParent[startHandle] ?? -1;
+    while (cur >= 0) {
+      if (cur === ancHandle) return true;
+      cur = this.nodeParent[cur] ?? -1;
+    }
+    return false;
+  }
+
+  /** Collects all descendant IDs of `parentId` recursively. */
+  public getDescendantIds(parentId: string): string[] {
+    const out: string[] = [];
+    const stack = this.getChildIds(parentId);
+    while (stack.length > 0) {
+      const cid = stack.pop()!;
+      out.push(cid);
+      for (const grand of this.getChildIds(cid)) {
+        stack.push(grand);
+      }
+    }
+    return out;
+  }
+
   /** Registers/replaces ports on a node and computes their world coords & outward normals. */
   public setNodePorts(
     nodeId: string,
@@ -399,9 +476,15 @@ export class SoaSceneGraph {
       direction?: string | undefined;
     }[],
   ): SoaPortRecord[] {
+    const existing = this.nodePorts.get(nodeId);
+    if (existing) {
+      for (const old of existing) {
+        this.freePortSlots.push(old.slot);
+      }
+    }
     const records: SoaPortRecord[] = [];
     for (const p of ports) {
-      const slot = this.portCount++;
+      const slot = this.freePortSlots.length > 0 ? this.freePortSlots.pop()! : this.portCount++;
       this.ensurePortCapacity(slot);
       records.push({
         id: p.id,
@@ -732,6 +815,7 @@ export class SoaSceneGraph {
     this.idToHandle.clear();
     this.handleToId = [];
     this.freeHandles = [];
+    this.freePortSlots = [];
     this.childrenOf.clear();
     this.nodePorts.clear();
     this.edges.clear();
@@ -740,6 +824,7 @@ export class SoaSceneGraph {
     this.portCount = 0;
     this.nodeFlags.fill(0);
     this.nodeParent.fill(-1);
+    this.spatialIndex.clear();
     this.spatialDirty = true;
   }
 }

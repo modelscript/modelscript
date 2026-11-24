@@ -12,6 +12,8 @@ export interface SafeOrbitControlsProps {
   dampingFactor?: number | undefined;
   minDistance?: number | undefined;
   maxDistance?: number | undefined;
+  autoRotate?: boolean | undefined;
+  autoRotateSpeed?: number | undefined;
 }
 
 export const SafeOrbitControls: React.FC<SafeOrbitControlsProps> = ({
@@ -21,6 +23,8 @@ export const SafeOrbitControls: React.FC<SafeOrbitControlsProps> = ({
   dampingFactor = 0.08,
   minDistance,
   maxDistance,
+  autoRotate = false,
+  autoRotateSpeed = 1.6,
 }) => {
   const { gl } = useThree();
   const [isZoomAllowed, setIsZoomAllowed] = useState(Boolean(isFullScreen));
@@ -130,6 +134,8 @@ export const SafeOrbitControls: React.FC<SafeOrbitControlsProps> = ({
         dampingFactor={dampingFactor}
         minDistance={minDistance}
         maxDistance={maxDistance}
+        autoRotate={autoRotate}
+        autoRotateSpeed={autoRotateSpeed}
         touches={{
           ONE: 0, // THREE.TOUCH.ROTATE
           TWO: 1, // THREE.TOUCH.DOLLY_PAN

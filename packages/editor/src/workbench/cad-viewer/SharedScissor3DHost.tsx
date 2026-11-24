@@ -5,6 +5,7 @@ import { OrbitControls, PerspectiveCamera, useGLTF, View } from "@react-three/dr
 import { Canvas, useFrame } from "@react-three/fiber";
 import React, { Component, createContext, Suspense, useContext, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import { useRetainGltfUrl } from "./gltf-cache-guard";
 import { VtkRenderer } from "./VtkRenderer";
 
 export type Embedded3DPortalKind = "cad" | "fea" | "cfd" | "step" | "usd" | "urdf" | "vtk";
@@ -55,7 +56,9 @@ export function SharedScissor3DHost({ children, style }: SharedScissor3DHostProp
               zIndex: 5,
             }}
           >
-            <View.Port />
+            <Suspense fallback={null}>
+              <View.Port />
+            </Suspense>
           </Canvas>
         )}
       </div>
@@ -87,28 +90,9 @@ function isLoadableGltfUrl(uri: string | undefined): uri is string {
 }
 
 function GltfArtifactModel({ uri }: { uri: string }): React.ReactElement {
+  useRetainGltfUrl(uri);
   const { scene } = useGLTF(uri);
   const clonedScene = useMemo(() => scene.clone(true), [scene]);
-  useEffect(() => {
-    return () => {
-      if (!uri.startsWith("data:") && !uri.startsWith("blob:")) return;
-      scene.traverse((child) => {
-        const mesh = child as THREE.Mesh;
-        if (mesh.geometry) mesh.geometry.dispose();
-        const mats = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
-        for (const mat of mats) {
-          if (!mat) continue;
-          for (const val of Object.values(mat)) {
-            if (val && typeof val === "object" && (val as THREE.Texture).isTexture) {
-              (val as THREE.Texture).dispose();
-            }
-          }
-          mat.dispose();
-        }
-      });
-      useGLTF.clear(uri);
-    };
-  }, [uri, scene, clonedScene]);
   return <primitive object={clonedScene} />;
 }
 

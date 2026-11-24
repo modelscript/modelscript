@@ -111,7 +111,9 @@ export function SharedScissor3DHost({
               zIndex: 5,
             }}
           >
-            <View.Port />
+            <Suspense fallback={null}>
+              <View.Port />
+            </Suspense>
           </Canvas>
         )}
       </div>

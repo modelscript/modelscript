@@ -1,24 +1,49 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { isMinimapOpen, toggleMinimapHud, updateMinimapHud, type MinimapGraph } from "./minimap.js";
+import { serializeInteractiveGraphSvg } from "./svg-renderer.js";
 
 export type DiagramGridMode = "doubleMesh" | "dot" | "mesh" | "none";
 
 export interface GridControlGraphLike {
   disposed?: boolean | undefined;
   options?: Record<string, unknown> | undefined;
+  container?: HTMLElement | null | undefined;
   drawGrid(options: Record<string, unknown>): void;
   showGrid?: (() => void) | undefined;
   hideGrid?: (() => void) | undefined;
   setGridSize?: ((size: number) => void) | undefined;
+  setSnapEnabled?: ((enabled: boolean) => void) | undefined;
+  setSnapStep?: ((step: number) => void) | undefined;
 }
 
 export interface ExportableGraphLike {
-  container?: { querySelector(selector: string): Element | null } | null | undefined;
+  container?: { querySelector(selector: string): Element | null; style?: CSSStyleDeclaration } | null | undefined;
+  options?: Record<string, unknown> | undefined;
 }
 
 export interface MinimapControlGraphLike extends MinimapGraph {
   container?: HTMLElement | null | undefined;
+}
+
+function detectDarkBackground(bgColor?: string): boolean {
+  if (!bgColor) return false;
+  const c = bgColor.trim().toLowerCase();
+  if (!c || c === "transparent" || c === "none") return false;
+  if (c === "#ffffff" || c === "#fff" || c === "white" || c === "#f8fafc" || c === "#f1f5f9") return false;
+  const hexMatch = /^#([0-9a-f]{3}|[0-9a-f]{6})$/.exec(c);
+  if (hexMatch) {
+    const hex = hexMatch[1]!;
+    const r = hex.length === 3 ? parseInt(hex[0]! + hex[0]!, 16) : parseInt(hex.slice(0, 2), 16);
+    const g = hex.length === 3 ? parseInt(hex[1]! + hex[1]!, 16) : parseInt(hex.slice(2, 4), 16);
+    const b = hex.length === 3 ? parseInt(hex[2]! + hex[2]!, 16) : parseInt(hex.slice(4, 6), 16);
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.5;
+  }
+  const rgbMatch = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(c);
+  if (rgbMatch) {
+    return (0.299 * Number(rgbMatch[1]) + 0.587 * Number(rgbMatch[2]) + 0.114 * Number(rgbMatch[3])) / 255 < 0.5;
+  }
+  return true;
 }
 
 /**
@@ -35,14 +60,16 @@ export function setDiagramGridOnGraph(
     return;
   }
   targetGraph.showGrid?.();
+  const containerBg = targetGraph.container?.style?.backgroundColor;
   const rawBackground = targetGraph.options?.["background"];
-  const bgColor =
+  const optBgColor =
     rawBackground &&
     typeof rawBackground === "object" &&
     typeof (rawBackground as Record<string, unknown>)["color"] === "string"
       ? ((rawBackground as Record<string, unknown>)["color"] as string)
       : undefined;
-  const isDark = options?.isDark !== undefined ? options.isDark : bgColor !== "#ffffff" && bgColor !== "#f8fafc";
+  const bgColor = containerBg || optBgColor;
+  const isDark = options?.isDark !== undefined ? options.isDark : detectDarkBackground(bgColor);
   const gridColor = isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(15, 23, 42, 0.12)";
   if (mode === "dot") {
     targetGraph.drawGrid({
@@ -66,8 +93,7 @@ export function setDiagramGridOnGraph(
 }
 
 /**
- * Toggles snap-to-grid on a target graph, restoring `baseGridSize` when enabled
- * or switching to a 1px free-placement raster when disabled.
+ * Toggles snap-to-grid on a target graph without distorting the rendered visual grid pitch.
  */
 export function setDiagramSnapOnGraph(
   targetGraph: GridControlGraphLike | null | undefined,
@@ -75,6 +101,13 @@ export function setDiagramSnapOnGraph(
   baseGridSize = 2,
 ): void {
   if (!targetGraph || targetGraph.disposed) return;
+  if (typeof targetGraph.setSnapEnabled === "function") {
+    targetGraph.setSnapEnabled(enabled);
+    if (enabled && typeof targetGraph.setSnapStep === "function") {
+      targetGraph.setSnapStep(baseGridSize);
+    }
+    return;
+  }
   targetGraph.setGridSize?.(enabled ? baseGridSize : 1);
 }
 
@@ -111,21 +144,32 @@ export function isMinimapVisibleOnContainer(
 }
 
 /**
- * Serializes a graph's SVG DOM element into a standalone XML string.
+ * Serializes a graph's SVG DOM element into a standalone, content-fitted XML string.
  */
-export function exportGraphSvgString(targetGraph: ExportableGraphLike | null | undefined): string {
+export function exportGraphSvgString(
+  targetGraph: ExportableGraphLike | null | undefined,
+  options?: { background?: string | undefined; padding?: number | undefined },
+): string {
   if (!targetGraph) return "";
-  const svgElem = targetGraph.container?.querySelector("svg");
-  return svgElem ? new XMLSerializer().serializeToString(svgElem) : "";
+  const svgElem = (targetGraph.container?.querySelector("svg.ms-graph-svg") ??
+    targetGraph.container?.querySelector("svg")) as SVGSVGElement | null;
+  if (!svgElem) return "";
+  const bg =
+    options?.background ??
+    (targetGraph.container?.style?.backgroundColor && targetGraph.container.style.backgroundColor !== "transparent"
+      ? targetGraph.container.style.backgroundColor
+      : undefined);
+  return serializeInteractiveGraphSvg(svgElem, { background: bg, padding: options?.padding });
 }
 
 /**
- * Renders a graph's SVG onto an offscreen HTML5 canvas and exports a PNG data URL.
+ * Renders a graph's SVG onto an offscreen HTML5 canvas and exports a DPR-aware PNG data URL.
  */
 export async function exportGraphPngDataUrl(
   targetGraph: ExportableGraphLike | null | undefined,
-  scale = 2,
+  scale?: number,
 ): Promise<string> {
+  const resolvedScale = scale ?? Math.max(2, typeof window !== "undefined" ? window.devicePixelRatio || 2 : 2);
   const svgString = exportGraphSvgString(targetGraph);
   if (!svgString || typeof document === "undefined") return "";
   return new Promise((resolve) => {
@@ -134,11 +178,11 @@ export async function exportGraphPngDataUrl(
     const url = URL.createObjectURL(blob);
     img.onload = () => {
       const canvas = document.createElement("canvas");
-      canvas.width = (img.width || 800) * scale;
-      canvas.height = (img.height || 600) * scale;
+      canvas.width = (img.width || 800) * resolvedScale;
+      canvas.height = (img.height || 600) * resolvedScale;
       const ctx = canvas.getContext("2d");
       if (ctx) {
-        ctx.scale(scale, scale);
+        ctx.scale(resolvedScale, resolvedScale);
         ctx.drawImage(img, 0, 0);
       }
       URL.revokeObjectURL(url);

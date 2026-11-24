@@ -198,6 +198,8 @@ export function applyAttrsToGlyph(
   }
 }
 
+const REF_ATTR_NAMES = new Set(["refWidth", "refHeight", "refX", "refY", "textVerticalAnchor"]);
+
 /** Applies a single slash-delimited selector path (`"indicator/fill"`, `"label/text"`). */
 export function patchGlyphAttrPath(glyph: CompiledGlyph, path: string, value: unknown): boolean {
   const slashIdx = path.indexOf("/");
@@ -207,14 +209,15 @@ export function patchGlyphAttrPath(glyph: CompiledGlyph, path: string, value: un
   const targets = glyph.selectors.get(selector);
   if (!targets || targets.length === 0) return false;
 
+  const targetKey = REF_ATTR_NAMES.has(prop) ? prop : normalizeSvgAttrName(prop);
   for (const prim of targets) {
     if (prop === "text" || prop === "textContent") {
       prim.textContent = value === null || value === undefined ? "" : String(value);
     } else if (value === null || value === undefined) {
       Reflect.deleteProperty(prim.attrs, prop);
-      Reflect.deleteProperty(prim.attrs, normalizeSvgAttrName(prop));
+      Reflect.deleteProperty(prim.attrs, targetKey);
     } else if (typeof value === "string" || typeof value === "number") {
-      prim.attrs[normalizeSvgAttrName(prop)] = value;
+      prim.attrs[targetKey] = value;
     }
   }
   return true;
@@ -239,6 +242,7 @@ function resolveRefNumeric(
 ): number | undefined {
   if (raw === undefined) return undefined;
   if (typeof raw === "number") {
+    if (!Number.isFinite(raw)) return undefined;
     return allowFraction && raw > 0 && raw <= 1 ? raw * refSize : raw;
   }
   const trimmed = raw.trim();
@@ -282,8 +286,58 @@ export function setSvgTextContent(el: Element, text: string, doc: Document): voi
   }
 }
 
+const SAFE_SVG_TAGS = new Set([
+  "svg",
+  "g",
+  "defs",
+  "rect",
+  "circle",
+  "ellipse",
+  "line",
+  "polyline",
+  "polygon",
+  "path",
+  "text",
+  "tspan",
+  "image",
+  "title",
+  "desc",
+  "clippath",
+  "mask",
+  "lineargradient",
+  "radialgradient",
+  "stop",
+  "pattern",
+  "marker",
+  "symbol",
+  "use",
+  "filter",
+  "fegaussianblur",
+  "feoffset",
+  "feblend",
+  "fedropshadow",
+  "fecolormatrix",
+]);
+
+function isUnsafeUrl(val: string): boolean {
+  let cleaned = "";
+  for (let i = 0; i < val.length; i++) {
+    if (val.charCodeAt(i) > 0x20) {
+      cleaned += val[i];
+    }
+  }
+  cleaned = cleaned.toLowerCase();
+  return (
+    cleaned.startsWith("javascript:") ||
+    cleaned.startsWith("vbscript:") ||
+    cleaned.startsWith("data:text/html") ||
+    cleaned.startsWith("data:image/svg+xml")
+  );
+}
+
 /**
- * Materializes a `CompiledGlyph` into live SVG DOM nodes with safe TextNode handling.
+ * Materializes a `CompiledGlyph` into live SVG DOM nodes with safe TextNode handling
+ * and strict tag/attribute sanitization.
  */
 export function materializeGlyphToSvg(
   glyph: CompiledGlyph,
@@ -294,7 +348,11 @@ export function materializeGlyphToSvg(
 ): SVGGElement {
   const rootG = doc.createElementNS(SVG_NS, "g");
 
-  const buildEl = (prim: CompiledPrimitive): Element => {
+  const buildEl = (prim: CompiledPrimitive): Element | null => {
+    const tagLower = prim.tagName.toLowerCase();
+    if (!SAFE_SVG_TAGS.has(tagLower)) {
+      return null;
+    }
     const el = doc.createElementNS(SVG_NS, prim.tagName);
     if (prim.selector) {
       if (prim.selector === "portBody") {
@@ -316,17 +374,19 @@ export function materializeGlyphToSvg(
 
     let deferredTextAttr: string | undefined;
     for (const [k, v] of Object.entries(prim.attrs)) {
+      const kLower = k.toLowerCase();
+      if (kLower.startsWith("on")) continue; // Block inline event handlers
       if (k === "refWidth") {
-        const val = resolveRefNumeric(v, width);
+        const val = resolveRefNumeric(v, width, true);
         if (val !== undefined) el.setAttribute("width", String(val));
       } else if (k === "refHeight") {
-        const val = resolveRefNumeric(v, height);
+        const val = resolveRefNumeric(v, height, true);
         if (val !== undefined) el.setAttribute("height", String(val));
       } else if (k === "refX") {
-        const val = resolveRefNumeric(v, width);
+        const val = resolveRefNumeric(v, width, true);
         if (val !== undefined) el.setAttribute("x", String(val));
       } else if (k === "refY") {
-        const val = resolveRefNumeric(v, height);
+        const val = resolveRefNumeric(v, height, true);
         if (val !== undefined) el.setAttribute("y", String(val));
       } else if (k === "textVerticalAnchor" || k === "text-vertical-anchor") {
         const sv = String(v);
@@ -336,10 +396,18 @@ export function materializeGlyphToSvg(
         if (prim.textContent === undefined) {
           deferredTextAttr = String(v);
         }
-      } else if (k === "xlink:href") {
-        el.setAttributeNS(XLINK_NS, "xlink:href", String(v));
+      } else if (k === "xlink:href" || k === "href") {
+        const sv = String(v);
+        if (isUnsafeUrl(sv)) continue;
+        if (k === "xlink:href") {
+          el.setAttributeNS(XLINK_NS, "xlink:href", sv);
+        } else {
+          el.setAttribute("href", sv);
+        }
       } else {
-        el.setAttribute(normalizeSvgAttrName(k), String(v));
+        const normName = normalizeSvgAttrName(k);
+        if (normName.toLowerCase().startsWith("on")) continue;
+        el.setAttribute(normName, String(v));
       }
     }
     if (deferredTextAttr !== undefined) {
@@ -361,9 +429,10 @@ export function materializeGlyphToSvg(
 
     if (prim.style && Object.keys(prim.style).length > 0) {
       const css = Object.entries(prim.style)
+        .filter(([, sv]) => !isUnsafeUrl(String(sv)))
         .map(([sk, sv]) => `${normalizeSvgAttrName(sk)}:${sv}`)
         .join(";");
-      el.setAttribute("style", css);
+      if (css) el.setAttribute("style", css);
     }
 
     if (prim.textContent !== undefined) {
@@ -375,13 +444,15 @@ export function materializeGlyphToSvg(
     }
 
     for (const child of prim.children) {
-      el.appendChild(buildEl(child));
+      const childEl = buildEl(child);
+      if (childEl) el.appendChild(childEl);
     }
     return el;
   };
 
   for (const root of glyph.roots) {
-    rootG.appendChild(buildEl(root));
+    const rootEl = buildEl(root);
+    if (rootEl) rootG.appendChild(rootEl);
   }
   return rootG;
 }
@@ -393,6 +464,7 @@ export interface Canvas2DContextLike {
   translate(x: number, y: number): void;
   rotate(angleRad: number): void;
   scale(x: number, y: number): void;
+  transform?(a: number, b: number, c: number, d: number, e: number, f: number): void;
   beginPath(): void;
   closePath(): void;
   moveTo(x: number, y: number): void;
@@ -414,8 +486,19 @@ export interface Canvas2DContextLike {
   textBaseline: string;
 }
 
+const path2DCache = new WeakMap<CompiledPrimitive, { d: string; path: Path2D }>();
+
+function safeNum(raw: unknown, fallback = 0): number {
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : fallback;
+  if (typeof raw === "string") {
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : fallback;
+  }
+  return fallback;
+}
+
 function parseTransformAttr(ctx: Canvas2DContextLike, transform: string): void {
-  const re = /(translate|scale|rotate)\s*\(([^)]+)\)/g;
+  const re = /(translate|scale|rotate|matrix)\s*\(([^)]+)\)/g;
   let match: RegExpExecArray | null;
   while ((match = re.exec(transform)) !== null) {
     const fn = match[1];
@@ -423,6 +506,7 @@ function parseTransformAttr(ctx: Canvas2DContextLike, transform: string): void {
       .split(/[\s,]+/)
       .filter(Boolean)
       .map(Number);
+    if (nums.some((n) => !Number.isFinite(n))) continue;
     if (fn === "translate") {
       ctx.translate(nums[0] ?? 0, nums[1] ?? 0);
     } else if (fn === "scale") {
@@ -436,6 +520,8 @@ function parseTransformAttr(ctx: Canvas2DContextLike, transform: string): void {
       if (cx !== 0 || cy !== 0) ctx.translate(cx, cy);
       ctx.rotate((deg * Math.PI) / 180);
       if (cx !== 0 || cy !== 0) ctx.translate(-cx, -cy);
+    } else if (fn === "matrix" && nums.length >= 6 && typeof ctx.transform === "function") {
+      ctx.transform(nums[0]!, nums[1]!, nums[2]!, nums[3]!, nums[4]!, nums[5]!);
     }
   }
 }
@@ -451,7 +537,23 @@ export function paintGlyphToCanvas2D(
   height: number,
   options: { lodMinimal?: boolean | undefined; scale?: number | undefined } = {},
 ): void {
-  const drawPrimitive = (prim: CompiledPrimitive, refW: number, refH: number): void => {
+  const resolveDim = (
+    plain: string | number | undefined,
+    ref: string | number | undefined,
+    refSize: number,
+  ): number | undefined => {
+    if (plain !== undefined) return resolveRefNumeric(plain, refSize, false);
+    if (ref !== undefined) return resolveRefNumeric(ref, refSize, true);
+    return undefined;
+  };
+
+  const drawPrimitive = (
+    prim: CompiledPrimitive,
+    refW: number,
+    refH: number,
+    inheritedFill?: string,
+    inheritedStroke?: string,
+  ): void => {
     const tag = prim.tagName.toLowerCase();
     if (tag === "defs" || tag === "title" || tag === "desc" || tag === "metadata") return;
     if (options.lodMinimal && (tag === "text" || tag === "tspan")) return;
@@ -459,8 +561,8 @@ export function paintGlyphToCanvas2D(
     ctx.save();
     const attrs = prim.attrs;
 
-    const opacity = attrs["opacity"] !== undefined ? Number(attrs["opacity"]) : 1;
-    if (Number.isFinite(opacity) && opacity < 1) {
+    const opacity = attrs["opacity"] !== undefined ? safeNum(attrs["opacity"], 1) : 1;
+    if (opacity < 1) {
       ctx.globalAlpha *= Math.max(0, opacity);
     }
 
@@ -468,43 +570,53 @@ export function paintGlyphToCanvas2D(
       parseTransformAttr(ctx, attrs["transform"]);
     }
 
+    const ownFill = attrs["fill"] !== undefined ? String(attrs["fill"]) : undefined;
+    const ownStroke = attrs["stroke"] !== undefined ? String(attrs["stroke"]) : undefined;
+    const effFill = ownFill ?? inheritedFill;
+    const effStroke = ownStroke ?? inheritedStroke;
+
     // Handle nested <svg viewBox="..."> coordinate mapping (Modelica icons!)
     let childW = refW;
     let childH = refH;
     if (tag === "svg") {
-      const sx = resolveRefNumeric(attrs["x"], refW) ?? 0;
-      const sy = resolveRefNumeric(attrs["y"], refH) ?? 0;
-      const sw = resolveRefNumeric(attrs["width"] ?? attrs["refWidth"], refW) ?? refW;
-      const sh = resolveRefNumeric(attrs["height"] ?? attrs["refHeight"], refH) ?? refH;
+      const sx = resolveDim(attrs["x"], attrs["refX"], refW) ?? 0;
+      const sy = resolveDim(attrs["y"], attrs["refY"], refH) ?? 0;
+      const sw = resolveDim(attrs["width"], attrs["refWidth"], refW) ?? refW;
+      const sh = resolveDim(attrs["height"], attrs["refHeight"], refH) ?? refH;
       if (sx !== 0 || sy !== 0) ctx.translate(sx, sy);
       if (typeof attrs["viewBox"] === "string") {
         const vb = attrs["viewBox"]
           .trim()
           .split(/[\s,]+/)
           .map(Number);
-        if (vb.length === 4 && (vb[2] ?? 0) > 0 && (vb[3] ?? 0) > 0) {
+        if (vb.length === 4 && Number.isFinite(vb[2]) && Number.isFinite(vb[3]) && vb[2]! > 0 && vb[3]! > 0) {
           ctx.scale(sw / vb[2]!, sh / vb[3]!);
           ctx.translate(-vb[0]!, -vb[1]!);
           childW = vb[2]!;
           childH = vb[3]!;
         }
       }
-      for (const child of prim.children) drawPrimitive(child, childW, childH);
+      for (const child of prim.children) drawPrimitive(child, childW, childH, effFill, effStroke);
       ctx.restore();
       return;
     }
 
     if (tag === "g") {
-      for (const child of prim.children) drawPrimitive(child, childW, childH);
+      for (const child of prim.children) drawPrimitive(child, childW, childH, effFill, effStroke);
       ctx.restore();
       return;
     }
 
-    const fill = attrs["fill"] !== undefined ? String(attrs["fill"]) : undefined;
-    const stroke = attrs["stroke"] !== undefined ? String(attrs["stroke"]) : undefined;
-    const strokeWidth = Number(attrs["stroke-width"] ?? attrs["strokeWidth"] ?? 1);
-    const hasFill = fill !== undefined && fill !== "none" && fill !== "transparent";
-    const hasStroke = stroke !== undefined && stroke !== "none" && stroke !== "transparent" && strokeWidth > 0;
+    const fill = effFill;
+    const stroke = effStroke;
+    const strokeWidth = safeNum(attrs["stroke-width"] ?? attrs["strokeWidth"], 1);
+    const hasFill = fill !== undefined && fill !== "none" && fill !== "transparent" && !fill.startsWith("url(");
+    const hasStroke =
+      stroke !== undefined &&
+      stroke !== "none" &&
+      stroke !== "transparent" &&
+      !stroke.startsWith("url(") &&
+      strokeWidth > 0;
 
     if (hasFill) ctx.fillStyle = fill;
     if (hasStroke) {
@@ -523,11 +635,11 @@ export function paintGlyphToCanvas2D(
     }
 
     if (tag === "rect") {
-      const rx = resolveRefNumeric(attrs["x"] ?? attrs["refX"], refW) ?? 0;
-      const ry = resolveRefNumeric(attrs["y"] ?? attrs["refY"], refH) ?? 0;
-      const rw = resolveRefNumeric(attrs["width"] ?? attrs["refWidth"], refW) ?? refW;
-      const rh = resolveRefNumeric(attrs["height"] ?? attrs["refHeight"], refH) ?? refH;
-      const corner = Number(attrs["rx"] ?? attrs["ry"] ?? 0);
+      const rx = resolveDim(attrs["x"], attrs["refX"], refW) ?? 0;
+      const ry = resolveDim(attrs["y"], attrs["refY"], refH) ?? 0;
+      const rw = resolveDim(attrs["width"], attrs["refWidth"], refW) ?? refW;
+      const rh = resolveDim(attrs["height"], attrs["refHeight"], refH) ?? refH;
+      const corner = safeNum(attrs["rx"] ?? attrs["ry"], 0);
       ctx.beginPath();
       if (corner > 0 && typeof ctx.roundRect === "function") {
         ctx.roundRect(rx, ry, rw, rh, corner);
@@ -537,9 +649,9 @@ export function paintGlyphToCanvas2D(
       if (hasFill) ctx.fill();
       if (hasStroke) ctx.stroke();
     } else if (tag === "circle") {
-      const cx = Number(attrs["cx"] ?? 0);
-      const cy = Number(attrs["cy"] ?? 0);
-      const r = Number(attrs["r"] ?? 0);
+      const cx = safeNum(attrs["cx"], 0);
+      const cy = safeNum(attrs["cy"], 0);
+      const r = safeNum(attrs["r"], 0);
       if (r > 0) {
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -547,10 +659,10 @@ export function paintGlyphToCanvas2D(
         if (hasStroke) ctx.stroke();
       }
     } else if (tag === "ellipse") {
-      const cx = Number(attrs["cx"] ?? 0);
-      const cy = Number(attrs["cy"] ?? 0);
-      const rx = Number(attrs["rx"] ?? 0);
-      const ry = Number(attrs["ry"] ?? 0);
+      const cx = safeNum(attrs["cx"], 0);
+      const cy = safeNum(attrs["cy"], 0);
+      const rx = safeNum(attrs["rx"], 0);
+      const ry = safeNum(attrs["ry"], 0);
       if (rx > 0 && ry > 0) {
         ctx.beginPath();
         ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
@@ -558,10 +670,10 @@ export function paintGlyphToCanvas2D(
         if (hasStroke) ctx.stroke();
       }
     } else if (tag === "line") {
-      const x1 = Number(attrs["x1"] ?? 0);
-      const y1 = Number(attrs["y1"] ?? 0);
-      const x2 = Number(attrs["x2"] ?? 0);
-      const y2 = Number(attrs["y2"] ?? 0);
+      const x1 = safeNum(attrs["x1"], 0);
+      const y1 = safeNum(attrs["y1"], 0);
+      const x2 = safeNum(attrs["x2"], 0);
+      const y2 = safeNum(attrs["y2"], 0);
       ctx.beginPath();
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
@@ -573,7 +685,7 @@ export function paintGlyphToCanvas2D(
           .split(/[\s,]+/)
           .filter(Boolean)
           .map(Number);
-        if (nums.length >= 4) {
+        if (nums.length >= 4 && !nums.some((n) => !Number.isFinite(n))) {
           ctx.beginPath();
           ctx.moveTo(nums[0]!, nums[1]!);
           for (let i = 2; i + 1 < nums.length; i += 2) {
@@ -587,16 +699,20 @@ export function paintGlyphToCanvas2D(
     } else if (tag === "path") {
       const d = typeof attrs["d"] === "string" ? attrs["d"] : "";
       if (d.length > 0 && typeof Path2D !== "undefined") {
-        const p2d = new Path2D(d);
-        if (hasFill) ctx.fill(p2d);
-        if (hasStroke) ctx.stroke(p2d);
+        let cached = path2DCache.get(prim);
+        if (!cached || cached.d !== d) {
+          cached = { d, path: new Path2D(d) };
+          path2DCache.set(prim, cached);
+        }
+        if (hasFill) ctx.fill(cached.path);
+        if (hasStroke) ctx.stroke(cached.path);
       }
     } else if (tag === "text") {
       const text = (prim.textContent ?? prim.children.map((c) => c.textContent ?? "").join("")).replace(/\r\n?/g, "\n");
       if (text.length > 0) {
-        const tx = resolveRefNumeric(attrs["x"] ?? attrs["refX"], refW) ?? 0;
-        const ty = resolveRefNumeric(attrs["y"] ?? attrs["refY"], refH) ?? 0;
-        const fontSize = Number(attrs["font-size"] ?? 12);
+        const tx = resolveDim(attrs["x"], attrs["refX"], refW) ?? 0;
+        const ty = resolveDim(attrs["y"], attrs["refY"], refH) ?? 0;
+        const fontSize = safeNum(attrs["font-size"], 12);
         const fontWeight = String(attrs["font-weight"] ?? "normal");
         const fontFamily = String(attrs["font-family"] ?? "sans-serif");
         ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;

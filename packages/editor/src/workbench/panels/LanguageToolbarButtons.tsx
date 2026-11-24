@@ -26,7 +26,7 @@ import {
   WorkflowIcon,
   ZapIcon,
 } from "@primer/octicons-react";
-import { ActionList, ActionMenu, IconButton } from "@primer/react";
+import { ActionList, ActionMenu, Button, IconButton } from "@primer/react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   dispatchEditorToolbarAction,
@@ -98,6 +98,11 @@ export interface LanguageToolbarButtonsProps {
   onInvoke?: (button: EditorLanguageToolbarButton, active?: boolean) => void;
   /** Optional className for responsive hiding/styling in host navbars. */
   className?: string;
+  /**
+   * Borderless variant for dense action bars: no tray, no button borders, and a
+   * quiet `Tools ▾` trigger. Takes precedence over `grouped`.
+   */
+  plain?: boolean;
 }
 
 const OVERFLOW_TRIGGER_WIDTH = 76;
@@ -116,18 +121,25 @@ export const LanguageToolbarButtons: React.FC<LanguageToolbarButtonsProps> = ({
   activeView,
   maxPrimary = 2,
   autoFit = false,
-  grouped = false,
+  grouped: groupedProp = false,
   languageLabel,
   onInvoke,
   className,
+  plain = false,
 }) => {
+  // `plain` reuses the borderless button styling of `grouped`, without the outer tray.
+  const grouped = groupedProp || plain;
+  const showTray = groupedProp && !plain;
+  const controlHeight = plain ? 28 : grouped ? 26 : 28;
+  const controlRadius = plain ? 8 : grouped ? 6 : 7;
+
   const {
     primary: allPrimary,
     overflow: baseOverflow,
     all,
   } = useLanguageToolbarButtons(languageId, activeView, {
     target: "morsel",
-    maxPrimary: autoFit ? 99 : maxPrimary,
+    maxPrimary: maxPrimary === 0 ? 0 : autoFit ? 99 : maxPrimary,
   });
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -280,9 +292,9 @@ export const LanguageToolbarButtons: React.FC<LanguageToolbarButtonsProps> = ({
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 5,
-                height: grouped ? 26 : 28,
+                height: controlHeight,
                 padding: "0 8px",
-                borderRadius: grouped ? 6 : 7,
+                borderRadius: controlRadius,
                 fontSize: 12,
                 fontWeight: 500,
                 cursor: "pointer",
@@ -328,9 +340,9 @@ export const LanguageToolbarButtons: React.FC<LanguageToolbarButtonsProps> = ({
             title={tooltip}
             onClick={() => handleTrigger(btn)}
             style={{
-              height: grouped ? 26 : 28,
-              width: grouped ? 26 : 28,
-              borderRadius: 6,
+              height: controlHeight,
+              width: controlHeight,
+              borderRadius: controlRadius,
               flexShrink: 0,
               backgroundColor: isActive ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.14))" : undefined,
               color: isActive ? "var(--ms-brand, #0891b2)" : undefined,
@@ -342,7 +354,27 @@ export const LanguageToolbarButtons: React.FC<LanguageToolbarButtonsProps> = ({
       {overflow.length > 0 && (
         <ActionMenu>
           <ActionMenu.Anchor>
-            {grouped || primary.length === 0 ? (
+            {plain ? (
+              <Button
+                size="small"
+                variant="invisible"
+                leadingVisual={SlidersIcon}
+                trailingAction={TriangleDownIcon}
+                data-testid="lang-toolbar-overflow-btn"
+                aria-label={languageLabel ? `More ${languageLabel} tools` : "More language tools"}
+                title={languageLabel ? `${languageLabel} tools` : "More language & view actions"}
+                className="nav-icon-only-xl"
+                style={{
+                  height: controlHeight,
+                  borderRadius: controlRadius,
+                  padding: "0 8px",
+                  fontSize: 12,
+                  fontWeight: 500,
+                }}
+              >
+                Tools
+              </Button>
+            ) : grouped || primary.length === 0 ? (
               <button
                 type="button"
                 data-testid="lang-toolbar-overflow-btn"
@@ -352,9 +384,9 @@ export const LanguageToolbarButtons: React.FC<LanguageToolbarButtonsProps> = ({
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 4,
-                  height: grouped ? 26 : 28,
+                  height: controlHeight,
                   padding: "0 8px",
-                  borderRadius: 6,
+                  borderRadius: controlRadius,
                   fontSize: 12,
                   fontWeight: 500,
                   cursor: "pointer",
@@ -443,14 +475,14 @@ export const LanguageToolbarButtons: React.FC<LanguageToolbarButtonsProps> = ({
       style={{
         display: "flex",
         alignItems: "center",
-        flex: autoFit ? "1 1 auto" : "0 0 auto",
+        flex: autoFit && !plain ? "1 1 auto" : "0 0 auto",
         minWidth: 0,
         overflow: "hidden",
       }}
     >
       <div
         style={
-          grouped
+          showTray
             ? {
                 display: "inline-flex",
                 alignItems: "center",
@@ -467,7 +499,7 @@ export const LanguageToolbarButtons: React.FC<LanguageToolbarButtonsProps> = ({
             : {
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 4,
+                gap: 2,
                 flexShrink: 0,
               }
         }

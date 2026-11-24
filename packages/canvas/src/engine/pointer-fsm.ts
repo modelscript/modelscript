@@ -33,14 +33,17 @@ export interface PlanePointerEvent {
   /** Optional screen-space pixels for panning deltas. */
   screenX?: number | undefined;
   screenY?: number | undefined;
+  pointerId?: number | undefined;
+  isPrimary?: boolean | undefined;
   button: number;
   buttons: number;
   shiftKey: boolean;
   ctrlKey: boolean;
   metaKey: boolean;
   altKey: boolean;
+  spaceKey?: boolean | undefined;
   phase: "down" | "move" | "up" | "cancel" | "dblclick";
-  /** Optional explicit DOM port hit (from `.x6-port` / `[magnet="true"]` target). */
+  /** Optional explicit DOM port hit (from `.ms-port` / `[magnet="true"]` target). */
   pointerPortHit?: { nodeId: string; portId: string } | null | undefined;
 }
 
@@ -147,10 +150,14 @@ export interface PointerFsmCallbacks {
 
 export interface PointerFsmOptions {
   gridSize?: number | undefined;
+  snapEnabled?: boolean | undefined;
   portSnapRadius?: number | undefined;
   readOnly?: boolean | undefined;
   smartGuides?: boolean | undefined;
+  zoom?: number | undefined;
 }
+
+const DRAG_THRESHOLD_PX = 3;
 
 /**
  * 100% DOM-free Unified Interaction State Machine.
@@ -168,12 +175,23 @@ export class CanvasPointerFSM {
   public activeGuides: AlignmentGuideLine[] = [];
 
   private gridSize: number;
+  private snapEnabled: boolean;
   private portSnapRadius: number;
   private readOnly: boolean;
   private smartGuides: boolean;
+  private zoom: number;
+  private panToolActive = false;
 
+  private activePointerId: number | null = null;
   private dragStart: WorldPoint = { x: 0, y: 0 };
+  private dragStartScreen: WorldPoint = { x: 0, y: 0 };
   private panLastScreen: WorldPoint = { x: 0, y: 0 };
+  private dragThresholdPassed = false;
+  private panMoved = false;
+  private pressedNodeId: string | null = null;
+  private lastUpWasCleanBlankClick = false;
+  private gestureMoved = false;
+
   private dragInitialPositions = new Map<string, WorldPoint>();
   private activeResize: {
     nodeId: string;
@@ -199,6 +217,7 @@ export class CanvasPointerFSM {
     vertexIndex: number;
     origVertices: WorldPoint[];
   } | null = null;
+  private segmentDragMoved = false;
 
   constructor(
     private readonly scene: SoaSceneGraph,
@@ -206,20 +225,45 @@ export class CanvasPointerFSM {
     options: PointerFsmOptions = {},
   ) {
     this.gridSize = Math.max(1, options.gridSize ?? 2);
+    this.snapEnabled = options.snapEnabled ?? true;
     this.portSnapRadius = options.portSnapRadius ?? 18;
     this.readOnly = options.readOnly ?? false;
     this.smartGuides = options.smartGuides ?? true;
+    this.zoom = Math.max(0.02, options.zoom ?? 1);
   }
 
   public setOptions(opts: Partial<PointerFsmOptions>): void {
     if (opts.gridSize !== undefined) this.gridSize = Math.max(1, opts.gridSize);
+    if (opts.snapEnabled !== undefined) this.snapEnabled = opts.snapEnabled;
     if (opts.portSnapRadius !== undefined) this.portSnapRadius = opts.portSnapRadius;
     if (opts.readOnly !== undefined) this.readOnly = opts.readOnly;
     if (opts.smartGuides !== undefined) this.smartGuides = opts.smartGuides;
+    if (opts.zoom !== undefined && Number.isFinite(opts.zoom) && opts.zoom > 0) {
+      this.zoom = Math.max(0.02, opts.zoom);
+    }
+  }
+
+  public setZoom(zoom: number): void {
+    if (Number.isFinite(zoom) && zoom > 0) {
+      this.zoom = Math.max(0.02, zoom);
+    }
+  }
+
+  public setPanToolActive(active: boolean): void {
+    this.panToolActive = active;
+  }
+
+  public isReadOnly(): boolean {
+    return this.readOnly;
+  }
+
+  public wasLastUpCleanBlankClick(): boolean {
+    return this.lastUpWasCleanBlankClick;
   }
 
   public snap(val: number): number {
-    return this.gridSize > 1 ? Math.round(val / this.gridSize) * this.gridSize : val;
+    if (!this.snapEnabled || this.gridSize <= 1) return val;
+    return Math.round(val / this.gridSize) * this.gridSize;
   }
 
   public exitPortalFocus(): void {
@@ -230,10 +274,43 @@ export class CanvasPointerFSM {
     }
   }
 
-  public startResize(nodeId: string, handle: ResizeHandleKind, startU: number, startV: number): boolean {
+  public cancel(): void {
+    if (this.mode === "idle" && this.pressedNodeId === null && this.activePointerId === null) {
+      return;
+    }
+    this.handleUp(
+      {
+        planeId: "primary",
+        u: this.dragStart.x,
+        v: this.dragStart.y,
+        button: 0,
+        buttons: 0,
+        shiftKey: false,
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        phase: "cancel",
+      },
+      true,
+    );
+  }
+
+  public startResize(
+    nodeId: string,
+    handle: ResizeHandleKind,
+    startU: number,
+    startV: number,
+    pointerId?: number,
+  ): boolean {
     if (this.readOnly) return false;
     const node = this.scene.getNode(nodeId);
     if (!node || (node.flags & (SceneNodeFlags.LOCKED | SceneNodeFlags.READONLY)) !== 0) return false;
+    const interact = this.callbacks.canInteract ? this.callbacks.canInteract(nodeId, "node") : true;
+    const movable = typeof interact === "boolean" ? interact : interact.nodeMovable !== false;
+    if (!movable) return false;
+
+    this.activePointerId = pointerId ?? null;
+    this.gestureMoved = false;
 
     if (handle === "rotate") {
       const center = { x: node.x + node.width / 2, y: node.y + node.height / 2 };
@@ -254,10 +331,21 @@ export class CanvasPointerFSM {
     return true;
   }
 
-  public startVertexDrag(edgeId: string, vertexIndex: number, startU: number, startV: number): boolean {
+  public startVertexDrag(
+    edgeId: string,
+    vertexIndex: number,
+    startU: number,
+    startV: number,
+    pointerId?: number,
+  ): boolean {
     if (this.readOnly) return false;
+    const interact = this.callbacks.canInteract ? this.callbacks.canInteract(edgeId, "edge") : true;
+    const edgeMovable = typeof interact === "boolean" ? interact : interact.edgeMovable !== false;
+    if (!edgeMovable) return false;
     const edge = this.scene.getEdge(edgeId);
     if (!edge || vertexIndex < 0 || vertexIndex >= edge.vertices.length) return false;
+    this.activePointerId = pointerId ?? null;
+    this.gestureMoved = false;
     this.dragStart = { x: startU, y: startV };
     this.activeVertexDrag = {
       edgeId,
@@ -268,12 +356,26 @@ export class CanvasPointerFSM {
     return true;
   }
 
-  public startSegmentDrag(edgeId: string, segmentIndex: number, startU: number, startV: number): boolean {
+  public startSegmentDrag(
+    edgeId: string,
+    segmentIndex: number,
+    startU: number,
+    startV: number,
+    pointerId?: number,
+  ): boolean {
     if (this.readOnly) return false;
+    const interact = this.callbacks.canInteract ? this.callbacks.canInteract(edgeId, "edge") : true;
+    const edgeMovable = typeof interact === "boolean" ? interact : interact.edgeMovable !== false;
+    if (!edgeMovable) return false;
     const edge = this.scene.getEdge(edgeId);
     if (!edge) return false;
     const { source, target } = this.resolvePolyline(edgeId);
-    const full = [source, ...edge.vertices.map((p) => ({ ...p })), target];
+    // Align with hitTestEdge: when edge uses routed waypoints, seed working vertices from routePoints
+    const seedVerts =
+      edge.routePoints.length > 0 && (edge.vertices.length === 0 || segmentIndex >= edge.vertices.length + 1)
+        ? edge.routePoints.map((p) => ({ ...p }))
+        : edge.vertices.map((p) => ({ ...p }));
+    const full = [source, ...seedVerts, target];
     if (segmentIndex < 0 || segmentIndex >= full.length - 1) return false;
 
     const p1 = full[segmentIndex]!;
@@ -281,6 +383,8 @@ export class CanvasPointerFSM {
     const orientation: "horizontal" | "vertical" =
       Math.abs(p2.x - p1.x) >= Math.abs(p2.y - p1.y) ? "horizontal" : "vertical";
 
+    this.activePointerId = pointerId ?? null;
+    this.segmentDragMoved = false;
     this.dragStart = { x: startU, y: startV };
     this.activeSegmentDrag = {
       edgeId,
@@ -310,15 +414,28 @@ export class CanvasPointerFSM {
     }
 
     if (evt.phase === "down") {
+      if (evt.isPrimary === false) return;
+      if (this.activePointerId !== null && evt.pointerId !== undefined && evt.pointerId !== this.activePointerId) {
+        return;
+      }
       this.handleDown(evt);
     } else if (evt.phase === "move") {
+      if (this.activePointerId !== null && evt.pointerId !== undefined && evt.pointerId !== this.activePointerId) {
+        return;
+      }
       this.handleMove(evt);
     } else if (evt.phase === "up" || evt.phase === "cancel") {
+      if (
+        evt.phase === "up" &&
+        this.activePointerId !== null &&
+        evt.pointerId !== undefined &&
+        evt.pointerId !== this.activePointerId
+      ) {
+        return;
+      }
       this.handleUp(evt, evt.phase === "cancel");
     }
   }
-
-  private segmentDragMoved = false;
 
   public setPortSnapRadius(radius: number): void {
     if (Number.isFinite(radius) && radius > 0) {
@@ -326,16 +443,63 @@ export class CanvasPointerFSM {
     }
   }
 
+  private getEdgeHitTolerance(): number {
+    return Math.max(4, Math.min(32, 8 / Math.max(0.1, this.zoom)));
+  }
+
+  private getGuideSnapTolerance(): number {
+    return Math.max(3, Math.min(24, 6 / Math.max(0.1, this.zoom)));
+  }
+
   private handleDown(evt: PlanePointerEvent): void {
     this.dragStart = { x: evt.u, y: evt.v };
+    this.dragStartScreen = { x: evt.screenX ?? evt.u, y: evt.screenY ?? evt.v };
     this.panLastScreen = { x: evt.screenX ?? evt.u, y: evt.screenY ?? evt.v };
+    this.dragThresholdPassed = false;
+    this.panMoved = false;
     this.segmentDragMoved = false;
+    this.gestureMoved = false;
+    this.pressedNodeId = null;
+    this.lastUpWasCleanBlankClick = false;
 
-    // Middle-click or Alt+click pans camera regardless of focused portal
-    if (evt.button === 1 || (evt.button === 0 && evt.altKey)) {
+    // Middle-click or Space/Alt+left-click pans camera regardless of focused portal
+    if (evt.button === 1 || (evt.button === 0 && (evt.altKey || evt.spaceKey || this.panToolActive))) {
+      this.activePointerId = evt.pointerId ?? null;
       this.mode = "panning";
       return;
     }
+
+    // Right-click (button 2): select hit target if not already selected, never start drag/pan
+    if (evt.button === 2) {
+      const nodeHit = this.scene.hitTestNode(evt.u, evt.v);
+      if (nodeHit) {
+        const selectable = this.callbacks.selectionFilter ? this.callbacks.selectionFilter(nodeHit.id) : true;
+        if (selectable && !this.selectedNodeIds.has(nodeHit.id)) {
+          this.clearSelectionInternal();
+          this.selectedNodeIds.add(nodeHit.id);
+          this.scene.setNodeFlag(nodeHit.id, SceneNodeFlags.SELECTED, true);
+          this.emitSelection();
+        }
+        return;
+      }
+      const edgeHit = this.scene.hitTestEdge(evt.u, evt.v, this.getEdgeHitTolerance());
+      if (edgeHit) {
+        const selectable = this.callbacks.selectionFilter ? this.callbacks.selectionFilter(edgeHit.edge.id) : true;
+        if (selectable && !this.selectedEdgeIds.has(edgeHit.edge.id)) {
+          this.clearSelectionInternal();
+          this.selectedEdgeIds.add(edgeHit.edge.id);
+          this.emitSelection();
+        }
+      }
+      return;
+    }
+
+    // Ignore non-primary mouse buttons (e.g. X1/X2 back/forward)
+    if (evt.button !== 0) {
+      return;
+    }
+
+    this.activePointerId = evt.pointerId ?? null;
 
     // Check if clicking outside a focused portal exits focus
     if (this.focusedPortalId !== null) {
@@ -393,6 +557,7 @@ export class CanvasPointerFSM {
     // 2. Check node hit
     const nodeHit = this.scene.hitTestNode(evt.u, evt.v);
     if (nodeHit) {
+      this.pressedNodeId = nodeHit.id;
       this.callbacks.onNodeInteractiveClick?.(nodeHit.id, "down", evt.u, evt.v);
       const selectable = this.callbacks.selectionFilter ? this.callbacks.selectionFilter(nodeHit.id) : true;
       if (selectable) {
@@ -417,7 +582,17 @@ export class CanvasPointerFSM {
       const nodeMovable = typeof interact === "boolean" ? interact : interact.nodeMovable !== false;
       if (!this.readOnly && nodeMovable && (nodeHit.flags & (SceneNodeFlags.LOCKED | SceneNodeFlags.READONLY)) === 0) {
         this.dragInitialPositions.clear();
-        for (const id of this.selectedNodeIds) {
+        const selectedArr = Array.from(this.selectedNodeIds);
+        for (const id of selectedArr) {
+          // Exclude nodes whose ancestor is also selected so children aren't double-moved
+          let hasSelectedAncestor = false;
+          for (const otherId of selectedArr) {
+            if (otherId !== id && this.scene.isDescendantOf(id, otherId)) {
+              hasSelectedAncestor = true;
+              break;
+            }
+          }
+          if (hasSelectedAncestor) continue;
           const n = this.scene.getNode(id);
           if (n && (n.flags & (SceneNodeFlags.LOCKED | SceneNodeFlags.READONLY)) === 0) {
             this.dragInitialPositions.set(id, { x: n.x, y: n.y });
@@ -431,7 +606,7 @@ export class CanvasPointerFSM {
     }
 
     // 3. Check edge hit (select or start orthogonal segment drag)
-    const edgeHit = this.scene.hitTestEdge(evt.u, evt.v, 8);
+    const edgeHit = this.scene.hitTestEdge(evt.u, evt.v, this.getEdgeHitTolerance());
     if (edgeHit) {
       const selectable = this.callbacks.selectionFilter ? this.callbacks.selectionFilter(edgeHit.edge.id) : true;
       if (selectable) {
@@ -443,7 +618,7 @@ export class CanvasPointerFSM {
       const interact = this.callbacks.canInteract ? this.callbacks.canInteract(edgeHit.edge.id, "edge") : true;
       const edgeMovable = typeof interact === "boolean" ? interact : interact.edgeMovable !== false;
       if (!this.readOnly && edgeMovable) {
-        this.startSegmentDrag(edgeHit.edge.id, edgeHit.segmentIndex, evt.u, evt.v);
+        this.startSegmentDrag(edgeHit.edge.id, edgeHit.segmentIndex, evt.u, evt.v, evt.pointerId);
       }
       return;
     }
@@ -467,6 +642,9 @@ export class CanvasPointerFSM {
       const dx = sx - this.panLastScreen.x;
       const dy = sy - this.panLastScreen.y;
       this.panLastScreen = { x: sx, y: sy };
+      if (Math.hypot(sx - this.dragStartScreen.x, sy - this.dragStartScreen.y) >= DRAG_THRESHOLD_PX) {
+        this.panMoved = true;
+      }
       if (dx !== 0 || dy !== 0) {
         this.callbacks.onPanDelta?.(dx, dy);
       }
@@ -474,12 +652,25 @@ export class CanvasPointerFSM {
     }
 
     if (this.mode === "dragging-nodes") {
+      if (!this.dragThresholdPassed) {
+        const sx = evt.screenX ?? evt.u;
+        const sy = evt.screenY ?? evt.v;
+        const screenDist = Math.hypot(sx - this.dragStartScreen.x, sy - this.dragStartScreen.y);
+        const worldDist = Math.hypot(evt.u - this.dragStart.x, evt.v - this.dragStart.y) * this.zoom;
+        if (Math.max(screenDist, worldDist) < DRAG_THRESHOLD_PX) {
+          return;
+        }
+        this.dragThresholdPassed = true;
+      }
+
       let dx = evt.u - this.dragStart.x;
       let dy = evt.v - this.dragStart.y;
       const moves: Record<string, WorldPoint> = {};
+      let snappedByGuideX = false;
+      let snappedByGuideY = false;
 
-      // Smart alignment guide snapping on primary dragged node
-      if (this.smartGuides && this.dragInitialPositions.size === 1) {
+      // Smart alignment guide snapping on primary dragged node (bypassed when Alt is held)
+      if (this.smartGuides && !evt.altKey && this.dragInitialPositions.size === 1) {
         const [[onlyId, orig]] = Array.from(this.dragInitialPositions.entries()) as [[string, WorldPoint]];
         const node = this.scene.getNode(onlyId);
         if (node) {
@@ -499,7 +690,11 @@ export class CanvasPointerFSM {
             .filter((n) => n.id !== onlyId && (n.flags & SceneNodeFlags.EPHEMERAL) === 0)
             .map((n) => ({ id: n.id, bounds: { x: n.x, y: n.y, width: n.width, height: n.height } }));
 
-          const snapRes = computeSnapAndGuides(proposed, neighbors, 6);
+          const snapRes = computeSnapAndGuides(proposed, neighbors, this.getGuideSnapTolerance());
+          for (const g of snapRes.guides) {
+            if (g.orientation === "vertical") snappedByGuideX = true;
+            if (g.orientation === "horizontal") snappedByGuideY = true;
+          }
           dx = snapRes.x - orig.x;
           dy = snapRes.y - orig.y;
           this.activeGuides = snapRes.guides;
@@ -508,10 +703,18 @@ export class CanvasPointerFSM {
       }
 
       for (const [id, orig] of this.dragInitialPositions.entries()) {
-        const nx = this.snap(orig.x + dx);
-        const ny = this.snap(orig.y + dy);
+        // Don't let grid snap override an active smart alignment guide
+        const nx = snappedByGuideX ? orig.x + dx : this.snap(orig.x + dx);
+        const ny = snappedByGuideY ? orig.y + dy : this.snap(orig.y + dy);
         this.scene.setNodePosition(id, nx, ny);
         moves[id] = { x: nx, y: ny };
+        // Also report moved descendants so UnifiedGraph syncs their cell & DOM positions
+        for (const descId of this.scene.getDescendantIds(id)) {
+          const desc = this.scene.getNode(descId);
+          if (desc) {
+            moves[descId] = { x: desc.x, y: desc.y };
+          }
+        }
       }
       this.callbacks.onNodesMoved?.(moves, false);
       return;
@@ -529,48 +732,100 @@ export class CanvasPointerFSM {
 
     if (this.mode === "resizing" && this.activeResize) {
       const { nodeId, handle, origBounds, angleDeg } = this.activeResize;
-      // Rotate delta into node's local OBB space so rotated resizing stays exact!
       const rawDx = evt.u - this.dragStart.x;
       const rawDy = evt.v - this.dragStart.y;
-      const rad = (-angleDeg * Math.PI) / 180;
-      const cos = Math.cos(rad);
-      const sin = Math.sin(rad);
-      const ldx = rawDx * cos - rawDy * sin;
-      const ldy = rawDx * sin + rawDy * cos;
+      if (!this.gestureMoved && Math.hypot(rawDx, rawDy) * this.zoom < 1) {
+        return;
+      }
+      this.gestureMoved = true;
 
-      let x = origBounds.x;
-      let y = origBounds.y;
+      // Rotate delta into node's local OBB space
+      const radNeg = (-angleDeg * Math.PI) / 180;
+      const cosNeg = Math.cos(radNeg);
+      const sinNeg = Math.sin(radNeg);
+      const ldx = rawDx * cosNeg - rawDy * sinNeg;
+      const ldy = rawDx * sinNeg + rawDy * cosNeg;
+
+      let dLeft = 0;
+      let dRight = 0;
+      let dTop = 0;
+      let dBottom = 0;
       let w = origBounds.width;
       let h = origBounds.height;
 
-      if (handle.includes("e")) w = Math.max(16, origBounds.width + ldx);
-      if (handle.includes("s")) h = Math.max(16, origBounds.height + ldy);
+      if (handle.includes("e")) {
+        w = Math.max(16, origBounds.width + ldx);
+        dRight = w - origBounds.width;
+      }
+      if (handle.includes("s")) {
+        h = Math.max(16, origBounds.height + ldy);
+        dBottom = h - origBounds.height;
+      }
       if (handle.includes("w")) {
-        const nextW = Math.max(16, origBounds.width - ldx);
-        x = origBounds.x + (origBounds.width - nextW);
-        w = nextW;
+        w = Math.max(16, origBounds.width - ldx);
+        dLeft = origBounds.width - w;
       }
       if (handle.includes("n")) {
-        const nextH = Math.max(16, origBounds.height - ldy);
-        y = origBounds.y + (origBounds.height - nextH);
-        h = nextH;
+        h = Math.max(16, origBounds.height - ldy);
+        dTop = origBounds.height - h;
       }
 
-      // Shift locks aspect ratio
+      // Shift locks aspect ratio while keeping the opposite edge/corner anchored
       if (evt.shiftKey && origBounds.height > 0 && origBounds.width > 0) {
         const aspect = origBounds.width / origBounds.height;
         if (Math.abs(w - origBounds.width) >= Math.abs(h - origBounds.height)) {
           h = Math.max(16, w / aspect);
+          if (handle.includes("n")) {
+            dTop = origBounds.height - h;
+            dBottom = 0;
+          } else {
+            dBottom = h - origBounds.height;
+            dTop = 0;
+          }
         } else {
           w = Math.max(16, h * aspect);
+          if (handle.includes("w")) {
+            dLeft = origBounds.width - w;
+            dRight = 0;
+          } else {
+            dRight = w - origBounds.width;
+            dLeft = 0;
+          }
         }
       }
 
+      // Snap width/height cleanly first, then recompute anchor-preserving center shift in world space
+      const snappedW = Math.max(16, this.snap(w));
+      const snappedH = Math.max(16, this.snap(h));
+      if (handle.includes("w")) dLeft = origBounds.width - snappedW;
+      else if (handle.includes("e")) dRight = snappedW - origBounds.width;
+      if (handle.includes("n")) dTop = origBounds.height - snappedH;
+      else if (handle.includes("s")) dBottom = snappedH - origBounds.height;
+
+      const localCenterShiftX = (dRight + dLeft) / 2;
+      const localCenterShiftY = (dBottom + dTop) / 2;
+      const radPos = (angleDeg * Math.PI) / 180;
+      const cosPos = Math.cos(radPos);
+      const sinPos = Math.sin(radPos);
+      const worldCenterShiftX = localCenterShiftX * cosPos - localCenterShiftY * sinPos;
+      const worldCenterShiftY = localCenterShiftX * sinPos + localCenterShiftY * cosPos;
+
+      const origCx = origBounds.x + origBounds.width / 2;
+      const origCy = origBounds.y + origBounds.height / 2;
+      const nextX =
+        angleDeg === 0
+          ? this.snap(origCx + worldCenterShiftX - snappedW / 2)
+          : origCx + worldCenterShiftX - snappedW / 2;
+      const nextY =
+        angleDeg === 0
+          ? this.snap(origCy + worldCenterShiftY - snappedH / 2)
+          : origCy + worldCenterShiftY - snappedH / 2;
+
       const nextBounds = {
-        x: this.snap(x),
-        y: this.snap(y),
-        width: this.snap(w),
-        height: this.snap(h),
+        x: nextX,
+        y: nextY,
+        width: snappedW,
+        height: snappedH,
       };
       this.scene.setNodePosition(nodeId, nextBounds.x, nextBounds.y);
       this.scene.setNodeSize(nodeId, nextBounds.width, nextBounds.height);
@@ -582,10 +837,11 @@ export class CanvasPointerFSM {
       const { nodeId, center, startPointerAngle, origAngle } = this.activeRotate;
       const curPointerAngle = (Math.atan2(evt.v - center.y, evt.u - center.x) * 180) / Math.PI;
       let nextAngle = origAngle + (curPointerAngle - startPointerAngle);
-      if (evt.shiftKey) {
+      if (evt.shiftKey && !evt.altKey) {
         nextAngle = Math.round(nextAngle / 15) * 15;
       }
       nextAngle = ((nextAngle % 360) + 360) % 360;
+      this.gestureMoved = true;
       this.scene.setNodeRotation(nodeId, nextAngle);
       this.callbacks.onNodeRotated?.(nodeId, nextAngle, false);
       return;
@@ -627,6 +883,7 @@ export class CanvasPointerFSM {
     if (this.mode === "dragging-vertex" && this.activeVertexDrag) {
       const edge = this.scene.getEdge(this.activeVertexDrag.edgeId);
       if (!edge) return;
+      this.gestureMoved = true;
       const nextVertices = this.activeVertexDrag.origVertices.map((p) => ({ ...p }));
       nextVertices[this.activeVertexDrag.vertexIndex] = {
         x: this.snap(evt.u),
@@ -646,7 +903,7 @@ export class CanvasPointerFSM {
 
       const delta = orientation === "horizontal" ? evt.v - this.dragStart.y : evt.u - this.dragStart.x;
       if (!this.segmentDragMoved) {
-        if (Math.abs(delta) <= 2) return;
+        if (Math.abs(delta) * this.zoom <= DRAG_THRESHOLD_PX) return;
         this.segmentDragMoved = true;
       }
       const p1 = fullPolyline[segmentIndex]!;
@@ -714,8 +971,16 @@ export class CanvasPointerFSM {
 
   private handleUp(evt: PlanePointerEvent, canceled: boolean): void {
     const prevMode = this.mode;
+    const pressedNodeId = this.pressedNodeId;
+    this.pressedNodeId = null;
+    this.activePointerId = null;
+    this.lastUpWasCleanBlankClick = false;
 
-    if (prevMode === "dragging-nodes") {
+    if (prevMode === "panning") {
+      if (!canceled && !this.panMoved && evt.button === 0 && !evt.altKey && !evt.spaceKey && !this.panToolActive) {
+        this.lastUpWasCleanBlankClick = true;
+      }
+    } else if (prevMode === "dragging-nodes") {
       const moves: Record<string, WorldPoint> = {};
       let moved = false;
       for (const [id, orig] of this.dragInitialPositions.entries()) {
@@ -723,27 +988,49 @@ export class CanvasPointerFSM {
         if (!n) continue;
         if (canceled) {
           this.scene.setNodePosition(id, orig.x, orig.y);
-        } else {
+          moves[id] = { x: orig.x, y: orig.y };
+          for (const descId of this.scene.getDescendantIds(id)) {
+            const desc = this.scene.getNode(descId);
+            if (desc) moves[descId] = { x: desc.x, y: desc.y };
+          }
+        } else if (this.dragThresholdPassed) {
           moves[id] = { x: n.x, y: n.y };
           if (Math.hypot(n.x - orig.x, n.y - orig.y) > 0.5) moved = true;
+          for (const descId of this.scene.getDescendantIds(id)) {
+            const desc = this.scene.getNode(descId);
+            if (desc) moves[descId] = { x: desc.x, y: desc.y };
+          }
         }
       }
-      if (!canceled && moved) {
+      if (canceled) {
+        this.callbacks.onNodesMoved?.(moves, false);
+      } else if (moved) {
         this.callbacks.onNodesMoved?.(moves, true);
-      } else if (!canceled && !moved) {
+      } else {
         const nodeHit = this.scene.hitTestNode(evt.u, evt.v);
-        if (nodeHit) {
-          this.callbacks.onNodeInteractiveClick?.(nodeHit.id, "up", evt.u, evt.v);
-          this.callbacks.onNodeInteractiveClick?.(nodeHit.id, "click", evt.u, evt.v);
+        const clickId = nodeHit?.id ?? pressedNodeId;
+        if (clickId) {
+          this.callbacks.onNodeInteractiveClick?.(clickId, "up", evt.u, evt.v);
+          this.callbacks.onNodeInteractiveClick?.(clickId, "click", evt.u, evt.v);
         }
       }
       this.activeGuides = [];
       this.callbacks.onAlignmentGuides?.([]);
+    } else if (prevMode === "idle" && pressedNodeId && !canceled) {
+      // Read-only or locked node click: pointer went down on a node without entering drag mode
+      const sx = evt.screenX ?? evt.u;
+      const sy = evt.screenY ?? evt.v;
+      const movedDist = Math.hypot(sx - this.dragStartScreen.x, sy - this.dragStartScreen.y);
+      this.callbacks.onNodeInteractiveClick?.(pressedNodeId, "up", evt.u, evt.v);
+      if (movedDist < DRAG_THRESHOLD_PX) {
+        this.callbacks.onNodeInteractiveClick?.(pressedNodeId, "click", evt.u, evt.v);
+      }
     } else if (prevMode === "marquee" && this.marqueeRect) {
       if (!canceled) {
         const hits = this.scene.queryVisibleNodes(this.marqueeRect);
         for (const n of hits) {
           if ((n.flags & SceneNodeFlags.EPHEMERAL) !== 0) continue;
+          if (this.callbacks.selectionFilter && !this.callbacks.selectionFilter(n.id)) continue;
           this.selectedNodeIds.add(n.id);
           this.scene.setNodeFlag(n.id, SceneNodeFlags.SELECTED, true);
         }
@@ -757,7 +1044,8 @@ export class CanvasPointerFSM {
       if (canceled) {
         this.scene.setNodePosition(nodeId, origBounds.x, origBounds.y);
         this.scene.setNodeSize(nodeId, origBounds.width, origBounds.height);
-      } else if (n) {
+        this.callbacks.onNodeResized?.(nodeId, origBounds, false);
+      } else if (n && this.gestureMoved) {
         this.callbacks.onNodeResized?.(nodeId, { x: n.x, y: n.y, width: n.width, height: n.height }, true);
       }
       this.activeResize = null;
@@ -766,7 +1054,8 @@ export class CanvasPointerFSM {
       const n = this.scene.getNode(nodeId);
       if (canceled) {
         this.scene.setNodeRotation(nodeId, origAngle);
-      } else if (n) {
+        this.callbacks.onNodeRotated?.(nodeId, origAngle, false);
+      } else if (n && this.gestureMoved) {
         this.callbacks.onNodeRotated?.(nodeId, n.angleDeg, true);
       }
       this.activeRotate = null;
@@ -786,7 +1075,8 @@ export class CanvasPointerFSM {
       if (edge) {
         if (canceled) {
           edge.vertices = this.activeVertexDrag.origVertices;
-        } else {
+          this.callbacks.onEdgeVerticesChanged?.(edge.id, edge.vertices, false);
+        } else if (this.gestureMoved) {
           this.callbacks.onEdgeVerticesChanged?.(edge.id, edge.vertices, true);
         }
       }
@@ -796,7 +1086,8 @@ export class CanvasPointerFSM {
       if (edge) {
         if (canceled) {
           edge.vertices = this.activeSegmentDrag.origVertices;
-        } else {
+          this.callbacks.onEdgeVerticesChanged?.(edge.id, edge.vertices, false);
+        } else if (this.segmentDragMoved) {
           this.callbacks.onEdgeVerticesChanged?.(edge.id, edge.vertices, true);
         }
       }
@@ -808,10 +1099,27 @@ export class CanvasPointerFSM {
     }
   }
 
+  /** Synchronizes FSM selection sets without re-emitting `onSelectionChange` (used by programmatic `graph.select`). */
+  public syncSelection(nodeIds: Iterable<string>, edgeIds: Iterable<string>): void {
+    for (const id of this.selectedNodeIds) {
+      this.scene.setNodeFlag(id, SceneNodeFlags.SELECTED, false);
+    }
+    this.selectedNodeIds.clear();
+    this.selectedEdgeIds.clear();
+    for (const id of nodeIds) {
+      this.selectedNodeIds.add(id);
+      this.scene.setNodeFlag(id, SceneNodeFlags.SELECTED, true);
+    }
+    for (const id of edgeIds) {
+      this.selectedEdgeIds.add(id);
+    }
+  }
+
   public selectNodes(ids: string[], replace = true): void {
     if (replace) this.clearSelectionInternal();
     for (const id of ids) {
       if (this.scene.getNode(id)) {
+        if (this.callbacks.selectionFilter && !this.callbacks.selectionFilter(id)) continue;
         this.selectedNodeIds.add(id);
         this.scene.setNodeFlag(id, SceneNodeFlags.SELECTED, true);
       }

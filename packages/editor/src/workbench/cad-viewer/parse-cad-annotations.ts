@@ -201,6 +201,59 @@ function normalizeRgba(rgb: [number, number, number]): [number, number, number, 
   ];
 }
 
+function buildPelagosProceduralMeta(uri: string): {
+  shapeType: string;
+  proceduralMesh: ProceduralMeshData;
+  color: [number, number, number];
+  dynamicBindings?: { property: string; index: number; variable: string }[] | undefined;
+} | null {
+  if (!uri.startsWith("procedural://pelagos-oc8/")) return null;
+  const part = uri.slice("procedural://pelagos-oc8/".length).toLowerCase();
+  const specs: Record<
+    string,
+    {
+      shape: string;
+      rgba: [number, number, number, number];
+      bindings?: { property: string; index: number; variable: string }[];
+    }
+  > = {
+    mantle: {
+      shape: "sphere",
+      rgba: [0.93, 0.95, 0.97, 1.0],
+      bindings: [
+        { property: "rotation", index: 0, variable: "hull.pitch" },
+        { property: "rotation", index: 2, variable: "hull.roll" },
+      ],
+    },
+    "pump-core": {
+      shape: "cylinder",
+      rgba: [0.06, 0.72, 0.51, 1.0],
+      bindings: [{ property: "rotation", index: 1, variable: "pump.theta" }],
+    },
+    siphon: {
+      shape: "cone",
+      rgba: [0.03, 0.71, 0.83, 1.0],
+    },
+    "arm-chains": {
+      shape: "pipe",
+      rgba: [0.97, 0.45, 0.09, 1.0],
+    },
+    "arm3-collar": {
+      shape: "gearwheel",
+      rgba: [0.66, 0.33, 0.97, 1.0],
+      bindings: [{ property: "position", index: 0, variable: "arm3DetachOffset" }],
+    },
+  };
+  const spec = specs[part];
+  if (!spec) return null;
+  return {
+    shapeType: spec.shape,
+    proceduralMesh: createMslShapeMesh(spec.shape, 0, spec.rgba),
+    color: [spec.rgba[0], spec.rgba[1], spec.rgba[2]],
+    dynamicBindings: spec.bindings,
+  };
+}
+
 /**
  * Parse source-level `annotation(... cad(...))` / `CAD(...)` / `CAD="..."` and
  * `Modelica.Mechanics.MultiBody.Visualizers` / `MultiBody` components from Modelica code
@@ -210,6 +263,32 @@ export function parseSourceCadVariables(source: string): RawCadVariableEntry[] {
   if (!source || typeof source !== "string") return [];
   const results: RawCadVariableEntry[] = [];
   const seen = new Set<string>();
+
+  const pushCadEntry = (varName: string, cadStr: string) => {
+    const key = `${varName}:${cadStr}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    const parsed = parseCadAnnotationString(cadStr);
+    const pelagosMeta =
+      parsed && "uri" in parsed && typeof parsed.uri === "string" ? buildPelagosProceduralMeta(parsed.uri) : null;
+    if (pelagosMeta && parsed && "uri" in parsed) {
+      results.push({
+        name: varName,
+        cad: cadStr,
+        shapeType: pelagosMeta.shapeType,
+        proceduralMesh: pelagosMeta.proceduralMesh,
+        defaults: {
+          position: parsed.position ?? [0, 0, 0],
+          scale: parsed.scale ?? [0.15, 0.15, 0.15],
+          color: pelagosMeta.color,
+        },
+        dynamicBindings: pelagosMeta.dynamicBindings,
+      });
+    } else {
+      results.push({ name: varName, cad: cadStr });
+    }
+  };
 
   // 1. Match component declarations with annotation(... CAD(...) / cad(...) / CADPort(...) ...)
   const declRegex =
@@ -222,11 +301,7 @@ export function parseSourceCadVariables(source: string): RawCadVariableEntry[] {
     if (cadMatch) {
       const prefix = cadMatch[1] === "CADPort" ? "CADPort" : "CAD";
       const cadStr = `${prefix}(${cadMatch[2] || ""})`;
-      const key = `${varName}:${cadStr}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        results.push({ name: varName, cad: cadStr });
-      }
+      pushCadEntry(varName, cadStr);
     }
   }
 
@@ -235,11 +310,7 @@ export function parseSourceCadVariables(source: string): RawCadVariableEntry[] {
   while ((match = attrRegex.exec(source)) !== null) {
     const varName = match[1]!;
     const cadStr = match[2]!;
-    const key = `${varName}:${cadStr}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      results.push({ name: varName, cad: cadStr });
-    }
+    pushCadEntry(varName, cadStr);
   }
 
   // 3. Match standard Modelica.Mechanics.MultiBody.Visualizers & MultiBody components

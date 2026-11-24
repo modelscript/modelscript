@@ -237,3 +237,209 @@ export function solveFabrikIk(
   const residual = dist(joints[n - 1]!, target);
   return { joints, reached: residual <= tol, residualDistance: residual, iterations: iter };
 }
+
+/** Angular joint constraint for constrained FABRIK chains (cone limit + optional planar hinge axis). */
+export interface JointAngleLimit {
+  /** Maximum deflection angle in radians from the parent bone direction (0..PI). */
+  readonly maxConeAngleRad: number;
+  /** Optional unit hinge axis restricting motion to the plane orthogonal to this axis. */
+  readonly hingeAxis?: Point3D | undefined;
+}
+
+export interface ConstrainedIkOptions {
+  tolerance?: number | undefined;
+  maxIterations?: number | undefined;
+  /** Per-joint angular limits (indexed by joint index 0..n-2; joint i constrains bone i->i+1). */
+  jointLimits?: readonly (JointAngleLimit | undefined)[] | undefined;
+  /** Optional initial root reference direction (defaults to initial bone 0->1 direction). */
+  rootDirection?: Point3D | undefined;
+}
+
+function normalize3(x: number, y: number, z: number): Point3D {
+  const len = Math.hypot(x, y, z);
+  if (len < 1e-12) return { x: 1, y: 0, z: 0 };
+  return { x: x / len, y: y / len, z: z / len };
+}
+
+function constrainDirectionToCone(dir: Point3D, refDir: Point3D, limit: JointAngleLimit): Point3D {
+  let dx = dir.x;
+  let dy = dir.y;
+  let dz = dir.z;
+
+  // Optional planar hinge projection
+  if (limit.hingeAxis) {
+    const h = normalize3(limit.hingeAxis.x, limit.hingeAxis.y, limit.hingeAxis.z);
+    const dotH = dx * h.x + dy * h.y + dz * h.z;
+    dx -= dotH * h.x;
+    dy -= dotH * h.y;
+    dz -= dotH * h.z;
+    const pLen = Math.hypot(dx, dy, dz);
+    if (pLen > 1e-9) {
+      dx /= pLen;
+      dy /= pLen;
+      dz /= pLen;
+    } else {
+      dx = refDir.x;
+      dy = refDir.y;
+      dz = refDir.z;
+    }
+  }
+
+  const maxAngle = Math.max(0.01, Math.min(Math.PI, limit.maxConeAngleRad));
+  const dot = Math.max(-1, Math.min(1, dx * refDir.x + dy * refDir.y + dz * refDir.z));
+  const angle = Math.acos(dot);
+  if (angle <= maxAngle) {
+    return { x: dx, y: dy, z: dz };
+  }
+
+  // Project onto the tangent perpendicular to refDir and clamp to maxAngle cone boundary
+  let tx = dx - dot * refDir.x;
+  let ty = dy - dot * refDir.y;
+  let tz = dz - dot * refDir.z;
+  let tLen = Math.hypot(tx, ty, tz);
+  if (tLen < 1e-9) {
+    // Antiparallel fallback: pick arbitrary orthogonal axis
+    const ax = Math.abs(refDir.x) < 0.9 ? 1 : 0;
+    const ay = Math.abs(refDir.x) < 0.9 ? 0 : 1;
+    tx = refDir.y * 0 - refDir.z * ay;
+    ty = refDir.z * ax - refDir.x * 0;
+    tz = refDir.x * ay - refDir.y * ax;
+    tLen = Math.hypot(tx, ty, tz) || 1;
+  }
+  tx /= tLen;
+  ty /= tLen;
+  tz /= tLen;
+
+  const c = Math.cos(maxAngle);
+  const s = Math.sin(maxAngle);
+  return normalize3(refDir.x * c + tx * s, refDir.y * c + ty * s, refDir.z * c + tz * s);
+}
+
+/**
+ * Constrained FABRIK inverse kinematics solver supporting per-joint cone and hinge limits
+ * for articulated robot arms and tentacle chains.
+ */
+export function solveConstrainedChainIk(
+  initialJoints: readonly Point3D[],
+  target: Point3D,
+  opts?: ConstrainedIkOptions,
+): FabrikResult {
+  const n = initialJoints.length;
+  const tol = opts?.tolerance ?? 1e-4;
+  const maxIter = opts?.maxIterations ?? 40;
+  const joints = initialJoints.map((j) => ({ x: j.x, y: j.y, z: j.z }));
+  if (n <= 1) {
+    return { joints, reached: true, residualDistance: 0, iterations: 0 };
+  }
+
+  const dist = (a: Point3D, b: Point3D): number => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+  const lengths = new Float64Array(n - 1);
+  for (let i = 0; i < n - 1; i++) {
+    lengths[i] = Math.max(1e-9, dist(joints[i]!, joints[i + 1]!));
+  }
+
+  const root = { ...joints[0]! };
+  const initialRootDir = opts?.rootDirection
+    ? normalize3(opts.rootDirection.x, opts.rootDirection.y, opts.rootDirection.z)
+    : normalize3(joints[1]!.x - joints[0]!.x, joints[1]!.y - joints[0]!.y, joints[1]!.z - joints[0]!.z);
+  const limits = opts?.jointLimits;
+
+  let iter = 0;
+  for (; iter < maxIter; iter++) {
+    if (dist(joints[n - 1]!, target) <= tol) break;
+
+    // Forward pass: end-effector -> root
+    joints[n - 1] = { x: target.x, y: target.y, z: target.z };
+    for (let i = n - 2; i >= 0; i--) {
+      const r = Math.max(1e-12, dist(joints[i]!, joints[i + 1]!));
+      const lam = lengths[i]! / r;
+      joints[i] = {
+        x: (1 - lam) * joints[i + 1]!.x + lam * joints[i]!.x,
+        y: (1 - lam) * joints[i + 1]!.y + lam * joints[i]!.y,
+        z: (1 - lam) * joints[i + 1]!.z + lam * joints[i]!.z,
+      };
+    }
+
+    // Backward pass: root -> end-effector with angular cone/hinge clamping
+    joints[0] = { x: root.x, y: root.y, z: root.z };
+    let prevDir = initialRootDir;
+    for (let i = 0; i < n - 1; i++) {
+      const rawDir = normalize3(
+        joints[i + 1]!.x - joints[i]!.x,
+        joints[i + 1]!.y - joints[i]!.y,
+        joints[i + 1]!.z - joints[i]!.z,
+      );
+      const limit = limits?.[i];
+      const clampedDir = limit ? constrainDirectionToCone(rawDir, prevDir, limit) : rawDir;
+      const len = lengths[i]!;
+      joints[i + 1] = {
+        x: joints[i]!.x + clampedDir.x * len,
+        y: joints[i]!.y + clampedDir.y * len,
+        z: joints[i]!.z + clampedDir.z * len,
+      };
+      prevDir = clampedDir;
+    }
+  }
+
+  const residual = dist(joints[n - 1]!, target);
+  return { joints, reached: residual <= tol, residualDistance: residual, iterations: iter };
+}
+
+export interface BranchedIkBranch {
+  readonly id: string;
+  /** Local chain starting at its socket joint on the root body. */
+  readonly initialJoints: readonly Point3D[];
+  readonly target: Point3D;
+  readonly jointLimits?: readonly (JointAngleLimit | undefined)[] | undefined;
+  readonly rootDirection?: Point3D | undefined;
+  /** When false, this branch is detached and solved independently from its current root socket. */
+  readonly attached?: boolean | undefined;
+}
+
+export interface BranchedIkResult {
+  readonly root: Point3D;
+  readonly branches: ReadonlyMap<string, FabrikResult>;
+  readonly allReached: boolean;
+}
+
+/**
+ * Solves multi-arm branched tree inverse kinematics (e.g., 8 robotic tentacles attached to a shared mantle)
+ * with optional root compliance and per-branch detachment support.
+ */
+export function solveBranchedTreeIk(
+  root: Point3D,
+  branches: readonly BranchedIkBranch[],
+  opts?: { tolerance?: number | undefined; maxIterations?: number | undefined },
+): BranchedIkResult {
+  const results = new Map<string, FabrikResult>();
+  let allReached = true;
+
+  for (const branch of branches) {
+    const startJoints =
+      branch.attached === false || branch.initialJoints.length === 0
+        ? branch.initialJoints
+        : branch.initialJoints.map((j, idx) =>
+            idx === 0
+              ? {
+                  x: root.x + (j.x - branch.initialJoints[0]!.x),
+                  y: root.y + (j.y - branch.initialJoints[0]!.y),
+                  z: root.z + (j.z - branch.initialJoints[0]!.z),
+                }
+              : j,
+          );
+    const res = solveConstrainedChainIk(startJoints, branch.target, {
+      tolerance: opts?.tolerance,
+      maxIterations: opts?.maxIterations,
+      jointLimits: branch.jointLimits,
+      rootDirection: branch.rootDirection,
+    });
+    results.set(branch.id, res);
+    if (!res.reached) allReached = false;
+  }
+
+  return {
+    root: { x: root.x, y: root.y, z: root.z },
+    branches: results,
+    allReached,
+  };
+}

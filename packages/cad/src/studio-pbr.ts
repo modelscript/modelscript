@@ -23,7 +23,11 @@ export type AlloyPresetKey =
   | "clear-polycarbonate"
   | "anodized-aluminum"
   | "cast-aluminum"
-  | "stainless-steel";
+  | "stainless-steel"
+  | "ceramic-white-shell"
+  | "dark-anodized-joint"
+  | "safety-orange-accent"
+  | "optical-lens-glass";
 
 export interface AlloyMaterialSpec {
   readonly colorDark: number;
@@ -36,6 +40,7 @@ export interface AlloyMaterialSpec {
   readonly clearcoat?: number | undefined;
   readonly clearcoatRoughness?: number | undefined;
   readonly useBrushedMaps?: boolean | undefined;
+  readonly useDetailMaps?: boolean | undefined;
   readonly opacity?: number | undefined;
   readonly iridescence?: number | undefined;
   readonly iridescenceIOR?: number | undefined;
@@ -53,6 +58,13 @@ export interface StudioPbrTextureBuffers {
   readonly aoRgba: Uint8Array;
   readonly iridescenceSize: number;
   readonly iridescenceRgba: Uint8Array;
+}
+
+export interface MechanicalDetailTextureBuffers {
+  readonly size: number;
+  readonly normalRgba: Uint8Array;
+  readonly roughnessRgba: Uint8Array;
+  readonly aoRgba: Uint8Array;
 }
 
 export interface StudioSoftboxLobeSpec {
@@ -249,11 +261,68 @@ export const ALLOY_MATERIAL_PRESETS: Record<AlloyPresetKey, AlloyMaterialSpec> =
     normalScale: [0.02, 0.008],
     useBrushedMaps: true,
   },
+  "ceramic-white-shell": {
+    colorDark: 0xeaf0f6,
+    colorLight: 0xf4f7fb,
+    metalness: 0.06,
+    roughness: 0.22,
+    anisotropy: 0.0,
+    anisotropyRotation: 0,
+    normalScale: [0.045, 0.045],
+    clearcoat: 0.68,
+    clearcoatRoughness: 0.14,
+    useBrushedMaps: false,
+    useDetailMaps: true,
+  },
+  "dark-anodized-joint": {
+    colorDark: 0x202630,
+    colorLight: 0x2b3340,
+    metalness: 0.84,
+    roughness: 0.3,
+    anisotropy: 0.2,
+    anisotropyRotation: Math.PI / 2,
+    normalScale: [0.024, 0.012],
+    useBrushedMaps: true,
+  },
+  "safety-orange-accent": {
+    colorDark: 0xea580c,
+    colorLight: 0xf97316,
+    metalness: 0.12,
+    roughness: 0.2,
+    anisotropy: 0.0,
+    anisotropyRotation: 0,
+    normalScale: [0, 0],
+    clearcoat: 0.78,
+    clearcoatRoughness: 0.1,
+    useBrushedMaps: false,
+    emissiveDark: 0x3b1202,
+    emissiveLight: 0x220a01,
+    emissiveIntensity: 0.12,
+  },
+  "optical-lens-glass": {
+    colorDark: 0x0b1220,
+    colorLight: 0x111c30,
+    metalness: 0.15,
+    roughness: 0.06,
+    anisotropy: 0.0,
+    anisotropyRotation: 0,
+    normalScale: [0, 0],
+    clearcoat: 0.96,
+    clearcoatRoughness: 0.04,
+    iridescence: 0.42,
+    iridescenceIOR: 1.48,
+    iridescenceThicknessRange: [280, 480],
+    useBrushedMaps: false,
+  },
 };
 
 function classifyExplicitMaterialHint(materialHint?: string | null): AlloyPresetKey | null {
   const hint = (materialHint ?? "").toLowerCase().trim();
   if (!hint) return null;
+  if (/(ceramic|white-shell|porcelain|composite-shell)/.test(hint)) return "ceramic-white-shell";
+  if (/(dark-anodized|black-anodized|gunmetal|graphite-alloy)/.test(hint)) return "dark-anodized-joint";
+  if (/(safety-orange|signal-orange|high-vis|beacon)/.test(hint)) return "safety-orange-accent";
+  if (/(optical-lens|camera-lens|sapphire-optic|optic)/.test(hint)) return "optical-lens-glass";
   if (/(rubber|elastomer|silicone|tpu|epdm|neoprene|viton)/.test(hint)) return "elastomer-rubber";
   if (/(polycarbonate|acrylic|pmma|glass|transparent|clear|lexan)/.test(hint)) return "clear-polycarbonate";
   if (/(matte|nylon|pa12|polyamide|carbon|composite|peek|delrin|pom)/.test(hint)) return "matte-polymer";
@@ -293,8 +362,12 @@ export function classifyAlloyPreset(
   if (/(cowl|bypass|duct)/.test(name)) return "core-cowl";
   if (/(drum|shaft|spool|bearing|axis)/.test(name)) return "rotor-drum";
   if (/(nacelle|casing|shroud|housing|flange)/.test(name)) return "al-li-nacelle";
+  if (/(mantle|carapace|fairing|shell_white)/.test(name)) return "ceramic-white-shell";
+  if (/(optic|camera|eye_lens|pupil)/.test(name)) return "optical-lens-glass";
+  if (/(beacon|accent_ring|safety_trim|orange)/.test(name)) return "safety-orange-accent";
+  if (/(joint|knuckle|gimbal|hinge|collar)/.test(name)) return "dark-anodized-joint";
 
-  if (/(rubber|gasket|seal|grip|o-ring|oring|boot)/.test(name)) return "elastomer-rubber";
+  if (/(rubber|gasket|seal|grip|o-ring|oring|boot|sucker|wheel_tire)/.test(name)) return "elastomer-rubber";
   if (/(glass|acrylic|polycarb|window|lens|visor)/.test(name)) return "clear-polycarbonate";
   if (/(plastic|abs|nylon|polymer|handle|trigger|cover|cap)/.test(name)) return "molded-abs-plastic";
 
@@ -390,6 +463,117 @@ export function synthesizeBrushedAlloyTextures(size = 256): StudioPbrTextureBuff
     aoRgba,
     iridescenceSize,
     iridescenceRgba,
+  };
+}
+
+/**
+ * Synthesizes tileable mechanical housing detail textures (recessed panel seam lines,
+ * micro-rivets along panel perimeters, and subtle surface grain) for robotic shells and fairings.
+ */
+export function synthesizeMechanicalDetailTextures(size = 256): MechanicalDetailTextureBuffers {
+  const safeSize = Math.max(32, Math.min(1024, Math.floor(size)));
+  const normalRgba = new Uint8Array(safeSize * safeSize * 4);
+  const roughnessRgba = new Uint8Array(safeSize * safeSize * 4);
+  const aoRgba = new Uint8Array(safeSize * safeSize * 4);
+  const height = new Float32Array(safeSize * safeSize);
+
+  const panelsPerTile = 2;
+  const panelSize = safeSize / panelsPerTile;
+  const seamHalfWidth = Math.max(1.0, safeSize / 160);
+  const rivetInset = panelSize * 0.085;
+  const rivetRadius = Math.max(1.2, safeSize / 110);
+  const rivetsPerEdge = 4;
+
+  for (let y = 0; y < safeSize; y++) {
+    const py = y % panelSize;
+    const distSeamY = Math.min(py, panelSize - py);
+    for (let x = 0; x < safeSize; x++) {
+      const px = x % panelSize;
+      const distSeamX = Math.min(px, panelSize - px);
+      const minSeam = Math.min(distSeamX, distSeamY);
+
+      let h = (hash2(x * 0.7, y * 0.7) - 0.5) * 0.04;
+      let ao = 1.0;
+      let rough = 0.78;
+
+      // Panel seam groove with crisp beveled lip
+      if (minSeam < seamHalfWidth * 1.9) {
+        const t = minSeam / (seamHalfWidth * 1.9);
+        const groove = Math.cos(t * Math.PI * 0.5);
+        h -= groove * 0.85;
+        ao -= groove * 0.52;
+        rough = Math.min(1.0, rough + groove * 0.22);
+      }
+
+      // Recessed socket-head rivets along panel border
+      for (let i = 0; i < rivetsPerEdge; i++) {
+        const frac = (i + 0.5) / rivetsPerEdge;
+        const edgeCoord = rivetInset + frac * (panelSize - 2 * rivetInset);
+        const candidates: readonly [number, number][] = [
+          [edgeCoord, rivetInset],
+          [edgeCoord, panelSize - rivetInset],
+          [rivetInset, edgeCoord],
+          [panelSize - rivetInset, edgeCoord],
+        ];
+        for (const [rx, ry] of candidates) {
+          const d = Math.hypot(px - rx, py - ry);
+          if (d < rivetRadius * 1.45) {
+            if (d < rivetRadius * 0.55) {
+              // Fastener center head
+              h += 0.35 * (1 - d / (rivetRadius * 0.55));
+              rough = Math.max(0.25, rough - 0.28);
+            } else {
+              // Countersunk moat around fastener
+              const ringT = 1 - Math.abs(d - rivetRadius) / (rivetRadius * 0.45);
+              if (ringT > 0) {
+                h -= ringT * 0.6;
+                ao -= ringT * 0.42;
+                rough = Math.min(1.0, rough + ringT * 0.18);
+              }
+            }
+          }
+        }
+      }
+
+      const idx = y * safeSize + x;
+      height[idx] = h;
+      const rByte = Math.round(Math.min(255, Math.max(0, rough * 255)));
+      const aoByte = Math.round(Math.min(255, Math.max(0, ao * 255)));
+      const off = idx * 4;
+      roughnessRgba[off] = rByte;
+      roughnessRgba[off + 1] = rByte;
+      roughnessRgba[off + 2] = rByte;
+      roughnessRgba[off + 3] = 255;
+
+      aoRgba[off] = aoByte;
+      aoRgba[off + 1] = aoByte;
+      aoRgba[off + 2] = aoByte;
+      aoRgba[off + 3] = 255;
+    }
+  }
+
+  for (let y = 0; y < safeSize; y++) {
+    const yPrev = (y - 1 + safeSize) % safeSize;
+    const yNext = (y + 1) % safeSize;
+    for (let x = 0; x < safeSize; x++) {
+      const xPrev = (x - 1 + safeSize) % safeSize;
+      const xNext = (x + 1) % safeSize;
+      const dx = (height[y * safeSize + xNext]! - height[y * safeSize + xPrev]!) * 1.4;
+      const dy = (height[yNext * safeSize + x]! - height[yPrev * safeSize + x]!) * 1.4;
+      const invLen = 1 / Math.hypot(dx, dy, 1);
+      const off = (y * safeSize + x) * 4;
+      normalRgba[off] = Math.round((-dx * invLen * 0.5 + 0.5) * 255);
+      normalRgba[off + 1] = Math.round((-dy * invLen * 0.5 + 0.5) * 255);
+      normalRgba[off + 2] = Math.round((invLen * 0.5 + 0.5) * 255);
+      normalRgba[off + 3] = 255;
+    }
+  }
+
+  return {
+    size: safeSize,
+    normalRgba,
+    roughnessRgba,
+    aoRgba,
   };
 }
 

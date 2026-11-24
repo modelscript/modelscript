@@ -409,6 +409,8 @@ export function ensureAlignmentToolbar(
   bar = document.createElement("div");
   bar.id = "modelscript-alignment-toolbar";
   bar.className = "modelscript-alignment-toolbar";
+  bar.setAttribute("role", "toolbar");
+  bar.setAttribute("aria-label", "Component alignment and actions");
   bar.style.position = "absolute";
   bar.style.display = "none";
   bar.style.zIndex = "1000";
@@ -494,16 +496,31 @@ export function showAlignmentToolbar(
   const minY = Math.min(...nodes.map((n) => n.y));
   const maxY = Math.max(...nodes.map((n) => n.y + n.height));
 
+  const containerW = container.clientWidth > 0 ? container.clientWidth : 800;
+  const containerH = container.clientHeight > 0 ? container.clientHeight : 600;
+
+  // Hide toolbar when selection is completely outside the visible viewport
+  const selLeft = minX * scale.sx + translate.tx;
+  const selRight = maxX * scale.sx + translate.tx;
+  const selTop = minY * scale.sy + translate.ty;
+  const selBottom = maxY * scale.sy + translate.ty;
+  if (selRight < -20 || selLeft > containerW + 20 || selBottom < -20 || selTop > containerH + 20) {
+    toolbar.style.opacity = "0";
+    toolbar.style.display = "none";
+    toolbar.classList?.remove?.("visible");
+    return;
+  }
+
   // Graph space to container pixel space
   const screenCenterX = ((minX + maxX) / 2) * scale.sx + translate.tx;
   // For a single selected node, provide clearance for the free rotation handle and stalk (top: -26px)
   const topClearance = nodes.length === 1 ? 46 : 14;
-  const screenTopY = minY * scale.sy + translate.ty - topClearance;
-  const screenBottomY = maxY * scale.sy + translate.ty + 14;
+  const screenTopY = selTop - topClearance;
+  const screenBottomY = selBottom + 14;
 
-  const containerW = container.clientWidth > 0 ? container.clientWidth : 800;
-  const containerH = container.clientHeight > 0 ? container.clientHeight : 600;
-  const halfBarW = nodes.length === 1 ? 150 : 210;
+  toolbar.style.display = "flex";
+  const measuredW = toolbar.offsetWidth > 0 ? toolbar.offsetWidth : nodes.length === 1 ? 260 : 360;
+  const halfBarW = Math.min(measuredW / 2 + 8, containerW / 2);
 
   toolbar.style.left = `${Math.max(halfBarW, Math.min(containerW - halfBarW, screenCenterX))}px`;
 
@@ -517,7 +534,6 @@ export function showAlignmentToolbar(
     toolbar.style.transform = "translate(-50%, -100%)";
   }
 
-  toolbar.style.display = "flex";
   toolbar.style.opacity = "1";
   toolbar.classList?.add?.("visible");
 }
@@ -736,14 +752,24 @@ export function applyNodeFlipVisuals(
     const textElements = Array.from(bodyEl.querySelectorAll("text"));
     for (const textEl of textElements) {
       if (flipX || flipY) {
-        const textX = Number(textEl.getAttribute("x") ?? 0);
-        const textY = Number(textEl.getAttribute("y") ?? 0);
-        textEl.setAttribute(
-          "transform",
-          `translate(${textX} ${textY}) scale(${sx} ${sy}) translate(${-textX} ${-textY})`,
-        );
+        if (textEl.getAttribute?.("data-orig-transform") == null) {
+          textEl.setAttribute?.("data-orig-transform", textEl.getAttribute?.("transform") ?? "");
+        }
+        const origTf = textEl.getAttribute?.("data-orig-transform") ?? "";
+        const parsedX = parseFloat(textEl.getAttribute?.("x") ?? "0");
+        const parsedY = parseFloat(textEl.getAttribute?.("y") ?? "0");
+        const textX = Number.isFinite(parsedX) ? parsedX : 0;
+        const textY = Number.isFinite(parsedY) ? parsedY : 0;
+        const unflipTf = `translate(${textX} ${textY}) scale(${sx} ${sy}) translate(${-textX} ${-textY})`;
+        textEl.setAttribute?.("transform", origTf ? `${unflipTf} ${origTf}` : unflipTf);
       } else {
-        textEl.removeAttribute("transform");
+        const origTf = textEl.getAttribute?.("data-orig-transform");
+        if (origTf) {
+          textEl.setAttribute?.("transform", origTf);
+        } else {
+          textEl.removeAttribute?.("transform");
+        }
+        textEl.removeAttribute?.("data-orig-transform");
       }
     }
   }
@@ -778,6 +804,9 @@ export function applyNodeFlipVisuals(
     node.setData?.(curData);
   }
 
+  const escapeAttr = (v: string) =>
+    typeof CSS !== "undefined" && typeof CSS.escape === "function" ? CSS.escape(v) : v.replace(/["\\]/g, "\\$&");
+
   for (const baseP of basePorts) {
     let posX = baseP.args?.x ?? 0;
     let posY = baseP.args?.y ?? 0;
@@ -791,7 +820,7 @@ export function applyNodeFlipVisuals(
       portAngle = (360 - portAngle) % 360;
     }
 
-    const portEl = container.querySelector?.(`[data-port="${baseP.id}"]`) as SVGElement | null;
+    const portEl = container.querySelector?.(`[data-port="${escapeAttr(baseP.id)}"]`) as SVGElement | null;
     if (portEl) {
       portEl.setAttribute("transform", `translate(${posX}, ${posY}) rotate(${portAngle})`);
     }

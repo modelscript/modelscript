@@ -36,9 +36,9 @@ import {
 import { parseModelicaParameters } from "../util/modelica-params";
 
 const VALID_ROTUNDA_ENVIRONMENTS: readonly RotundaEnvironmentId[] = [
+  "outdoors",
   "warehouse",
   "office",
-  "outdoors",
   "dark-lab",
   "passthrough",
 ];
@@ -103,7 +103,7 @@ function resolveCanvasSessionState(params: {
     (!isHandoffActive && params.scenarioEnvironmentOverride ? params.scenarioEnvironmentOverride : null) ??
     explicitEnvParam ??
     (!isHandoffActive && activeScenario ? activeScenario.recommendedEnvironment : null) ??
-    "dark-lab";
+    "outdoors";
   const activeBoardId =
     params.boardId ||
     params.vrHandoffBoard?.id ||
@@ -264,7 +264,7 @@ export default function SpatialCanvasPage(): React.ReactElement {
   const [searchParams] = useSearchParams();
   const location = useLocation();
 
-  const { initialHash, modeParam, envParam, scenarioParam, handoffId } = useMemo(() => {
+  const { initialHash, modeParam, envParam, scenarioParam, handoffId, boardOmitted } = useMemo(() => {
     const hash = location.hash || (typeof window !== "undefined" ? window.location.hash : "");
     return {
       initialHash: hash,
@@ -272,11 +272,17 @@ export default function SpatialCanvasPage(): React.ReactElement {
       envParam: searchParams.get("env"),
       scenarioParam: searchParams.get("scenario"),
       handoffId: searchParams.get("handoffId")?.trim() || null,
+      boardOmitted: searchParams.get("boardOmitted") === "1",
     };
   }, [location.hash, searchParams]);
 
   const [handoffEnvironment, setHandoffEnvironment] = useState<RotundaEnvironmentId | null>(null);
   const [handoffTitle, setHandoffTitle] = useState<string | null>(null);
+  const [handoffWarning, setHandoffWarning] = useState<string | null>(() =>
+    boardOmitted
+      ? "Board exceeded the 128 KiB URL handoff limit and could not be embedded in the link. Showing default board."
+      : null,
+  );
   const [peerId] = useState<string>(generatePeerId);
   const [cache] = useState<CanvasIndexedDbCache>(() => new CanvasIndexedDbCache());
   const [vrHandoffBoard, setVrHandoffBoard] = useState<CanvasDocument | null>(() => decodeVrBoardFromHash(initialHash));
@@ -408,6 +414,7 @@ export default function SpatialCanvasPage(): React.ReactElement {
   // Same-origin local-file BroadcastChannel relay for `?handoffId=<id>` launches (e.g., from VS Code for Web / Ansatz)
   useEffect(() => {
     if (!handoffId || typeof BroadcastChannel === "undefined") return;
+    let received = false;
     const channel = new BroadcastChannel(VR_HANDOFF_CHANNEL_NAME);
 
     const handleMessage = (event: MessageEvent<unknown>) => {
@@ -421,6 +428,8 @@ export default function SpatialCanvasPage(): React.ReactElement {
       const nextDoc = resolveBroadcastHandoffDocument(msg);
       if (!nextDoc) return;
 
+      received = true;
+      setHandoffWarning(null);
       const parsedEnv = tryParseRotundaEnvironmentParam(msg["environment"]);
       if (parsedEnv) {
         setHandoffEnvironment(parsedEnv);
@@ -435,11 +444,25 @@ export default function SpatialCanvasPage(): React.ReactElement {
     channel.onmessage = handleMessage;
     channel.postMessage({ type: "vr-handoff-request", handoffId });
 
+    const timeoutId =
+      typeof window !== "undefined" && !initialHash.includes("vrBoard=") && !boardOmitted
+        ? window.setTimeout(() => {
+            if (!received) {
+              setHandoffWarning(
+                "Local IDE file handoff timed out (cross-origin browser launch cannot relay unsaved local buffers). Showing default board.",
+              );
+            }
+          }, 2500)
+        : null;
+
     return () => {
+      if (timeoutId !== null && typeof window !== "undefined") {
+        window.clearTimeout(timeoutId);
+      }
       channel.onmessage = null;
       channel.close();
     };
-  }, [handoffId, applyHandoffDocument]);
+  }, [handoffId, applyHandoffDocument, initialHash, boardOmitted]);
 
   useEffect(() => {
     const onResize = () => {
@@ -898,6 +921,48 @@ export default function SpatialCanvasPage(): React.ReactElement {
         </div>
       </header>
       <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
+        {handoffWarning && (
+          <div
+            role="status"
+            data-testid="vr-handoff-warning"
+            style={{
+              position: "absolute",
+              top: 10,
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 35,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "6px 12px",
+              borderRadius: 8,
+              border: "1px solid rgba(251, 191, 36, 0.55)",
+              background: "rgba(120, 53, 15, 0.92)",
+              color: "#fef3c7",
+              fontSize: 12,
+              maxWidth: "min(620px, calc(100% - 24px))",
+              boxShadow: "0 4px 16px rgba(0, 0, 0, 0.4)",
+            }}
+          >
+            <span>{handoffWarning}</span>
+            <button
+              type="button"
+              aria-label="Dismiss handoff notice"
+              onClick={() => setHandoffWarning(null)}
+              style={{
+                border: "none",
+                background: "transparent",
+                color: "#fde68a",
+                cursor: "pointer",
+                fontWeight: 700,
+                fontSize: 13,
+                padding: "0 4px",
+              }}
+            >
+              ×
+            </button>
+          </div>
+        )}
         {surfaceMode === "desktop-2d" ? (
           <SharedScissor3DHost>
             <SpatialCanvas
@@ -949,6 +1014,18 @@ export default function SpatialCanvasPage(): React.ReactElement {
             onExitTo2D={() => setSurfaceMode("desktop-2d")}
             onMoveTile={handleTileMove}
             onCreateSpatialWire={handleCreateSpatialWire}
+            onDiagramEdit={(_actions, ctx) => {
+              const latestTile = store.toDocument().tiles[ctx.tileId];
+              if (!latestTile) return;
+              store.upsertTile({
+                ...latestTile,
+                viewState: {
+                  ...latestTile.viewState,
+                  diagramData: ctx.diagramData,
+                  spatial3DLayout: ctx.spatial3DLayout,
+                },
+              });
+            }}
           />
         )}
       </div>

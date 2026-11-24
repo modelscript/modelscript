@@ -73,20 +73,23 @@ const ViewTabsWrapper = styled.div`
     gap: 5px !important;
   }
 
+  /* Primer marks the selected segment with aria-pressed (older versions used aria-current). */
+  button[aria-pressed="true"],
   button[aria-current="true"] {
-    background-color: var(--ms-brand-soft, rgba(8, 145, 178, 0.14)) !important;
-    color: var(--fgColor-accent, var(--ms-brand, #0891b2)) !important;
+    background-color: var(--ms-bg-elv, var(--bgColor-default, #ffffff)) !important;
+    color: var(--fgColor-default, var(--ms-text-1)) !important;
     font-weight: 600 !important;
-    border: 1px solid color-mix(in srgb, var(--ms-brand, #0891b2) 45%, transparent) !important;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06) !important;
+    border: 1px solid var(--ms-border, rgba(15, 23, 42, 0.12)) !important;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08) !important;
   }
 
+  button[aria-pressed="true"] svg,
   button[aria-current="true"] svg {
     color: var(--ms-brand, #0891b2) !important;
     fill: var(--ms-brand, #0891b2) !important;
   }
 
-  button:not([aria-current="true"]):hover {
+  button:not([aria-pressed="true"]):not([aria-current="true"]):hover {
     background-color: color-mix(in srgb, var(--bgColor-default, #ffffff) 60%, transparent) !important;
     color: var(--fgColor-default, var(--ms-text-1)) !important;
   }

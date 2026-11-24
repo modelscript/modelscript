@@ -1754,7 +1754,7 @@ export default function MorselEditor(props: MorselEditorProps) {
           setSidecarContent(undefined);
           setDrillDownPath([]);
           setDiagramType(targetInfo.diagramTypes?.[0]?.id ?? "diagram");
-          if (targetInfo.supports3d && !targetInfo.supportsDiagram) {
+          if (targetInfo.defaultView === "3d" || (targetInfo.supports3d && !targetInfo.supportsDiagram)) {
             setShowCadView(true);
             setShowResultsView(false);
           } else if (targetInfo.supportsDiagram) {

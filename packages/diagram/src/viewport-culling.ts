@@ -21,11 +21,17 @@ export interface ViewportCullingGraph<
 > {
   disposed?: boolean | undefined;
   container?: HTMLElement | { clientWidth?: number; clientHeight?: number } | null | undefined;
+  getWidth?: (() => number) | undefined;
+  getHeight?: (() => number) | undefined;
   getNodes: () => TNode[];
   getEdges?: (() => TEdge[]) | undefined;
   scale?: (() => { sx: number; sy: number }) | undefined;
   translate?: (() => { tx: number; ty: number }) | undefined;
-  findViewByCell?: ((cell: TNode | TEdge) => { container?: unknown } | null | undefined) | undefined;
+  findViewByCell?:
+    | ((
+        cell: TNode | TEdge,
+      ) => { container?: unknown; routePoints?: { x: number; y: number }[] | undefined } | null | undefined)
+    | undefined;
 }
 
 export type DiagramLodTier = "full" | "medium" | "low";
@@ -56,6 +62,8 @@ export interface SpatialBounds {
 export class SpatialGridIndex<T> {
   private readonly cellSize: number;
   private readonly buckets = new Map<string, T[]>();
+  private readonly oversized: { item: T; bounds: SpatialBounds }[] = [];
+  private static readonly MAX_SPAN = 64;
 
   constructor(cellSize = 256) {
     this.cellSize = Math.max(32, cellSize);
@@ -63,6 +71,7 @@ export class SpatialGridIndex<T> {
 
   public clear(): void {
     this.buckets.clear();
+    this.oversized.length = 0;
   }
 
   public insert(item: T, bounds: SpatialBounds): void {
@@ -70,12 +79,12 @@ export class SpatialGridIndex<T> {
     const y0 = Math.floor(bounds.minY / this.cellSize);
     const x1 = Math.floor(bounds.maxX / this.cellSize);
     const y1 = Math.floor(bounds.maxY / this.cellSize);
-    // Clamp span to avoid pathological explosion on huge malformed coordinates
-    const maxSpan = 64;
-    const clampedX1 = Math.min(x1, x0 + maxSpan);
-    const clampedY1 = Math.min(y1, y0 + maxSpan);
-    for (let gx = x0; gx <= clampedX1; gx++) {
-      for (let gy = y0; gy <= clampedY1; gy++) {
+    if (x1 - x0 > SpatialGridIndex.MAX_SPAN || y1 - y0 > SpatialGridIndex.MAX_SPAN) {
+      this.oversized.push({ item, bounds });
+      return;
+    }
+    for (let gx = x0; gx <= x1; gx++) {
+      for (let gy = y0; gy <= y1; gy++) {
         const key = `${gx},${gy}`;
         let bucket = this.buckets.get(key);
         if (!bucket) {
@@ -93,6 +102,14 @@ export class SpatialGridIndex<T> {
     const y0 = Math.floor(bounds.minY / this.cellSize);
     const x1 = Math.floor(bounds.maxX / this.cellSize);
     const y1 = Math.floor(bounds.maxY / this.cellSize);
+    if (x1 - x0 > SpatialGridIndex.MAX_SPAN || y1 - y0 > SpatialGridIndex.MAX_SPAN) {
+      // Very zoomed out: return all items
+      for (const bucket of this.buckets.values()) {
+        for (const item of bucket) out.add(item);
+      }
+      for (const entry of this.oversized) out.add(entry.item);
+      return out;
+    }
     for (let gx = x0; gx <= x1; gx++) {
       for (let gy = y0; gy <= y1; gy++) {
         const bucket = this.buckets.get(`${gx},${gy}`);
@@ -102,6 +119,16 @@ export class SpatialGridIndex<T> {
         }
       }
     }
+    for (const entry of this.oversized) {
+      if (
+        entry.bounds.minX <= bounds.maxX &&
+        entry.bounds.maxX >= bounds.minX &&
+        entry.bounds.minY <= bounds.maxY &&
+        entry.bounds.maxY >= bounds.minY
+      ) {
+        out.add(entry.item);
+      }
+    }
     return out;
   }
 }
@@ -109,7 +136,6 @@ export class SpatialGridIndex<T> {
 /** Per-graph pending RAF handles so multiple mounted diagrams never drop each other's culling passes. */
 const viewportCullRafs = new WeakMap<object, number>();
 const culledGraphs = new WeakSet<object>();
-const hiddenCellIdsByGraph = new WeakMap<object, Set<string>>();
 
 function escapeAttrValue(value: string): string {
   if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
@@ -126,12 +152,13 @@ function findCellElement<TNode extends ViewportCullingGraphNode, TEdge extends V
   if (view?.container) {
     return view.container as HTMLElement;
   }
-  const root =
-    g.container && typeof (g.container as HTMLElement).querySelector === "function"
-      ? (g.container as HTMLElement)
-      : document;
+  if (!g.container || typeof (g.container as HTMLElement).querySelector !== "function") {
+    return null;
+  }
   try {
-    return root.querySelector(`[data-cell-id="${escapeAttrValue(cell.id)}"]`) as HTMLElement | null;
+    return (g.container as HTMLElement).querySelector(
+      `[data-cell-id="${escapeAttrValue(cell.id)}"]`,
+    ) as HTMLElement | null;
   } catch {
     return null;
   }
@@ -183,7 +210,6 @@ export function performViewportCulling<
   if (nodes.length <= 250) {
     if (culledGraphs.has(g)) {
       culledGraphs.delete(g);
-      hiddenCellIdsByGraph.delete(g);
       for (const node of nodes) {
         if (isEphemeralDiagramNode(node.id)) continue;
         const el = findCellElement(g, node);
@@ -202,8 +228,9 @@ export function performViewportCulling<
   }
   culledGraphs.add(g);
 
-  const width = (container as HTMLElement).clientWidth || 800;
-  const height = (container as HTMLElement).clientHeight || 600;
+  const width = (typeof g.getWidth === "function" ? g.getWidth() : 0) || (container as HTMLElement).clientWidth || 800;
+  const height =
+    (typeof g.getHeight === "function" ? g.getHeight() : 0) || (container as HTMLElement).clientHeight || 600;
   const { tx, ty } = typeof g.translate === "function" ? g.translate() : { tx: 0, ty: 0 };
 
   const buffer = 150;
@@ -235,7 +262,8 @@ export function performViewportCulling<
     const src = edge.getSourcePoint?.();
     const tgt = edge.getTargetPoint?.();
     const verts = edge.getVertices?.() ?? [];
-    if (!src && !tgt && verts.length === 0) continue;
+    const routePts = g.findViewByCell?.(edge)?.routePoints ?? [];
+    if (!src && !tgt && verts.length === 0 && routePts.length === 0) continue;
 
     let minX = Infinity;
     let minY = Infinity;
@@ -251,31 +279,23 @@ export function performViewportCulling<
     includePoint(src);
     includePoint(tgt);
     for (const v of verts) includePoint(v);
+    for (const rp of routePts) includePoint(rp);
     if (!Number.isFinite(minX)) continue;
     trackedEdges.push(edge);
     spatialIndex.insert(edge, { minX, minY, maxX, maxY });
   }
 
   const visibleCells = spatialIndex.query(visibleBounds);
-  let hiddenIds = hiddenCellIdsByGraph.get(g);
-  if (!hiddenIds) {
-    hiddenIds = new Set<string>();
-    hiddenCellIdsByGraph.set(g, hiddenIds);
-  }
 
   const applyVisibility = (cell: TNode | TEdge) => {
     const isVisible = visibleCells.has(cell);
-    const wasHidden = hiddenIds!.has(cell.id);
-    if (isVisible && !wasHidden) return;
-    if (!isVisible && wasHidden) return;
     const el = findCellElement(g, cell);
     if (!el) return;
-    if (isVisible) {
+    const currentlyHidden = el.style.visibility === "hidden";
+    if (isVisible && currentlyHidden) {
       el.style.visibility = "";
-      hiddenIds!.delete(cell.id);
-    } else {
+    } else if (!isVisible && !currentlyHidden) {
       el.style.visibility = "hidden";
-      hiddenIds!.add(cell.id);
     }
   };
 

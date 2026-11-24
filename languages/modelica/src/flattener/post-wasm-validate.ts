@@ -359,7 +359,7 @@ export function emitWasmBailDiagnostic(
                 return {
                   compSym: child,
                   compCst: findAncestor(info.cst, "component_clause") ?? info.cst,
-                  cycleSym: target,
+                  cycleSym: db.symbol(clsId) ?? target,
                   viaExtends: false,
                 };
               }
@@ -1900,8 +1900,9 @@ function collectComponentPrefixWords(
       collectLeaves(ch);
     }
   }
-  if (prefixes.size === 0) {
-    for (const w of tokenizeCommentStrippedWords(headerBeforeParen)) {
+  if (prefixes.size === 0 && declClause?.type !== "component_clause") {
+    const noStrings = headerBeforeParen.replace(/"(?:\\.|[^"\\])*"/g, " ");
+    for (const w of tokenizeCommentStrippedWords(noStrings)) {
       const clean = w.split("[")[0]?.split(";")[0] ?? w;
       if (clean) prefixes.add(clean);
     }
@@ -4788,32 +4789,6 @@ function validateClassSubtree(
             }
           }
         }
-        if (!isOldFrontend && !lDot && !rDot) {
-          const lDot2 = lhs.match(/^([A-Za-z_]\w*)\.([A-Za-z_]\w*)$/);
-          const rDot2 = rhs.match(/^([A-Za-z_]\w*)\.([A-Za-z_]\w*)$/);
-          if (lDot2 && rDot2) {
-            const c1 = comps.get(lDot2[1]!);
-            const c2 = comps.get(rDot2[1]!);
-            if (c1 && c2) {
-              const s1 = resolveClassSym(db, c1.ownerClassId, c1.typeName);
-              const s2 = resolveClassSym(db, c2.ownerClassId, c2.typeName);
-              const t1 = s1 ? (cstOf(db, s1.id)?.text ?? "") : "";
-              const t2 = s2 ? (cstOf(db, s2.id)?.text ?? "") : "";
-              if (/\bexpandable\s+connector\b/.test(t1) && /\bexpandable\s+connector\b/.test(t2)) {
-                const m1 = collectClassComponents(db, s1!.id).has(lDot2[2]!);
-                const m2 = collectClassComponents(db, s2!.id).has(rDot2[2]!);
-                if (!m1 && !m2) {
-                  pushErrorOnce(
-                    4055,
-                    "expandable-both-undeclared",
-                    `Cannot connect undeclared connectors ${lhs} with ${rhs}. At least one of them must be declared.`,
-                    node,
-                  );
-                }
-              }
-            }
-          }
-        }
         // Reject non-connector short-class alias (e.g. `class C2 = C; C2 c1, c2; connect(c1, c2);`) (Connect3)
         if (!isOldFrontend && !lhs.includes(".") && !rhs.includes(".")) {
           const lInfo = comps.get(lhs);
@@ -5336,14 +5311,46 @@ function validateClassSubtree(
 
       if (fnName === "sample" && argTexts.length === 2) {
         const sArg = argTexts[0]!;
-        const sInfo = /^[A-Za-z_]\w*$/.test(sArg) ? comps.get(sArg) : undefined;
-        if (sInfo && sInfo.variability !== "parameter" && sInfo.variability !== "constant") {
-          pushErrorOnce(
-            3001,
-            "sample-non-parameter",
-            `Function argument start=${sArg} in call to sample has variability ${sInfo.variability} which is not a parameter expression.`,
-            node,
-          );
+        const cArg = argTexts[1]!.trim();
+        let isClockArg = /^(?:Clock|subSample|superSample|shiftSample|backSample|noClock|firstTick|interval)\s*\(/.test(
+          cArg,
+        );
+        if (!isClockArg && /^[A-Za-z_][\w.]*$/.test(cArg)) {
+          const baseIdent = cArg.split(".")[0]!;
+          const cInfo = comps.get(cArg) ?? comps.get(baseIdent);
+          if (cInfo) {
+            let curT = cInfo.typeName;
+            let curScope = cInfo.ownerClassId;
+            const seen = new Set<number>();
+            for (let depth = 0; depth < 8; depth++) {
+              if (curT === "Clock") {
+                isClockArg = true;
+                break;
+              }
+              if (PRIMITIVE_BUILTIN_TYPES.has(curT)) break;
+              const tSym = resolveClassSym(db, curScope, curT);
+              if (!tSym || seen.has(tSym.id)) break;
+              seen.add(tSym.id);
+              const tTxt = cstOf(db, tSym.id)?.text?.trim() ?? "";
+              const sm = tTxt.match(
+                /^(?:(?:encapsulated|partial|replaceable|final|inner|outer)\s+)*(?:type|connector|model|block|record|class)\s+[A-Za-z_]\w*\s*=\s*(?:(?:input|output|flow|stream|discrete|parameter|constant)\s+)*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)/,
+              );
+              if (!sm) break;
+              curT = sm[1]!;
+              curScope = tSym.parentId ?? curScope;
+            }
+          }
+        }
+        if (!isClockArg) {
+          const sInfo = /^[A-Za-z_]\w*$/.test(sArg) ? comps.get(sArg) : undefined;
+          if (sInfo && sInfo.variability !== "parameter" && sInfo.variability !== "constant") {
+            pushErrorOnce(
+              3001,
+              "sample-non-parameter",
+              `Function argument start=${sArg} in call to sample has variability ${sInfo.variability} which is not a parameter expression.`,
+              node,
+            );
+          }
         }
       }
 
@@ -5814,7 +5821,21 @@ function validateClassSubtree(
           );
           if (fnSpec === "function" && !isShortFnAlias) {
             if (isClassPartial(fnSym, fnCst) && !/\bif\s+false\b/.test(callSite.text)) {
-              pushErrorOnce(4000, "partial-function-call", `Called function '${fnName}' is partial.`, callSite);
+              const fnElemTxt = (findAncestor(fnCst, "element", 3) ?? fnCst)?.text?.slice(0, 120) ?? "";
+              let isViaReplaceable = /\breplaceable\b/.test(fnElemTxt);
+              if (!isViaReplaceable && fnName.includes(".")) {
+                const pkgSeg = fnName.split(".")[0]!;
+                const pkgSym = resolveClassSym(db, classId, pkgSeg);
+                if (pkgSym) {
+                  const pkgElemTxt =
+                    (findAncestor(cstOf(db, pkgSym.id), "element", 3) ?? cstOf(db, pkgSym.id))?.text?.slice(0, 120) ??
+                    "";
+                  if (/\breplaceable\b/.test(pkgElemTxt)) isViaReplaceable = true;
+                }
+              }
+              if (!isViaReplaceable) {
+                pushErrorOnce(4000, "partial-function-call", `Called function '${fnName}' is partial.`, callSite);
+              }
             }
             const fnComps = collectClassComponents(db, fnSym.id);
             if (fnComps.size > 0) {
@@ -6429,16 +6450,19 @@ function validateClassSubtree(
         const pfM = ccTxt.match(/=\s*([A-Za-z_]\w*)\s*\(/);
         if (pfM) {
           const fnName = pfM[1]!;
-          const fnSym =
-            resolveClassSym(db, classId, fnName) ??
-            db.byName(fnName).find((e) => e.kind === "Function" || e.kind === "Class") ??
-            null;
+          const fnSym = resolveClassSym(db, classId, fnName);
           const fnCst = fnSym ? cstOf(db, fnSym.id) : null;
           const fnSpec = fnSym ? getClassSpecialization(fnSym, fnCst) : null;
           const fnParentTxt = (findAncestor(fnCst, "class_definition", 3) ?? fnCst)?.text ?? "";
+          const fnElemTxt = (findAncestor(fnCst, "element", 3) ?? fnCst)?.text?.slice(0, 120) ?? "";
           const fnIsPartial =
             Boolean(fnSym && isClassPartial(fnSym, fnCst)) || /\bpartial\s+function\b/.test(fnParentTxt);
-          if (fnSym && (fnSym.kind === "Function" || fnSpec === "function") && fnIsPartial) {
+          if (
+            fnSym &&
+            (fnSym.kind === "Function" || fnSpec === "function") &&
+            fnIsPartial &&
+            !/\breplaceable\b/.test(fnElemTxt)
+          ) {
             if (!/\bif\s+false\b/.test(ccTxt)) {
               pushErrorOnce(4055, "partial-function-call", `Called function '${fnName}' is partial.`, node);
             }
@@ -7184,13 +7208,46 @@ function validateClassSubtree(
         const lStr = binM[1]!;
         const opStr = binM[2]!;
         const rStr = binM[3]!;
+        const unwrapShortType = (
+          startScope: SymbolId,
+          startType: string,
+        ): { sym: SymbolEntry | null; canonType: string } => {
+          let curT = startType;
+          let curScope = startScope;
+          let curSym: SymbolEntry | null = null;
+          const seen = new Set<number>();
+          for (let depth = 0; depth < 8; depth++) {
+            if (PRIMITIVE_BUILTIN_TYPES.has(curT)) return { sym: null, canonType: curT };
+            const s = resolveClassSym(db, curScope, curT);
+            if (!s || seen.has(s.id)) return { sym: curSym, canonType: curSym?.name ?? curT };
+            seen.add(s.id);
+            curSym = s;
+            const txt = cstOf(db, s.id)?.text?.trim() ?? "";
+            const sm = txt.match(
+              /^(?:(?:encapsulated|partial|replaceable|final|inner|outer)\s+)*(?:(?:operator\s+record|type|connector|model|block|record|class)\s+)[A-Za-z_]\w*\s*=\s*(?:(?:input|output|flow|stream|discrete|parameter|constant)\s+)*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)/,
+            );
+            if (!sm) return { sym: curSym, canonType: curSym.name };
+            curT = sm[1]!;
+            curScope = s.parentId ?? curScope;
+          }
+          return { sym: curSym, canonType: curSym?.name ?? curT };
+        };
         const lComp = comps.get(lStr);
-        const lSym =
-          lComp && !PRIMITIVE_BUILTIN_TYPES.has(lComp.typeName) ? resolveClassSym(db, classId, lComp.typeName) : null;
+        const lUnwrapped =
+          lComp && !PRIMITIVE_BUILTIN_TYPES.has(lComp.typeName)
+            ? unwrapShortType(lComp.ownerClassId ?? classId, lComp.typeName)
+            : { sym: null, canonType: lComp?.typeName ?? "" };
+        const lSym = lUnwrapped.sym;
         const lRecTxt = lSym ? (cstOf(db, lSym.id)?.text ?? "") : "";
         if (lSym && /\boperator\s+record\b/.test(lRecTxt)) {
           const rComp = comps.get(rStr);
-          const rType = rComp ? rComp.typeName : (inferSimpleLiteralType(rStr) ?? "");
+          const rTypeRaw = rComp ? rComp.typeName : (inferSimpleLiteralType(rStr) ?? "");
+          const rUnwrapped =
+            rComp && !PRIMITIVE_BUILTIN_TYPES.has(rTypeRaw)
+              ? unwrapShortType(rComp.ownerClassId ?? classId, rTypeRaw)
+              : { sym: null, canonType: rTypeRaw };
+          const rType = rUnwrapped.canonType;
+          const lType = lUnwrapped.canonType;
           const lClause = findAncestor(lComp!.cst, "component_clause") ?? lComp!.cst;
           const lDimM = lClause?.text?.match(new RegExp(`\\b${lStr}\\s*\\[(\\d+)\\]`));
           const opChild = db.childrenOf(lSym.id).find((c) => c.name === `'${opStr}'` || c.name === opStr);
@@ -7198,7 +7255,7 @@ function validateClassSubtree(
             const lTDisp = lDimM ? `${lComp!.typeName}[${lDimM[1]!}]` : lComp!.typeName;
             const rClause = rComp ? (findAncestor(rComp.cst, "component_clause") ?? rComp.cst) : null;
             const rDimM = rClause?.text?.match(new RegExp(`\\b${rStr}\\s*\\[(\\d+)\\]`));
-            const rTDisp = rDimM ? `${rType}[${rDimM[1]!}]` : rType;
+            const rTDisp = rDimM ? `${rTypeRaw}[${rDimM[1]!}]` : rTypeRaw;
             pushErrorOnce(
               3001,
               "operator-not-found",
@@ -7238,17 +7295,18 @@ function validateClassSubtree(
               }
             };
             collectOpCands(lSym, opChild);
-            if (rType && rType !== lComp!.typeName && !PRIMITIVE_BUILTIN_TYPES.has(rType)) {
-              const rSym = resolveClassSym(db, classId, rType);
-              const rRecTxt = rSym ? (cstOf(db, rSym.id)?.text ?? "") : "";
-              if (rSym && /\boperator\s+record\b/.test(rRecTxt)) {
-                const rOpChild = db.childrenOf(rSym.id).find((c) => c.name === `'${opStr}'` || c.name === opStr);
-                if (rOpChild) collectOpCands(rSym, rOpChild);
+            if (rUnwrapped.sym && rUnwrapped.sym.id !== lSym.id) {
+              const rRecTxt = cstOf(db, rUnwrapped.sym.id)?.text ?? "";
+              if (/\boperator\s+record\b/.test(rRecTxt)) {
+                const rOpChild = db
+                  .childrenOf(rUnwrapped.sym.id)
+                  .find((c) => c.name === `'${opStr}'` || c.name === opStr);
+                if (rOpChild) collectOpCands(rUnwrapped.sym, rOpChild);
               }
             }
             const lIsArr = /\[/.test(lComp?.cst?.text ?? "");
             const rIsArr = /\[/.test(rComp?.cst?.text ?? "");
-            const exact = cands.filter((c) => c.t0 === lComp!.typeName && c.t1 === rType);
+            const exact = cands.filter((c) => c.t0 === lType && c.t1 === rType);
             if (exact.length >= 2 && !lIsArr && !rIsArr) {
               pushErrorOnce(
                 3006,
@@ -7264,7 +7322,7 @@ function validateClassSubtree(
                 pushErrorOnce(
                   3001,
                   "operator-no-match",
-                  `Cannot resolve type of expression ${lStr} ${opStr} ${rStr}. The operands have types ${lComp!.typeName}, ${rType} in component <NO_COMPONENT>.`,
+                  `Cannot resolve type of expression ${lStr} ${opStr} ${rStr}. The operands have types ${lComp!.typeName}, ${rTypeRaw} in component <NO_COMPONENT>.`,
                   node,
                 );
               }

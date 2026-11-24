@@ -172,7 +172,11 @@ function App(): React.ReactElement {
 
 const rootEl = document.getElementById("root");
 if (rootEl) {
-  createRoot(rootEl).render(<App />);
+  createRoot(rootEl).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>,
+  );
 }
 `;
 }
@@ -247,6 +251,25 @@ export const LANGUAGE_TOOLBAR_BUTTONS = {};
           res.statusCode = 200;
           res.setHeader("Content-Type", "application/json; charset=utf-8");
           res.end(JSON.stringify(manifest));
+          return;
+        }
+        const staticWasmAssets: Record<string, string> = {
+          "/lsp/server/dist/occt-import-js.wasm": path.resolve(
+            REPO_ROOT,
+            "node_modules/occt-import-js/dist/occt-import-js.wasm",
+          ),
+          "/lsp/server/dist/sql-wasm-browser.wasm": path.resolve(
+            REPO_ROOT,
+            "node_modules/sql.js/dist/sql-wasm-browser.wasm",
+          ),
+          "/lsp/wasm/sundials.wasm": path.resolve(REPO_ROOT, "packages/simulate/src/wasm/sundials.wasm"),
+          "/wasm/sundials.wasm": path.resolve(REPO_ROOT, "packages/simulate/src/wasm/sundials.wasm"),
+        };
+        const mappedWasm = staticWasmAssets[reqPath];
+        if (mappedWasm && fs.existsSync(mappedWasm)) {
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "application/wasm");
+          fs.createReadStream(mappedWasm).pipe(res);
           return;
         }
         if (reqPath.startsWith("/lsp/server/dist/") && reqPath.endsWith(".wasm")) {
@@ -494,7 +517,8 @@ async function openTrackedPage(context: BrowserContext): Promise<TrackedPageSess
   const fatalWebGlErrors: string[] = [];
 
   page.on("pageerror", (err) => {
-    pageErrors.push(err.message || String(err));
+    const stackLines = (err.stack || "").split("\n").slice(0, 3).join(" | ");
+    pageErrors.push(stackLines || err.message || String(err));
   });
   page.on("console", (msg) => {
     if (msg.type() === "error") {
@@ -629,6 +653,8 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
           "@react-three/fiber",
           "@react-three/drei",
           "@react-three/xr",
+          "occt-import-js",
+          "sql.js",
         ],
       },
       server: {
@@ -904,7 +930,7 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
     }
   });
 
-  test("Test 4 — Ansatz Web Editor VR Rotunda Launch & Return to 2D", async (t) => {
+  test("Test 4 — Ansatz Web Editor VR Rotunda Launch & Return to 2D", { timeout: 90_000 }, async (t) => {
     if (!executablePath || !context) {
       t.skip("No Chromium binary available for Playwright WebGL E2E");
       return;
@@ -929,6 +955,52 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
 
       const editorWebGl = await inspectWebGlCanvas(page, '[data-testid="spatial-vr-surface"]');
       assertHealthyWebGl(editorWebGl, "PlaygroundPage VR Rotunda WebGL canvas");
+
+      const fullBleedMetrics = await page.evaluate(() => {
+        const pane = document.querySelector<HTMLElement>('[data-testid="morsel-vr-rotunda-pane"]');
+        const header = document.querySelector<HTMLElement>("header");
+        const carouselBar = document.querySelector<HTMLElement>('[data-testid="rotunda-carousel-bar"]');
+        const paneRect = pane?.getBoundingClientRect();
+        const headerRect = header?.getBoundingClientRect();
+        const carouselRect = carouselBar?.getBoundingClientRect();
+        return {
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+          paneRect: paneRect
+            ? {
+                x: Math.round(paneRect.x),
+                y: Math.round(paneRect.y),
+                width: Math.round(paneRect.width),
+                height: Math.round(paneRect.height),
+              }
+            : null,
+          paneZ: pane ? Number(getComputedStyle(pane).zIndex || 0) : 0,
+          headerZ: header ? Number(getComputedStyle(header).zIndex || 0) : 0,
+          headerBottom: headerRect ? Math.round(headerRect.bottom) : 0,
+          carouselTop: carouselRect ? Math.round(carouselRect.top) : 0,
+        };
+      });
+      assert.ok(fullBleedMetrics.paneRect, "Expected morsel-vr-rotunda-pane bounding rect");
+      assert.equal(fullBleedMetrics.paneRect.x, 0, "VR Rotunda pane must start at x=0");
+      assert.equal(fullBleedMetrics.paneRect.y, 0, "VR Rotunda pane must stretch behind floating topbar from y=0");
+      assert.equal(
+        fullBleedMetrics.paneRect.width,
+        fullBleedMetrics.innerWidth,
+        "VR Rotunda pane must fill 100% browser viewport width with zero scrollbar gutter",
+      );
+      assert.equal(
+        fullBleedMetrics.paneRect.height,
+        fullBleedMetrics.innerHeight,
+        "VR Rotunda pane must fill 100% browser viewport height",
+      );
+      assert.ok(
+        fullBleedMetrics.headerZ > fullBleedMetrics.paneZ,
+        `Floating Morsel navbar z-index (${fullBleedMetrics.headerZ}) must sit above VR Rotunda pane (${fullBleedMetrics.paneZ})`,
+      );
+      assert.ok(
+        fullBleedMetrics.carouselTop >= fullBleedMetrics.headerBottom,
+        `VR Rotunda HUD (${fullBleedMetrics.carouselTop}px) must clear floating Morsel navbar bottom (${fullBleedMetrics.headerBottom}px)`,
+      );
 
       await page.getByRole("button", { name: "Return to 2D Canvas" }).click();
       await editorRotunda.waitFor({ state: "detached", timeout: 10_000 });
@@ -956,6 +1028,291 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
         [],
         `Fatal WebGL console errors in Editor VR launch: ${fatalWebGlErrors.join("; ")}`,
       );
+    } finally {
+      await page.close().catch(() => undefined);
+    }
+  });
+
+  test("Test 5 — Zero-Flicker Mouse Move Stability (STEP CadViewer & VR Rotunda)", { timeout: 90_000 }, async (t) => {
+    if (!executablePath || !context) {
+      t.skip("No Chromium binary available for Playwright WebGL E2E");
+      return;
+    }
+
+    const session = await openTrackedPage(context);
+    const { page, pageErrors, fatalWebGlErrors } = session;
+
+    try {
+      await page.addInitScript(`(() => {
+        window.__E2E_HIDE_COUNT = 0;
+        window.__E2E_SHADER_COMPILES = 0;
+        const origSetProp = CSSStyleDeclaration.prototype.setProperty;
+        CSSStyleDeclaration.prototype.setProperty = function (name, value, priority) {
+          if (name === "display" && value === "none" && priority === "important") {
+            window.__E2E_HIDE_COUNT++;
+          }
+          return origSetProp.call(this, name, value, priority);
+        };
+        const origGetCtx = HTMLCanvasElement.prototype.getContext;
+        HTMLCanvasElement.prototype.getContext = function (type, attrs) {
+          const ctx = origGetCtx.call(this, type, attrs);
+          if (ctx && (type === "webgl2" || type === "webgl") && !ctx.__e2ePatchedCompile) {
+            ctx.__e2ePatchedCompile = true;
+            const origCompile = ctx.compileShader.bind(ctx);
+            ctx.compileShader = function (shader) {
+              window.__E2E_SHADER_COMPILES++;
+              return origCompile(shader);
+            };
+          }
+          return ctx;
+        };
+      })()`);
+
+      // 5A. STEP Aerospace Bracket in CadViewer (data: GLB asset under React.StrictMode)
+      await page.goto(`${baseUrl}/playground?template=step-aerospace-bracket`, {
+        waitUntil: "domcontentloaded",
+      });
+      await page.waitForTimeout(3000);
+      const tab3d = page.getByRole("button", { name: /^3D/ }).first();
+      if (await tab3d.isVisible().catch(() => false)) {
+        await tab3d.click().catch(() => undefined);
+      }
+      await page.locator("canvas[data-engine]:not([data-shared-webgl-canvas])").first().waitFor({
+        state: "visible",
+        timeout: 20_000,
+      });
+      await page.getByRole("button", { name: "CUT X" }).first().waitFor({ state: "visible", timeout: 20_000 });
+      // Wait for async GLTFLoader decode & initial STEP bracket render to appear on screen
+      const deadline = Date.now() + 10_000;
+      while (Date.now() < deadline) {
+        const probe = await page.screenshot({ clip: { x: 80, y: 120, width: 640, height: 500 } });
+        if (probe.byteLength > 50_000) {
+          break;
+        }
+        await page.waitForTimeout(200);
+      }
+      await page.waitForTimeout(300);
+
+      await page.evaluate("window.__E2E_HIDE_COUNT = 0; window.__E2E_SHADER_COMPILES = 0;");
+      const cadSizes: number[] = [];
+      for (let i = 0; i < 8; i++) {
+        await page.mouse.move(180 + (i % 4) * 140, 220 + Math.floor(i / 4) * 180);
+        await page.waitForTimeout(50);
+        const png = await page.screenshot({ clip: { x: 80, y: 120, width: 640, height: 500 } });
+        cadSizes.push(png.byteLength);
+      }
+      const cadStats = (await page.evaluate(
+        "({ hides: window.__E2E_HIDE_COUNT, compiles: window.__E2E_SHADER_COMPILES })",
+      )) as { hides: number; compiles: number };
+      assert.equal(cadStats.hides, 0, `Expected 0 Suspense hideInstance flickers in CadViewer, got ${cadStats.hides}`);
+      assert.equal(
+        cadStats.compiles,
+        0,
+        `Expected 0 shader compiles during CadViewer mouse move, got ${cadStats.compiles}`,
+      );
+      const minCad = Math.min(...cadSizes);
+      const maxCad = Math.max(...cadSizes);
+      assert.ok(
+        minCad > 10_000 && minCad >= maxCad * 0.5,
+        `Expected stable non-blank frames in CadViewer, got PNG byte sizes ${JSON.stringify(cadSizes)}`,
+      );
+
+      // 5B. Miro Spatial Canvas VR Rotunda (/canvas?mode=spatial-3d)
+      await page.goto(`${baseUrl}/canvas?mode=spatial-3d`, { waitUntil: "domcontentloaded" });
+      const surface = page.locator('[data-testid="spatial-vr-surface"][data-rotunda="engineering-rotunda"]');
+      await surface.waitFor({ state: "visible", timeout: 25_000 });
+      await waitForLiveWebGlCanvas(page, '[data-testid="spatial-vr-surface"]', 20_000);
+      await page.waitForTimeout(800);
+
+      await page.evaluate("window.__E2E_HIDE_COUNT = 0; window.__E2E_SHADER_COMPILES = 0;");
+      const vrSizes: number[] = [];
+      for (let i = 0; i < 8; i++) {
+        await page.mouse.move(220 + (i % 4) * 220, 220 + Math.floor(i / 4) * 220);
+        await page.waitForTimeout(50);
+        const png = await page.screenshot({ clip: { x: 100, y: 120, width: 800, height: 540 } });
+        vrSizes.push(png.byteLength);
+      }
+      const vrStats = (await page.evaluate(
+        "({ hides: window.__E2E_HIDE_COUNT, compiles: window.__E2E_SHADER_COMPILES })",
+      )) as { hides: number; compiles: number };
+      assert.equal(vrStats.hides, 0, `Expected 0 Suspense hideInstance flickers in VR Rotunda, got ${vrStats.hides}`);
+      assert.equal(
+        vrStats.compiles,
+        0,
+        `Expected 0 shader compiles during VR Rotunda mouse move, got ${vrStats.compiles}`,
+      );
+      const minVr = Math.min(...vrSizes);
+      const maxVr = Math.max(...vrSizes);
+      assert.ok(
+        minVr > 10_000 && minVr >= maxVr * 0.5,
+        `Expected stable non-blank frames in VR Rotunda, got PNG byte sizes ${JSON.stringify(vrSizes)}`,
+      );
+
+      const appPageErrors = pageErrors.filter((e) => !e.includes("browserServerMain.js"));
+      assert.deepEqual(appPageErrors, [], `Uncaught pageerror exceptions in Test 5: ${appPageErrors.join("; ")}`);
+      assert.deepEqual(fatalWebGlErrors, [], `Fatal WebGL console errors in Test 5: ${fatalWebGlErrors.join("; ")}`);
+    } finally {
+      await page.close().catch(() => undefined);
+    }
+  });
+
+  test("Test 6 — Pelagos OC-8 Robotic Octopus Showcase, Field Telemetry HUD, Operation Log Scrubber & Studio Toggles", async (t) => {
+    if (!executablePath || !context) {
+      t.skip("No Chromium binary available for Playwright WebGL E2E");
+      return;
+    }
+
+    const session = await openTrackedPage(context);
+    const { page, pageErrors, consoleErrors, fatalWebGlErrors } = session;
+
+    try {
+      await page.goto(`${baseUrl}/canvas?mode=spatial-3d&env=dark-lab`, { waitUntil: "domcontentloaded" });
+
+      const surface = page.locator('[data-testid="spatial-vr-surface"][data-rotunda="engineering-rotunda"]');
+      await surface.waitFor({ state: "visible", timeout: 25_000 });
+      await waitForLiveWebGlCanvas(page, '[data-testid="spatial-vr-surface"]', 20_000);
+
+      // Select the Pelagos OC-8 Subsea Robotic Octopus scenario preset
+      const scenarioSelect = page.locator('[data-testid="rotunda-scenario-select"]');
+      await scenarioSelect.waitFor({ state: "visible", timeout: 10_000 });
+      await scenarioSelect.selectOption("subsea-octopus");
+
+      await page.waitForFunction(
+        () =>
+          document.querySelector('[data-testid="spatial-vr-surface"]')?.getAttribute("data-active-scenario") ===
+          "subsea-octopus",
+        undefined,
+        { timeout: 10_000 },
+      );
+
+      // Field Telemetry HUD + bottom Operation Log scrubber should auto-enable for subsea-octopus
+      const telemetryHud = page.locator('[data-testid="simulator-telemetry-hud"]');
+      await telemetryHud.waitFor({ state: "visible", timeout: 10_000 });
+      const opLogBar = page.locator('[data-testid="hud-operation-log-bar"]');
+      await opLogBar.waitFor({ state: "visible", timeout: 10_000 });
+      assert.ok(
+        (await telemetryHud.innerText()).toUpperCase().includes("PELAGOS OC-8"),
+        "Expected Pelagos OC-8 header inside auto-enabled Field Telemetry HUD",
+      );
+
+      // Open the expandable Operator Actions drawer and seek to Arm 3 Detach + Jet Assist phases
+      await page.locator('[data-testid="hud-op-log-drawer-btn"]').click();
+      await page.locator('[data-testid="hud-op-log-drawer"]').waitFor({ state: "visible", timeout: 5_000 });
+      await page.locator('[data-testid="hud-op-phase-detach"]').click();
+      await page.waitForFunction(
+        () => (document.querySelector('[data-testid="hud-op-log-active-phase"]')?.textContent ?? "").includes("ARM 3"),
+        undefined,
+        { timeout: 5_000 },
+      );
+      await page.locator('[data-testid="hud-op-phase-jet-assist"]').click();
+      await page.waitForFunction(
+        () => (document.querySelector('[data-testid="hud-op-log-active-phase"]')?.textContent ?? "").includes("JET"),
+        undefined,
+        { timeout: 5_000 },
+      );
+
+      // Toggle Ghost Shell, Labels, Turntable, and desktop-only AO pass
+      await page.locator('[data-testid="rotunda-toggle-ghost"]').click();
+      await page.locator('[data-testid="rotunda-toggle-labels"]').click();
+      await page.locator('[data-testid="rotunda-toggle-turntable"]').click();
+      await page.locator('[data-testid="rotunda-toggle-ao"]').click();
+      await page.waitForTimeout(350);
+
+      // Verify Assembly Inspector subsystem isolation works live
+      const inspector = page.locator('[data-testid="assembly-inspector-panel"]');
+      await inspector.waitFor({ state: "visible", timeout: 5_000 });
+      await inspector.getByRole("button", { name: /^PUMP/i }).first().click();
+      await page.waitForTimeout(150);
+      await inspector
+        .getByRole("button", { name: /^HERO$/i })
+        .first()
+        .click();
+
+      // Disable AO again and verify WebGL canvas stays completely healthy with zero errors
+      await page.locator('[data-testid="rotunda-toggle-ao"]').click();
+      const webgl = await inspectWebGlCanvas(page, '[data-testid="spatial-vr-surface"]');
+      assertHealthyWebGl(webgl, "Pelagos OC-8 Showcase WebGL canvas");
+
+      assert.deepEqual(pageErrors, [], `Uncaught pageerror exceptions in Test 6: ${pageErrors.join("; ")}`);
+      assert.deepEqual(fatalWebGlErrors, [], `Fatal WebGL console errors in Test 6: ${fatalWebGlErrors.join("; ")}`);
+      assert.deepEqual(consoleErrors, [], `Console errors during Test 6: ${consoleErrors.join("; ")}`);
+    } finally {
+      await page.close().catch(() => undefined);
+    }
+  });
+
+  test("Test 7 — 3D Volumetric Diagram Editor (Auto-Extruded 2D SVG Icons, Snap Layers, Wafer Toggle & Floating Library Panel)", async (t) => {
+    if (!executablePath || !context) {
+      t.skip("No Chromium binary available for Playwright WebGL E2E");
+      return;
+    }
+
+    const session = await openTrackedPage(context);
+    const { page, pageErrors, consoleErrors, fatalWebGlErrors } = session;
+
+    try {
+      await page.goto(`${baseUrl}/canvas?mode=spatial-3d&env=office`, { waitUntil: "domcontentloaded" });
+
+      const surface = page.locator('[data-testid="spatial-vr-surface"][data-rotunda="engineering-rotunda"]');
+      await surface.waitFor({ state: "visible", timeout: 25_000 });
+      await waitForLiveWebGlCanvas(page, '[data-testid="spatial-vr-surface"]', 20_000);
+
+      // Activate full 3D Volumetric Diagram Editor
+      const toggle3D = page.locator('[data-testid="rotunda-toggle-diagram-3d"]');
+      await toggle3D.waitFor({ state: "visible", timeout: 10_000 });
+      await toggle3D.click();
+
+      await page.waitForFunction(
+        () =>
+          document.querySelector('[data-testid="spatial-vr-surface"]')?.getAttribute("data-diagram-editor") === "open",
+        undefined,
+        { timeout: 10_000 },
+      );
+
+      const studioBar = page.locator('[data-testid="rotunda-diagram-studio-bar"]');
+      await studioBar.waitFor({ state: "visible", timeout: 10_000 });
+
+      // Wait for extruded 3D starter components & magnetic wires to mount and report counts
+      await page.waitForFunction(
+        () =>
+          (document.querySelector('[data-testid="rotunda-diagram-studio-bar"]')?.textContent ?? "").includes("parts"),
+        undefined,
+        { timeout: 10_000 },
+      );
+
+      // Cycle snap modes (Free 3D -> Domain Layers -> 5cm Grid -> Flat 2D) & toggle Wafer / Pure 3D SVG extrusion
+      const snapBtn = page.locator('[data-testid="rotunda-cycle-snap-mode"]');
+      await snapBtn.click();
+      await page.waitForTimeout(180);
+      await page.locator('[data-testid="rotunda-diagram-autolayer"]').click();
+      await page.waitForTimeout(180);
+      await page.locator('[data-testid="rotunda-toggle-wafer-style"]').click();
+      await page.waitForTimeout(220);
+      await page.locator('[data-testid="rotunda-toggle-wafer-style"]').click();
+      await page.waitForTimeout(180);
+
+      // Summon the Floating 2D Component Library Panel (Pull-to-Materialize palette)
+      const libBtn = page.locator('[data-testid="rotunda-toggle-wrist-library"]');
+      await libBtn.click();
+      await page.waitForFunction(
+        () =>
+          document.querySelector('[data-testid="spatial-vr-surface"]')?.getAttribute("data-wrist-palette") === "open",
+        undefined,
+        { timeout: 5_000 },
+      );
+      await page.waitForTimeout(350);
+
+      // Verify Undo works after Auto-Layer and WebGL remains 100% healthy with non-blank rendered pixels
+      const undoBtn = page.locator('[data-testid="rotunda-diagram-undo"]');
+      await undoBtn.click();
+      await page.waitForTimeout(200);
+
+      const webgl = await inspectWebGlCanvas(page, '[data-testid="spatial-vr-surface"]');
+      assertHealthyWebGl(webgl, "3D Volumetric Diagram Editor + Floating Library WebGL canvas");
+
+      assert.deepEqual(pageErrors, [], `Uncaught pageerror exceptions in Test 7: ${pageErrors.join("; ")}`);
+      assert.deepEqual(fatalWebGlErrors, [], `Fatal WebGL console errors in Test 7: ${fatalWebGlErrors.join("; ")}`);
+      assert.deepEqual(consoleErrors, [], `Console errors during Test 7: ${consoleErrors.join("; ")}`);
     } finally {
       await page.close().catch(() => undefined);
     }

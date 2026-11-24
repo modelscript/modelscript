@@ -7,6 +7,10 @@
 // Types
 export type {
   Assembly,
+  AssemblyGraph,
+  AssemblyGraphNode,
+  AssemblyJointDefinition,
+  AssemblyJointKind,
   BooleanSolid,
   BoundaryPatchTag,
   BoundaryPatchType,
@@ -29,6 +33,7 @@ export type {
   SolidSourceMetadata,
   SphereOptions,
   SphereSolid,
+  SubsystemDefinition,
   TaggedPatchSolid,
   TorusOptions,
   TorusSolid,
@@ -87,7 +92,7 @@ export {
 } from "./csg-bsp.js";
 
 // Assembly
-export { assembly, part } from "./assembly.js";
+export { assembly, buildAssemblyGraph, part } from "./assembly.js";
 
 // STEP compiler
 export {
@@ -178,6 +183,7 @@ export {
 export {
   QUAT_IDENTITY,
   composeTransformMatrix,
+  evaluateForwardKinematics,
   getUnitScaleFactor,
   hermiteInterpolate,
   quaternionFromAxisAngle,
@@ -188,7 +194,13 @@ export {
   quaternionSlerp,
   quaternionToEuler,
   rotateVectorByQuaternion,
+  solveSliderCrankKinematics,
+  solveSwashplatePumpKinematics,
+  type ForwardKinematicsOutput,
   type Quat,
+  type SliderCrankState,
+  type SwashplatePistonState,
+  type SwashplatePumpSolution,
 } from "./kinematics.js";
 
 // Unified 3D CAD Animation Controller
@@ -201,8 +213,27 @@ export {
   type CadDynamicProperty,
   type ComponentDefaultTransform,
   type ComponentTransform,
+  type DynamicAttachmentRule,
   type StateListener,
 } from "./animation-controller.js";
+
+// Headless Field-Simulator Telemetry HUD & Operation Log Schema
+export {
+  resolveActiveMissionPhase,
+  sampleTelemetryFrame,
+  type MissionPhaseBand,
+  type OperationLogEvent,
+  type SampledBarArrayWidget,
+  type SampledHorizonWidget,
+  type SampledSegmentedBarWidget,
+  type SampledSparklineWidget,
+  type SampledTelemetryFrame,
+  type SampledTelemetryWidget,
+  type SimulatorHudSpec,
+  type StatusBadgeRule,
+  type TelemetryChannelProvider,
+  type TelemetryWidgetSpec,
+} from "./telemetry-hud.js";
 
 // CAD Annotation Serialization, Parsing & Modelica Patching
 export {
@@ -236,9 +267,11 @@ export { AssemblyBVH, type BVHItem, type BVHNode, type FrustumPlane, type Raycas
 export {
   LoDTier,
   computeProjectedScreenDiameter,
+  decimateMeshForLoD,
   generateBoxProxyMesh,
   selectLoDTier,
   type CameraViewportConfig,
+  type DecimatedMeshResult,
   type LoDThresholds,
 } from "./lod.js";
 
@@ -267,8 +300,10 @@ export {
   evaluateStudioDomeColor,
   sliceSectionContoursAtPlane,
   synthesizeBrushedAlloyTextures,
+  synthesizeMechanicalDetailTextures,
   type AlloyMaterialSpec,
   type AlloyPresetKey,
+  type MechanicalDetailTextureBuffers,
   type StudioPbrTextureBuffers,
   type StudioSoftboxLobeSpec,
 } from "./studio-pbr.js";

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { composeTransformMatrixDirect, sampleTelemetryFrame } from "@modelscript/cad";
 import {
   createCanonicalPolyglotDemoBoard,
   serializeCanvasDocument,
@@ -7,25 +8,62 @@ import {
   type CanvasDocument,
   type SurfacePresentationMode,
 } from "@modelscript/canvas";
+import {
+  createDefaultAssemblyVisibility,
+  inferSubsystemsFromPartNames,
+  resolvePartPresentation,
+} from "@modelscript/editor/workbench/cad-viewer/assembly-visibility.js";
+import { extractCadComponents } from "@modelscript/editor/workbench/cad-viewer/parse-cad-annotations.js";
+import { getLanguageInfo } from "@modelscript/editor/workbench/constants.js";
 import { CURATED_OPEN_MODELS } from "@modelscript/editor/workbench/openModelCatalog.js";
 import {
   boardBoundsToPlaneBounds,
   buildPodiumSpatialPlane,
+  buildRightSubsystemChipLayouts,
   buildRotundaCanvasDocument,
   computeCarouselSlotTransform,
+  computeGeometryCaeVertexColors,
+  createBrushedAluminumPbr,
+  createCaeFieldGradientTexture,
+  createHonedTravertinePbr,
   createInitialRotundaState,
+  createKnurledMetalNormalMap,
+  createMeadowGrassPbr,
+  createPolishedConcretePbr,
+  createRadialContactShadowTexture,
+  createRotundaEnvironmentHdri,
   EngineeringRotunda,
+  evaluateOctopusArm3DetachFactor,
   extractModelsFromCanvasDocument,
   getEnvironmentSceneBackdrop,
   getRotundaScenarioById,
+  getTileMaximizeButtonRect,
+  isLoadableGltfUri,
+  LEFT_VIEW_PILLS,
+  OCTOPUS_ARM_DORSAL_WHEEL_COUNTS,
+  OCTOPUS_ARM_SEGMENT_COUNTS,
+  OCTOPUS_HUD_SPEC,
+  OCTOPUS_PISTON_COUNT,
+  OCTOPUS_SUBSYSTEMS,
+  OCTOPUS_TOTAL_SEGMENTS,
+  OCTOPUS_TOTAL_WHEELS,
+  paintBoardToTextureCanvas,
   planeUvToBoard,
+  PODIUM_BACK_BTN_RECT,
   PODIUM_CENTER,
+  PODIUM_HEADER_HEIGHT,
+  PODIUM_NEXT_TILE_BTN_RECT,
+  PODIUM_PREV_TILE_BTN_RECT,
+  pointInPodiumRect,
+  resolveRotundaRenderPolicy,
   ROTUNDA_BOARD_CANVAS_HEIGHT,
   ROTUNDA_BOARD_CANVAS_WIDTH,
   ROTUNDA_ENVIRONMENTS,
   ROTUNDA_SHOWCASE_MODELS,
   ROTUNDA_SHOWCASE_SCENARIOS,
   rotundaReducer,
+  sampleCaeFieldRgb,
+  sampleOctopusTelemetryChannel,
   type RotundaCaeOverlay,
   type RotundaClipAxis,
   type RotundaEnvironmentId,
@@ -33,7 +71,13 @@ import {
   type RotundaRenderStyle,
 } from "@modelscript/editor/workbench/vr-rotunda/index.js";
 import { evaluatePinchState } from "@modelscript/editor/workbench/vr-rotunda/xr-gestures.js";
-import { SHARED_XR_STORE_CONFIG } from "@modelscript/editor/workbench/vr-rotunda/xr-session.js";
+import {
+  enterXrSession,
+  exitXrSession,
+  formatXrSessionError,
+  pulseXrHaptics,
+  SHARED_XR_STORE_CONFIG,
+} from "@modelscript/editor/workbench/vr-rotunda/xr-session.js";
 import { parseUrdf } from "@modelscript/urdf";
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
@@ -46,6 +90,7 @@ import {
   buildArtifactRotundaDocument,
   parseRotundaEnvironmentId,
   parseSurfacePresentationMode,
+  resolveDefaultArtifactEnvironment,
 } from "../src/components/artifacts/rotunda-board-adapter.js";
 import {
   buildLiveArtifactRotundaRenderer,
@@ -97,8 +142,8 @@ describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR
       assert.ok(meta.skyColor.length > 0, `Environment ${meta.id} skyColor must be non-empty`);
     }
 
-    assert.deepEqual(getEnvironmentSceneBackdrop("warehouse"), { background: "#141923", isLight: false });
-    assert.deepEqual(getEnvironmentSceneBackdrop("office"), { background: "#d6e4f0", isLight: true });
+    assert.deepEqual(getEnvironmentSceneBackdrop("warehouse"), { background: "#cfd9e6", isLight: true });
+    assert.deepEqual(getEnvironmentSceneBackdrop("office"), { background: "#e8eef5", isLight: true });
     assert.deepEqual(getEnvironmentSceneBackdrop("outdoors"), { background: "#8ec5f8", isLight: true });
     assert.deepEqual(getEnvironmentSceneBackdrop("dark-lab"), { background: "#050914", isLight: false });
     assert.deepEqual(getEnvironmentSceneBackdrop("passthrough"), { background: null, isLight: false });
@@ -106,6 +151,7 @@ describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR
 
   test("rotundaReducer handles orbital paging wrap-around and shortest-path selectModelIndex", () => {
     let state = createInitialRotundaState();
+    assert.equal(state.environment, "outdoors");
     assert.equal(state.activeModelIndex, 0);
     assert.equal(state.carouselStep, 0);
 
@@ -394,7 +440,16 @@ describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR
     assert.ok(anchorPaths.includes("C"));
 
     assert.equal(parseRotundaEnvironmentId("OFFICE"), "office");
+    assert.equal(parseRotundaEnvironmentId("unknown-env"), "outdoors");
     assert.equal(parseRotundaEnvironmentId("unknown-env", "warehouse"), "warehouse");
+    assert.equal(resolveDefaultArtifactEnvironment("step"), "warehouse");
+    assert.equal(resolveDefaultArtifactEnvironment("cad3d"), "warehouse");
+    assert.equal(resolveDefaultArtifactEnvironment("fea"), "warehouse");
+    assert.equal(resolveDefaultArtifactEnvironment("cfd"), "warehouse");
+    assert.equal(resolveDefaultArtifactEnvironment("gcode"), "warehouse");
+    assert.equal(resolveDefaultArtifactEnvironment("modelica", { filename: "bracket.step" }), "warehouse");
+    assert.equal(resolveDefaultArtifactEnvironment("modelica"), "outdoors");
+    assert.equal(resolveDefaultArtifactEnvironment("spatial-canvas"), "outdoors");
     assert.equal(parseSurfacePresentationMode("webxr-vr"), "webxr-vr");
     assert.equal(parseSurfacePresentationMode("invalid", "desktop-2d"), "desktop-2d");
   });
@@ -461,6 +516,7 @@ describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR
     );
     assert.ok(htmlVr.includes('data-surface-mode="webxr-vr"'));
     assert.ok(htmlVr.includes('data-rotunda="engineering-rotunda"'));
+    assert.ok(htmlVr.includes('data-rotunda-env="outdoors"'));
 
     // 3. XrViewportOverlay default (no WebXR in SSR & no Rotunda callback -> renders empty/null)
     const emptyOverlay = renderToStaticMarkup(React.createElement(XrViewportOverlay, {}));
@@ -802,8 +858,8 @@ describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR
     }
   });
 
-  test("ROTUNDA_SHOWCASE_MODELS contains all 9 unique multi-domain models with valid kinds and titles", () => {
-    assert.equal(ROTUNDA_SHOWCASE_MODELS.length, 9, "Expected exactly 9 curated VR showcase models");
+  test("ROTUNDA_SHOWCASE_MODELS contains all 10 unique multi-domain models with valid kinds and titles", () => {
+    assert.equal(ROTUNDA_SHOWCASE_MODELS.length, 10, "Expected exactly 10 curated VR showcase models");
 
     const validKinds = new Set<RotundaModelKind>([
       "cad",
@@ -818,6 +874,7 @@ describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR
       "wind-turbine",
       "satellite",
       "ev-battery",
+      "octopus-rov",
       "generic",
     ]);
 
@@ -834,14 +891,15 @@ describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR
       seenKinds.add(model.kind);
     }
 
-    for (const requiredKind of ["drone", "wind-turbine", "satellite", "ev-battery"] as const) {
+    for (const requiredKind of ["drone", "wind-turbine", "satellite", "ev-battery", "octopus-rov"] as const) {
       assert.ok(seenKinds.has(requiredKind), `Expected ROTUNDA_SHOWCASE_MODELS to include kind '${requiredKind}'`);
     }
   });
 
-  test("ROTUNDA_SHOWCASE_SCENARIOS exposes all 5 scenarios with 4+ tile boards, live wires, valid environments, and >= 4 models", () => {
+  test("ROTUNDA_SHOWCASE_SCENARIOS exposes all 6 scenarios with 4+ tile boards, live wires, valid environments, and >= 4 models", () => {
     const expectedScenarioIds = [
       "all-showcase",
+      "subsea-octopus",
       "aerospace-proving-ground",
       "robotics-warehouse",
       "ev-thermal-studio",
@@ -900,7 +958,7 @@ describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR
     assert.ok(rotundaHtml.includes('data-rotunda-env="outdoors"'));
     assert.ok(rotundaHtml.includes("Drone &amp; Wind Proving Ground"));
 
-    // 2. Default /canvas?mode=spatial-3d loads all 9 showcase models + header scenario switcher
+    // 2. Default /canvas?mode=spatial-3d loads all 10 showcase models + header scenario switcher
     const defaultCanvasHtml = renderToStaticMarkup(
       React.createElement(
         MemoryRouter,
@@ -911,7 +969,7 @@ describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR
     assert.ok(defaultCanvasHtml.includes('data-testid="canvas-scenario-select"'));
     assert.ok(defaultCanvasHtml.includes('data-testid="rotunda-scenario-select"'));
     assert.ok(defaultCanvasHtml.includes('data-active-scenario="all-showcase"'));
-    assert.ok(defaultCanvasHtml.includes("Model 1/9"));
+    assert.ok(defaultCanvasHtml.includes("Model 1/10"));
 
     // 3. /canvas?mode=spatial-3d&scenario=aerospace-proving-ground honors scenario board, models & outdoors env
     const aeroCanvasHtml = renderToStaticMarkup(
@@ -1099,5 +1157,579 @@ describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR
     const parsedVrDrone = parseUrdf(vrDrone.fallbackCode);
     assert.equal(parsedVrDrone.links.size, 16);
     assert.equal(parsedVrDrone.joints.size, 15);
+  });
+
+  test("OpenSCAD enables Diagram + 3D modes, VR Rotunda accepts data:model/gltf URIs, and HERO_EXAMPLES includes all VR 3D showcase starters", () => {
+    const scadInfo = getLanguageInfo("scad");
+    assert.equal(scadInfo.supportsDiagram, true, "OpenSCAD must support Diagram mode in browser view");
+    assert.equal(scadInfo.supports3d, true, "OpenSCAD must support 3D mode");
+    assert.equal(scadInfo.defaultView, "3d", "OpenSCAD should default to 3D view");
+
+    assert.equal(
+      isLoadableGltfUri("data:model/gltf-binary;base64,Z2xURg=="),
+      true,
+      "VR Rotunda must accept tessellated data:model/gltf-binary URIs for STEP and SCAD models",
+    );
+    assert.equal(isLoadableGltfUri("data:model/gltf+json;base64,e30="), true);
+    assert.equal(isLoadableGltfUri("procedural://msl/box"), false);
+
+    const vrTagged = HERO_EXAMPLES.filter((ex) => ex.tags?.some((t) => t.toLowerCase() === "vr"));
+    assert.ok(vrTagged.length >= 9, `Expected >= 9 VR-tagged HERO_EXAMPLES, got ${vrTagged.length}`);
+    for (const requiredId of [
+      "scad-flanged-hub",
+      "scad-harmonic-servo",
+      "scad-hexacopter-frame",
+      "scad-turbofan-shroud",
+      "step-aerospace-bracket",
+      "urdf-hexacopter-drone",
+      "modelica-wind-turbine",
+      "modelica-ev-battery-cooling",
+      "modelica-orbital-satellite",
+    ] as const) {
+      assert.ok(
+        vrTagged.some((ex) => ex.id === requiredId),
+        `Expected VR-tagged HERO_EXAMPLES to contain '${requiredId}'`,
+      );
+    }
+  });
+
+  test("resolveRotundaRenderPolicy enforces stereo-safety in WebXR while enabling full studio fidelity on desktop", () => {
+    const desktop = resolveRotundaRenderPolicy(false);
+    assert.equal(desktop.enablePmremIbl, true);
+    assert.equal(desktop.enableSsao, true);
+    assert.equal(desktop.enableDynamicShadows, true);
+    assert.equal(desktop.calloutLabelMode, "dom");
+    assert.equal(desktop.jetParticleBudget, 3600);
+
+    const vr = resolveRotundaRenderPolicy(true);
+    assert.equal(vr.enablePmremIbl, true);
+    assert.equal(vr.enableSsao, false);
+    assert.equal(vr.enableDynamicShadows, false);
+    assert.equal(vr.calloutLabelMode, "sprite");
+    assert.equal(vr.jetParticleBudget, 1000);
+  });
+
+  test("rotundaReducer handles subsystem isolation, ghost-shell, 3D labels, auto-turntable, and telemetry wing", () => {
+    let state = createInitialRotundaState();
+    assert.equal(state.isolatedSubsystemId, null);
+    assert.equal(state.ghostShellEnabled, false);
+    assert.equal(state.showLabels, false);
+    assert.equal(state.autoTurntable, false);
+    assert.equal(state.telemetryWingEnabled, false);
+
+    state = rotundaReducer(state, { type: "setIsolatedSubsystem", subsystemId: "pump-core" });
+    assert.equal(state.isolatedSubsystemId, "pump-core");
+    // Tapping the same subsystem toggles back to Hero (null)
+    state = rotundaReducer(state, { type: "setIsolatedSubsystem", subsystemId: "pump-core" });
+    assert.equal(state.isolatedSubsystemId, null);
+
+    state = rotundaReducer(state, { type: "setIsolatedSubsystem", subsystemId: "arm-chains" });
+    state = rotundaReducer(state, { type: "toggleGhostShell" });
+    state = rotundaReducer(state, { type: "toggleShowLabels" });
+    state = rotundaReducer(state, { type: "toggleAutoTurntable" });
+    state = rotundaReducer(state, { type: "toggleTelemetryWing" });
+    assert.equal(state.ghostShellEnabled, true);
+    assert.equal(state.showLabels, true);
+    assert.equal(state.autoTurntable, true);
+    assert.equal(state.telemetryWingEnabled, true);
+
+    state = rotundaReducer(state, { type: "setTelemetryWing", enabled: false });
+    assert.equal(state.telemetryWingEnabled, false);
+    assert.equal(state.studioSsaoEnabled, false);
+    state = rotundaReducer(state, { type: "toggleStudioSsao" });
+    assert.equal(state.studioSsaoEnabled, true);
+    state = rotundaReducer(state, { type: "setStudioSsao", enabled: false });
+    assert.equal(state.studioSsaoEnabled, false);
+
+    // Paging models clears subsystem isolation
+    state = rotundaReducer(state, { type: "pageModel", delta: 1, modelCount: 10 });
+    assert.equal(state.isolatedSubsystemId, null);
+
+    // resetPlinthView clears isolation and ghost shell
+    state = rotundaReducer(state, { type: "setIsolatedSubsystem", subsystemId: "siphon" });
+    state = rotundaReducer(state, { type: "resetPlinthView" });
+    assert.equal(state.isolatedSubsystemId, null);
+    assert.equal(state.ghostShellEnabled, false);
+  });
+
+  test("FloatingToolWings exposes VR-native Ghost Shell, Labels, Turntable, Field HUD, and HERO/Subsystem isolation tap controls", () => {
+    assert.deepEqual(
+      LEFT_VIEW_PILLS.map((p) => p.zoneId),
+      ["view:ghost", "view:labels", "view:turntable", "view:telemetry"],
+    );
+    for (let i = 1; i < LEFT_VIEW_PILLS.length; i++) {
+      const prev = LEFT_VIEW_PILLS[i - 1]!;
+      const cur = LEFT_VIEW_PILLS[i]!;
+      assert.ok(cur.x >= prev.x + prev.w, `VR left view pills must not overlap: ${prev.id} vs ${cur.id}`);
+    }
+
+    const chips = buildRightSubsystemChipLayouts(OCTOPUS_SUBSYSTEMS);
+    assert.equal(chips.length, 7, "Expected HERO + 6 Pelagos OC-8 subsystem chips");
+    assert.equal(chips[0]?.zoneId, "isolate:hero");
+    assert.equal(chips[0]?.subsystemId, null);
+    assert.deepEqual(
+      chips.slice(1).map((c) => c.subsystemId),
+      OCTOPUS_SUBSYSTEMS.map((s) => s.id),
+    );
+    for (let i = 1; i < chips.length; i++) {
+      const prev = chips[i - 1]!;
+      const cur = chips[i]!;
+      assert.ok(cur.x >= prev.x + prev.w, `VR subsystem chips must not overlap: ${prev.zoneId} vs ${cur.zoneId}`);
+    }
+  });
+
+  test("RotundaGeometryBridge supports GPU instanced-assembly snapshots without flattening clusters", () => {
+    clearArtifactRotundaGeometryRegistry();
+    const boxGeo = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+    const matrices = new Float32Array(3 * 16);
+    composeTransformMatrixDirect(matrices, 0, [-1, 0, 0], [0, 0, 0, 1], [1, 1, 1]);
+    composeTransformMatrixDirect(matrices, 16, [0, 0.5, 0], [0, 0, 0, 1], [1, 1, 1]);
+    composeTransformMatrixDirect(matrices, 32, [1, 0, 0], [0, 0, 0, 1], [1, 1, 1]);
+
+    const snapshot: ArtifactRotundaGeometrySnapshot = {
+      kind: "instanced-assembly",
+      clusters: [{ clusterId: "segments", geometry: boxGeo, matrices, count: 3, baseColor: "#eef2f6" }],
+    };
+
+    const unregister = registerArtifactRotundaGeometry("octopus-instanced", snapshot);
+    try {
+      const recovered = getArtifactRotundaGeometry("octopus-instanced");
+      assert.equal(recovered?.kind, "instanced-assembly");
+      const fit = computeSnapshotFitTransform(snapshot);
+      assert.ok(fit.scale > 0 && fit.scale < 1, `Expected fit scale within 0.78m sphere, got ${fit.scale}`);
+      assert.ok(fit.size[0] >= 2.0, `Expected instanced span >= 2.0 along X, got ${fit.size[0]}`);
+      const renderer = buildLiveArtifactRotundaRenderer(snapshot);
+      const element = renderer({ explodeFactor: 0, simulationTime: 1, clippingPlanes: [] });
+      assert.ok(React.isValidElement(element));
+    } finally {
+      unregister();
+      boxGeo.dispose();
+    }
+  });
+
+  test("Pelagos OC-8 Robotic Octopus showcase meets 202-segment, 489-wheel, 7-piston, 2.68 m/s jet, detach/reconnect, Operation Log & Modelica catalog specs", () => {
+    // Exact mechanical inventory
+    const segSum = OCTOPUS_ARM_SEGMENT_COUNTS.reduce((acc, n) => acc + n, 0);
+    const wheelSum = segSum * 2 + OCTOPUS_ARM_DORSAL_WHEEL_COUNTS.reduce((acc, n) => acc + n, 0);
+    assert.equal(OCTOPUS_ARM_SEGMENT_COUNTS.length, 8);
+    assert.equal(segSum, OCTOPUS_TOTAL_SEGMENTS);
+    assert.equal(segSum, 202);
+    assert.equal(wheelSum, OCTOPUS_TOTAL_WHEELS);
+    assert.equal(wheelSum, 489);
+    assert.equal(OCTOPUS_PISTON_COUNT, 7);
+    assert.equal(OCTOPUS_SUBSYSTEMS.length, 6);
+
+    // Autonomous Arm 3 detach at t = 8.5s and reconnect by t = 15s
+    assert.equal(evaluateOctopusArm3DetachFactor(2.0), 0);
+    assert.equal(evaluateOctopusArm3DetachFactor(8.5), 1);
+    assert.equal(sampleOctopusTelemetryChannel("arm.2.attached", 8.5), 0);
+    assert.equal(sampleOctopusTelemetryChannel("arm.0.attached", 8.5), 1);
+    assert.equal(evaluateOctopusArm3DetachFactor(15.0), 0);
+    assert.equal(sampleOctopusTelemetryChannel("arm.2.attached", 15.0), 1);
+
+    // Burst siphon jet phase at t = 16s (~2.68 m/s, ~6 N thrust, JETTING badge)
+    const burstFrame = sampleTelemetryFrame(OCTOPUS_HUD_SPEC, 16.0, null, sampleOctopusTelemetryChannel);
+    const jetVel = sampleOctopusTelemetryChannel("jet.velocity", 16.0) ?? 0;
+    const thrust = sampleOctopusTelemetryChannel("jet.thrust", 16.0) ?? 0;
+    assert.equal(burstFrame.statusLabel, "JETTING");
+    assert.ok(jetVel > 2.4 && jetVel <= 2.75, `Expected burst jet velocity ~2.68 m/s, got ${jetVel}`);
+    assert.ok(thrust > 5.0 && thrust <= 6.5, `Expected burst thrust ~6 N, got ${thrust}`);
+
+    // Subsystem isolation & ghost-shell resolver
+    const ghostVis = createDefaultAssemblyVisibility({ ghostShellEnabled: true });
+    const mantlePres = resolvePartPresentation("mantle", ghostVis, { isDefaultGhostable: true });
+    assert.equal(mantlePres.visible, true);
+    assert.equal(mantlePres.ghosted, true);
+    const pumpPres = resolvePartPresentation("pump-core", ghostVis, { isDefaultGhostable: false });
+    assert.equal(pumpPres.ghosted, false);
+
+    const inferred = inferSubsystemsFromPartNames([
+      { name: "optic_camera_left" },
+      { name: "mantle_shell" },
+      { name: "pump_piston_1" },
+      { name: "arm_link_01" },
+      { name: "siphon_nozzle" },
+    ]);
+    assert.equal(inferred.length, 5);
+
+    // Companion multi-body + fluid siphon Modelica starter template in CURATED_OPEN_MODELS and HERO_EXAMPLES
+    const catalogOcto = CURATED_OPEN_MODELS.find((m) => m.id === "vr-pelagos-octopus");
+    assert.ok(catalogOcto, "Expected vr-pelagos-octopus in CURATED_OPEN_MODELS");
+    assert.equal(catalogOcto.suggestedFilename, "PelagosOC8Octopus.mo");
+    assert.ok(catalogOcto.fallbackCode.includes("model PelagosOC8SubseaOctopus"));
+    assert.ok(catalogOcto.fallbackCode.includes("connector FluidPort"));
+    assert.ok(catalogOcto.fallbackCode.includes("connector SurgeFlange"));
+    assert.ok(catalogOcto.fallbackCode.includes("connector ArmMountFlange"));
+    assert.ok(catalogOcto.fallbackCode.includes("connect(intake.port_out, pump.port_in)"));
+    assert.ok(catalogOcto.fallbackCode.includes("connect(pump.port_out, siphon.port_in)"));
+    assert.ok(catalogOcto.fallbackCode.includes("connect(siphon.flange_hull, hull.flange_surge)"));
+    assert.ok(catalogOcto.fallbackCode.includes("connect(arms.flange_mantle, hull.flange_arms)"));
+    assert.ok(catalogOcto.diagramSvg.includes("<svg"));
+
+    const heroOcto = HERO_EXAMPLES.find((ex) => ex.id === "modelica-pelagos-octopus");
+    assert.ok(heroOcto, "Expected modelica-pelagos-octopus in HERO_EXAMPLES");
+    assert.equal(heroOcto.lang, "modelica");
+    assert.equal(heroOcto.code.trim(), catalogOcto.fallbackCode.trim());
+    assert.ok(heroOcto.tags?.includes("vr"));
+
+    // Source CAD extraction synthesizes real procedural 3D meshes + dynamic simulation bindings
+    const pelagosCad = extractCadComponents(catalogOcto.fallbackCode);
+    assert.equal(pelagosCad.length, 5, "Expected 5 procedural Pelagos OC-8 CAD components from .mo annotations");
+    for (const comp of pelagosCad) {
+      assert.ok(
+        comp.proceduralMesh && comp.proceduralMesh.vertices.length > 0,
+        `Expected tessellated proceduralMesh for ${comp.name}`,
+      );
+    }
+    assert.ok(
+      pelagosCad.some((c) => c.dynamicBindings?.some((b) => b.variable === "pump.theta")),
+      "Expected pump-core 3D component bound to pump.theta",
+    );
+    assert.ok(
+      pelagosCad.some((c) => c.dynamicBindings?.some((b) => b.variable === "arm3DetachOffset")),
+      "Expected arm3-collar 3D component bound to arm3DetachOffset",
+    );
+
+    // SSR rendering of subsea-octopus scenario auto-enables Field HUD + Operation Log scrubber + AO toggle
+    const octoScenario = getRotundaScenarioById("subsea-octopus");
+    assert.ok(octoScenario);
+    const octoHtml = renderToStaticMarkup(
+      React.createElement(EngineeringRotunda, {
+        document: octoScenario.createDocument(),
+        models: octoScenario.models,
+        scenarios: ROTUNDA_SHOWCASE_SCENARIOS,
+        activeScenarioId: octoScenario.id,
+        mode: "spatial-3d",
+        initialEnvironment: octoScenario.recommendedEnvironment,
+        onExitTo2D: () => undefined,
+      }),
+    );
+    assert.ok(octoHtml.includes("Pelagos OC-8 Robotic Octopus"));
+    assert.ok(octoHtml.includes('data-testid="rotunda-toggle-ghost"'));
+    assert.ok(octoHtml.includes('data-testid="rotunda-toggle-labels"'));
+    assert.ok(octoHtml.includes('data-testid="rotunda-toggle-turntable"'));
+    assert.ok(octoHtml.includes('data-testid="rotunda-toggle-telemetry"'));
+    assert.ok(octoHtml.includes('data-testid="rotunda-toggle-ao"'));
+    assert.ok(octoHtml.includes('data-testid="simulator-telemetry-hud"'));
+    assert.ok(octoHtml.includes('data-testid="hud-operation-log-bar"'));
+    assert.ok(octoHtml.includes("8 OPERATOR ACTIONS"));
+  });
+
+  test("Procedural PBR material triplets, equirectangular HDRI generator, and full-bleed topOverlayInset work offline/SSR cleanly", () => {
+    const pbrSets = [
+      createPolishedConcretePbr(4, 4, 64),
+      createHonedTravertinePbr(4, 4, 64),
+      createMeadowGrassPbr(8, 8, 64),
+      createBrushedAluminumPbr(2, 2, "#b4c0ce", 64),
+    ];
+    for (const set of pbrSets) {
+      assert.equal(set.map.colorSpace, THREE.SRGBColorSpace, "Albedo map must be SRGB");
+      assert.equal(set.normalMap.colorSpace, THREE.NoColorSpace, "Normal map must be linear");
+      assert.equal(set.roughnessMap.colorSpace, THREE.NoColorSpace, "Roughness map must be linear");
+      assert.equal(set.map.image.width, 64);
+      assert.equal(set.normalMap.image.width, 64);
+      assert.equal(set.roughnessMap.image.width, 64);
+      set.dispose();
+    }
+
+    const knurl = createKnurledMetalNormalMap(16, 2, 32);
+    assert.equal(knurl.colorSpace, THREE.NoColorSpace);
+    assert.equal(knurl.image.width, 32);
+    knurl.dispose();
+
+    const shadow = createRadialContactShadowTexture(0.46, 0.22, 64);
+    assert.equal(shadow.image.width, 64);
+    shadow.dispose();
+
+    for (const env of ROTUNDA_ENVIRONMENTS) {
+      const hdri = createRotundaEnvironmentHdri(null, env.id);
+      assert.equal(hdri.skyTexture.mapping, THREE.EquirectangularReflectionMapping);
+      assert.equal(hdri.skyTexture.image.width, 512);
+      assert.equal(hdri.skyTexture.image.height, 256);
+      hdri.dispose();
+    }
+
+    // Full-bleed floating navbar mode passes topOverlayInset={72} so HUD pills clear the floating Morsel topbar
+    const insetHtml = renderToStaticMarkup(
+      React.createElement(EngineeringRotunda, {
+        mode: "spatial-3d",
+        initialEnvironment: "outdoors",
+        topOverlayInset: 72,
+        onExitTo2D: () => undefined,
+      }),
+    );
+    assert.ok(insetHtml.includes("top:72px"), "Expected topOverlayInset=72 to offset top HUD pills cleanly");
+    assert.ok(insetHtml.includes("top:124px"), "Expected HUD status hint to sit cleanly at topOverlayInset + 52px");
+  });
+
+  test("XR session enter/exit error handling, handedness haptics, dirtyRect cap, custom exit label & boardOmitted warning", async () => {
+    assert.ok(formatXrSessionError({ name: "NotAllowedError" }, "vr").includes("permission"));
+    assert.ok(formatXrSessionError({ name: "NotSupportedError" }, "ar").includes("not supported"));
+    assert.ok(formatXrSessionError({ name: "InvalidStateError" }, "vr").includes("already active"));
+
+    let ended = false;
+    const pulsedHands: string[] = [];
+    const fakeStore = {
+      enterVR: async () => {
+        throw Object.assign(new Error("no headset"), { name: "NotSupportedError" });
+      },
+      enterAR: async () => ({ end: async () => undefined }),
+      getState: () => ({
+        session: {
+          end: async () => {
+            ended = true;
+          },
+          inputSources: [
+            {
+              handedness: "left",
+              gamepad: {
+                hapticActuators: [
+                  {
+                    pulse: async () => {
+                      pulsedHands.push("left");
+                      return true;
+                    },
+                  },
+                ],
+              },
+            },
+            {
+              handedness: "right",
+              gamepad: {
+                hapticActuators: [
+                  {
+                    pulse: async () => {
+                      pulsedHands.push("right");
+                      return true;
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      }),
+    } as unknown as Parameters<typeof enterXrSession>[0];
+
+    const vrFail = await enterXrSession(fakeStore, "vr");
+    assert.equal(vrFail.ok, false);
+    assert.ok(vrFail.error?.includes("not supported"));
+
+    const arOk = await enterXrSession(fakeStore, "ar");
+    assert.equal(arOk.ok, true);
+
+    pulseXrHaptics(fakeStore, 0.2, 20, "right");
+    assert.deepEqual(pulsedHands, ["right"]);
+
+    const didExit = await exitXrSession(fakeStore);
+    assert.equal(didExit, true);
+    assert.equal(ended, true);
+
+    // SpatialSurfaceBridge caps and coalesces dirty rects so unbounded memory growth cannot occur
+    const bridge = new SpatialSurfaceBridge();
+    for (let i = 0; i < 100; i++) {
+      bridge.markDirty("primary", { x: i * 10, y: i * 5, width: 20, height: 10 });
+    }
+    const coalesced = bridge.consumeDirtyRects("primary");
+    assert.ok(coalesced.length <= 64, `Expected dirty rects to be capped <= 64, got ${coalesced.length}`);
+    assert.equal(coalesced[0]?.x, 0);
+
+    // Custom exitTo2DLabel & updated external VR browser handoff label
+    const customExitHtml = renderToStaticMarkup(
+      React.createElement(EngineeringRotunda, {
+        mode: "spatial-3d",
+        onExitTo2D: () => undefined,
+        exitTo2DLabel: "Return to Artifact",
+        onOpenExternalVr: () => undefined,
+      }),
+    );
+    assert.ok(customExitHtml.includes("Return to Artifact"));
+    assert.ok(customExitHtml.includes("Open in Browser for VR"));
+
+    // SpatialCanvasPage surfaces ?boardOmitted=1 warning instead of silently dropping data
+    const omittedHtml = renderToStaticMarkup(
+      React.createElement(
+        MemoryRouter,
+        { initialEntries: ["/canvas?mode=spatial-3d&boardOmitted=1"] },
+        React.createElement(SpatialCanvasPage),
+      ),
+    );
+    assert.ok(omittedHtml.includes('data-testid="vr-handoff-warning"'));
+    assert.ok(omittedHtml.includes("128 KiB"));
+  });
+
+  test("CAE per-vertex stress/flow/thermal field generators produce non-uniform scientific contours", () => {
+    const geom = new THREE.CylinderGeometry(0.18, 0.24, 0.5, 24, 8);
+    try {
+      for (const mode of ["fea-stress", "cfd-flow", "thermal"] as const) {
+        const colors = computeGeometryCaeVertexColors(geom, mode);
+        const posCount = geom.getAttribute("position").count;
+        assert.equal(colors.length, posCount * 3);
+
+        let minR = Infinity;
+        let maxR = -Infinity;
+        let minB = Infinity;
+        let maxB = -Infinity;
+        for (let i = 0; i < colors.length; i += 3) {
+          const r = colors[i]!;
+          const g = colors[i + 1]!;
+          const b = colors[i + 2]!;
+          assert.ok(Number.isFinite(r) && r >= 0 && r <= 1, `${mode} R out of bounds: ${r}`);
+          assert.ok(Number.isFinite(g) && g >= 0 && g <= 1, `${mode} G out of bounds: ${g}`);
+          assert.ok(Number.isFinite(b) && b >= 0 && b <= 1, `${mode} B out of bounds: ${b}`);
+          if (r < minR) minR = r;
+          if (r > maxR) maxR = r;
+          if (b < minB) minB = b;
+          if (b > maxB) maxB = b;
+        }
+        // Must produce real spatial gradient across the mesh rather than a flat uniform single color
+        assert.ok(
+          maxR - minR > 0.15 || maxB - minB > 0.15,
+          `Expected non-uniform spatial contour gradient for ${mode}, got dR=${(maxR - minR).toFixed(3)}, dB=${(maxB - minB).toFixed(3)}`,
+        );
+
+        // Also verify DataTexture gradient generator
+        const tex = createCaeFieldGradientTexture(mode, 64);
+        assert.equal(tex.colorSpace, THREE.SRGBColorSpace);
+        const data = tex.image.data as Uint8Array;
+        assert.equal(data.length, 64 * 64 * 4);
+        tex.dispose();
+      }
+
+      // Verify colormap endpoints are distinct between low and high stress
+      const low = sampleCaeFieldRgb("fea-stress", 0.05);
+      const high = sampleCaeFieldRgb("fea-stress", 0.95);
+      assert.ok(high[0] > low[0] + 0.4, "High Von Mises stress should be warm red/orange");
+      assert.ok(low[2] > high[2] + 0.25, "Low Von Mises stress should be cool blue");
+    } finally {
+      geom.dispose();
+    }
+  });
+
+  test("rotundaReducer manages focusedTileId zoom state and clears it on resetPlinthView", () => {
+    let state = createInitialRotundaState();
+    assert.equal(state.focusedTileId, null);
+
+    state = rotundaReducer(state, { type: "setFocusedTile", tileId: "tile_primary_schematic" });
+    assert.equal(state.focusedTileId, "tile_primary_schematic");
+
+    state = rotundaReducer(state, { type: "toggleFocusedTile", tileId: "tile_primary_schematic" });
+    assert.equal(state.focusedTileId, null);
+
+    state = rotundaReducer(state, { type: "toggleFocusedTile", tileId: "tile_sim_plot" });
+    assert.equal(state.focusedTileId, "tile_sim_plot");
+
+    // Resetting view clears full-screen block focus as well as plinth transform
+    state = rotundaReducer(state, { type: "resetPlinthView" });
+    assert.equal(state.focusedTileId, null);
+  });
+
+  test("Pan-aware board projection round-trips cleanly and maximize/header hit rects are valid", () => {
+    const panX = 140;
+    const panY = -85;
+    const sampleTile = { x: 420, y: 260, width: 480, height: 320 };
+    const planeBounds = boardBoundsToPlaneBounds(sampleTile, panX, panY);
+    const centerU = planeBounds.x + planeBounds.width / 2;
+    const centerV = planeBounds.y + planeBounds.height / 2;
+    const roundTripped = planeUvToBoard(centerU, centerV, panX, panY);
+    assertClose(roundTripped.x, sampleTile.x + sampleTile.width / 2, 1e-3);
+    assertClose(roundTripped.y, sampleTile.y + sampleTile.height / 2, 1e-3);
+
+    // Tile maximize button rect sits inside the top-right header area of the tile
+    const maxRect = getTileMaximizeButtonRect(sampleTile, false);
+    assert.ok(maxRect.x > sampleTile.x + sampleTile.width - 60);
+    assert.ok(maxRect.x + maxRect.width <= sampleTile.x + sampleTile.width);
+    assert.ok(maxRect.y >= sampleTile.y && maxRect.y + maxRect.height <= sampleTile.y + 44);
+    assert.equal(pointInPodiumRect(maxRect.x + maxRect.width / 2, maxRect.y + maxRect.height / 2, maxRect), true);
+    assert.equal(pointInPodiumRect(sampleTile.x + 10, sampleTile.y + 10, maxRect), false);
+
+    // Full-screen zoom header buttons fit strictly inside the top podium header bar
+    for (const btn of [PODIUM_BACK_BTN_RECT, PODIUM_PREV_TILE_BTN_RECT, PODIUM_NEXT_TILE_BTN_RECT]) {
+      assert.ok(btn.y >= 0 && btn.y + btn.height <= PODIUM_HEADER_HEIGHT);
+      assert.ok(btn.x >= 0 && btn.x + btn.width <= ROTUNDA_BOARD_CANVAS_WIDTH);
+    }
+  });
+
+  test("paintBoardToTextureCanvas renders overview (with pan + maximize hover) and full-screen focused block modes cleanly", () => {
+    const drawnTexts: string[] = [];
+    let strokeCallCount = 0;
+    const mockCtx = new Proxy(
+      {
+        fillStyle: "",
+        strokeStyle: "",
+        lineWidth: 1,
+        font: "",
+        textAlign: "left",
+        textBaseline: "alphabetic",
+        globalAlpha: 1,
+        shadowColor: "",
+        shadowBlur: 0,
+        shadowOffsetX: 0,
+        shadowOffsetY: 0,
+        lineCap: "butt",
+        lineJoin: "miter",
+        fillText: (text: string) => {
+          drawnTexts.push(String(text));
+        },
+        stroke: () => {
+          strokeCallCount++;
+        },
+        getTransform: () => ({ a: 1, d: 1 }),
+        measureText: (text: string) => ({ width: String(text).length * 7 }),
+        createLinearGradient: () => ({ addColorStop: () => undefined }),
+        createRadialGradient: () => ({ addColorStop: () => undefined }),
+      } as Record<string, unknown>,
+      {
+        get(target, prop) {
+          if (prop in target) return target[prop as string];
+          return () => undefined;
+        },
+      },
+    ) as unknown as CanvasRenderingContext2D;
+
+    const mockCanvas = {
+      width: ROTUNDA_BOARD_CANVAS_WIDTH,
+      height: ROTUNDA_BOARD_CANVAS_HEIGHT,
+      getContext: (kind: string) => (kind === "2d" ? mockCtx : null),
+    } as unknown as HTMLCanvasElement;
+
+    const doc = buildRotundaCanvasDocument({
+      title: "Flanged Hub Validation",
+      languageId: "scad",
+      artifactUri: "FlangedHub.scad",
+      sourceCode: "module flanged_hub() {\n  cylinder(h=40, r=25);\n}\nflanged_hub();\n",
+    });
+    const tileIds = Object.keys(doc.tiles);
+    assert.ok(tileIds.length >= 2);
+
+    // 1. Overview mode with non-zero boardPan and hovered maximize button
+    paintBoardToTextureCanvas(mockCanvas, doc, 1.25, null, null, tileIds[0] ?? null, undefined, {
+      focusedTileId: null,
+      boardPan: { x: 45, y: -30 },
+      hoveredMaximizeTileId: tileIds[0] ?? null,
+      hoveredHeaderBtn: "reset-pan",
+    });
+    assert.ok(
+      drawnTexts.some((t) => t.includes("Center Board")),
+      "Expected Center Board pill when board is panned",
+    );
+    assert.ok(strokeCallCount > 10, "Expected vector icons and borders painted on tiles");
+
+    // 2. Full-screen zoom mode on each tile archetype in the document
+    for (const tid of tileIds) {
+      drawnTexts.length = 0;
+      paintBoardToTextureCanvas(mockCanvas, doc, 1.25, null, null, tileIds[0] ?? null, undefined, {
+        focusedTileId: tid,
+        hoveredHeaderBtn: "back",
+      });
+      assert.ok(
+        drawnTexts.some((t) => t.includes("All Blocks")),
+        `Expected 'All Blocks' back button in full-screen zoom mode for tile ${tid}`,
+      );
+      assert.ok(
+        drawnTexts.some((t) => t.includes(doc.tiles[tid]!.title)),
+        `Expected focused tile title '${doc.tiles[tid]!.title}' in full-screen header`,
+      );
+    }
   });
 });

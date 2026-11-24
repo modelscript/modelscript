@@ -623,6 +623,7 @@ export interface WireCrossingNodeOptions {
   size?: number | undefined;
   style?: WireCrossingStyle | undefined;
   strokeWidth?: number | undefined;
+  bgColor?: string | undefined;
 }
 
 /**
@@ -632,7 +633,7 @@ export function wireCrossingToDiagramNode(crossing: WireCrossing, isDark: boolea
   const size = options?.size ?? 6;
   const style = options?.style ?? "micro-arc";
   const half = size / 2;
-  const bg = isDark ? "#1e1e1e" : "#ffffff";
+  const bg = options?.bgColor ?? (isDark ? "#121214" : "#f8fafc");
   const strokeWidth = options?.strokeWidth ?? 1.0;
 
   if (style === "gap") {

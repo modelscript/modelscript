@@ -25,6 +25,8 @@ export class CanvasSpatialIndex<T extends IndexedSpatialItem = IndexedSpatialIte
   private readonly buckets = new Map<string, Set<string>>();
   private readonly items = new Map<string, T>();
   private readonly itemCells = new Map<string, string[]>();
+  private readonly oversized = new Set<string>();
+  private static readonly MAX_SPAN = 64;
 
   constructor(cellSize = 512) {
     this.cellSize = Math.max(64, cellSize);
@@ -38,6 +40,7 @@ export class CanvasSpatialIndex<T extends IndexedSpatialItem = IndexedSpatialIte
     this.buckets.clear();
     this.items.clear();
     this.itemCells.clear();
+    this.oversized.clear();
   }
 
   public upsert(item: T): void {
@@ -46,6 +49,10 @@ export class CanvasSpatialIndex<T extends IndexedSpatialItem = IndexedSpatialIte
     }
     this.items.set(item.id, item);
     const keys = this.computeCellKeys(item.bounds);
+    if (keys === null) {
+      this.oversized.add(item.id);
+      return;
+    }
     this.itemCells.set(item.id, keys);
     for (const key of keys) {
       let bucket = this.buckets.get(key);
@@ -58,6 +65,7 @@ export class CanvasSpatialIndex<T extends IndexedSpatialItem = IndexedSpatialIte
   }
 
   public remove(id: string): void {
+    this.oversized.delete(id);
     const keys = this.itemCells.get(id);
     if (keys) {
       for (const key of keys) {
@@ -83,9 +91,21 @@ export class CanvasSpatialIndex<T extends IndexedSpatialItem = IndexedSpatialIte
 
   /** Returns all items intersecting the given world-space frustum/marquee, sorted by zIndex ascending. */
   public queryRect(rect: WorldBounds): T[] {
-    const seen = new Set<string>();
+    const keys = this.computeCellKeys(rect);
     const results: T[] = [];
-    for (const key of this.computeCellKeys(rect)) {
+    if (keys === null) {
+      // Wide query (e.g. heavily zoomed out or huge marquee): scan all items directly
+      for (const item of this.items.values()) {
+        if (boundsIntersect(item.bounds, rect)) {
+          results.push(item);
+        }
+      }
+      results.sort((a, b) => a.zIndex - b.zIndex || a.id.localeCompare(b.id));
+      return results;
+    }
+
+    const seen = new Set<string>();
+    for (const key of keys) {
       const bucket = this.buckets.get(key);
       if (!bucket) continue;
       for (const id of bucket) {
@@ -97,6 +117,13 @@ export class CanvasSpatialIndex<T extends IndexedSpatialItem = IndexedSpatialIte
         }
       }
     }
+    for (const id of this.oversized) {
+      if (seen.has(id)) continue;
+      const item = this.items.get(id);
+      if (item && boundsIntersect(item.bounds, rect)) {
+        results.push(item);
+      }
+    }
     results.sort((a, b) => a.zIndex - b.zIndex || a.id.localeCompare(b.id));
     return results;
   }
@@ -106,9 +133,16 @@ export class CanvasSpatialIndex<T extends IndexedSpatialItem = IndexedSpatialIte
     const gx = Math.floor(pt.x / this.cellSize);
     const gy = Math.floor(pt.y / this.cellSize);
     const bucket = this.buckets.get(`${gx},${gy}`);
-    if (!bucket) return [];
     const hits: T[] = [];
-    for (const id of bucket) {
+    if (bucket) {
+      for (const id of bucket) {
+        const item = this.items.get(id);
+        if (item && pointInBounds(pt, item.bounds)) {
+          hits.push(item);
+        }
+      }
+    }
+    for (const id of this.oversized) {
       const item = this.items.get(id);
       if (item && pointInBounds(pt, item.bounds)) {
         hits.push(item);
@@ -134,17 +168,25 @@ export class CanvasSpatialIndex<T extends IndexedSpatialItem = IndexedSpatialIte
     return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
   }
 
-  private computeCellKeys(bounds: WorldBounds): string[] {
+  private computeCellKeys(bounds: WorldBounds): string[] | null {
+    if (
+      !Number.isFinite(bounds.x) ||
+      !Number.isFinite(bounds.y) ||
+      !Number.isFinite(bounds.width) ||
+      !Number.isFinite(bounds.height)
+    ) {
+      return null;
+    }
     const x0 = Math.floor(bounds.x / this.cellSize);
     const y0 = Math.floor(bounds.y / this.cellSize);
     const x1 = Math.floor((bounds.x + bounds.width) / this.cellSize);
     const y1 = Math.floor((bounds.y + bounds.height) / this.cellSize);
-    const maxSpan = 64;
-    const cx1 = Math.min(x1, x0 + maxSpan);
-    const cy1 = Math.min(y1, y0 + maxSpan);
+    if (x1 - x0 > CanvasSpatialIndex.MAX_SPAN || y1 - y0 > CanvasSpatialIndex.MAX_SPAN) {
+      return null;
+    }
     const keys: string[] = [];
-    for (let gx = x0; gx <= cx1; gx++) {
-      for (let gy = y0; gy <= cy1; gy++) {
+    for (let gx = x0; gx <= x1; gx++) {
+      for (let gy = y0; gy <= y1; gy++) {
         keys.push(`${gx},${gy}`);
       }
     }

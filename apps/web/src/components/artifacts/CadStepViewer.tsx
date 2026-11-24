@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { extractStepGdtOverlay, type GdtOverlayPayload, type Verification3DOverlayPayload } from "@modelscript/cad";
+import {
+  createDefaultAssemblyVisibility,
+  inferSubsystemsFromPartNames,
+  resolvePartPresentation,
+  type AssemblyVisibilityState,
+} from "@modelscript/editor/workbench/cad-viewer/assembly-visibility";
+import { AssemblyInspectorPanel } from "@modelscript/editor/workbench/cad-viewer/AssemblyInspectorPanel";
 import type { CadComponent } from "@modelscript/editor/workbench/cad-viewer/CadViewer";
 import {
   CadEdgeOverlay,
@@ -14,7 +21,7 @@ import { tessellateScadSource } from "@modelscript/editor/workbench/hooks/useMor
 import { getCadComponents } from "@modelscript/editor/workbench/util/lsp-bridge";
 import { CheckIcon, CopyIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
-import { Html, useProgress } from "@react-three/drei";
+import { ContactShadows, Html, useProgress } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import DOMPurify from "dompurify";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -1256,6 +1263,11 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
   const [clipAxis, setClipAxis] = useState<ClipAxis>("none");
   const [clipOffset, setClipOffset] = useState<number>(0);
   const [autoSweep, setAutoSweep] = useState<boolean>(false);
+  const [autoTurntable, setAutoTurntable] = useState<boolean>(false);
+  const [showSubsystems, setShowSubsystems] = useState<boolean>(false);
+  const [assemblyVisibility, setAssemblyVisibility] = useState<AssemblyVisibilityState>(() =>
+    createDefaultAssemblyVisibility(),
+  );
   const [showGdt, setShowGdt] = useState<boolean>(true);
   const [probedPoint, setProbedPoint] = useState<{
     position: [number, number, number];
@@ -1941,6 +1953,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
                 )}
 
                 <Canvas
+                  shadows
                   gl={{ preserveDrawingBuffer: true, localClippingEnabled: true, stencil: true, antialias: true }}
                   camera={{ position: [0, 0, 50], fov: 50 }}
                 >
@@ -1950,6 +1963,13 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
                   />
                   <XrSceneBridge>
                     <HeroStudioEnvironment dark={isDark} />
+                    <ContactShadows
+                      position={[0, -14, 0]}
+                      opacity={isDark ? 0.34 : 0.24}
+                      scale={56}
+                      blur={2.4}
+                      far={28}
+                    />
                     <AutoSweepDriver enabled={autoSweep && clipAxis !== "none"} onSweepOffset={setClipOffset} />
                     <Suspense fallback={<Loader />}>
                       <group
@@ -1965,6 +1985,14 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
                         }
                       >
                         {meshItems.map(({ geo, idx, offset, compName, colorRgba }) => {
+                          const inferredSubId = inferSubsystemsFromPartNames([{ name: compName }])[0]?.id ?? "general";
+                          const pres = resolvePartPresentation(inferredSubId, assemblyVisibility, {
+                            isDefaultGhostable: inferredSubId === "shell" || inferredSubId === "mantle",
+                            ghostNonIsolated: true,
+                          });
+                          if (!pres.visible) return null;
+                          const effectiveRenderMode: RenderMode =
+                            pres.ghosted && renderMode === "shaded" ? "xray" : renderMode;
                           const isDefective = boundaryDefectPins.some(
                             (pin) =>
                               pin.contractId === `watertight_${compName}` ||
@@ -1978,7 +2006,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
                               offset={offset}
                               compName={compName}
                               colorRgba={colorRgba}
-                              renderMode={renderMode}
+                              renderMode={effectiveRenderMode}
                               solidPlane={solidPlane}
                               wirePlane={wirePlane}
                               activeClippingPlanes={activeClippingPlanes}
@@ -2061,10 +2089,31 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
                       )}
                       <CameraController controlsRef={controlsRef} presetTrigger={presetTrigger} />
                     </Suspense>
-                    <SafeOrbitControls controlsRef={controlsRef} isFullScreen={isFullScreen} />
+                    <SafeOrbitControls
+                      controlsRef={controlsRef}
+                      isFullScreen={isFullScreen}
+                      autoRotate={autoTurntable || assemblyVisibility.autoTurntable}
+                    />
                   </XrSceneBridge>
                 </Canvas>
                 <XrViewportOverlay position="bottom-right" />
+
+                {showSubsystems && meshItems.length > 0 && (
+                  <div style={{ position: "absolute", top: 52, right: 12, zIndex: 18 }}>
+                    <AssemblyInspectorPanel
+                      subsystems={inferSubsystemsFromPartNames(meshItems.map((m) => ({ name: m.compName })))}
+                      visibility={assemblyVisibility}
+                      dark={isDark}
+                      onChangeVisibility={(next) => {
+                        setAssemblyVisibility(next);
+                        setAutoTurntable(next.autoTurntable);
+                        if (Math.abs(next.explodeFactor * 2 - explosionFactor) > 0.01) {
+                          setExplosionFactor(next.explodeFactor * 2);
+                        }
+                      }}
+                    />
+                  </div>
+                )}
 
                 <Box
                   position="absolute"
@@ -2088,8 +2137,28 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
                     step="0.01"
                     value={explosionFactor}
                     onChange={(e) => setExplosionFactor(parseFloat(e.target.value))}
-                    style={{ width: "150px" }}
+                    style={{ width: "130px" }}
                   />
+                  <Button
+                    size="small"
+                    variant={autoTurntable ? "primary" : "default"}
+                    onClick={() => {
+                      const next = !autoTurntable;
+                      setAutoTurntable(next);
+                      setAssemblyVisibility((v) => ({ ...v, autoTurntable: next }));
+                    }}
+                  >
+                    Turntable
+                  </Button>
+                  {meshItems.length > 1 && (
+                    <Button
+                      size="small"
+                      variant={showSubsystems ? "primary" : "default"}
+                      onClick={() => setShowSubsystems((s) => !s)}
+                    >
+                      Subsystems
+                    </Button>
+                  )}
                 </Box>
               </>
             )}

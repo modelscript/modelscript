@@ -9,7 +9,11 @@ import {
   type SurfacePresentationMode,
   type WorldBounds,
 } from "@modelscript/canvas";
+import type { DiagramEditAction } from "@modelscript/diagram/protocol";
 import type React from "react";
+import type { GalleryComponentItem } from "../componentGalleryCatalog.js";
+import type { SpatialDiagramSnapMode, SpatialNodePose3D } from "./spatial-diagram-state.js";
+import type { ExtrudedWaferStyle } from "./svg-extruder.js";
 
 /** Selectable 3D VR / Spatial environments for the Engineering Rotunda. */
 export type RotundaEnvironmentId = "warehouse" | "office" | "outdoors" | "dark-lab" | "passthrough";
@@ -40,6 +44,7 @@ export type RotundaModelKind =
   | "wind-turbine"
   | "satellite"
   | "ev-battery"
+  | "octopus-rov"
   | "generic";
 
 /** Metadata describing one of the 5 Engineering Rotunda environments. */
@@ -56,29 +61,30 @@ export interface RotundaEnvironmentMeta {
 export const ROTUNDA_ENVIRONMENTS: readonly RotundaEnvironmentMeta[] = [
   {
     id: "warehouse",
-    label: "Industrial Hangar",
-    shortLabel: "Warehouse",
-    description: "High-bay concrete hangar with overhead trusses and painted safety bay markings.",
-    accentColor: "#f59e0b",
-    orbColor: "#d97706",
-    skyColor: "#141923",
+    label: "Sunlit Factory",
+    shortLabel: "Factory",
+    description:
+      "Bright sunlit high-bay modern factory hangar with clerestory windows, light polished concrete floor, and safety bay markings.",
+    accentColor: "#eab308",
+    orbColor: "#f59e0b",
+    skyColor: "#cbd5e1",
   },
   {
     id: "office",
     label: "Design Studio",
     shortLabel: "Office",
-    description: "Sunlit architectural design studio with oak louvers and warm diffused daylight.",
+    description: "Airy sunlit architectural design studio with warm oak louvers and bright diffused daylight.",
     accentColor: "#38bdf8",
     orbColor: "#e2e8f0",
-    skyColor: "#d6e4f0",
+    skyColor: "#e8eef5",
   },
   {
     id: "outdoors",
-    label: "Grassy Proving Ground",
-    shortLabel: "Outdoors",
-    description: "Open rolling meadow under crisp daylight for outdoor robotics, drones, and civil systems.",
+    label: "Grassy Outdoors",
+    shortLabel: "Grass",
+    description: "Vibrant sunlit grassy meadow under crisp daylight for outdoor robotics, drones, and civil systems.",
     accentColor: "#22c55e",
-    orbColor: "#16a34a",
+    orbColor: "#4e9f3d",
     skyColor: "#8ec5f8",
   },
   {
@@ -161,6 +167,30 @@ export interface RotundaState {
   simulationTime: number;
   simulationDuration: number;
   selectedTileId: string | null;
+  /** When non-null, zooms that single board block full-screen across the entire 45° Drafting Podium. */
+  focusedTileId: string | null;
+  /** Active solo subsystem ID (`null` = full Hero assembly). */
+  isolatedSubsystemId: string | null;
+  /** Ghosts outer enclosure shells (e.g. Octopus mantle) to inspect internal mechanisms. */
+  ghostShellEnabled: boolean;
+  /** Toggles dual-mode 3D callout pins (DOM in desktop, Sprite billboards in stereo VR). */
+  showLabels: boolean;
+  /** Toggles hands-free continuous turntable rotation of the central plinth. */
+  autoTurntable: boolean;
+  /** Switches left/right FloatingToolWings into live Field-Simulator Telemetry & Operation Log mode. */
+  telemetryWingEnabled: boolean;
+  /** Optional desktop-only Screen-Space Ambient Occlusion (strictly disabled in WebXR & AR passthrough). */
+  studioSsaoEnabled: boolean;
+  /** Activates the floating 3D Volumetric Schematic Diagram Editor above the Drafting Podium. */
+  diagramEditorEnabled: boolean;
+  /** Currently lifted schematic tile ID hosted in the 3D Diagram Editor (`null` = auto-pick first schematic tile). */
+  activeDiagramTileId: string | null;
+  /** Active spatial snap mode for 3D diagram node placement. */
+  diagramSnapMode: SpatialDiagramSnapMode;
+  /** Presentation style of auto-extruded 2D SVG components (`"tactile-tile"` chamfered wafer vs `"pure-relief"`). */
+  diagramWaferStyle: ExtrudedWaferStyle;
+  /** Controls visibility of the wrist-summoned world-locked floating 2D component library panel. */
+  wristPaletteOpen: boolean;
 }
 
 export type RotundaAction =
@@ -187,11 +217,33 @@ export type RotundaAction =
   | { type: "setSimulationTime"; time: number }
   | { type: "advanceSimulationTime"; delta: number }
   | { type: "selectTile"; tileId: string | null }
+  | { type: "setFocusedTile"; tileId: string | null }
+  | { type: "toggleFocusedTile"; tileId: string }
+  | { type: "setIsolatedSubsystem"; subsystemId: string | null }
+  | { type: "toggleGhostShell" }
+  | { type: "setGhostShell"; enabled: boolean }
+  | { type: "toggleShowLabels" }
+  | { type: "setShowLabels"; visible: boolean }
+  | { type: "toggleAutoTurntable" }
+  | { type: "toggleTelemetryWing" }
+  | { type: "setTelemetryWing"; enabled: boolean }
+  | { type: "toggleStudioSsao" }
+  | { type: "setStudioSsao"; enabled: boolean }
+  | { type: "toggleDiagramEditor" }
+  | { type: "setDiagramEditorEnabled"; enabled: boolean; tileId?: string | null | undefined }
+  | { type: "setActiveDiagramTile"; tileId: string | null }
+  | { type: "setDiagramSnapMode"; mode: SpatialDiagramSnapMode }
+  | { type: "cycleDiagramSnapMode" }
+  | { type: "toggleDiagramWaferStyle" }
+  | { type: "setWristPaletteOpen"; open: boolean }
+  | { type: "toggleWristPalette" }
   | { type: "resetPlinthView" };
+
+const SNAP_MODE_ORDER: readonly SpatialDiagramSnapMode[] = ["free-3d", "domain-layers", "grid-5cm", "flat-2d"];
 
 export function createInitialRotundaState(overrides?: Partial<RotundaState>): RotundaState {
   return {
-    environment: "dark-lab",
+    environment: "outdoors",
     activeModelIndex: 0,
     carouselStep: 0,
     plinthYaw: 0,
@@ -210,6 +262,18 @@ export function createInitialRotundaState(overrides?: Partial<RotundaState>): Ro
     simulationTime: 0,
     simulationDuration: 10,
     selectedTileId: null,
+    focusedTileId: null,
+    isolatedSubsystemId: null,
+    ghostShellEnabled: false,
+    showLabels: false,
+    autoTurntable: false,
+    telemetryWingEnabled: false,
+    studioSsaoEnabled: false,
+    diagramEditorEnabled: false,
+    activeDiagramTileId: null,
+    diagramSnapMode: "free-3d",
+    diagramWaferStyle: "tactile-tile",
+    wristPaletteOpen: false,
     ...overrides,
   };
 }
@@ -235,6 +299,7 @@ export function rotundaReducer(state: RotundaState, action: RotundaAction): Rotu
         ...state,
         carouselStep: nextStep,
         activeModelIndex: wrapIndex(state.activeModelIndex + action.delta, action.modelCount),
+        isolatedSubsystemId: null,
       };
     }
     case "selectModelIndex": {
@@ -249,6 +314,7 @@ export function rotundaReducer(state: RotundaState, action: RotundaAction): Rotu
         ...state,
         carouselStep: state.carouselStep + diff,
         activeModelIndex: target,
+        isolatedSubsystemId: null,
       };
     }
     case "rotatePlinth":
@@ -297,6 +363,79 @@ export function rotundaReducer(state: RotundaState, action: RotundaAction): Rotu
     }
     case "selectTile":
       return { ...state, selectedTileId: action.tileId };
+    case "setFocusedTile":
+      return {
+        ...state,
+        focusedTileId: action.tileId,
+        selectedTileId: action.tileId ?? state.selectedTileId,
+      };
+    case "toggleFocusedTile":
+      return {
+        ...state,
+        focusedTileId: state.focusedTileId === action.tileId ? null : action.tileId,
+        selectedTileId: action.tileId,
+      };
+    case "setIsolatedSubsystem":
+      return {
+        ...state,
+        isolatedSubsystemId:
+          action.subsystemId !== null && state.isolatedSubsystemId === action.subsystemId ? null : action.subsystemId,
+      };
+    case "toggleGhostShell":
+      return { ...state, ghostShellEnabled: !state.ghostShellEnabled };
+    case "setGhostShell":
+      return { ...state, ghostShellEnabled: action.enabled };
+    case "toggleShowLabels":
+      return { ...state, showLabels: !state.showLabels };
+    case "setShowLabels":
+      return { ...state, showLabels: action.visible };
+    case "toggleAutoTurntable":
+      return { ...state, autoTurntable: !state.autoTurntable };
+    case "toggleTelemetryWing":
+      return { ...state, telemetryWingEnabled: !state.telemetryWingEnabled };
+    case "setTelemetryWing":
+      return { ...state, telemetryWingEnabled: action.enabled };
+    case "toggleStudioSsao":
+      return { ...state, studioSsaoEnabled: !state.studioSsaoEnabled };
+    case "setStudioSsao":
+      return { ...state, studioSsaoEnabled: action.enabled };
+    case "toggleDiagramEditor": {
+      const nextEnabled = !state.diagramEditorEnabled;
+      return {
+        ...state,
+        diagramEditorEnabled: nextEnabled,
+        wristPaletteOpen: nextEnabled ? state.wristPaletteOpen : false,
+      };
+    }
+    case "setDiagramEditorEnabled":
+      return {
+        ...state,
+        diagramEditorEnabled: action.enabled,
+        activeDiagramTileId: action.tileId !== undefined ? action.tileId : state.activeDiagramTileId,
+        wristPaletteOpen: action.enabled ? state.wristPaletteOpen : false,
+      };
+    case "setActiveDiagramTile":
+      return { ...state, activeDiagramTileId: action.tileId };
+    case "setDiagramSnapMode":
+      return { ...state, diagramSnapMode: action.mode };
+    case "cycleDiagramSnapMode": {
+      const idx = SNAP_MODE_ORDER.indexOf(state.diagramSnapMode);
+      const next = SNAP_MODE_ORDER[(idx + 1) % SNAP_MODE_ORDER.length] ?? "free-3d";
+      return { ...state, diagramSnapMode: next };
+    }
+    case "toggleDiagramWaferStyle":
+      return {
+        ...state,
+        diagramWaferStyle: state.diagramWaferStyle === "tactile-tile" ? "pure-relief" : "tactile-tile",
+      };
+    case "setWristPaletteOpen":
+      return { ...state, wristPaletteOpen: action.open };
+    case "toggleWristPalette":
+      return {
+        ...state,
+        diagramEditorEnabled: true,
+        wristPaletteOpen: !state.wristPaletteOpen,
+      };
     case "resetPlinthView":
       return {
         ...state,
@@ -305,6 +444,9 @@ export function rotundaReducer(state: RotundaState, action: RotundaAction): Rotu
         explodeFactor: 0,
         sectionCutEnabled: false,
         sectionCutOffset: 0,
+        isolatedSubsystemId: null,
+        ghostShellEnabled: false,
+        focusedTileId: null,
       };
   }
 }
@@ -315,6 +457,65 @@ export const ROTUNDA_BOARD_CANVAS_HEIGHT = 1000;
 export const ROTUNDA_BOARD_TEX_SCALE = 0.65;
 export const ROTUNDA_BOARD_TEX_OFFSET_X = 60;
 export const ROTUNDA_BOARD_TEX_OFFSET_Y = 60;
+
+/** Interactive UI button bounds in logical 1600×1000 podium canvas UV pixels. */
+export interface PodiumUiRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export const PODIUM_HEADER_HEIGHT = 48;
+
+export const PODIUM_BACK_BTN_RECT: PodiumUiRect = {
+  x: 16,
+  y: 8,
+  width: 158,
+  height: 32,
+};
+
+export const PODIUM_PREV_TILE_BTN_RECT: PodiumUiRect = {
+  x: ROTUNDA_BOARD_CANVAS_WIDTH - 278,
+  y: 8,
+  width: 44,
+  height: 32,
+};
+
+export const PODIUM_NEXT_TILE_BTN_RECT: PodiumUiRect = {
+  x: ROTUNDA_BOARD_CANVAS_WIDTH - 226,
+  y: 8,
+  width: 44,
+  height: 32,
+};
+
+export const PODIUM_RESET_PAN_BTN_RECT: PodiumUiRect = {
+  x: ROTUNDA_BOARD_CANVAS_WIDTH - 320,
+  y: 9,
+  width: 128,
+  height: 30,
+};
+
+/**
+ * Computes the clickable `[⤢]` full-screen zoom button bounds in **board coordinates**
+ * for a given tile so `board-painter.ts` and `DraftingPodium.tsx` hit-testing match pixel-for-pixel.
+ */
+export function getTileMaximizeButtonRect(b: WorldBounds, isHeroOnPlinth = false): PodiumUiRect {
+  const btnSize = 30;
+  const margin = 10;
+  // When "ACTIVE ON PLINTH" pill is rendered at top-right, shift maximize button cleanly beside it
+  const rightOffset = isHeroOnPlinth ? Math.min(Math.max(142, b.width - 20), 168) + 18 : margin;
+  return {
+    x: Math.max(b.x + 8, b.x + b.width - rightOffset - btnSize),
+    y: b.y + 10,
+    width: btnSize,
+    height: btnSize,
+  };
+}
+
+export function pointInPodiumRect(x: number, y: number, rect: PodiumUiRect, pad = 0): boolean {
+  return x >= rect.x - pad && x <= rect.x + rect.width + pad && y >= rect.y - pad && y <= rect.y + rect.height + pad;
+}
 
 /** Physical dimensions of the 45° Drafting Podium in meters. */
 export const PODIUM_WIDTH_METERS = 1.52;
@@ -367,17 +568,17 @@ export function buildPodiumSpatialPlane(
   };
 }
 
-export function planeUvToBoard(u: number, v: number): { x: number; y: number } {
+export function planeUvToBoard(u: number, v: number, panX = 0, panY = 0): { x: number; y: number } {
   return {
-    x: (u - ROTUNDA_BOARD_TEX_OFFSET_X) / ROTUNDA_BOARD_TEX_SCALE,
-    y: (v - ROTUNDA_BOARD_TEX_OFFSET_Y) / ROTUNDA_BOARD_TEX_SCALE,
+    x: (u - ROTUNDA_BOARD_TEX_OFFSET_X - panX) / ROTUNDA_BOARD_TEX_SCALE,
+    y: (v - ROTUNDA_BOARD_TEX_OFFSET_Y - panY) / ROTUNDA_BOARD_TEX_SCALE,
   };
 }
 
-export function boardBoundsToPlaneBounds(bounds: WorldBounds): WorldBounds {
+export function boardBoundsToPlaneBounds(bounds: WorldBounds, panX = 0, panY = 0): WorldBounds {
   return {
-    x: ROTUNDA_BOARD_TEX_OFFSET_X + bounds.x * ROTUNDA_BOARD_TEX_SCALE,
-    y: ROTUNDA_BOARD_TEX_OFFSET_Y + bounds.y * ROTUNDA_BOARD_TEX_SCALE,
+    x: ROTUNDA_BOARD_TEX_OFFSET_X + panX + bounds.x * ROTUNDA_BOARD_TEX_SCALE,
+    y: ROTUNDA_BOARD_TEX_OFFSET_Y + panY + bounds.y * ROTUNDA_BOARD_TEX_SCALE,
     width: bounds.width * ROTUNDA_BOARD_TEX_SCALE,
     height: bounds.height * ROTUNDA_BOARD_TEX_SCALE,
   };
@@ -394,6 +595,9 @@ export function extractVtkBuffer(raw: unknown): Uint8Array | null {
 export function isLoadableGltfUri(uri: string | undefined): uri is string {
   if (!uri) return false;
   const trimmed = uri.trim();
+  if (trimmed.toLowerCase().startsWith("data:model/gltf")) {
+    return true;
+  }
   if (!trimmed.startsWith("/") && !trimmed.startsWith("http") && !trimmed.startsWith("blob:")) {
     return false;
   }
@@ -701,6 +905,8 @@ export interface EngineeringRotundaProps {
   onSimulationTimeChange?: ((time: number) => void) | undefined;
   /** Optional exit callback back to 2D Canvas / Editor / Artifact view. */
   onExitTo2D?: (() => void) | undefined;
+  /** Optional custom label for the exit button (defaults to `"Return to 2D Canvas"`). */
+  exitTo2DLabel?: string | undefined;
   /** Optional external VR headset handoff (used inside sandboxed VS Code webviews). */
   onOpenExternalVr?: ((opts: { environment: RotundaEnvironmentId; activeModelIndex: number }) => void) | undefined;
   /** Tile selection callback synced with the host canvas/editor. */
@@ -717,4 +923,21 @@ export interface EngineeringRotundaProps {
   title?: string | undefined;
   /** Hide the desktop HTML HUD overlay (useful for chromeless or pure-XR embeds). */
   hideDesktopHud?: boolean | undefined;
+  /** Top inset in pixels for desktop HUD overlays when a floating host navbar overlays the full-bleed VR canvas. */
+  topOverlayInset?: number | undefined;
+  /** Open the 3D Volumetric Schematic Diagram Editor automatically on mount. */
+  initialDiagramEditorEnabled?: boolean | undefined;
+  /** Optional custom or LSP-hydrated component library catalog powering the VR Wrist Floating Library Panel. */
+  libraryCatalog?: readonly GalleryComponentItem[] | undefined;
+  /** Canonical bidirectional write-back callback for 3D diagram node moves, spawns, deletes, and magnetic port connections. */
+  onDiagramEdit?:
+    | ((
+        actions: DiagramEditAction[],
+        context: {
+          tileId: string;
+          spatial3DLayout: Record<string, SpatialNodePose3D>;
+          diagramData: { nodes: unknown[]; edges: unknown[] };
+        },
+      ) => void)
+    | undefined;
 }

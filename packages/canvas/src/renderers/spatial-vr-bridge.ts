@@ -217,10 +217,28 @@ export class SpatialSurfaceBridge {
 
   /** Marks a region of a plane's `CanvasTexture` dirty for incremental 90 Hz VR upload. */
   public markDirty(planeId: string, rect: WorldBounds): void {
+    const MAX_DIRTY_RECTS_PER_PLANE = 64;
     let list = this.dirtyRects.get(planeId);
     if (!list) {
       list = [];
       this.dirtyRects.set(planeId, list);
+    }
+    if (list.length >= MAX_DIRTY_RECTS_PER_PLANE) {
+      let minX = rect.x;
+      let minY = rect.y;
+      let maxX = rect.x + rect.width;
+      let maxY = rect.y + rect.height;
+      for (const existing of list) {
+        if (existing.x < minX) minX = existing.x;
+        if (existing.y < minY) minY = existing.y;
+        const exMaxX = existing.x + existing.width;
+        const exMaxY = existing.y + existing.height;
+        if (exMaxX > maxX) maxX = exMaxX;
+        if (exMaxY > maxY) maxY = exMaxY;
+      }
+      list.length = 0;
+      list.push({ x: minX, y: minY, width: maxX - minX, height: maxY - minY });
+      return;
     }
     list.push(rect);
   }
