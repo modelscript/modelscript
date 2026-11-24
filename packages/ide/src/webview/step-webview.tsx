@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { StepOverlayPayload } from "../services/step-compilation-service.js";
+import { VrButton, registerSharedVsCodeApi } from "./cad-viewer/vr-mode";
 import StepViewer, { type StepMeshPayload } from "./step-viewer/step-viewer";
 
 const vscode = (
@@ -14,6 +15,8 @@ const vscode = (
     };
   }
 ).acquireVsCodeApi?.();
+
+registerSharedVsCodeApi(vscode);
 
 interface RawStepMesh {
   id: number;
@@ -97,7 +100,7 @@ function App() {
   return (
     <div
       className="step-webview-container"
-      style={{ width: "100%", height: "100vh", margin: 0, padding: 0, overflow: "hidden" }}
+      style={{ position: "relative", width: "100%", height: "100vh", margin: 0, padding: 0, overflow: "hidden" }}
     >
       <StepViewer
         meshes={meshes}
@@ -110,6 +113,17 @@ function App() {
         onGenerateCfdStudy={handleGenerateCfdStudy}
         onOpenSource={handleOpenSource}
         onRecompile={handleRecompile}
+      />
+      <VrButton
+        style={{ bottom: 72 }}
+        onOpenExternalVr={() => {
+          vscode?.postMessage({
+            type: "openInVr",
+            environment: "dark-lab",
+            kind: "step",
+            title: "3D STEP Viewer",
+          });
+        }}
       />
     </div>
   );

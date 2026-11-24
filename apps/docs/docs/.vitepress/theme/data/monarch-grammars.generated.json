@@ -3957,6 +3957,50 @@
       "\\*/"
     ]
   },
+  "twentysim": {
+    "keywords": [
+      "and",
+      "bond",
+      "boolean",
+      "code",
+      "connections",
+      "constants",
+      "else",
+      "end",
+      "equations",
+      "global",
+      "hidden",
+      "if",
+      "in",
+      "initialequations",
+      "integer",
+      "interesting",
+      "interface",
+      "model",
+      "not",
+      "or",
+      "out",
+      "parameters",
+      "port",
+      "ports",
+      "power",
+      "real",
+      "signal",
+      "string",
+      "submodel",
+      "submodels",
+      "then",
+      "variables"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "urdf": {
     "keywords": [],
     "types": [],

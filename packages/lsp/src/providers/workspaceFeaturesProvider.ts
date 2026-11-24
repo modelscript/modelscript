@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { CstUnparser, type SyntaxNode } from "@modelscript/dsl";
 import {
   CodeAction,
   CodeActionKind,
@@ -10,6 +11,7 @@ import {
 } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
+import { resolveCstNameSpan } from "../services/workspace-manager.js";
 import { findCstNodesByType, type CstNodeLike, type CstTreeLike } from "../utils/ast-utils.js";
 import {
   extractLeafSymbolName,
@@ -155,6 +157,454 @@ function findDivisorVariableInLine(lineContent: string): { name: string; start: 
     pos = slashIdx + 1;
   }
   return undefined;
+}
+
+type QuickFixRange = { start: { line: number; character: number }; end: { line: number; character: number } };
+type QuickFixEdit = { range: QuickFixRange; newText: string };
+
+const CST_NUMERIC_NODE_TYPES = new Set([
+  "number",
+  "real_literal",
+  "integer_literal",
+  "unsigned_number",
+  "unsigned_integer",
+  "float_literal",
+  "number_literal",
+  "numeric_literal",
+  "decimal_literal",
+  "scientific_literal",
+  "real",
+  "integer",
+]);
+
+const CST_IDENTIFIER_NODE_TYPES = new Set([
+  "identifier",
+  "ident",
+  "id",
+  "name",
+  "simple_name",
+  "unrestricted_name",
+  "component_reference",
+]);
+
+const CST_NUMERIC_LEAF_RE = /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[a-zA-Z]?$/;
+const CST_PURE_NUMERIC_RE = /^\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+
+function isCommentOrStringNode(node: CstNodeLike | null | undefined): boolean {
+  const t = (node?.type ?? "").toLowerCase();
+  if (!t) return false;
+  return (
+    t.includes("comment") ||
+    t.includes("string") ||
+    t === "documentation" ||
+    t === "doc_comment" ||
+    t === "line_comment" ||
+    t === "block_comment"
+  );
+}
+
+function locateEnclosingCstNode(
+  rootNode: CstNodeLike | null | undefined,
+  startOffset: number,
+  endOffset: number,
+  fallbackPos?: { row: number; column: number },
+): CstNodeLike | null {
+  if (!rootNode) return null;
+  const anyRoot = rootNode as CstNodeLike & {
+    descendantForIndex?: (start: number, end?: number) => CstNodeLike | null;
+    descendantForPosition?: (pos: { row: number; column: number }) => CstNodeLike | null;
+  };
+  if (typeof anyRoot.descendantForIndex === "function") {
+    const safeStart = Math.max(0, startOffset);
+    const safeEnd = Math.max(safeStart, endOffset);
+    const node = anyRoot.descendantForIndex(safeStart, safeEnd);
+    if (node) return node;
+  }
+  if (fallbackPos && typeof anyRoot.descendantForPosition === "function") {
+    const node = anyRoot.descendantForPosition(fallbackPos);
+    if (node) return node;
+  }
+  return null;
+}
+
+function climbToEnclosingLineNode(node: CstNodeLike | null, lineIdx: number): CstNodeLike | null {
+  let cur = node;
+  while (cur?.parent && cur.parent.startPosition?.row === lineIdx) {
+    if (!cur.parent.parent && cur.parent.endPosition && cur.parent.endPosition.row > lineIdx) {
+      break;
+    }
+    cur = cur.parent;
+  }
+  return cur;
+}
+
+function collectCstLeafNodes(root: CstNodeLike | null | undefined, lineFilter?: number): CstNodeLike[] {
+  if (!root) return [];
+  const leaves: CstNodeLike[] = [];
+  const walk = (n: CstNodeLike) => {
+    if (isCommentOrStringNode(n)) return;
+    const cnt = typeof n.childCount === "number" ? n.childCount : (n.children?.length ?? 0);
+    if (cnt === 0) {
+      if (lineFilter === undefined || n.startPosition?.row === lineFilter) {
+        leaves.push(n);
+      }
+      return;
+    }
+    for (let i = 0; i < cnt; i++) {
+      const ch = typeof n.child === "function" ? n.child(i) : n.children?.[i];
+      if (ch) walk(ch);
+    }
+  };
+  walk(root);
+  return leaves;
+}
+
+function isNumericCstLeaf(node: CstNodeLike): boolean {
+  if (isCommentOrStringNode(node)) return false;
+  const txt = (node.text ?? "").trim();
+  if (!txt || !CST_NUMERIC_LEAF_RE.test(txt)) return false;
+  const t = (node.type ?? "").toLowerCase();
+  if (
+    CST_NUMERIC_NODE_TYPES.has(t) ||
+    t.includes("number") ||
+    t.includes("literal") ||
+    t.includes("int") ||
+    t.includes("real") ||
+    t.includes("float")
+  ) {
+    return true;
+  }
+  return CST_PURE_NUMERIC_RE.test(txt);
+}
+
+function isIdentifierCstLeaf(node: CstNodeLike): boolean {
+  if (isCommentOrStringNode(node)) return false;
+  const txt = (node.text ?? "").trim();
+  if (!txt || !isIdentStartCode(txt.charCodeAt(0))) return false;
+  for (let i = 1; i < txt.length; i++) {
+    if (!isIdentContCode(txt.charCodeAt(i))) return false;
+  }
+  const t = (node.type ?? "").toLowerCase();
+  return CST_IDENTIFIER_NODE_TYPES.has(t) || t.includes("ident") || t.includes("name") || !node.isNamed;
+}
+
+function patchCstNodeValue(
+  node: CstNodeLike,
+  newText: string,
+  doc?: { positionAt: (offset: number) => { line: number; character: number } },
+): QuickFixEdit | null {
+  if (node.startPosition && node.endPosition) {
+    try {
+      const res = CstUnparser.patchAndUnparse({
+        target: node as unknown as SyntaxNode,
+        replaceText: newText,
+      });
+      return {
+        range: {
+          start: { line: res.edit.range.start.line, character: res.edit.range.start.character },
+          end: { line: res.edit.range.end.line, character: res.edit.range.end.character },
+        },
+        newText: res.edit.newText,
+      };
+    } catch {
+      return {
+        range: {
+          start: { line: node.startPosition.row, character: node.startPosition.column },
+          end: { line: node.endPosition.row, character: node.endPosition.column },
+        },
+        newText,
+      };
+    }
+  }
+  const sOff = node.startIndex ?? node.startOffset;
+  const eOff = node.endIndex ?? node.endOffset;
+  if (doc && typeof sOff === "number" && typeof eOff === "number") {
+    return {
+      range: { start: doc.positionAt(sOff), end: doc.positionAt(eOff) },
+      newText,
+    };
+  }
+  return null;
+}
+
+function resolveSignedNumericNode(signLeaf: CstNodeLike | null, numLeaf: CstNodeLike): CstNodeLike {
+  if (signLeaf && numLeaf.parent && signLeaf.parent === numLeaf.parent) {
+    const parentText = (numLeaf.parent.text ?? "").trim();
+    const expected = `${(signLeaf.text ?? "").trim()}${(numLeaf.text ?? "").trim()}`;
+    if (parentText === expected) {
+      return numLeaf.parent;
+    }
+  }
+  return numLeaf;
+}
+
+function findAssignedNumericNodeInCst(
+  rootNode: CstNodeLike | null | undefined,
+  startOffset: number,
+  endOffset: number,
+  lineIdx: number,
+  options?: { allowSingleColon?: boolean; allowSign?: boolean },
+): CstNodeLike | null {
+  const located = locateEnclosingCstNode(rootNode, startOffset, endOffset, { row: lineIdx, column: 0 });
+  const enclosing = climbToEnclosingLineNode(located, lineIdx);
+  if (!enclosing) return null;
+  const leaves = collectCstLeafNodes(enclosing, lineIdx);
+  let seenOp = false;
+  let signLeaf: CstNodeLike | null = null;
+  for (const leaf of leaves) {
+    const txt = (leaf.text ?? "").trim();
+    if (!seenOp) {
+      if (txt === "=" || txt === ":=" || txt === "::=" || (options?.allowSingleColon && txt === ":")) {
+        seenOp = true;
+      }
+      continue;
+    }
+    if (txt === "-" || txt === "+") {
+      signLeaf = leaf;
+      continue;
+    }
+    if (isNumericCstLeaf(leaf)) {
+      return options?.allowSign ? resolveSignedNumericNode(signLeaf, leaf) : leaf;
+    }
+    signLeaf = null;
+  }
+  return null;
+}
+
+interface CstNumericCandidate {
+  node: CstNodeLike;
+  text: string;
+  startCol: number;
+}
+
+function collectNumericNodesInCstLine(
+  rootNode: CstNodeLike | null | undefined,
+  startOffset: number,
+  endOffset: number,
+  lineIdx: number,
+): CstNumericCandidate[] {
+  const located = locateEnclosingCstNode(rootNode, startOffset, endOffset, { row: lineIdx, column: 0 });
+  const enclosing = climbToEnclosingLineNode(located, lineIdx);
+  if (!enclosing) return [];
+  const leaves = collectCstLeafNodes(enclosing, lineIdx);
+  const out: CstNumericCandidate[] = [];
+  let prevSign: CstNodeLike | null = null;
+  for (const leaf of leaves) {
+    const txt = (leaf.text ?? "").trim();
+    if (txt === "-" || txt === "+") {
+      prevSign = leaf;
+      continue;
+    }
+    if (isNumericCstLeaf(leaf)) {
+      const target = resolveSignedNumericNode(prevSign, leaf);
+      const col = target.startPosition?.column ?? leaf.startPosition?.column ?? 0;
+      out.push({ node: target, text: (target.text ?? txt).trim(), startCol: col });
+    }
+    prevSign = null;
+  }
+  return out;
+}
+
+function selectBestDriftNumericNode(
+  lineContent: string,
+  candidates: CstNumericCandidate[],
+  expectedVal: number | undefined,
+): CstNumericCandidate | undefined {
+  let best: CstNumericCandidate | undefined;
+  if (expectedVal !== undefined && candidates.length > 0) {
+    best = candidates.find((cand) => {
+      const parsed = parseFloat(cand.text);
+      return (
+        Math.abs(parsed - expectedVal) < 1e-6 ||
+        Math.abs(parsed - expectedVal) / Math.max(Math.abs(expectedVal), 1) < 1e-4
+      );
+    });
+  }
+  if (!best && candidates.length > 0) {
+    const eqIdx = lineContent.indexOf("=");
+    best = eqIdx !== -1 ? candidates.find((cand) => cand.startCol >= eqIdx) : candidates[candidates.length - 1];
+  }
+  return best;
+}
+
+function findDivisorIdentifierNodeInCst(
+  rootNode: CstNodeLike | null | undefined,
+  startOffset: number,
+  endOffset: number,
+  lineIdx: number,
+): { node: CstNodeLike; name: string } | null {
+  const located = locateEnclosingCstNode(rootNode, startOffset, endOffset, { row: lineIdx, column: 0 });
+  const enclosing = climbToEnclosingLineNode(located, lineIdx);
+  if (!enclosing) return null;
+  const leaves = collectCstLeafNodes(enclosing, lineIdx);
+  for (let i = 0; i + 1 < leaves.length; i++) {
+    if ((leaves[i]!.text ?? "").trim() === "/") {
+      const rhs = leaves[i + 1]!;
+      if (isIdentifierCstLeaf(rhs)) {
+        return { node: rhs, name: (rhs.text ?? "").trim() };
+      }
+    }
+  }
+  return null;
+}
+
+function findMathDomainCallInCst(
+  rootNode: CstNodeLike | null | undefined,
+  startOffset: number,
+  endOffset: number,
+  lineIdx: number,
+): { fnName: string; argName: string } | null {
+  const located = locateEnclosingCstNode(rootNode, startOffset, endOffset, { row: lineIdx, column: 0 });
+  const enclosing = climbToEnclosingLineNode(located, lineIdx);
+  if (!enclosing) return null;
+  const leaves = collectCstLeafNodes(enclosing, lineIdx);
+  for (let i = 0; i + 2 < leaves.length; i++) {
+    const fnName = (leaves[i]!.text ?? "").trim();
+    if ((fnName === "sqrt" || fnName === "log" || fnName === "log10") && (leaves[i + 1]!.text ?? "").trim() === "(") {
+      let argParts = "";
+      let valid = true;
+      let closed = false;
+      for (let j = i + 2; j < leaves.length; j++) {
+        const tok = (leaves[j]!.text ?? "").trim();
+        if (tok === ")") {
+          closed = true;
+          break;
+        }
+        if (tok === "." || isIdentifierCstLeaf(leaves[j]!)) {
+          argParts += tok;
+        } else {
+          valid = false;
+          break;
+        }
+      }
+      if (closed && valid && argParts.length > 0 && isIdentStartCode(argParts.charCodeAt(0))) {
+        return { fnName, argName: argParts };
+      }
+    }
+  }
+  return null;
+}
+
+function findScalarAssignmentNumericNodeInCst(
+  rootNode: CstNodeLike | null | undefined,
+  shortVar: string,
+): CstNodeLike | null {
+  if (!rootNode || !shortVar) return null;
+  const leaves = collectCstLeafNodes(rootNode);
+  for (let i = 0; i < leaves.length; i++) {
+    const leaf = leaves[i]!;
+    if (!isIdentifierCstLeaf(leaf) || (leaf.text ?? "").trim() !== shortVar) continue;
+    let cur = i + 1;
+    if (cur < leaves.length && (leaves[cur]!.text ?? "").trim() === "(") {
+      let depth = 1;
+      cur++;
+      while (cur < leaves.length && depth > 0) {
+        const t = (leaves[cur]!.text ?? "").trim();
+        if (t === "(") depth++;
+        else if (t === ")") depth--;
+        cur++;
+      }
+    }
+    if (cur < leaves.length) {
+      const op = (leaves[cur]!.text ?? "").trim();
+      if (op === "=" || op === ":=") {
+        cur++;
+        let signLeaf: CstNodeLike | null = null;
+        if (cur < leaves.length) {
+          const maybeSign = (leaves[cur]!.text ?? "").trim();
+          if (maybeSign === "-" || maybeSign === "+") {
+            signLeaf = leaves[cur]!;
+            cur++;
+          }
+        }
+        if (cur < leaves.length && isNumericCstLeaf(leaves[cur]!)) {
+          return resolveSignedNumericNode(signLeaf, leaves[cur]!);
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function findEnclosingBlockCloseOffsetInCst(
+  rootNode: CstNodeLike | null | undefined,
+  startOffset: number,
+  endOffset: number,
+  docText: string,
+  preferredTypeSubstrings?: readonly string[],
+): number {
+  const located = locateEnclosingCstNode(rootNode, startOffset, endOffset);
+  if (!located) return -1;
+
+  const extractCloseBraceOffset = (node: CstNodeLike): number => {
+    const endIdx = node.endIndex ?? node.endOffset;
+    const startIdx = node.startIndex ?? node.startOffset ?? 0;
+    if (typeof endIdx === "number" && endIdx > startIdx && endIdx <= docText.length) {
+      let pos = endIdx - 1;
+      while (pos >= startIdx && /\s/.test(docText[pos]!)) pos--;
+      if (pos >= startIdx && docText[pos] === "}") {
+        return pos;
+      }
+    }
+    return -1;
+  };
+
+  let fallbackClose = -1;
+  let cur: CstNodeLike | null | undefined = located;
+  while (cur) {
+    const closeOff = extractCloseBraceOffset(cur);
+    if (closeOff >= 0 && closeOff >= startOffset) {
+      if (preferredTypeSubstrings && preferredTypeSubstrings.length > 0) {
+        const nodeTypeLower = (cur.type ?? "").toLowerCase();
+        if (preferredTypeSubstrings.some((sub) => nodeTypeLower.includes(sub))) {
+          return closeOff;
+        }
+        if (fallbackClose < 0) {
+          fallbackClose = closeOff;
+        }
+      } else {
+        return closeOff;
+      }
+    }
+    cur = cur.parent;
+  }
+  return fallbackClose;
+}
+
+function findImportVisibilityEditInCst(
+  rootNode: CstNodeLike | null | undefined,
+  startOffset: number,
+  endOffset: number,
+  lineIdx: number,
+  doc: { positionAt: (offset: number) => { line: number; character: number } },
+): QuickFixEdit | null {
+  const located = locateEnclosingCstNode(rootNode, startOffset, endOffset, { row: lineIdx, column: 0 });
+  const enclosing = climbToEnclosingLineNode(located, lineIdx);
+  if (!enclosing) return null;
+  const leaves = collectCstLeafNodes(enclosing, lineIdx);
+  let visLeaf: CstNodeLike | null = null;
+  for (const leaf of leaves) {
+    const txt = (leaf.text ?? "").trim();
+    if (txt === "public" || txt === "protected") {
+      visLeaf = leaf;
+      continue;
+    }
+    if (txt === "import") {
+      if (visLeaf) {
+        return patchCstNodeValue(visLeaf, "private", doc);
+      }
+      if (leaf.startPosition) {
+        const pos = { line: leaf.startPosition.row, character: leaf.startPosition.column };
+        return { range: { start: pos, end: pos }, newText: "private " };
+      }
+      const sOff = leaf.startIndex ?? leaf.startOffset;
+      if (typeof sOff === "number") {
+        const pos = doc.positionAt(sOff);
+        return { range: { start: pos, end: pos }, newText: "private " };
+      }
+    }
+  }
+  return null;
 }
 
 function parseFuncCallSingleArg(termText: string, fnName: string): string | undefined {
@@ -430,23 +880,12 @@ export function registerWorkspaceFeaturesProvider(
       // Include declaration
       const declEntry = unifiedIndex.symbols.get(declId);
       if (declEntry && declEntry.resourceId) {
-        const nameField = declEntry.fieldRanges?.name;
-        if (nameField) {
-          addLocation(declEntry.resourceId, nameField.startOffset, nameField.endOffset);
+        const declTree = documentTrees.get(declEntry.resourceId)?.tree;
+        const cstSpan = resolveCstNameSpan(declEntry, declTree);
+        if (cstSpan) {
+          addLocation(declEntry.resourceId, cstSpan.startOffset, cstSpan.endOffset);
         } else {
-          let sOff = declEntry.startOffset;
-          let eOff = declEntry.endOffset;
-          const declText =
-            documents.get(declEntry.resourceId)?.getText() ?? documentTrees.get(declEntry.resourceId)?.text;
-          if (declText && declEntry.name && declEntry.name !== "<anonymous>") {
-            const slice = declText.slice(sOff, Math.min(sOff + 300, eOff));
-            const idx = slice.indexOf(declEntry.name);
-            if (idx !== -1) {
-              sOff += idx;
-              eOff = sOff + declEntry.name.length;
-            }
-          }
-          addLocation(declEntry.resourceId, sOff, eOff);
+          addLocation(declEntry.resourceId, declEntry.startOffset, declEntry.endOffset);
         }
       }
       // Include references
@@ -461,7 +900,7 @@ export function registerWorkspaceFeaturesProvider(
     return results;
   });
 
-  connection.onPrepareRename((params) => {
+  connection.onPrepareRename?.((params) => {
     const document = documents.get(params.textDocument.uri);
     if (!document) return null;
     const text = document.getText();
@@ -557,18 +996,10 @@ export function registerWorkspaceFeaturesProvider(
       // Include declaration
       const declEntry = unifiedIndex.symbols.get(declId);
       if (declEntry && declEntry.resourceId && declEntry.name && !declEntry.name.startsWith("#")) {
-        const text = documents.get(declEntry.resourceId)?.getText() ?? documentTrees.get(declEntry.resourceId)?.text;
-        if (text) {
-          const dummyDoc = TextDocument.create(declEntry.resourceId, "temp", 1, text);
-          void dummyDoc;
-          const declStart = declEntry.startOffset;
-          const declEnd = declEntry.endOffset;
-          const nameMatch = text.substring(declStart, declEnd).indexOf(declEntry.name);
-          if (nameMatch !== -1) {
-            const matchStart = declStart + nameMatch;
-            const matchEnd = matchStart + declEntry.name.length;
-            addEdit(declEntry.resourceId, matchStart, matchEnd);
-          }
+        const declTree = documentTrees.get(declEntry.resourceId)?.tree;
+        const cstSpan = resolveCstNameSpan(declEntry, declTree);
+        if (cstSpan) {
+          addEdit(declEntry.resourceId, cstSpan.startOffset, cstSpan.endOffset);
         }
       }
       // Include references
@@ -772,19 +1203,77 @@ export function registerWorkspaceFeaturesProvider(
         const lineEnd = document.offsetAt({ line: diagnostic.range.start.line + 1, character: 0 });
         const lineContent = text.substring(lineStart, lineEnd);
 
+        const resolveCstValueRange = (
+          lineIdx: number,
+          colIdx: number,
+          fallbackLine: string,
+        ): { start: { line: number; character: number }; end: { line: number; character: number } } | null => {
+          type CstNodeLike = {
+            parent?: CstNodeLike | null;
+            startPosition?: { row: number; column: number };
+            endPosition?: { row: number; column: number };
+            childCount?: number;
+            children?: CstNodeLike[];
+            child?: (i: number) => CstNodeLike | null;
+            text?: string;
+          };
+          const docRoot = documentTrees.get(params.textDocument.uri)?.tree?.rootNode;
+          if (docRoot && typeof docRoot.descendantForPosition === "function") {
+            let cur: CstNodeLike | null = docRoot.descendantForPosition({ row: lineIdx, column: colIdx });
+            while (cur?.parent && cur.parent.startPosition?.row === lineIdx) {
+              cur = cur.parent;
+            }
+            if (cur) {
+              const leaves: CstNodeLike[] = [];
+              const collect = (n: CstNodeLike) => {
+                const cnt = typeof n.childCount === "number" ? n.childCount : (n.children?.length ?? 0);
+                if (cnt === 0) {
+                  leaves.push(n);
+                } else {
+                  for (let i = 0; i < cnt; i++) {
+                    const ch = typeof n.child === "function" ? n.child(i) : n.children?.[i];
+                    if (ch) collect(ch);
+                  }
+                }
+              };
+              collect(cur);
+              let seenOp = false;
+              for (const leaf of leaves) {
+                const txt = String(leaf.text ?? "").trim();
+                if (!seenOp) {
+                  if (txt === "=" || txt === ":=" || txt === "::=") seenOp = true;
+                  continue;
+                }
+                if (txt === "-" || txt === "+") continue;
+                if (/^\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(txt) && leaf.startPosition && leaf.endPosition) {
+                  return {
+                    start: { line: leaf.startPosition.row, character: leaf.startPosition.column },
+                    end: { line: leaf.endPosition.row, character: leaf.endPosition.column },
+                  };
+                }
+              }
+            }
+          }
+          const fallbackSpan = findAssignedNumberInLine(fallbackLine);
+          return fallbackSpan
+            ? {
+                start: { line: lineIdx, character: fallbackSpan.start },
+                end: { line: lineIdx, character: fallbackSpan.end },
+              }
+            : null;
+        };
+
         // 1. SMT Physics-Simplex Consensus QuickFix
         if (consensus !== undefined) {
           let newRange = diagnostic.range;
-          let newText = `${consensus}`;
-
-          // If the line contains an assignment (e.g. mass = 1.0 or Real mass = 1.0;), replace the value part
-          const assignSpan = findAssignedNumberInLine(lineContent);
-          if (assignSpan) {
-            newRange = {
-              start: { line: diagnostic.range.start.line, character: assignSpan.start },
-              end: { line: diagnostic.range.start.line, character: assignSpan.end },
-            };
-            newText = `${consensus}`;
+          const newText = `${consensus}`;
+          const cstValRange = resolveCstValueRange(
+            diagnostic.range.start.line,
+            diagnostic.range.start.character,
+            lineContent,
+          );
+          if (cstValRange) {
+            newRange = cstValRange;
           }
 
           actions.push({
@@ -808,14 +1297,14 @@ export function registerWorkspaceFeaturesProvider(
         // 2. Accept Source Value QuickFix
         if (sourceVal !== undefined && data?.sourceDomain) {
           let newRange = diagnostic.range;
-          let newText = `${sourceVal}`;
-          const assignSpan = findAssignedNumberInLine(lineContent);
-          if (assignSpan) {
-            newRange = {
-              start: { line: diagnostic.range.start.line, character: assignSpan.start },
-              end: { line: diagnostic.range.start.line, character: assignSpan.end },
-            };
-            newText = `${sourceVal}`;
+          const newText = `${sourceVal}`;
+          const cstValRange = resolveCstValueRange(
+            diagnostic.range.start.line,
+            diagnostic.range.start.character,
+            lineContent,
+          );
+          if (cstValRange) {
+            newRange = cstValRange;
           }
 
           actions.push({
@@ -897,13 +1386,31 @@ export function registerWorkspaceFeaturesProvider(
               };
             } else if (targetText !== undefined) {
               const zeroLine = Math.max(0, (se.line ?? 1) - 1);
-              const lText = splitLines(targetText)[zeroLine] ?? "";
-              const mVal = findAssignedNumberInLine(lText, { allowSign: true, allowExponent: true });
-              if (mVal) {
-                editRange = {
-                  start: { line: zeroLine, character: mVal.start },
-                  end: { line: zeroLine, character: mVal.end },
-                };
+              const targetRoot = documentTrees.get(se.uri)?.tree?.rootNode;
+              const targetLines = splitLines(targetText);
+              const lText = targetLines[zeroLine] ?? "";
+              if (targetRoot) {
+                const tDoc = targetDoc ?? TextDocument.create(se.uri, "temp", 1, targetText);
+                const tLineStart = tDoc.offsetAt({ line: zeroLine, character: 0 });
+                const tLineEnd = tDoc.offsetAt({ line: zeroLine + 1, character: 0 });
+                const cstNumNode = findAssignedNumericNodeInCst(targetRoot, tLineStart, tLineEnd, zeroLine, {
+                  allowSign: true,
+                });
+                if (cstNumNode) {
+                  const patched = patchCstNodeValue(cstNumNode, se.newText, tDoc);
+                  if (patched) {
+                    editRange = patched.range;
+                  }
+                }
+              }
+              if (!editRange) {
+                const mVal = findAssignedNumberInLine(lText, { allowSign: true, allowExponent: true });
+                if (mVal) {
+                  editRange = {
+                    start: { line: zeroLine, character: mVal.start },
+                    end: { line: zeroLine, character: mVal.end },
+                  };
+                }
               }
             }
             if (editRange) {
@@ -964,7 +1471,35 @@ export function registerWorkspaceFeaturesProvider(
         const lineEnd = document.offsetAt({ line: diagnostic.range.start.line + 1, character: 0 });
         const lineContent = text.substring(lineStart, lineEnd);
         const data = diagnostic.data as any;
-        const numMatch = findAssignedNumberInLine(lineContent, { allowSingleColon: true });
+        const docRoot = documentTrees.get(params.textDocument.uri)?.tree?.rootNode;
+        const diagStartOffset = document.offsetAt(diagnostic.range.start);
+        const diagEndOffset = document.offsetAt(diagnostic.range.end);
+        const cstAssignedNumNode = findAssignedNumericNodeInCst(
+          docRoot,
+          diagStartOffset,
+          diagEndOffset,
+          diagnostic.range.start.line,
+          { allowSingleColon: true },
+        );
+        const numMatch = cstAssignedNumNode
+          ? undefined
+          : findAssignedNumberInLine(lineContent, { allowSingleColon: true });
+        const buildAssignedValueEdit = (replacement: string): QuickFixEdit | null => {
+          if (cstAssignedNumNode) {
+            const patched = patchCstNodeValue(cstAssignedNumNode, replacement, document);
+            if (patched) return patched;
+          }
+          if (numMatch) {
+            return {
+              range: {
+                start: { line: diagnostic.range.start.line, character: numMatch.start },
+                end: { line: diagnostic.range.start.line, character: numMatch.end },
+              },
+              newText: replacement,
+            };
+          }
+          return null;
+        };
 
         // 0. Cross-Language Parameter Drift QuickFix (M5104)
         if (diagnostic.code === "M5104" || diagnostic.source?.includes("drift-checker")) {
@@ -977,14 +1512,28 @@ export function registerWorkspaceFeaturesProvider(
             let newRange = diagnostic.range;
             let newText = `${suggestedVal}`;
 
-            const matches = scanNumericTokensInLine(lineContent);
-            let bestMatch = selectBestDriftNumericSpan(lineContent, matches, currentVal);
+            const cstCandidates = collectNumericNodesInCstLine(
+              docRoot,
+              diagStartOffset,
+              diagEndOffset,
+              diagnostic.range.start.line,
+            );
+            const bestCstNode = selectBestDriftNumericNode(lineContent, cstCandidates, currentVal);
+            const patchedLocal = bestCstNode ? patchCstNodeValue(bestCstNode.node, newText, document) : null;
 
-            if (bestMatch) {
-              newRange = {
-                start: { line: diagnostic.range.start.line, character: bestMatch.start },
-                end: { line: diagnostic.range.start.line, character: bestMatch.end },
-              };
+            if (patchedLocal) {
+              newRange = patchedLocal.range;
+              newText = patchedLocal.newText;
+            } else {
+              const matches = scanNumericTokensInLine(lineContent);
+              const bestMatch = selectBestDriftNumericSpan(lineContent, matches, currentVal);
+
+              if (bestMatch) {
+                newRange = {
+                  start: { line: diagnostic.range.start.line, character: bestMatch.start },
+                  end: { line: diagnostic.range.start.line, character: bestMatch.end },
+                };
+              }
             }
 
             batchDriftEdits.push({ range: newRange, newText });
@@ -1020,15 +1569,28 @@ export function registerWorkspaceFeaturesProvider(
                 const cLineStart = cDoc.offsetAt({ line: cRange.start.line, character: 0 });
                 const cLineEnd = cDoc.offsetAt({ line: cRange.start.line + 1, character: 0 });
                 const cLineContent = counterpartText.substring(cLineStart, cLineEnd);
+                const cRoot = documentTrees.get(counterpartUri)?.tree?.rootNode;
+                const cStartOff = cDoc.offsetAt(cRange.start);
+                const cEndOff = cDoc.offsetAt(cRange.end);
+                let cNewText = `${currentVal}`;
 
-                const cMatches = scanNumericTokensInLine(cLineContent);
-                const cBestMatch = selectBestDriftNumericSpan(cLineContent, cMatches, suggestedVal);
+                const cCstCandidates = collectNumericNodesInCstLine(cRoot, cStartOff, cEndOff, cRange.start.line);
+                const cBestNode = selectBestDriftNumericNode(cLineContent, cCstCandidates, suggestedVal);
+                const patchedCounterpart = cBestNode ? patchCstNodeValue(cBestNode.node, cNewText, cDoc) : null;
 
-                if (cBestMatch) {
-                  cRange = {
-                    start: { line: cRange.start.line, character: cBestMatch.start },
-                    end: { line: cRange.start.line, character: cBestMatch.end },
-                  };
+                if (patchedCounterpart) {
+                  cRange = patchedCounterpart.range;
+                  cNewText = patchedCounterpart.newText;
+                } else {
+                  const cMatches = scanNumericTokensInLine(cLineContent);
+                  const cBestMatch = selectBestDriftNumericSpan(cLineContent, cMatches, suggestedVal);
+
+                  if (cBestMatch) {
+                    cRange = {
+                      start: { line: cRange.start.line, character: cBestMatch.start },
+                      end: { line: cRange.start.line, character: cBestMatch.end },
+                    };
+                  }
                 }
 
                 actions.push({
@@ -1040,7 +1602,7 @@ export function registerWorkspaceFeaturesProvider(
                       [counterpartUri]: [
                         {
                           range: cRange,
-                          newText: `${currentVal}`,
+                          newText: cNewText,
                         },
                       ],
                     },
@@ -1059,7 +1621,8 @@ export function registerWorkspaceFeaturesProvider(
           (diagnostic.source?.includes("reasoner") && !diagnostic.code?.toString().startsWith("M5"))
         ) {
           const suggestedVal = data?.suggestedValue;
-          if (suggestedVal !== undefined && numMatch) {
+          const relaxEdit = suggestedVal !== undefined ? buildAssignedValueEdit(`${suggestedVal}`) : null;
+          if (suggestedVal !== undefined && relaxEdit) {
             actions.push({
               title: `Relax boundary parameter to ${suggestedVal} (Restores consistency)`,
               kind: CodeActionKind.QuickFix,
@@ -1067,15 +1630,7 @@ export function registerWorkspaceFeaturesProvider(
               diagnostics: [diagnostic],
               edit: {
                 changes: {
-                  [params.textDocument.uri]: [
-                    {
-                      range: {
-                        start: { line: diagnostic.range.start.line, character: numMatch.start },
-                        end: { line: diagnostic.range.start.line, character: numMatch.end },
-                      },
-                      newText: `${suggestedVal}`,
-                    },
-                  ],
+                  [params.textDocument.uri]: [relaxEdit],
                 },
               },
             });
@@ -1089,29 +1644,44 @@ export function registerWorkspaceFeaturesProvider(
           diagnostic.code === "div_by_zero" ||
           diagnostic.message.includes("division by zero")
         ) {
-          const divisor = findDivisorVariableInLine(lineContent);
-          if (divisor) {
+          const cstDivisor = findDivisorIdentifierNodeInCst(
+            docRoot,
+            diagStartOffset,
+            diagEndOffset,
+            diagnostic.range.start.line,
+          );
+          const divisorName = cstDivisor?.name;
+          const divisorEdit = cstDivisor
+            ? patchCstNodeValue(cstDivisor.node, `max(1e-6, ${cstDivisor.name})`, document)
+            : null;
+          const fallbackDivisor = !divisorEdit ? findDivisorVariableInLine(lineContent) : undefined;
+          const finalDivisorName = divisorEdit ? divisorName : fallbackDivisor?.name;
+          const finalDivisorEdit: QuickFixEdit | null =
+            divisorEdit ??
+            (fallbackDivisor
+              ? {
+                  range: {
+                    start: { line: diagnostic.range.start.line, character: fallbackDivisor.start },
+                    end: { line: diagnostic.range.start.line, character: fallbackDivisor.end },
+                  },
+                  newText: `max(1e-6, ${fallbackDivisor.name})`,
+                }
+              : null);
+
+          if (finalDivisorName && finalDivisorEdit) {
             const indent = lineContent.match(/^[ \t]*/)?.[0] ?? "";
             actions.push({
-              title: `Guard against division by zero with 'max(1e-6, ${divisor.name})'`,
+              title: `Guard against division by zero with 'max(1e-6, ${finalDivisorName})'`,
               kind: CodeActionKind.QuickFix,
               diagnostics: [diagnostic],
               edit: {
                 changes: {
-                  [params.textDocument.uri]: [
-                    {
-                      range: {
-                        start: { line: diagnostic.range.start.line, character: divisor.start },
-                        end: { line: diagnostic.range.start.line, character: divisor.end },
-                      },
-                      newText: `max(1e-6, ${divisor.name})`,
-                    },
-                  ],
+                  [params.textDocument.uri]: [finalDivisorEdit],
                 },
               },
             });
             actions.push({
-              title: `Insert invariant assertion 'assert(${divisor.name} <> 0, ...)'`,
+              title: `Insert invariant assertion 'assert(${finalDivisorName} <> 0, ...)'`,
               kind: CodeActionKind.QuickFix,
               diagnostics: [diagnostic],
               edit: {
@@ -1122,7 +1692,7 @@ export function registerWorkspaceFeaturesProvider(
                         start: { line: diagnostic.range.start.line, character: 0 },
                         end: { line: diagnostic.range.start.line, character: 0 },
                       },
-                      newText: `${indent}assert(${divisor.name} <> 0, "Divisor '${divisor.name}' must be non-zero");\n`,
+                      newText: `${indent}assert(${finalDivisorName} <> 0, "Divisor '${finalDivisorName}' must be non-zero");\n`,
                     },
                   ],
                 },
@@ -1131,11 +1701,21 @@ export function registerWorkspaceFeaturesProvider(
           }
         }
 
-        if (diagnostic.code === "math_domain" || /\b(sqrt|log|log10)\s*\(/.test(lineContent)) {
-          const mathMatch = /\b(sqrt|log|log10)\s*\(\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\)/.exec(lineContent);
-          if (mathMatch) {
-            const fnName = mathMatch[1]!;
-            const argName = mathMatch[2]!;
+        const cstMathCall = findMathDomainCallInCst(
+          docRoot,
+          diagStartOffset,
+          diagEndOffset,
+          diagnostic.range.start.line,
+        );
+        if (cstMathCall || diagnostic.code === "math_domain" || /\b(sqrt|log|log10)\s*\(/.test(lineContent)) {
+          const mathCall =
+            cstMathCall ??
+            (() => {
+              const mathMatch = /\b(sqrt|log|log10)\s*\(\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\)/.exec(lineContent);
+              return mathMatch ? { fnName: mathMatch[1]!, argName: mathMatch[2]! } : null;
+            })();
+          if (mathCall) {
+            const { fnName, argName } = mathCall;
             const cond = fnName === "sqrt" ? `${argName} >= 0` : `${argName} > 0`;
             const indent = lineContent.match(/^[ \t]*/)?.[0] ?? "";
             actions.push({
@@ -1163,7 +1743,8 @@ export function registerWorkspaceFeaturesProvider(
         // 4. Contract Refinement QuickFix (M5102)
         if (diagnostic.code === "M5102" || diagnostic.message.includes("contract")) {
           const reqLimit = data?.requiredLimit ?? data?.suggestedValue;
-          if (reqLimit !== undefined && numMatch) {
+          const contractEdit = reqLimit !== undefined ? buildAssignedValueEdit(`${reqLimit}`) : null;
+          if (reqLimit !== undefined && contractEdit) {
             actions.push({
               title: `Adjust contract to satisfy parent requirement (${reqLimit})`,
               kind: CodeActionKind.QuickFix,
@@ -1171,15 +1752,7 @@ export function registerWorkspaceFeaturesProvider(
               diagnostics: [diagnostic],
               edit: {
                 changes: {
-                  [params.textDocument.uri]: [
-                    {
-                      range: {
-                        start: { line: diagnostic.range.start.line, character: numMatch.start },
-                        end: { line: diagnostic.range.start.line, character: numMatch.end },
-                      },
-                      newText: `${reqLimit}`,
-                    },
-                  ],
+                  [params.textDocument.uri]: [contractEdit],
                 },
               },
             });
@@ -1195,7 +1768,8 @@ export function registerWorkspaceFeaturesProvider(
           diagnostic.message.includes("flowpipe")
         ) {
           const provenBound = data?.provenBound ?? data?.suggestedValue;
-          if (provenBound !== undefined && numMatch) {
+          const boundEdit = provenBound !== undefined ? buildAssignedValueEdit(`${provenBound}`) : null;
+          if (provenBound !== undefined && boundEdit) {
             actions.push({
               title: `Enclose reachability flowpipe boundary (${provenBound})`,
               kind: CodeActionKind.QuickFix,
@@ -1203,15 +1777,7 @@ export function registerWorkspaceFeaturesProvider(
               diagnostics: [diagnostic],
               edit: {
                 changes: {
-                  [params.textDocument.uri]: [
-                    {
-                      range: {
-                        start: { line: diagnostic.range.start.line, character: numMatch.start },
-                        end: { line: diagnostic.range.start.line, character: numMatch.end },
-                      },
-                      newText: `${provenBound}`,
-                    },
-                  ],
+                  [params.textDocument.uri]: [boundEdit],
                 },
               },
             });
@@ -1225,26 +1791,29 @@ export function registerWorkspaceFeaturesProvider(
             const formattedVal = Number(targetVal.toPrecision(6)).toString();
             const clauseLabel = data?.standardClause ? ` (${data.standardClause})` : "";
             const varLabel = typeof data?.varName === "string" && data.varName ? data.varName : "parameter";
-            let editRange:
-              { start: { line: number; character: number }; end: { line: number; character: number } } | undefined;
+            let complianceEdit = buildAssignedValueEdit(formattedVal);
 
-            if (numMatch) {
-              editRange = {
-                start: { line: diagnostic.range.start.line, character: numMatch.start },
-                end: { line: diagnostic.range.start.line, character: numMatch.end },
-              };
-            } else if (typeof data?.varName === "string" && data.varName.trim()) {
+            if (!complianceEdit && typeof data?.varName === "string" && data.varName.trim()) {
               const shortVar = extractLeafSymbolName(data.varName);
-              const valSpan = findScalarAssignmentValue(text, shortVar);
-              if (valSpan) {
-                editRange = {
-                  start: document.positionAt(valSpan.start),
-                  end: document.positionAt(valSpan.end),
-                };
+              const cstScalarNode = findScalarAssignmentNumericNodeInCst(docRoot, shortVar);
+              if (cstScalarNode) {
+                complianceEdit = patchCstNodeValue(cstScalarNode, formattedVal, document);
+              }
+              if (!complianceEdit) {
+                const valSpan = findScalarAssignmentValue(text, shortVar);
+                if (valSpan) {
+                  complianceEdit = {
+                    range: {
+                      start: document.positionAt(valSpan.start),
+                      end: document.positionAt(valSpan.end),
+                    },
+                    newText: formattedVal,
+                  };
+                }
               }
             }
 
-            if (editRange) {
+            if (complianceEdit) {
               actions.push({
                 title: `Update '${varLabel}' to ${formattedVal} to satisfy${clauseLabel}`,
                 kind: CodeActionKind.QuickFix,
@@ -1252,12 +1821,7 @@ export function registerWorkspaceFeaturesProvider(
                 diagnostics: [diagnostic],
                 edit: {
                   changes: {
-                    [params.textDocument.uri]: [
-                      {
-                        range: editRange,
-                        newText: formattedVal,
-                      },
-                    ],
+                    [params.textDocument.uri]: [complianceEdit],
                   },
                 },
               });
@@ -1350,83 +1914,95 @@ export function registerWorkspaceFeaturesProvider(
           }
 
           if (synthExpr) {
-            const reqHeaderRe =
-              /^\s*(?:(?:public|private|protected|abstract|individual|variation|variant)\s+)*requirement\b/;
-            let reqHeaderLine = -1;
-            const diagLine = Math.max(0, Math.min(docLines.length - 1, diagnostic.range.start.line));
+            const diagStartOffset = document.offsetAt(diagnostic.range.start);
+            const diagEndOffset = document.offsetAt(diagnostic.range.end);
+            const docTreeRoot = documentTrees.get(docUri)?.tree?.rootNode;
+            let closeOffset = findEnclosingBlockCloseOffsetInCst(docTreeRoot, diagStartOffset, diagEndOffset, docText, [
+              "requirement",
+              "class",
+              "part",
+              "block",
+            ]);
 
-            const findMatchingCloseBrace = (startSearchOffset: number): number => {
-              let depth = 0;
-              let seenOpen = false;
-              let inLineComment = false;
-              let inBlockComment = false;
-              let quoteChar = "";
+            if (closeOffset < 0) {
+              const reqHeaderRe =
+                /^\s*(?:(?:public|private|protected|abstract|individual|variation|variant)\s+)*requirement\b/;
+              let reqHeaderLine = -1;
+              const diagLine = Math.max(0, Math.min(docLines.length - 1, diagnostic.range.start.line));
 
-              for (let idx = startSearchOffset; idx < docText.length; idx++) {
-                const ch = docText[idx]!;
-                const next = docText[idx + 1] ?? "";
-                if (inLineComment) {
-                  if (ch === "\n") inLineComment = false;
-                  continue;
-                }
-                if (inBlockComment) {
-                  if (ch === "*" && next === "/") {
-                    inBlockComment = false;
-                    idx++;
+              const findMatchingCloseBrace = (startSearchOffset: number): number => {
+                let depth = 0;
+                let seenOpen = false;
+                let inLineComment = false;
+                let inBlockComment = false;
+                let quoteChar = "";
+
+                for (let idx = startSearchOffset; idx < docText.length; idx++) {
+                  const ch = docText[idx]!;
+                  const next = docText[idx + 1] ?? "";
+                  if (inLineComment) {
+                    if (ch === "\n") inLineComment = false;
+                    continue;
                   }
-                  continue;
-                }
-                if (quoteChar) {
-                  if (ch === "\\" && next) {
+                  if (inBlockComment) {
+                    if (ch === "*" && next === "/") {
+                      inBlockComment = false;
+                      idx++;
+                    }
+                    continue;
+                  }
+                  if (quoteChar) {
+                    if (ch === "\\" && next) {
+                      idx++;
+                      continue;
+                    }
+                    if (ch === quoteChar) quoteChar = "";
+                    continue;
+                  }
+                  if (ch === "/" && next === "/") {
+                    inLineComment = true;
                     idx++;
                     continue;
                   }
-                  if (ch === quoteChar) quoteChar = "";
-                  continue;
+                  if (ch === "/" && next === "*") {
+                    inBlockComment = true;
+                    idx++;
+                    continue;
+                  }
+                  if (ch === '"' || ch === "'") {
+                    quoteChar = ch;
+                    continue;
+                  }
+                  if (ch === "{") {
+                    seenOpen = true;
+                    depth++;
+                  } else if (ch === "}" && seenOpen) {
+                    depth--;
+                    if (depth === 0) return idx;
+                  }
                 }
-                if (ch === "/" && next === "/") {
-                  inLineComment = true;
-                  idx++;
-                  continue;
-                }
-                if (ch === "/" && next === "*") {
-                  inBlockComment = true;
-                  idx++;
-                  continue;
-                }
-                if (ch === '"' || ch === "'") {
-                  quoteChar = ch;
-                  continue;
-                }
-                if (ch === "{") {
-                  seenOpen = true;
-                  depth++;
-                } else if (ch === "}" && seenOpen) {
-                  depth--;
-                  if (depth === 0) return idx;
-                }
-              }
-              return -1;
-            };
+                return -1;
+              };
 
-            const diagStartOffset = document.offsetAt(diagnostic.range.start);
-            if (reqHeaderRe.test(docLines[diagLine] ?? "")) {
-              reqHeaderLine = diagLine;
-            } else {
-              for (let r = diagLine - 1; r >= 0; r--) {
-                if (!reqHeaderRe.test(docLines[r] ?? "")) continue;
-                const candStart = document.offsetAt({ line: r, character: 0 });
-                const candClose = findMatchingCloseBrace(candStart);
-                if (candClose > diagStartOffset) {
-                  reqHeaderLine = r;
-                  break;
+              if (reqHeaderRe.test(docLines[diagLine] ?? "")) {
+                reqHeaderLine = diagLine;
+              } else {
+                for (let r = diagLine - 1; r >= 0; r--) {
+                  if (!reqHeaderRe.test(docLines[r] ?? "")) continue;
+                  const candStart = document.offsetAt({ line: r, character: 0 });
+                  const candClose = findMatchingCloseBrace(candStart);
+                  if (candClose > diagStartOffset) {
+                    reqHeaderLine = r;
+                    break;
+                  }
                 }
               }
+
+              const searchStart =
+                reqHeaderLine >= 0 ? document.offsetAt({ line: reqHeaderLine, character: 0 }) : diagStartOffset;
+              closeOffset = findMatchingCloseBrace(searchStart);
             }
 
-            const searchStart =
-              reqHeaderLine >= 0 ? document.offsetAt({ line: reqHeaderLine, character: 0 }) : diagStartOffset;
-            const closeOffset = findMatchingCloseBrace(searchStart);
             if (closeOffset >= 0) {
               const closePos = document.positionAt(closeOffset);
               const closeLineText = docLines[closePos.line] ?? "";
@@ -1459,31 +2035,46 @@ export function registerWorkspaceFeaturesProvider(
         // 2. S2010 (top-level-import-not-private): Make top-level import 'private'
         if (normSysmlCode === "S2010") {
           const lineIdx = diagnostic.range.start.line;
-          const lineText = docLines[lineIdx] ?? "";
-          const importLineMatch = /^(\s*)(?:(public|protected)\s+)?(import\b)/.exec(lineText);
+          const docTreeRoot = documentTrees.get(docUri)?.tree?.rootNode;
+          const diagStartOffset = document.offsetAt(diagnostic.range.start);
+          const diagEndOffset = document.offsetAt(diagnostic.range.end);
+          const cstImportEdit = findImportVisibilityEditInCst(
+            docTreeRoot,
+            diagStartOffset,
+            diagEndOffset,
+            lineIdx,
+            document,
+          );
           let editRange: LspRange;
           let newText: string;
 
-          if (importLineMatch && importLineMatch[2]) {
-            const visStart = importLineMatch[1]!.length;
-            editRange = {
-              start: { line: lineIdx, character: visStart },
-              end: { line: lineIdx, character: visStart + importLineMatch[2].length },
-            };
-            newText = "private";
-          } else if (importLineMatch) {
-            const impCol = importLineMatch[1]!.length;
-            editRange = {
-              start: { line: lineIdx, character: impCol },
-              end: { line: lineIdx, character: impCol },
-            };
-            newText = "private ";
+          if (cstImportEdit) {
+            editRange = cstImportEdit.range;
+            newText = cstImportEdit.newText;
           } else {
-            editRange = {
-              start: diagnostic.range.start,
-              end: diagnostic.range.start,
-            };
-            newText = "private ";
+            const lineText = docLines[lineIdx] ?? "";
+            const importLineMatch = /^(\s*)(?:(public|protected)\s+)?(import\b)/.exec(lineText);
+            if (importLineMatch && importLineMatch[2]) {
+              const visStart = importLineMatch[1]!.length;
+              editRange = {
+                start: { line: lineIdx, character: visStart },
+                end: { line: lineIdx, character: visStart + importLineMatch[2].length },
+              };
+              newText = "private";
+            } else if (importLineMatch) {
+              const impCol = importLineMatch[1]!.length;
+              editRange = {
+                start: { line: lineIdx, character: impCol },
+                end: { line: lineIdx, character: impCol },
+              };
+              newText = "private ";
+            } else {
+              editRange = {
+                start: diagnostic.range.start,
+                end: diagnostic.range.start,
+              };
+              newText = "private ";
+            }
           }
 
           actions.push({
@@ -1504,23 +2095,29 @@ export function registerWorkspaceFeaturesProvider(
         if (normSysmlCode === "S2011") {
           const shadowedName = /Member\s+'([^']+)'\s+shadows/i.exec(diagnostic.message)?.[1];
           const lineIdx = diagnostic.range.start.line;
-          const lineText = docLines[lineIdx] ?? "";
-          const rangeSlice = docText.slice(
-            document.offsetAt(diagnostic.range.start),
-            document.offsetAt(diagnostic.range.end),
-          );
+          const diagStartOffset = document.offsetAt(diagnostic.range.start);
+          const diagEndOffset = document.offsetAt(diagnostic.range.end);
+          const rangeSlice = docText.slice(diagStartOffset, diagEndOffset);
 
+          const docTreeRoot = documentTrees.get(docUri)?.tree?.rootNode;
           let insertChar = -1;
           if (shadowedName && rangeSlice === shadowedName) {
             insertChar = diagnostic.range.start.character;
-          } else if (shadowedName) {
-            const escapedName = shadowedName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            const declBeforeDelim = lineText.split(/[:={;]/)[0] ?? lineText;
-            const nameMatch = new RegExp(`\\b(${escapedName})\\b`).exec(declBeforeDelim);
-            if (nameMatch && typeof nameMatch.index === "number") {
-              insertChar = nameMatch.index;
+          } else if (shadowedName && docTreeRoot) {
+            const located = locateEnclosingCstNode(docTreeRoot, diagStartOffset, diagEndOffset, {
+              row: lineIdx,
+              column: diagnostic.range.start.character,
+            });
+            const enclosing = climbToEnclosingLineNode(located, lineIdx);
+            const leaves = collectCstLeafNodes(enclosing, lineIdx);
+            for (const leaf of leaves) {
+              if (leaf.text === shadowedName && leaf.startPosition?.row === lineIdx) {
+                insertChar = leaf.startPosition.column;
+                break;
+              }
             }
-          } else if (rangeSlice && isIdentStartCode(rangeSlice.charCodeAt(0))) {
+          }
+          if (insertChar < 0 && rangeSlice && isIdentStartCode(rangeSlice.charCodeAt(0))) {
             insertChar = diagnostic.range.start.character;
           }
 
@@ -1541,41 +2138,44 @@ export function registerWorkspaceFeaturesProvider(
           continue;
         }
 
-        // 4. S4021 (send-to-port-without-via): Replace 'to' with 'via' for port send
+        // 4. S4021 (send-to-port-without-via): Replace 'to' keyword CST token with 'via' for port send
         if (normSysmlCode === "S4021") {
-          const portFromMsg =
-            /Sending to port '([^']+)'/i.exec(diagnostic.message)?.[1] ??
-            /instead of 'to\s+([^']+)'/i.exec(diagnostic.message)?.[1];
           const lineIdx = diagnostic.range.start.line;
-          const lineText = docLines[lineIdx] ?? "";
-          let replaceRange: LspRange | undefined;
-          let replacementText: string | undefined;
+          const docTreeRoot = documentTrees.get(docUri)?.tree?.rootNode;
+          const diagStartOffset = document.offsetAt(diagnostic.range.start);
+          const diagEndOffset = document.offsetAt(diagnostic.range.end);
+          let sendEdit: QuickFixEdit | null = null;
 
-          if (portFromMsg) {
-            const escapedPort = portFromMsg.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            const toPortRe = new RegExp(`\\bto(\\s+${escapedPort})(?![A-Za-z0-9_])`);
-            const m = toPortRe.exec(lineText);
-            if (m && typeof m.index === "number") {
-              replaceRange = {
-                start: { line: lineIdx, character: m.index },
-                end: { line: lineIdx, character: m.index + m[0].length },
-              };
-              replacementText = `via${m[1]}`;
+          if (docTreeRoot) {
+            const located = locateEnclosingCstNode(docTreeRoot, diagStartOffset, diagEndOffset, {
+              row: lineIdx,
+              column: diagnostic.range.start.character,
+            });
+            const enclosing = climbToEnclosingLineNode(located, lineIdx);
+            const leaves = collectCstLeafNodes(enclosing, lineIdx);
+            for (const leaf of leaves) {
+              if ((leaf.text ?? "").trim() === "to") {
+                sendEdit = patchCstNodeValue(leaf, "via", document);
+                if (sendEdit) break;
+              }
             }
           }
 
-          if (!replaceRange) {
-            const fallbackMatch = /\bto(\s+[A-Za-z_][A-Za-z0-9_.'"]*)/.exec(lineText);
-            if (fallbackMatch && typeof fallbackMatch.index === "number") {
-              replaceRange = {
-                start: { line: lineIdx, character: fallbackMatch.index },
-                end: { line: lineIdx, character: fallbackMatch.index + fallbackMatch[0].length },
+          if (!sendEdit) {
+            const lineText = docLines[lineIdx] ?? "";
+            const toMatch = /\bto\b(?=\s+[a-zA-Z_])/.exec(lineText);
+            if (toMatch) {
+              sendEdit = {
+                range: {
+                  start: { line: lineIdx, character: toMatch.index },
+                  end: { line: lineIdx, character: toMatch.index + 2 },
+                },
+                newText: "via",
               };
-              replacementText = `via${fallbackMatch[1]}`;
             }
           }
 
-          if (replaceRange && replacementText !== undefined) {
+          if (sendEdit) {
             actions.push({
               title: "Replace 'to' with 'via' for port send",
               kind: CodeActionKind.QuickFix,
@@ -1583,7 +2183,7 @@ export function registerWorkspaceFeaturesProvider(
               diagnostics: [diagnostic],
               edit: {
                 changes: {
-                  [docUri]: [{ range: replaceRange, newText: replacementText }],
+                  [docUri]: [sendEdit],
                 },
               },
             });

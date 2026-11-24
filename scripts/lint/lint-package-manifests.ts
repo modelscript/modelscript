@@ -110,6 +110,7 @@ const BETA_LANGUAGES = new Set([
   "sysml2",
   "trasys",
   "trnsys",
+  "twentysim",
   "urdf",
   "usgs-dem",
   "verilog",

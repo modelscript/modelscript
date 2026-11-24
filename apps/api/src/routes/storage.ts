@@ -2,6 +2,7 @@
 
 import express, { Router as createRouter, type Request, type Response, type Router } from "express";
 import multer from "multer";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { requireAuth } from "../middleware/auth-middleware.js";
@@ -69,7 +70,7 @@ const storage = multer.diskStorage({
     const rawExt = path.extname(file.originalname || "").toLowerCase();
     const ext = /^\.[a-z0-9]{1,16}$/.test(rawExt) ? rawExt : "";
     const safeField = (file.fieldname || "file").replace(/[^a-zA-Z0-9_-]/g, "_");
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const uniqueSuffix = `${Date.now()}-${crypto.randomUUID()}`;
     cb(null, safeField + "-" + uniqueSuffix + ext);
   },
 });
@@ -148,10 +149,11 @@ export function storageRouter(): Router {
     const checkExt = (exts: string[]) => exts.some((e) => lowerFilename.endsWith(e) || originalExt === e);
     let viewType = "other";
 
+    const resolvedUploadDir = path.resolve(uploadDir);
     const safeFilename = path.basename(req.file.path);
-    const safeFilePath = path.resolve(uploadDir, safeFilename);
+    const safeFilePath = path.resolve(resolvedUploadDir, safeFilename);
     let headerSnippet = "";
-    if (safeFilePath.startsWith(uploadDir + path.sep)) {
+    if (safeFilePath.startsWith(resolvedUploadDir + path.sep)) {
       try {
         const fd = fs.openSync(safeFilePath, "r");
         const buf = Buffer.alloc(4096);

@@ -105,6 +105,18 @@ const TEMPLATE_ALIASES: Record<string, string> = {
   pscad: "pscad-ieee2800-inverter",
   fea: "fea-bracket-deck",
   cfd: "cfd-rae2822-su2",
+  drone: "urdf-hexacopter-drone",
+  hexacopter: "urdf-hexacopter-drone",
+  "urdf-hexacopter-drone": "urdf-hexacopter-drone",
+  "wind-turbine": "modelica-wind-turbine",
+  turbine: "modelica-wind-turbine",
+  "modelica-wind-turbine": "modelica-wind-turbine",
+  "ev-battery": "modelica-ev-battery-cooling",
+  battery: "modelica-ev-battery-cooling",
+  "modelica-ev-battery-cooling": "modelica-ev-battery-cooling",
+  satellite: "modelica-orbital-satellite",
+  cubesat: "modelica-orbital-satellite",
+  "modelica-orbital-satellite": "modelica-orbital-satellite",
 };
 
 function clearPlaygroundUrl(pathname: string): void {

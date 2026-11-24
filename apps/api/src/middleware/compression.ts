@@ -5,12 +5,13 @@ import zlib from "node:zlib";
 
 const COMPRESSIBLE_TYPES = /json|text|javascript|xml|svg|html/i;
 const MIN_COMPRESS_SIZE = 1024;
+const MAX_COMPRESS_SIZE = 16 * 1024 * 1024; // 16 MB safety cap to prevent OOM on large streams
 
 /**
  * Lightweight, high-performance HTTP response compression middleware powered by Node.js `node:zlib`.
  *
  * Automatically gzips or deflates JSON, HTML, XML, SVG, and text responses >= 1 KB while safely
- * bypassing SSE streams, WebSockets, pre-compressed files, and sub-threshold small responses.
+ * bypassing SSE streams, WebSockets, pre-compressed files, oversized streams, and sub-threshold responses.
  */
 export function responseCompressionMiddleware(req: Request, res: Response, next: NextFunction): void {
   const acceptEncoding = req.headers["accept-encoding"];
@@ -43,6 +44,7 @@ export function responseCompressionMiddleware(req: Request, res: Response, next:
   const origWrite: WriteFn = res.write.bind(res) as unknown as WriteFn;
   const origEnd: EndFn = res.end.bind(res) as unknown as EndFn;
   const chunks: Buffer[] = [];
+  let bufferedBytes = 0;
   let isIntercepting = true;
 
   res.write = function (chunk: unknown, encoding?: unknown, cb?: unknown): boolean {
@@ -50,11 +52,20 @@ export function responseCompressionMiddleware(req: Request, res: Response, next:
       return origWrite(chunk, encoding, cb);
     }
     if (chunk) {
-      chunks.push(
-        Buffer.isBuffer(chunk)
-          ? chunk
-          : Buffer.from(chunk as string, typeof encoding === "string" ? (encoding as BufferEncoding) : "utf8"),
-      );
+      const buf = Buffer.isBuffer(chunk)
+        ? chunk
+        : Buffer.from(chunk as string, typeof encoding === "string" ? (encoding as BufferEncoding) : "utf8");
+      bufferedBytes += buf.length;
+      if (bufferedBytes > MAX_COMPRESS_SIZE) {
+        // Exceeded buffer cap: flush accumulated chunks uncompressed and stop intercepting
+        isIntercepting = false;
+        for (const c of chunks) {
+          origWrite(c);
+        }
+        chunks.length = 0;
+        return origWrite(buf, encoding, cb);
+      }
+      chunks.push(buf);
     }
     if (typeof encoding === "function") {
       encoding();
@@ -70,7 +81,7 @@ export function responseCompressionMiddleware(req: Request, res: Response, next:
     }
     isIntercepting = false;
 
-    if (chunk) {
+    if (chunk && typeof chunk !== "function") {
       chunks.push(
         Buffer.isBuffer(chunk)
           ? chunk
@@ -82,16 +93,17 @@ export function responseCompressionMiddleware(req: Request, res: Response, next:
     const body = Buffer.concat(chunks, totalLen);
     const contentType = String(res.getHeader("Content-Type") || "");
     const existingEncoding = res.getHeader("Content-Encoding");
+    const finalCallback = typeof chunk === "function" ? chunk : typeof encoding === "function" ? encoding : cb;
 
-    // Don't compress if already encoded, empty, below threshold, or non-compressible type
+    // Don't compress if already encoded, empty, below threshold, above cap, or non-compressible type
     if (
       existingEncoding ||
       totalLen < MIN_COMPRESS_SIZE ||
+      totalLen > MAX_COMPRESS_SIZE ||
       !COMPRESSIBLE_TYPES.test(contentType) ||
       contentType.includes("event-stream")
     ) {
-      const finalCb = typeof chunk === "function" ? chunk : typeof encoding === "function" ? encoding : cb;
-      return origEnd(body, finalCb);
+      return origEnd(body, finalCallback);
     }
 
     const currentVary = res.getHeader("Vary");
@@ -101,26 +113,22 @@ export function responseCompressionMiddleware(req: Request, res: Response, next:
       res.setHeader("Vary", `${currentVary}, Accept-Encoding`);
     }
 
-    const finalCallback = typeof chunk === "function" ? chunk : typeof encoding === "function" ? encoding : cb;
-
     if (supportsGzip) {
-      res.setHeader("Content-Encoding", "gzip");
-      res.removeHeader("Content-Length");
       zlib.gzip(body, { level: 6 }, (err, compressed) => {
         if (err) {
           origEnd(body, finalCallback);
         } else {
+          res.setHeader("Content-Encoding", "gzip");
           res.setHeader("Content-Length", compressed.length);
           origEnd(compressed, finalCallback);
         }
       });
     } else {
-      res.setHeader("Content-Encoding", "deflate");
-      res.removeHeader("Content-Length");
       zlib.deflate(body, (err, compressed) => {
         if (err) {
           origEnd(body, finalCallback);
         } else {
+          res.setHeader("Content-Encoding", "deflate");
           res.setHeader("Content-Length", compressed.length);
           origEnd(compressed, finalCallback);
         }

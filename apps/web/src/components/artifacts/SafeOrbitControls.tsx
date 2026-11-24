@@ -25,7 +25,22 @@ export const SafeOrbitControls: React.FC<SafeOrbitControlsProps> = ({
   const { gl } = useThree();
   const [isZoomAllowed, setIsZoomAllowed] = useState(Boolean(isFullScreen));
   const [showHint, setShowHint] = useState(false);
+  const [isXrPresenting, setIsXrPresenting] = useState<boolean>(() => Boolean(gl.xr?.isPresenting));
   const hintTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    const xr = gl.xr;
+    if (!xr || typeof xr.addEventListener !== "function") return;
+    const onStart = () => setIsXrPresenting(true);
+    const onEnd = () => setIsXrPresenting(false);
+    setIsXrPresenting(Boolean(xr.isPresenting));
+    xr.addEventListener("sessionstart", onStart);
+    xr.addEventListener("sessionend", onEnd);
+    return () => {
+      xr.removeEventListener("sessionstart", onStart);
+      xr.removeEventListener("sessionend", onEnd);
+    };
+  }, [gl]);
 
   useEffect(() => {
     if (isFullScreen) {
@@ -100,6 +115,10 @@ export const SafeOrbitControls: React.FC<SafeOrbitControlsProps> = ({
       }
     };
   }, [gl.domElement, isFullScreen]);
+
+  if (isXrPresenting) {
+    return null;
+  }
 
   return (
     <>

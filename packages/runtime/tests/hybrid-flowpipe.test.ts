@@ -8,7 +8,7 @@ import {
   HybridMode,
   HybridTransition,
   IntervalNewtonRootFinder,
-} from "../src/analysis/wasm_hybrid_flowpipe.js";
+} from "../src/analysis/hybrid_flowpipe.js";
 import { Interval, TaylorModel } from "../src/analysis/wasm_taylor_model.js";
 
 describe("Validated Hybrid Automata Flowpipe Reachability Suite", () => {

@@ -27,6 +27,7 @@ import {
   EqKind,
   ExprKind,
   type ForEquationMeta,
+  getDefaultWasmExports,
   UnaryOp,
   VarAttrKind,
   Variability,
@@ -34,6 +35,80 @@ import {
 } from "../dae/wasm_dae.js";
 import { isZeroExpr } from "./wasm_blt.js";
 import { wasmSbgIntervalIntersect } from "./wasm_kernels_bridge.js";
+
+interface SbgCoreWasmExports {
+  memory: WebAssembly.Memory;
+  alloc?: (bytes: number) => number;
+  free?: (ptr: number) => void;
+  sbg_mdiIntersect?: (aPtr: number, bPtr: number, dims: number, outPtr: number) => number;
+  sbg_setCap?: (
+    aPtr: number,
+    countA: number,
+    bPtr: number,
+    countB: number,
+    dims: number,
+    outPtr: number,
+    maxOut: number,
+  ) => number;
+  sbg_compactMdis?: (mdisPtr: number, count: number, dims: number) => number;
+  sbg_mdiDiff?: (
+    aPtr: number,
+    bPtr: number,
+    dims: number,
+    outPtr: number,
+    maxOut: number,
+    interScratchPtr: number,
+  ) => number;
+}
+
+const SBG_I32_SAFE_LIMIT = 0x3fffffff;
+
+function isSafeSbgI32(v: number): boolean {
+  return Number.isInteger(v) && v >= -SBG_I32_SAFE_LIMIT && v <= SBG_I32_SAFE_LIMIT;
+}
+
+function getSbgCoreWasm(): SbgCoreWasmExports | null {
+  const w = getDefaultWasmExports() as SbgCoreWasmExports | null;
+  if (!w || !w.memory || typeof w.alloc !== "function" || typeof w.free !== "function") return null;
+  return w;
+}
+
+function packMdiInto(mdi: MultiInterval, dims: number, dst: Int32Array, offset: number): boolean {
+  if (mdi.intervals.length !== dims) return false;
+  let k = offset;
+  for (let d = 0; d < dims; d++) {
+    const iv = mdi.intervals[d]!;
+    if (!isSafeSbgI32(iv.lo) || !isSafeSbgI32(iv.step) || !isSafeSbgI32(iv.hi)) return false;
+    dst[k++] = iv.lo;
+    dst[k++] = iv.step;
+    dst[k++] = iv.hi;
+  }
+  return true;
+}
+
+function packMdisInto(atoms: readonly MultiInterval[], dims: number, dst: Int32Array): boolean {
+  const stride = dims * 3;
+  for (let i = 0; i < atoms.length; i++) {
+    if (!packMdiInto(atoms[i]!, dims, dst, i * stride)) return false;
+  }
+  return true;
+}
+
+function unpackMdisFrom(src: Int32Array, count: number, dims: number): MultiInterval[] {
+  const out: MultiInterval[] = new Array(count);
+  let k = 0;
+  for (let i = 0; i < count; i++) {
+    const ivs: SBGInterval[] = new Array(dims);
+    for (let d = 0; d < dims; d++) {
+      const lo = src[k++]!;
+      const step = src[k++]!;
+      const hi = src[k++]!;
+      ivs[d] = new SBGInterval(lo, step, hi);
+    }
+    out[i] = new MultiInterval(ivs);
+  }
+  return out;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Number-Theoretic Helpers (GCD, Extended GCD, LCM)
@@ -333,8 +408,33 @@ export class MultiInterval {
   /** Component-wise intersection $M_1 \cap M_2$. */
   cap(other: MultiInterval): MultiInterval {
     if (this.arity() !== other.arity()) return new MultiInterval([SBGInterval.empty()]);
+    const dims = this.intervals.length;
+    if (dims >= 2 && !this.isEmpty() && !other.isEmpty()) {
+      const w = getSbgCoreWasm();
+      if (w && typeof w.sbg_mdiIntersect === "function") {
+        const strideBytes = dims * 12;
+        const aPtr = w.alloc!(strideBytes);
+        const bPtr = w.alloc!(strideBytes);
+        const outPtr = w.alloc!(strideBytes);
+        try {
+          const i32Len = dims * 3;
+          const aView = new Int32Array(w.memory.buffer, aPtr, i32Len);
+          const bView = new Int32Array(w.memory.buffer, bPtr, i32Len);
+          if (packMdiInto(this, dims, aView, 0) && packMdiInto(other, dims, bView, 0)) {
+            const ok = w.sbg_mdiIntersect(aPtr, bPtr, dims, outPtr);
+            if (ok === 0) return new MultiInterval(this.intervals.map(() => SBGInterval.empty()));
+            const outView = new Int32Array(w.memory.buffer, outPtr, i32Len);
+            return unpackMdisFrom(outView, 1, dims)[0]!;
+          }
+        } finally {
+          w.free!(aPtr);
+          w.free!(bPtr);
+          w.free!(outPtr);
+        }
+      }
+    }
     const out: SBGInterval[] = [];
-    for (let d = 0; d < this.intervals.length; d++) {
+    for (let d = 0; d < dims; d++) {
       const c = this.intervals[d]!.cap(other.intervals[d]!);
       if (c.isEmpty()) return new MultiInterval(this.intervals.map(() => SBGInterval.empty()));
       out.push(c);
@@ -348,11 +448,40 @@ export class MultiInterval {
    */
   diff(other: MultiInterval): MultiInterval[] {
     if (this.isEmpty()) return [];
+    const dims = this.intervals.length;
+    if (dims >= 2 && dims === other.intervals.length && !other.isEmpty()) {
+      const w = getSbgCoreWasm();
+      if (w && typeof w.sbg_mdiDiff === "function") {
+        const maxOut = Math.max(dims * 4, 16);
+        const strideBytes = dims * 12;
+        const aPtr = w.alloc!(strideBytes);
+        const bPtr = w.alloc!(strideBytes);
+        const interPtr = w.alloc!(strideBytes);
+        const outPtr = w.alloc!(maxOut * strideBytes);
+        try {
+          const i32Len = dims * 3;
+          const aView = new Int32Array(w.memory.buffer, aPtr, i32Len);
+          const bView = new Int32Array(w.memory.buffer, bPtr, i32Len);
+          if (packMdiInto(this, dims, aView, 0) && packMdiInto(other, dims, bView, 0)) {
+            const count = w.sbg_mdiDiff(aPtr, bPtr, dims, outPtr, maxOut, interPtr);
+            if (count >= 0) {
+              if (count === 0) return [];
+              const outView = new Int32Array(w.memory.buffer, outPtr, count * i32Len);
+              return unpackMdisFrom(outView, count, dims);
+            }
+          }
+        } finally {
+          w.free!(aPtr);
+          w.free!(bPtr);
+          w.free!(interPtr);
+          w.free!(outPtr);
+        }
+      }
+    }
     const inter = this.cap(other);
     if (inter.isEmpty()) return [this];
 
     const result: MultiInterval[] = [];
-    const dims = this.intervals.length;
     for (let d = 0; d < dims; d++) {
       const dimDiffs = this.intervals[d]!.diff(inter.intervals[d]!);
       for (const piece of dimDiffs) {
@@ -470,6 +599,26 @@ export class SBGSet {
 
   private static compactAtoms(atoms: MultiInterval[]): MultiInterval[] {
     const list = atoms.filter((a) => !a.isEmpty());
+    if (list.length >= 2) {
+      const dims = list[0]!.arity();
+      if (dims > 0) {
+        const w = getSbgCoreWasm();
+        if (w && typeof w.sbg_compactMdis === "function") {
+          const i32Count = list.length * dims * 3;
+          const ptr = w.alloc!(i32Count * 4);
+          try {
+            const view = new Int32Array(w.memory.buffer, ptr, i32Count);
+            if (packMdisInto(list, dims, view)) {
+              const newCount = w.sbg_compactMdis(ptr, list.length, dims);
+              const outView = new Int32Array(w.memory.buffer, ptr, newCount * dims * 3);
+              return unpackMdisFrom(outView, newCount, dims);
+            }
+          } finally {
+            w.free!(ptr);
+          }
+        }
+      }
+    }
     let changed = true;
     while (changed && list.length > 1) {
       changed = false;
@@ -548,6 +697,35 @@ export class SBGSet {
   /** Set intersection $S_1 \cap S_2$. */
   cap(other: SBGSet): SBGSet {
     if (this.isEmpty() || other.isEmpty()) return SBGSet.empty();
+    const countA = this.atoms.length;
+    const countB = other.atoms.length;
+    const dims = this.arity();
+    if (dims > 0 && dims === other.arity() && countA * countB >= 2) {
+      const w = getSbgCoreWasm();
+      if (w && typeof w.sbg_setCap === "function") {
+        const strideI32 = dims * 3;
+        const maxOut = countA * countB;
+        const aPtr = w.alloc!(countA * strideI32 * 4);
+        const bPtr = w.alloc!(countB * strideI32 * 4);
+        const outPtr = w.alloc!(maxOut * strideI32 * 4);
+        try {
+          const aView = new Int32Array(w.memory.buffer, aPtr, countA * strideI32);
+          const bView = new Int32Array(w.memory.buffer, bPtr, countB * strideI32);
+          if (packMdisInto(this.atoms, dims, aView) && packMdisInto(other.atoms, dims, bView)) {
+            const outCount = w.sbg_setCap(aPtr, countA, bPtr, countB, dims, outPtr, maxOut);
+            if (outCount >= 0) {
+              if (outCount === 0) return SBGSet.empty();
+              const outView = new Int32Array(w.memory.buffer, outPtr, outCount * strideI32);
+              return new SBGSet(unpackMdisFrom(outView, outCount, dims));
+            }
+          }
+        } finally {
+          w.free!(aPtr);
+          w.free!(bPtr);
+          w.free!(outPtr);
+        }
+      }
+    }
     const out: MultiInterval[] = [];
     for (const a of this.atoms) {
       for (const b of other.atoms) {

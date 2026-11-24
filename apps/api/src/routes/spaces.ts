@@ -3,12 +3,14 @@
 import bcrypt from "bcryptjs";
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { LibraryDatabase, SpaceOwnerType, SpaceRole, SpaceVisibility } from "../database.js";
 import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
-import { defaultApiLimiter } from "../middleware/rate-limiter.js";
+import { type ObjectSchema, registerOpenApiOperation, validateBody } from "../middleware/validate.js";
 import { JiraConnector, postAutomatedSimulationCommentsIfConfigured } from "../services/integrations/jira-connector.js";
+import { LocalGitVaultService, normalizeGitFilePath, sanitizeGitRef } from "../services/local-git-vault.js";
 import { getSpaceDomainPreset, listSpaceDomainPresets } from "../services/spaces/domain-presets.js";
 import {
   commitFilesToBareGitVault,
@@ -36,6 +38,161 @@ const VALID_SPACE_ROLES: readonly SpaceRole[] = [
 
 const VALID_VISIBILITIES: readonly SpaceVisibility[] = ["public", "unlisted", "internal", "private"];
 
+const SPACE_AUTH_SECURITY: Array<Record<string, string[]>> = [{ bearerAuth: [] }, { cookieAuth: [] }, { patAuth: [] }];
+
+const createSpaceSchema: ObjectSchema = {
+  type: "object",
+  required: ["slug", "name"],
+  description: "Payload for creating a new engineering Space under a user or organization namespace.",
+  properties: {
+    slug: {
+      type: "string",
+      required: true,
+      minLength: 2,
+      maxLength: 64,
+      description: "URL-safe space slug (2-64 alphanumeric, dash, or underscore characters).",
+    },
+    name: {
+      type: "string",
+      required: true,
+      minLength: 1,
+      description: "Human-readable display name of the engineering Space.",
+    },
+    tagline: {
+      type: "string",
+      description: "Short one-line summary of the Space.",
+    },
+    description: {
+      type: "string",
+      description: "Detailed markdown description of the Space.",
+    },
+    ownerType: {
+      type: "string",
+      enum: ["user", "organization"],
+      description: "Owner namespace kind (defaults to 'user').",
+    },
+    organizationId: {
+      type: "number",
+      min: 1,
+      description: "Organization numeric ID when ownerType is 'organization'.",
+    },
+    organizationSlug: {
+      type: "string",
+      description: "Organization slug when ownerType is 'organization'.",
+    },
+    domainPreset: {
+      type: "string",
+      description: "Engineering domain preset identifier (defaults to 'systems_general').",
+    },
+    visibility: {
+      type: "string",
+      enum: VALID_VISIBILITIES,
+      description: "Visibility level for the Space (defaults to 'public').",
+    },
+    avatarUrl: {
+      type: "string",
+      description: "Optional avatar image URL for the Space.",
+    },
+    bannerUrl: {
+      type: "string",
+      description: "Optional banner image URL for the Space.",
+    },
+    defaultBranch: {
+      type: "string",
+      description: "Default Git branch name (defaults to 'main').",
+    },
+  },
+};
+
+const createEcoSchema: ObjectSchema = {
+  type: "object",
+  required: ["title"],
+  description: "Payload for creating a PLM Engineering Change Order (ECO) proposal in a Space.",
+  properties: {
+    title: {
+      type: "string",
+      required: true,
+      minLength: 1,
+      description: "Short title summarizing the Engineering Change Order.",
+    },
+    description: {
+      type: "string",
+      description: "Detailed markdown rationale and engineering impact description.",
+    },
+    severity: {
+      type: "string",
+      description: "Change severity classification (e.g., 'standard', 'minor', 'major', 'safety_critical').",
+    },
+    sourceBranch: {
+      type: "string",
+      description: "Source Git branch containing proposed model changes.",
+    },
+    targetBranch: {
+      type: "string",
+      description: "Target Git branch for merging (defaults to the Space default branch).",
+    },
+    impactedModels: {
+      type: "array",
+      items: { type: "string" },
+      description: "List of fully-qualified model or component identifiers impacted by this ECO.",
+    },
+  },
+};
+
+registerOpenApiOperation("post", "/api/v1/spaces", {
+  summary: "Create a new engineering Space",
+  description: "Create a new Space under either the authenticated user's profile or an organization container.",
+  tags: ["spaces"],
+  security: SPACE_AUTH_SECURITY,
+  requestBody: createSpaceSchema,
+  responses: {
+    "201": {
+      description: "Space created successfully with default channels, starter docs, and ECO list.",
+    },
+    "400": {
+      description: "Invalid Space payload or missing organization reference.",
+      content: { "application/json": { schema: { $ref: "#/components/schemas/ApiError" } } },
+    },
+    "401": {
+      description: "Unauthorized.",
+      content: { "application/json": { schema: { $ref: "#/components/schemas/ApiError" } } },
+    },
+    "403": {
+      description: "Caller lacks permission to create a Space in the target organization.",
+      content: { "application/json": { schema: { $ref: "#/components/schemas/ApiError" } } },
+    },
+    "409": {
+      description: "A Space with the specified slug already exists in this namespace.",
+      content: { "application/json": { schema: { $ref: "#/components/schemas/ApiError" } } },
+    },
+  },
+});
+
+registerOpenApiOperation("post", "/api/v1/spaces/:namespace/:slug/ecos", {
+  summary: "Create a PLM Engineering Change Order (ECO)",
+  description: "Propose a new Engineering Change Order (ECO) against a Space repository.",
+  tags: ["spaces"],
+  security: SPACE_AUTH_SECURITY,
+  requestBody: createEcoSchema,
+  responses: {
+    "201": {
+      description: "ECO proposal created successfully.",
+    },
+    "400": {
+      description: "Invalid ECO payload.",
+      content: { "application/json": { schema: { $ref: "#/components/schemas/ApiError" } } },
+    },
+    "401": {
+      description: "Unauthorized.",
+      content: { "application/json": { schema: { $ref: "#/components/schemas/ApiError" } } },
+    },
+    "404": {
+      description: "Space not found.",
+      content: { "application/json": { schema: { $ref: "#/components/schemas/ApiError" } } },
+    },
+  },
+});
+
 function isCallerAdmin(req: Request): boolean {
   return Boolean(
     req.user && (req.user.account_type === "admin" || req.user.accountType === "admin" || req.user.role === "admin"),
@@ -45,7 +202,22 @@ function isCallerAdmin(req: Request): boolean {
 export function spacesRouter(database: LibraryDatabase): Router {
   const router = createRouter();
   const localGitProvider = new LocalGitProvider();
-  router.use(defaultApiLimiter);
+  const localGitVault = new LocalGitVaultService();
+
+  function resolveSpaceBareRepoPath(space: {
+    git_repo_path?: string | null | undefined;
+    owner_namespace: string;
+    slug: string;
+  }): string | null {
+    if (space.git_repo_path && fs.existsSync(space.git_repo_path)) {
+      return space.git_repo_path;
+    }
+    const dbRepoPath = resolveSpaceGitRepoPath(database.dbDir, space.owner_namespace, space.slug);
+    if (dbRepoPath && fs.existsSync(dbRepoPath)) {
+      return dbRepoPath;
+    }
+    return localGitVault.resolveLocalGitRepoDir(space.owner_namespace, space.slug);
+  }
 
   /**
    * GET /api/v1/spaces/presets
@@ -112,7 +284,7 @@ export function spacesRouter(database: LibraryDatabase): Router {
    * POST /api/v1/spaces
    * Create a new Space under either the authenticated User's profile or an Organization.
    */
-  router.post("/", requireAuth, (req: Request, res: Response): void => {
+  router.post("/", requireAuth, validateBody(createSpaceSchema), (req: Request, res: Response): void => {
     const body = req.body ?? {};
     const slug = String(body.slug ?? "")
       .trim()
@@ -128,8 +300,7 @@ export function spacesRouter(database: LibraryDatabase): Router {
       : "public";
     const avatarUrl = body.avatarUrl ? String(body.avatarUrl).trim() : null;
     const bannerUrl = body.bannerUrl ? String(body.bannerUrl).trim() : null;
-    const defaultBranch =
-      typeof body.defaultBranch === "string" && body.defaultBranch.trim() ? body.defaultBranch.trim() : "main";
+    const defaultBranch = sanitizeGitRef(body.defaultBranch, "main");
 
     if (!slug || !isValidSlug(slug)) {
       res.status(400).json({ error: "Space slug must be 2–64 alphanumeric, dash, or underscore characters" });
@@ -271,7 +442,10 @@ export function spacesRouter(database: LibraryDatabase): Router {
       visibility,
       avatarUrl: body.avatarUrl !== undefined ? (body.avatarUrl ? String(body.avatarUrl).trim() : null) : undefined,
       bannerUrl: body.bannerUrl !== undefined ? (body.bannerUrl ? String(body.bannerUrl).trim() : null) : undefined,
-      defaultBranch: typeof body.defaultBranch === "string" ? body.defaultBranch.trim() : undefined,
+      defaultBranch:
+        typeof body.defaultBranch === "string"
+          ? sanitizeGitRef(body.defaultBranch, space.default_branch || "main")
+          : undefined,
       enabledTabs: Array.isArray(body.enabledTabs) ? body.enabledTabs.map(String) : undefined,
       settings: body.settings && typeof body.settings === "object" ? body.settings : undefined,
     });
@@ -1169,35 +1343,40 @@ export function spacesRouter(database: LibraryDatabase): Router {
     res.json({ ecos: database.getSpaceEcoProposals(space.id) });
   });
 
-  router.post("/:namespace/:slug/ecos", requireAuth, (req: Request, res: Response): void => {
-    const space = database.getSpaceByNamespaceAndSlug(
-      String(req.params["namespace"] ?? ""),
-      String(req.params["slug"] ?? ""),
-    );
-    if (!space) {
-      res.status(404).json({ error: "Space not found" });
-      return;
-    }
-    const title = String(req.body?.title ?? "").trim();
-    const description = String(req.body?.description ?? "").trim();
-    if (!title) {
-      res.status(400).json({ error: "ECO title is required" });
-      return;
-    }
+  router.post(
+    "/:namespace/:slug/ecos",
+    requireAuth,
+    validateBody(createEcoSchema),
+    (req: Request, res: Response): void => {
+      const space = database.getSpaceByNamespaceAndSlug(
+        String(req.params["namespace"] ?? ""),
+        String(req.params["slug"] ?? ""),
+      );
+      if (!space) {
+        res.status(404).json({ error: "Space not found" });
+        return;
+      }
+      const title = String(req.body?.title ?? "").trim();
+      const description = String(req.body?.description ?? "").trim();
+      if (!title) {
+        res.status(400).json({ error: "ECO title is required" });
+        return;
+      }
 
-    const eco = database.createSpaceEcoProposal({
-      spaceId: space.id,
-      title,
-      description,
-      severity: req.body?.severity || "standard",
-      sourceBranch: req.body?.sourceBranch,
-      targetBranch: req.body?.targetBranch || space.default_branch,
-      authorId: req.user!.id,
-      impactedModels: Array.isArray(req.body?.impactedModels) ? req.body.impactedModels.map(String) : [],
-    });
+      const eco = database.createSpaceEcoProposal({
+        spaceId: space.id,
+        title,
+        description,
+        severity: req.body?.severity || "standard",
+        sourceBranch: req.body?.sourceBranch,
+        targetBranch: req.body?.targetBranch || space.default_branch,
+        authorId: req.user!.id,
+        impactedModels: Array.isArray(req.body?.impactedModels) ? req.body.impactedModels.map(String) : [],
+      });
 
-    res.status(201).json({ eco, ecos: database.getSpaceEcoProposals(space.id) });
-  });
+      res.status(201).json({ eco, ecos: database.getSpaceEcoProposals(space.id) });
+    },
+  );
 
   router.post(
     "/:namespace/:slug/ecos/:ecoId/review",
@@ -1383,90 +1562,115 @@ export function spacesRouter(database: LibraryDatabase): Router {
     });
   });
 
-  router.post("/:namespace/:slug/ecos/:ecoId/workflows/external-report", (req: Request, res: Response): void => {
-    const space = database.getSpaceByNamespaceAndSlug(
-      String(req.params["namespace"] ?? ""),
-      String(req.params["slug"] ?? ""),
-    );
-    if (!space) {
-      res.status(404).json({ error: "Space not found" });
-      return;
-    }
-    const ecoId = String(req.params["ecoId"] ?? "");
-    const eco = database.getSpaceEcoProposals(space.id).find((e) => e.id === ecoId);
-    if (!eco) {
-      res.status(404).json({ error: "ECO proposal not found" });
-      return;
-    }
+  router.post(
+    "/:namespace/:slug/ecos/:ecoId/workflows/external-report",
+    optionalAuth,
+    (req: Request, res: Response): void => {
+      const space = database.getSpaceByNamespaceAndSlug(
+        String(req.params["namespace"] ?? ""),
+        String(req.params["slug"] ?? ""),
+      );
+      if (!space) {
+        res.status(404).json({ error: "Space not found" });
+        return;
+      }
 
-    const body = (req.body || {}) as Record<string, unknown>;
-    const provider = String(body["provider"] || "github") as "github" | "gitlab" | "ansatz";
-    const status = body["status"] === "failed" ? "failed" : "passed";
-    const workflowName = String(body["workflowName"] || "External CI Pipeline");
-    const workflowFile = String(
-      body["workflowFile"] || (provider === "gitlab" ? ".gitlab-ci.yml" : ".github/workflows/ci.yml"),
-    );
-    const commitSha = body["commitSha"] ? String(body["commitSha"]) : null;
-    const ref = body["ref"] ? String(body["ref"]) : eco.source_branch;
-    const jobs = Array.isArray(body["jobs"]) ? body["jobs"] : [];
-    const artifacts = Array.isArray(body["artifacts"]) ? body["artifacts"] : [];
-    const simulationSummary = (body["simulationSummary"] as Record<string, unknown> | undefined) || {
-      status,
-      checkedAt: new Date().toISOString(),
-      solver: "External CI Runner",
-    };
-    const logs = String(body["logs"] || "");
+      const webhookSecret = process.env["SPACE_WEBHOOK_SECRET"];
+      const providedSecret = (req.headers["x-webhook-secret"] as string | undefined) || "";
+      const hasValidSecret =
+        Boolean(webhookSecret) &&
+        providedSecret.length === webhookSecret!.length &&
+        crypto.timingSafeEqual(Buffer.from(providedSecret, "utf-8"), Buffer.from(webhookSecret!, "utf-8"));
 
-    const run = database.createSpaceWorkflowRun({
-      spaceId: space.id,
-      ecoId: eco.id,
-      provider,
-      workflowFile,
-      workflowName,
-      triggerEvent: "external_report",
-      commitSha: commitSha ?? null,
-      ref,
-      status,
-      conclusion: status === "passed" ? "success" : "failure",
-      jobs,
-      artifacts,
-      summary: simulationSummary,
-      logs,
-    });
+      if (!hasValidSecret) {
+        const userId = req.user?.id;
+        const isAdmin = req.user?.role === "admin" || req.user?.accountType === "admin";
+        if (!userId) {
+          res.status(401).json({ error: "Authentication or valid webhook secret required" });
+          return;
+        }
+        if (!isAdmin && !database.canUserWriteSpace(space, userId, isAdmin)) {
+          res.status(403).json({ error: "Forbidden: write access to space required" });
+          return;
+        }
+      }
 
-    // Update ECO simulation gate from external report
-    database.db
-      .prepare(
-        `UPDATE space_eco_proposals
-         SET simulation_gate_status = ?,
-             simulation_summary_json = ?,
-             updated_at = datetime('now')
-         WHERE id = ? AND space_id = ?`,
-      )
-      .run(status, JSON.stringify(simulationSummary), eco.id, space.id);
+      const ecoId = String(req.params["ecoId"] ?? "");
+      const eco = database.getSpaceEcoProposals(space.id).find((e) => e.id === ecoId);
+      if (!eco) {
+        res.status(404).json({ error: "ECO proposal not found" });
+        return;
+      }
 
-    const updatedEco = database.getSpaceEcoProposals(space.id).find((e) => e.id === eco.id)!;
-    const simulation = database.getSpaceEcoSimulation(space.id, eco.id);
+      const body = (req.body || {}) as Record<string, unknown>;
+      const provider = String(body["provider"] || "github") as "github" | "gitlab" | "ansatz";
+      const status = body["status"] === "failed" ? "failed" : "passed";
+      const workflowName = String(body["workflowName"] || "External CI Pipeline");
+      const workflowFile = String(
+        body["workflowFile"] || (provider === "gitlab" ? ".gitlab-ci.yml" : ".github/workflows/ci.yml"),
+      );
+      const commitSha = body["commitSha"] ? String(body["commitSha"]) : null;
+      const ref = body["ref"] ? String(body["ref"]) : eco.source_branch;
+      const jobs = Array.isArray(body["jobs"]) ? body["jobs"] : [];
+      const artifacts = Array.isArray(body["artifacts"]) ? body["artifacts"] : [];
+      const simulationSummary = (body["simulationSummary"] as Record<string, unknown> | undefined) || {
+        status,
+        checkedAt: new Date().toISOString(),
+        solver: "External CI Runner",
+      };
+      const logs = String(body["logs"] || "");
 
-    if (simulation) {
-      void postAutomatedSimulationCommentsIfConfigured({
-        space,
+      const run = database.createSpaceWorkflowRun({
+        spaceId: space.id,
+        ecoId: eco.id,
+        provider,
+        workflowFile,
+        workflowName,
+        triggerEvent: "external_report",
+        commitSha: commitSha ?? null,
+        ref,
+        status,
+        conclusion: status === "passed" ? "success" : "failure",
+        jobs,
+        artifacts,
+        summary: simulationSummary,
+        logs,
+      });
+
+      // Update ECO simulation gate from external report
+      database.db
+        .prepare(
+          `UPDATE space_eco_proposals
+           SET simulation_gate_status = ?,
+               simulation_summary_json = ?,
+               updated_at = datetime('now')
+           WHERE id = ? AND space_id = ?`,
+        )
+        .run(status, JSON.stringify(simulationSummary), eco.id, space.id);
+
+      const updatedEco = database.getSpaceEcoProposals(space.id).find((e) => e.id === eco.id)!;
+      const simulation = database.getSpaceEcoSimulation(space.id, eco.id);
+
+      if (simulation) {
+        void postAutomatedSimulationCommentsIfConfigured({
+          space,
+          eco: updatedEco,
+          simulation,
+          issues: database.getSpaceIssues(space.id),
+        });
+      }
+
+      res.json({
+        success: true,
+        runId: run.id,
+        simulationGateStatus: status,
         eco: updatedEco,
         simulation,
-        issues: database.getSpaceIssues(space.id),
       });
-    }
+    },
+  );
 
-    res.json({
-      success: true,
-      runId: run.id,
-      simulationGateStatus: status,
-      eco: updatedEco,
-      simulation,
-    });
-  });
-
-  router.post("/:namespace/:slug/webhooks/:provider", (req: Request, res: Response): void => {
+  router.post("/:namespace/:slug/webhooks/:provider", optionalAuth, (req: Request, res: Response): void => {
     const namespace = String(req.params["namespace"] ?? "");
     const slug = String(req.params["slug"] ?? "");
     const provider = String(req.params["provider"] ?? "").toLowerCase();
@@ -1474,6 +1678,41 @@ export function spacesRouter(database: LibraryDatabase): Router {
     if (!space) {
       res.status(404).json({ error: "Space not found" });
       return;
+    }
+
+    const expectedSecret =
+      process.env["SPACE_WEBHOOK_SECRET"] ||
+      (provider === "github" ? process.env["GITHUB_WEBHOOK_SECRET"] : process.env["GITLAB_WEBHOOK_SECRET"]);
+
+    if (expectedSecret) {
+      if (provider === "github") {
+        const sig = String(req.headers["x-hub-signature-256"] || "");
+        const rawPayload = req.rawBody ? req.rawBody.toString("utf-8") : JSON.stringify(req.body ?? {});
+        const expectedSig = `sha256=${crypto.createHmac("sha256", expectedSecret).update(rawPayload).digest("hex")}`;
+        if (
+          sig.length !== expectedSig.length ||
+          !crypto.timingSafeEqual(Buffer.from(sig, "utf-8"), Buffer.from(expectedSig, "utf-8"))
+        ) {
+          res.status(401).json({ error: "Invalid GitHub webhook signature" });
+          return;
+        }
+      } else {
+        const token = String(req.headers["x-gitlab-token"] || req.headers["x-webhook-secret"] || "");
+        if (
+          token.length !== expectedSecret.length ||
+          !crypto.timingSafeEqual(Buffer.from(token, "utf-8"), Buffer.from(expectedSecret, "utf-8"))
+        ) {
+          res.status(401).json({ error: "Invalid webhook token" });
+          return;
+        }
+      }
+    } else if (process.env["NODE_ENV"] === "production") {
+      const userId = req.user?.id;
+      const isAdmin = req.user?.role === "admin" || req.user?.accountType === "admin";
+      if (!userId || (!isAdmin && !database.canUserWriteSpace(space, userId, isAdmin))) {
+        res.status(401).json({ error: "Webhook secret not configured and caller is not an authorized space writer" });
+        return;
+      }
     }
 
     const githubEvent = req.headers["x-github-event"] as string | undefined;
@@ -1694,19 +1933,52 @@ export function spacesRouter(database: LibraryDatabase): Router {
       return;
     }
 
-    const ref = typeof req.query["ref"] === "string" ? req.query["ref"] : space.default_branch || "main";
-    const subpath = typeof req.query["path"] === "string" ? req.query["path"] : "";
+    const defaultBranch = space.default_branch || "main";
+    const ref = sanitizeGitRef(req.query["ref"], defaultBranch);
+    const rawSubpath = typeof req.query["path"] === "string" ? req.query["path"].trim() : "";
+    const normalizedSubpath =
+      rawSubpath && rawSubpath !== "/" && rawSubpath !== "." ? normalizeGitFilePath(rawSubpath) : "";
+    if (normalizedSubpath === null) {
+      res.json({ tree: [], ref, path: rawSubpath, empty: true });
+      return;
+    }
     const recursive = req.query["recursive"] === "true";
+
+    const bareRepoPath = resolveSpaceBareRepoPath(space);
+    if (bareRepoPath) {
+      const result = localGitVault.readGitTree(bareRepoPath, ref, defaultBranch);
+      if (!result) {
+        res.json({ tree: [], ref, path: rawSubpath, empty: true });
+        return;
+      }
+      const prefix = normalizedSubpath ? `${normalizedSubpath}/` : "";
+      const tree = result.tree
+        .filter((entry) => {
+          if (prefix) {
+            if (!entry.path.startsWith(prefix)) return false;
+            const rel = entry.path.slice(prefix.length);
+            return recursive ? entry.type !== "tree" : !rel.includes("/");
+          }
+          return recursive ? entry.type !== "tree" : !entry.path.includes("/");
+        })
+        .map((entry) => ({
+          id: entry.sha,
+          name: path.posix.basename(entry.path),
+          type: entry.type,
+          path: entry.path,
+          mode: entry.mode,
+        }));
+      res.json({ tree, ref, path: rawSubpath });
+      return;
+    }
+
     try {
-      const targetId =
-        space.git_repo_path ||
-        resolveSpaceGitRepoPath(database.dbDir, space.owner_namespace, space.slug) ||
-        `${space.owner_namespace}/${space.slug}`;
-      const tree = await localGitProvider.getRepositoryTree(targetId, ref, subpath, recursive);
-      res.json({ tree, ref, path: subpath });
+      const targetId = `${space.owner_namespace}/${space.slug}`;
+      const tree = await localGitProvider.getRepositoryTree(targetId, ref, normalizedSubpath, recursive);
+      res.json({ tree, ref, path: rawSubpath });
     } catch {
       // Empty or newly initialized repository with no commits yet
-      res.json({ tree: [], ref, path: subpath, empty: true });
+      res.json({ tree: [], ref, path: rawSubpath, empty: true });
     }
   });
 
@@ -1729,13 +2001,28 @@ export function spacesRouter(database: LibraryDatabase): Router {
       res.status(400).json({ error: "Missing file path query parameter" });
       return;
     }
-    const ref = typeof req.query["ref"] === "string" ? req.query["ref"] : space.default_branch || "main";
+    const normalizedPath = normalizeGitFilePath(filePath);
+    if (!normalizedPath) {
+      res.status(404).json({ error: "Invalid repository file path" });
+      return;
+    }
+    const defaultBranch = space.default_branch || "main";
+    const ref = sanitizeGitRef(req.query["ref"], defaultBranch);
+
+    const bareRepoPath = resolveSpaceBareRepoPath(space);
+    if (bareRepoPath) {
+      const fileResult = localGitVault.readGitFileContent(bareRepoPath, normalizedPath, ref, defaultBranch);
+      if (!fileResult) {
+        res.status(404).json({ error: "File not found" });
+        return;
+      }
+      res.type("text/plain").send(Buffer.from(fileResult.content, "base64").toString("utf-8"));
+      return;
+    }
+
     try {
-      const targetId =
-        space.git_repo_path ||
-        resolveSpaceGitRepoPath(database.dbDir, space.owner_namespace, space.slug) ||
-        `${space.owner_namespace}/${space.slug}`;
-      const content = await localGitProvider.getRepositoryFileRaw(targetId, filePath, ref);
+      const targetId = `${space.owner_namespace}/${space.slug}`;
+      const content = await localGitProvider.getRepositoryFileRaw(targetId, normalizedPath, ref);
       res.type("text/plain").send(content);
     } catch (err: unknown) {
       res.status(404).json({ error: err instanceof Error ? err.message : "File not found" });
@@ -1756,12 +2043,24 @@ export function spacesRouter(database: LibraryDatabase): Router {
       return;
     }
 
-    const ref = typeof req.query["ref"] === "string" ? req.query["ref"] : space.default_branch || "main";
+    const ref = sanitizeGitRef(req.query["ref"], space.default_branch || "main");
+    const bareRepoPath = resolveSpaceBareRepoPath(space);
+    if (bareRepoPath) {
+      const commits = localGitVault.readGitCommits(bareRepoPath, ref, 100).map((c) => ({
+        id: c.sha,
+        short_id: c.sha.substring(0, 8),
+        title: c.message,
+        created_at: new Date(c.authoredAt).toISOString(),
+        author_name: c.authorName,
+        author_email: c.authorEmail,
+        message: c.message,
+      }));
+      res.json({ commits });
+      return;
+    }
+
     try {
-      const targetId =
-        space.git_repo_path ||
-        resolveSpaceGitRepoPath(database.dbDir, space.owner_namespace, space.slug) ||
-        `${space.owner_namespace}/${space.slug}`;
+      const targetId = `${space.owner_namespace}/${space.slug}`;
       const commits = await localGitProvider.getCommits(targetId, ref);
       res.json({ commits });
     } catch {
@@ -1784,10 +2083,7 @@ export function spacesRouter(database: LibraryDatabase): Router {
     }
 
     try {
-      const targetId =
-        space.git_repo_path ||
-        resolveSpaceGitRepoPath(database.dbDir, space.owner_namespace, space.slug) ||
-        `${space.owner_namespace}/${space.slug}`;
+      const targetId = resolveSpaceBareRepoPath(space) || `${space.owner_namespace}/${space.slug}`;
       const branches = await localGitProvider.getBranches(targetId);
       res.json({
         branches: branches.length > 0 ? branches : [{ name: space.default_branch || "main", default: true }],

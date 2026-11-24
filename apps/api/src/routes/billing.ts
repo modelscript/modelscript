@@ -3,7 +3,7 @@
 import express, { type Router } from "express";
 import crypto from "node:crypto";
 import type { LibraryDatabase } from "../database.js";
-import { defaultApiLimiter } from "../middleware/rate-limiter.js";
+import { registerOpenApiOperation, validateBody, type ObjectSchema } from "../middleware/validate.js";
 import {
   createStripeCheckoutSession,
   createStripePaymentIntent,
@@ -13,19 +13,104 @@ import {
   verifyStripePaymentIntent,
 } from "../services/billing/payment-guard.js";
 import { resolveRequestUserId } from "../services/hpc/quota-guard.js";
+import { escapeHtml } from "../util/escape.js";
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+const BILLING_PAYMENT_INTENT_SCHEMA: ObjectSchema = {
+  type: "object",
+  description: "Stripe PaymentIntent creation payload with mandatory 3DS2 and Radar fraud checks.",
+  required: ["amount"],
+  properties: {
+    amount: {
+      type: "number",
+      required: true,
+      min: PAYMENT_LIMITS.MIN_TOPUP_CREDITS,
+      max: PAYMENT_LIMITS.MAX_TOPUP_CREDITS,
+      description: `Top-up amount in compute credits (${PAYMENT_LIMITS.MIN_TOPUP_CREDITS} to ${PAYMENT_LIMITS.MAX_TOPUP_CREDITS}).`,
+    },
+    customerCountry: {
+      type: "string",
+      description: "ISO 3166-1 alpha-2 country code of the customer.",
+    },
+    cardCountry: {
+      type: "string",
+      description: "ISO 3166-1 alpha-2 country code of the payment card issuer.",
+    },
+    simulateRadarScore: {
+      type: "number",
+      min: 0,
+      max: 100,
+      description: "Simulated Stripe Radar risk score (0-100, non-production testing only).",
+    },
+    idempotencyKey: {
+      type: "string",
+      description: "Optional idempotency key to prevent duplicate PaymentIntent creation.",
+    },
+  },
+};
+
+const BILLING_TOPUP_SCHEMA: ObjectSchema = {
+  type: "object",
+  description: "Compute credit wallet top-up payload with anti-carding protections.",
+  required: ["amount"],
+  properties: {
+    amount: {
+      type: "number",
+      required: true,
+      min: PAYMENT_LIMITS.MIN_TOPUP_CREDITS,
+      max: PAYMENT_LIMITS.MAX_TOPUP_CREDITS,
+      description: `Top-up amount in compute credits (${PAYMENT_LIMITS.MIN_TOPUP_CREDITS} to ${PAYMENT_LIMITS.MAX_TOPUP_CREDITS}).`,
+    },
+    description: {
+      type: "string",
+      description: "Optional ledger description for the credit top-up.",
+    },
+    paymentMethod: {
+      type: "string",
+      description: "Payment method label (e.g. sandbox_card, stripe).",
+    },
+    paymentIntentId: {
+      type: "string",
+      description: "Settled Stripe PaymentIntent ID (required in production).",
+    },
+    simulatePaymentFailure: {
+      type: "boolean",
+      description: "Simulate a declined card charge for anti-carding testing (non-production only).",
+    },
+  },
+};
+
+registerOpenApiOperation("post", "/api/v1/billing/payment-intent", {
+  summary: "Create a Stripe PaymentIntent with 3DS2 and Radar fraud checks",
+  tags: ["billing"],
+  security: [{ BearerAuth: [] }, { CookieAuth: [] }],
+  requestBody: BILLING_PAYMENT_INTENT_SCHEMA,
+  responses: {
+    "201": { description: "PaymentIntent created with client secret and risk assessment." },
+    "400": { description: "Invalid top-up amount or payment intent parameters." },
+    "401": { description: "Unauthorized." },
+    "403": { description: "Blocked by Stripe Radar fraud rules." },
+    "429": { description: "Billing actions temporarily locked due to excessive failed attempts." },
+  },
+});
+
+registerOpenApiOperation("post", "/api/v1/billing/topup", {
+  summary: "Top up the authenticated user's compute credit wallet",
+  tags: ["billing"],
+  security: [{ BearerAuth: [] }, { CookieAuth: [] }],
+  requestBody: BILLING_TOPUP_SCHEMA,
+  responses: {
+    "200": { description: "Credits added and updated wallet balance returned." },
+    "400": { description: "Invalid top-up amount or outside allowed credit bounds." },
+    "401": { description: "Unauthorized." },
+    "402": { description: "Payment declined by card issuer." },
+    "403": { description: "Direct sandbox top-up disabled in production or PaymentIntent verification failed." },
+    "409": { description: "PaymentIntent has already been settled." },
+    "429": { description: "Billing actions temporarily locked due to excessive failed attempts." },
+  },
+});
 
 export function billingRouter(database: LibraryDatabase): Router {
   const router = express.Router();
-  router.use("/billing", defaultApiLimiter);
 
   // ── GET /api/v1/billing/wallet ──
   // Current wallet balance, account tier, and summary stats
@@ -106,42 +191,48 @@ export function billingRouter(database: LibraryDatabase): Router {
 
   // ── POST /api/v1/billing/payment-intent ──
   // Creates a Stripe Payment Intent enforcing mandatory 3D Secure 2 and Radar fraud rules
-  router.post("/billing/payment-intent", express.json(), async (req, res) => {
-    try {
-      const userId = resolveRequestUserId(req, database);
-      if (!userId) {
-        return res.status(401).json({ error: "Unauthorized" });
+  router.post(
+    "/billing/payment-intent",
+    express.json(),
+    validateBody(BILLING_PAYMENT_INTENT_SCHEMA),
+    async (req, res) => {
+      try {
+        const userId = resolveRequestUserId(req, database);
+        if (!userId) {
+          return res.status(401).json({ error: "Unauthorized" });
+        }
+
+        const clientIp =
+          (req.headers["x-forwarded-for"] as string) || req.ip || req.socket.remoteAddress || "127.0.0.1";
+        const amount = parseFloat(req.body.amount);
+
+        const intent = await createStripePaymentIntent(
+          {
+            userId,
+            amountCredits: amount,
+            clientIp,
+            customerCountry: req.body.customerCountry,
+            cardCountry: req.body.cardCountry,
+            simulateRadarScore: req.body.simulateRadarScore,
+            idempotencyKey: (req.headers["idempotency-key"] as string) || req.body.idempotencyKey,
+          },
+          defaultPaymentGuard,
+        );
+
+        res.status(201).json({
+          success: true,
+          ...intent,
+        });
+      } catch (err: unknown) {
+        const errMessage = err instanceof Error ? err.message : "";
+        const isLocked = errMessage.includes("Billing actions temporarily locked");
+        const isRadar = errMessage.includes("Stripe Radar");
+        const statusCode = isLocked ? 429 : isRadar ? 403 : 400;
+        res.status(statusCode).json({ error: errMessage || "Failed to create payment intent" });
       }
-
-      const clientIp = (req.headers["x-forwarded-for"] as string) || req.ip || req.socket.remoteAddress || "127.0.0.1";
-      const amount = parseFloat(req.body.amount);
-
-      const intent = await createStripePaymentIntent(
-        {
-          userId,
-          amountCredits: amount,
-          clientIp,
-          customerCountry: req.body.customerCountry,
-          cardCountry: req.body.cardCountry,
-          simulateRadarScore: req.body.simulateRadarScore,
-          idempotencyKey: (req.headers["idempotency-key"] as string) || req.body.idempotencyKey,
-        },
-        defaultPaymentGuard,
-      );
-
-      res.status(201).json({
-        success: true,
-        ...intent,
-      });
-    } catch (err: unknown) {
-      const errMessage = err instanceof Error ? err.message : "";
-      const isLocked = errMessage.includes("Billing actions temporarily locked");
-      const isRadar = errMessage.includes("Stripe Radar");
-      const statusCode = isLocked ? 429 : isRadar ? 403 : 400;
-      res.status(statusCode).json({ error: errMessage || "Failed to create payment intent" });
-    }
-    return;
-  });
+      return;
+    },
+  );
 
   // ── POST /api/v1/billing/checkout-session ──
   // Creates a Stripe Checkout Session with automatic VAT/sales tax and Tax ID collection

@@ -1,0 +1,58 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Multi-target Cloud HPC Dockerfile for standalone native `msx-hpc-worker`
+# Targets:
+#   - hpc-worker      (Linux x64/arm64, wasm2c native + headless Vulkan)
+#   - hpc-worker-cuda (NVIDIA CUDA 12.6 + NVRTC hardware FP64)
+
+FROM ubuntu:24.04 AS base-builder
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl git build-essential cmake ninja-build \
+    && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && corepack enable \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY . .
+RUN pnpm install --frozen-lockfile \
+    && pnpm --filter @modelscript/runtime run asbuild:native \
+    && pnpm --filter @modelscript/simulate run asbuild:native \
+    && npx tsx scripts/build/wasm2c-codegen.ts --skip-asc
+
+FROM base-builder AS build-cpu
+RUN cmake -S packages/native -B packages/native/build-hpc -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DMS_BUILD_NAPI=OFF \
+    -DMS_BUILD_HPC_WORKER=ON \
+    -DMS_HPC_NATIVE_ARCH=OFF \
+    && cmake --build packages/native/build-hpc --parallel \
+    && ./packages/native/build-hpc/msx-hpc-worker --version --selftest
+
+FROM ubuntu:24.04 AS hpc-worker
+RUN apt-get update && apt-get install -y --no-install-recommends libvulkan1 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=build-cpu /src/packages/native/build-hpc/msx-hpc-worker /usr/local/bin/msx-hpc-worker
+ENTRYPOINT ["/usr/local/bin/msx-hpc-worker"]
+CMD ["--info"]
+
+FROM nvidia/cuda:12.6.3-devel-ubuntu24.04 AS build-cuda
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl git cmake ninja-build \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY --from=base-builder /src/packages/native /src/packages/native
+COPY --from=base-builder /src/.cache/simde-* /src/.cache/
+RUN cmake -S packages/native -B packages/native/build-cuda -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DMS_BUILD_NAPI=OFF \
+    -DMS_BUILD_HPC_WORKER=ON \
+    -DMS_ENABLE_CUDA=ON \
+    && cmake --build packages/native/build-cuda --parallel \
+    && ./packages/native/build-cuda/msx-hpc-worker --version --selftest
+
+FROM nvidia/cuda:12.6.3-runtime-ubuntu24.04 AS hpc-worker-cuda
+COPY --from=build-cuda /src/packages/native/build-cuda/msx-hpc-worker /usr/local/bin/msx-hpc-worker
+ENTRYPOINT ["/usr/local/bin/msx-hpc-worker"]
+CMD ["--info"]

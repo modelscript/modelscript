@@ -60,7 +60,20 @@ const LANGUAGE_EXTENSIONS_MAP: Record<string, string[]> = {
 
 const docsRoot = path.resolve(import.meta.dirname, "..");
 const repoRoot = path.resolve(docsRoot, "../..");
-const outDir = path.join(docsRoot, "docs", "public", "lsp", "server", "dist");
+const args = new Set(process.argv.slice(2));
+const stageToDist = args.has("--dist");
+const cleanPublic = args.has("--clean-public");
+const publicLspDir = path.join(docsRoot, "docs", "public", "lsp");
+
+if (cleanPublic) {
+  fs.rmSync(publicLspDir, { recursive: true, force: true });
+  console.log(`[stage-lsp-assets] Cleaned ${path.relative(repoRoot, publicLspDir)} before build`);
+  process.exit(0);
+}
+
+const outDir = stageToDist
+  ? path.join(docsRoot, "docs", ".vitepress", "dist", "lsp", "server", "dist")
+  : path.join(publicLspDir, "server", "dist");
 const workersOutDir = path.join(outDir, "workers");
 
 fs.mkdirSync(workersOutDir, { recursive: true });
@@ -73,13 +86,22 @@ function copyIfChanged(src: string, dest: string): boolean {
   const srcStat = fs.statSync(src);
   if (fs.existsSync(dest)) {
     const destStat = fs.statSync(dest);
+    if (destStat.ino === srcStat.ino && destStat.dev === srcStat.dev) {
+      skippedCount++;
+      return true;
+    }
     if (destStat.size === srcStat.size && srcStat.mtimeMs <= destStat.mtimeMs) {
       skippedCount++;
       return true;
     }
+    fs.unlinkSync(dest);
   }
   fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.copyFileSync(src, dest);
+  try {
+    fs.linkSync(src, dest);
+  } catch {
+    fs.copyFileSync(src, dest);
+  }
   copiedCount++;
   return true;
 }

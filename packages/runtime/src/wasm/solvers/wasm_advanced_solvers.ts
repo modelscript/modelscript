@@ -336,6 +336,39 @@ export function sdp_project_psd_cone(
 }
 
 /**
+ * Dense Cholesky factorization A = L * L^T in WebAssembly linear memory.
+ * Writes lower-triangular L to lPtr (zeroed first).
+ * Returns 1 if strictly positive definite, 0 otherwise.
+ */
+export function sdp_cholesky(n: i32, aPtr: usize, lPtr: usize): i32 {
+  if (n <= 0) return 1;
+  memory.fill(lPtr, 0, (<usize>(n * n)) << 3);
+
+  for (let i: i32 = 0; i < n; i++) {
+    const rowI = i * n;
+    for (let j: i32 = 0; j <= i; j++) {
+      const rowJ = j * n;
+      let sum: f64 = 0.0;
+      for (let k: i32 = 0; k < j; k++) {
+        sum +=
+          load<f64>(lPtr + ((<usize>(rowI + k)) << 3)) *
+          load<f64>(lPtr + ((<usize>(rowJ + k)) << 3));
+      }
+      if (i == j) {
+        const val = load<f64>(aPtr + ((<usize>(rowI + i)) << 3)) - sum;
+        if (val <= 1e-12) return 0;
+        store<f64>(lPtr + ((<usize>(rowI + i)) << 3), Math.sqrt(val));
+      } else {
+        const ljj = load<f64>(lPtr + ((<usize>(rowJ + j)) << 3));
+        const denom = Math.abs(ljj) > 1e-14 ? ljj : 1.0;
+        store<f64>(lPtr + ((<usize>(rowI + j)) << 3), (load<f64>(aPtr + ((<usize>(rowI + j)) << 3)) - sum) / denom);
+      }
+    }
+  }
+  return 1;
+}
+
+/**
  * Evaluates forward interval arithmetic `[loOut, hiOut]` (written to `outPtr`, 2 f64s)
  * for HC4 constraint propagation:
  * `opKind`: 0 = add, 1 = sub, 2 = mul, 3 = div, 4 = sqr, 5 = sqrt.

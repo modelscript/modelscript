@@ -8,11 +8,14 @@ import path from "node:path";
 import semver from "semver";
 import webpush from "web-push";
 import {
+  AdminRepository,
   BillingRepository,
+  FederationRepository,
   PackageRepository,
   ReferralRepository,
   UserRepository,
 } from "./database/repositories/index.js";
+import { preloadPostHydrationBatch, type PostHydrationBatchContext } from "./database/repositories/social-hydration.js";
 import type {
   AccountKeyLogEntry,
   AccountSigningKey,
@@ -57,7 +60,6 @@ import type {
 import { FEATURE_FLAGS, getLanguageFeatureFlagKey } from "./feature-flags.js";
 import { SqliteMigrationRunner, allMigrations } from "./migrations/index.js";
 import { AnalyticsBuffer, type BatchAnalyticsPayload } from "./services/analytics-buffer.js";
-import { listComputeProfiles } from "./services/hpc/compute-profiles.js";
 import type { ComputeProfile } from "./services/hpc/hpc-types.js";
 import {
   defaultMailer,
@@ -95,13 +97,7 @@ import { canonicalizeEmail, hashCanonicalEmail, ipMatchesCidr, redactEmailHint }
 import { PERSONA_SEED_TOPICS, extractHashtags } from "./util/extract-topics.js";
 import { sanitizeRemoteHtml } from "./util/html-sanitizer.js";
 import { generateSnowflakeId } from "./util/snowflake.js";
-import {
-  decryptSecretAtRest,
-  decryptTotpSecret,
-  encryptSecretAtRest,
-  encryptTotpSecret,
-  maskSecretPreview,
-} from "./util/totp.js";
+import { decryptSecretAtRest, encryptSecretAtRest, maskSecretPreview } from "./util/totp.js";
 
 export type {
   AdminUserSummaryRow,
@@ -724,6 +720,8 @@ export class LibraryDatabase {
   readonly users: UserRepository;
   readonly packages: PackageRepository;
   readonly billing: BillingRepository;
+  readonly federation: FederationRepository;
+  readonly admin: AdminRepository;
   readonly analyticsBuffer: AnalyticsBuffer;
   #webPushService: WebPushService | null = null;
 
@@ -917,6 +915,8 @@ export class LibraryDatabase {
     this.users = new UserRepository(this.#db, this);
     this.packages = new PackageRepository(this.#db, this);
     this.billing = new BillingRepository(this.#db, this);
+    this.federation = new FederationRepository(this.#db, this);
+    this.admin = new AdminRepository(this.#db, this);
     this.analyticsBuffer = new AnalyticsBuffer(this);
     this.syncMailerFromDatabase();
   }
@@ -1170,6 +1170,8 @@ export class LibraryDatabase {
     this.#auditChainCache = null;
     this.#instanceSettingsMapCache = null;
     this.#libraryDiscoveryBaseCache = null;
+    this.#registryCatalogCache = null;
+    this.#userTopicsDerivedAt.clear();
     this.#dropMultiDbAttachedViews();
     this.#db.exec("PRAGMA foreign_keys = OFF;");
     const rows = this.#db
@@ -2434,68 +2436,11 @@ export class LibraryDatabase {
   }
 
   setUserEmailVerified(userId: number, verified: boolean): void {
-    this.#db.prepare(`UPDATE users SET email_verified = ? WHERE id = ?`).run(verified ? 1 : 0, userId);
+    this.users.setUserEmailVerified(userId, verified);
   }
 
   freezeUserForDispute(userId: number, reason: string): { success: boolean; previousBalance: number } {
-    const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
-      { credit_balance?: number | undefined } | undefined;
-    if (!user) {
-      return { success: false, previousBalance: 0 };
-    }
-
-    const previousBalance = Math.round((user.credit_balance || 0) * 100) / 100;
-
-    this.#db
-      .prepare(
-        `UPDATE users SET credit_balance = 0.0, status = 'suspended_dispute', token_version = COALESCE(token_version, 1) + 1 WHERE id = ?`,
-      )
-      .run(userId);
-
-    try {
-      this.#db
-        .prepare(
-          `UPDATE credit_escrow_holds SET status = 'frozen_dispute', settled_at = datetime('now') WHERE user_id = ? AND status = 'held'`,
-        )
-        .run(userId);
-    } catch {
-      // ignore
-    }
-
-    try {
-      this.#db
-        .prepare(
-          `UPDATE jobs SET status = 'CANCELLED', completed_at = datetime('now') WHERE user_id = ? AND status IN ('PENDING', 'RUNNING', 'QUEUED')`,
-        )
-        .run(userId);
-    } catch {
-      // ignore
-    }
-
-    try {
-      this.#db
-        .prepare(
-          `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description)
-           VALUES (?, NULL, ?, 0.0, 'dispute_freeze', ?)`,
-        )
-        .run(userId, -previousBalance, `Dispute/Chargeback quarantine: ${reason}`);
-    } catch {
-      // ignore
-    }
-
-    try {
-      this.logAudit({
-        actorId: userId,
-        action: "user_dispute_frozen",
-        resourceType: "user",
-        resourceId: String(userId),
-        details: { reason, previousBalance },
-      });
-    } catch {
-      // ignore
-    }
-
-    return { success: true, previousBalance };
+    return this.billing.freezeUserForDispute(userId, reason);
   }
 
   /**
@@ -3103,55 +3048,27 @@ export class LibraryDatabase {
   }
 
   getUserByEmail(email: string): UserRow | undefined {
-    const cleanEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
-    return this.#db
-      .prepare(
-        `SELECT id, username, email, password_hash, account_type, avatar_url, banner_url, display_name, bio, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes, actor_url, inbox_url, outbox_url, remote_domain, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields, default_post_visibility FROM users WHERE LOWER(email) = LOWER(?)`,
-      )
-      .get(cleanEmail) as UserRow | undefined;
+    return this.users.getUserByEmail(email);
   }
 
   getUserByUsername(username: string): UserRow | undefined {
-    return this.#db
-      .prepare(
-        `SELECT id, username, email, password_hash, account_type, avatar_url, banner_url, display_name, bio, location, website, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes, actor_url, inbox_url, outbox_url, remote_domain, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields, default_post_visibility, signing_verified, signing_policy_strict, branch_tip_oid FROM users WHERE username = ?`,
-      )
-      .get(username) as UserRow | undefined;
+    return this.users.getUserByUsername(username);
   }
 
   getUserById(id: number): UserRow | undefined {
-    return this.#db
-      .prepare(
-        `SELECT id, username, email, password_hash, account_type, avatar_url, banner_url, display_name, bio, location, website, email_verified, status, credit_balance, token_version, totp_enabled, totp_secret, backup_codes, actor_url, inbox_url, outbox_url, remote_domain, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields, default_post_visibility, invites_remaining, signing_verified, signing_policy_strict, branch_tip_oid FROM users WHERE id = ?`,
-      )
-      .get(id) as UserRow | undefined;
+    return this.users.getUserById(id);
   }
 
   getUserByActorUrl(actorUrl: string): UserRow | undefined {
-    return this.#db
-      .prepare(
-        `SELECT id, username, email, account_type, avatar_url, banner_url, display_name, bio, status, actor_url, inbox_url, outbox_url, remote_domain, rsa_public_key, ed25519_public_key, discoverable, indexable, locked, also_known_as, moved_to_actor_url, profile_fields, default_post_visibility, signing_verified, signing_policy_strict FROM users WHERE actor_url = ?`,
-      )
-      .get(actorUrl) as UserRow | undefined;
+    return this.users.getUserByActorUrl(actorUrl);
   }
 
   setUserAccountType(userId: number, accountType: string): void {
-    if (accountType === "user") {
-      this.#db
-        .prepare(
-          `UPDATE users SET account_type = ?, token_version = CASE WHEN COALESCE(account_type, 'user') != 'user' THEN COALESCE(token_version, 1) + 1 ELSE COALESCE(token_version, 1) END WHERE id = ?`,
-        )
-        .run(accountType, userId);
-    } else {
-      this.#db.prepare(`UPDATE users SET account_type = ? WHERE id = ?`).run(accountType, userId);
-    }
+    this.users.setUserAccountType(userId, accountType);
   }
 
   hasAdminUser(): boolean {
-    const row = this.#db.prepare(`SELECT COUNT(*) as count FROM users WHERE account_type = 'admin'`).get() as {
-      count: number;
-    };
-    return (row?.count ?? 0) > 0;
+    return this.users.hasAdminUser();
   }
 
   isOpen(): boolean {
@@ -3203,8 +3120,7 @@ export class LibraryDatabase {
   }
 
   getTotalUsersCount(): number {
-    const row = this.#db.prepare(`SELECT COUNT(*) as count FROM users`).get() as { count: number };
-    return row?.count ?? 0;
+    return this.users.getTotalUsersCount();
   }
 
   getAllUsers(): {
@@ -3239,7 +3155,7 @@ export class LibraryDatabase {
   }
 
   setUserCreditBalance(userId: number, balance: number): void {
-    this.#db.prepare(`UPDATE users SET credit_balance = ? WHERE id = ?`).run(balance, userId);
+    this.billing.setUserCreditBalance(userId, balance);
   }
 
   getFullProfileByUsername(username: string): UserRow | undefined {
@@ -3548,73 +3464,43 @@ export class LibraryDatabase {
   }
 
   updatePassword(userId: number, passwordHash: string) {
-    this.#db
-      .prepare(`UPDATE users SET password_hash = ?, token_version = COALESCE(token_version, 1) + 1 WHERE id = ?`)
-      .run(passwordHash, userId);
+    this.users.updatePassword(userId, passwordHash);
   }
 
   incrementTokenVersion(userId: number): number {
-    this.#db.prepare(`UPDATE users SET token_version = COALESCE(token_version, 1) + 1 WHERE id = ?`).run(userId);
-    const res = this.#db.prepare(`SELECT token_version FROM users WHERE id = ?`).get(userId) as
-      { token_version: number } | undefined;
-    return res?.token_version ?? 1;
+    return this.users.incrementTokenVersion(userId);
   }
 
   getPasswordHash(userId: number): string | undefined {
-    const res = this.#db.prepare(`SELECT password_hash FROM users WHERE id = ?`).get(userId) as
-      { password_hash: string } | undefined;
-    return res?.password_hash;
+    return this.users.getPasswordHash(userId);
   }
 
   setPendingTotpSecret(userId: number, secret: string, expiresAt: number): void {
-    const encrypted = encryptTotpSecret(secret);
-    this.#db
-      .prepare(`INSERT OR REPLACE INTO pending_totp_secrets (user_id, secret, expires_at) VALUES (?, ?, ?)`)
-      .run(userId, encrypted, expiresAt);
+    this.users.setPendingTotpSecret(userId, secret, expiresAt);
   }
 
   getPendingTotpSecret(userId: number): string | undefined {
-    const row = this.#db
-      .prepare(`SELECT secret, expires_at FROM pending_totp_secrets WHERE user_id = ?`)
-      .get(userId) as { secret: string; expires_at: number } | undefined;
-    if (!row) return undefined;
-    if (row.expires_at < Date.now()) {
-      this.deletePendingTotpSecret(userId);
-      return undefined;
-    }
-    try {
-      return decryptTotpSecret(row.secret);
-    } catch {
-      return row.secret;
-    }
+    return this.users.getPendingTotpSecret(userId);
   }
 
   deletePendingTotpSecret(userId: number): void {
-    this.#db.prepare(`DELETE FROM pending_totp_secrets WHERE user_id = ?`).run(userId);
+    this.users.deletePendingTotpSecret(userId);
   }
 
   enableUser2FA(userId: number, secret: string, hashedBackupCodes: string[]): void {
-    const encrypted = encryptTotpSecret(secret);
-    this.#db
-      .prepare(`UPDATE users SET totp_secret = ?, totp_enabled = 1, backup_codes = ? WHERE id = ?`)
-      .run(encrypted, JSON.stringify(hashedBackupCodes), userId);
-    this.deletePendingTotpSecret(userId);
+    this.users.enableUser2FA(userId, secret, hashedBackupCodes);
   }
 
   disableUser2FA(userId: number): void {
-    this.#db
-      .prepare(`UPDATE users SET totp_secret = NULL, totp_enabled = 0, backup_codes = '[]' WHERE id = ?`)
-      .run(userId);
-    this.deletePendingTotpSecret(userId);
+    this.users.disableUser2FA(userId);
   }
 
   setUserBackupCodes(userId: number, hashedBackupCodes: string[]): void {
-    this.#db.prepare(`UPDATE users SET backup_codes = ? WHERE id = ?`).run(JSON.stringify(hashedBackupCodes), userId);
+    this.users.setUserBackupCodes(userId, hashedBackupCodes);
   }
 
   getRemainingBackupCodeCount(userId: number): number {
-    const state = this.getUser2FAState(userId);
-    return state?.backup_codes?.length ?? 0;
+    return this.users.getRemainingBackupCodeCount(userId);
   }
 
   getUser2FAState(userId: number):
@@ -3624,57 +3510,19 @@ export class LibraryDatabase {
         backup_codes: string[];
       }
     | undefined {
-    const row = this.#db
-      .prepare(`SELECT totp_enabled, totp_secret, backup_codes FROM users WHERE id = ?`)
-      .get(userId) as
-      | {
-          totp_enabled?: number | undefined;
-          totp_secret?: string | null | undefined;
-          backup_codes?: string | undefined;
-        }
-      | undefined;
-    if (!row) return undefined;
-    let backupCodes: string[] = [];
-    try {
-      if (row.backup_codes) {
-        backupCodes = JSON.parse(row.backup_codes) as string[];
-      }
-    } catch {
-      backupCodes = [];
-    }
-    let plainSecret: string | null = row.totp_secret ?? null;
-    if (plainSecret) {
-      try {
-        plainSecret = decryptTotpSecret(plainSecret);
-      } catch {
-        // Fallback to raw value if decryption fails
-      }
-    }
-    return {
-      totp_enabled: row.totp_enabled ?? 0,
-      totp_secret: plainSecret,
-      backup_codes: Array.isArray(backupCodes) ? backupCodes : [],
-    };
+    return this.users.getUser2FAState(userId);
   }
 
   consumeBackupCode(userId: number, codeHash: string): boolean {
-    const state = this.getUser2FAState(userId);
-    if (!state || !state.backup_codes.includes(codeHash)) {
-      return false;
-    }
-    const remaining = state.backup_codes.filter((h) => h !== codeHash);
-    this.#db.prepare(`UPDATE users SET backup_codes = ? WHERE id = ?`).run(JSON.stringify(remaining), userId);
-    return true;
+    return this.users.consumeBackupCode(userId, codeHash);
   }
 
   getNotificationSettings(userId: number): string | undefined {
-    const res = this.#db.prepare(`SELECT notification_settings FROM users WHERE id = ?`).get(userId) as
-      { notification_settings: string } | undefined;
-    return res?.notification_settings;
+    return this.users.getNotificationSettings(userId);
   }
 
   updateNotificationSettings(userId: number, settings: string) {
-    this.#db.prepare(`UPDATE users SET notification_settings = ? WHERE id = ?`).run(settings, userId);
+    this.users.updateNotificationSettings(userId, settings);
   }
 
   followUser(followerId: number, followingId: number, state: "pending" | "accepted" = "accepted") {
@@ -4646,6 +4494,7 @@ export class LibraryDatabase {
     p: (Omit<PostRow, "metadata"> & { metadata?: PostMetadata | string | null | undefined }) | null | undefined,
     currentUserId?: number,
     depth: number = 0,
+    preloaded?: PostHydrationBatchContext,
   ): PostRow | null {
     if (!p) return null;
     if (p.id !== undefined && p.id !== null) {
@@ -4753,11 +4602,15 @@ export class LibraryDatabase {
     }
     p.visibility = ((p as { visibility?: string }).visibility as PostVisibility) || "public";
     if (p.bookmark_count === undefined) {
-      const bmRow = this.#db.prepare(`SELECT COUNT(*) as cnt FROM bookmarks WHERE post_id = ?`).get(p.id) as
-        { cnt: number } | undefined;
-      p.bookmark_count = bmRow?.cnt ?? 0;
+      if (preloaded) {
+        p.bookmark_count = preloaded.bookmarkCounts.get(p.id) ?? 0;
+      } else {
+        const bmRow = this.#db.prepare(`SELECT COUNT(*) as cnt FROM bookmarks WHERE post_id = ?`).get(p.id) as
+          { cnt: number } | undefined;
+        p.bookmark_count = bmRow?.cnt ?? 0;
+      }
     }
-    const poll = this.getPostPoll(p.id, currentUserId);
+    const poll = preloaded ? (preloaded.pollsByPostId.get(p.id) ?? null) : this.getPostPoll(p.id, currentUserId);
     if (poll) {
       p.poll = poll;
     }
@@ -4776,6 +4629,21 @@ export class LibraryDatabase {
       }
     }
     return p as PostRow;
+  }
+
+  private hydratePostsBatch(
+    rows: (Omit<PostRow, "metadata"> & { metadata?: PostMetadata | string | null | undefined })[],
+    currentUserId?: number,
+    depth: number = 0,
+  ): PostRow[] {
+    if (!rows || rows.length === 0) return [];
+    const preloaded = preloadPostHydrationBatch(this.#db, rows, currentUserId);
+    const hydrated: PostRow[] = [];
+    for (const row of rows) {
+      const post = this.hydratePost(row, currentUserId, depth, preloaded);
+      if (post) hydrated.push(post);
+    }
+    return hydrated;
   }
 
   #isPostVisibleToUser(post: PostRow, currentUserId?: number): boolean {
@@ -4797,7 +4665,7 @@ export class LibraryDatabase {
   }
 
   getPost(id: number | string, currentUserId?: number, depth: number = 0): PostRow | null {
-    if (this.analyticsBuffer?.hasPostPending(id)) {
+    if (depth === 0 && this.analyticsBuffer?.hasPostPending(id)) {
       this.analyticsBuffer.flushSync();
     }
     const uid = currentUserId || -1;
@@ -4858,7 +4726,7 @@ export class LibraryDatabase {
       .all(uid, uid, uid, postId, ...visFilter.params, ...modFilter.params, limit) as (Omit<PostRow, "metadata"> & {
       metadata?: PostMetadata | string | null | undefined;
     })[];
-    const hydrated = posts.map((p) => this.hydratePost(p, currentUserId)!);
+    const hydrated = this.hydratePostsBatch(posts, currentUserId);
     return this.applyContentFiltersToPosts(hydrated, "thread", currentUserId);
   }
 
@@ -4893,7 +4761,7 @@ export class LibraryDatabase {
       .all(uid, uid, uid, postId, ...visFilter.params, ...modFilter.params, limit) as (Omit<PostRow, "metadata"> & {
       metadata?: PostMetadata | string | null | undefined;
     })[];
-    return posts.map((p) => this.hydratePost(p, currentUserId)!);
+    return this.hydratePostsBatch(posts, currentUserId);
   }
 
   getReposts(postId: number | string, currentUserId?: number, limit: number = 50): PostRow[] {
@@ -4927,7 +4795,7 @@ export class LibraryDatabase {
       .all(uid, uid, uid, postId, ...visFilter.params, ...modFilter.params, limit) as (Omit<PostRow, "metadata"> & {
       metadata?: PostMetadata | string | null | undefined;
     })[];
-    return posts.map((p) => this.hydratePost(p, currentUserId)!);
+    return this.hydratePostsBatch(posts, currentUserId);
   }
 
   getPostParents(postId: number | string, currentUserId?: number, depth: number = 5): PostRow[] {
@@ -5239,7 +5107,7 @@ export class LibraryDatabase {
       .all(...allParams) as (Omit<PostRow, "metadata"> & {
       metadata?: PostMetadata | string | null | undefined;
     })[];
-    const hydrated = posts.map((p) => this.hydratePost(p, userId)!);
+    const hydrated = this.hydratePostsBatch(posts, userId);
     return this.applyContentFiltersToPosts(hydrated, "home", userId);
   }
 
@@ -5259,13 +5127,17 @@ export class LibraryDatabase {
     const tagFilter = this.buildTagFilter(tag);
     const modFilter = this.buildMuteBlockFilter(userId);
     const visFilter = this.buildVisibilityFilter(userId, "following");
-    const baseParams = [userId, userId, userId, userId, userId, userId];
     const allParams = [
-      ...baseParams,
+      userId,
+      userId,
+      userId,
       ...artFilter.params,
       ...tagFilter.params,
       ...visFilter.params,
       ...modFilter.params,
+      userId,
+      userId,
+      userId,
       limit,
       offset,
     ];
@@ -5273,6 +5145,23 @@ export class LibraryDatabase {
     const posts = this.#db
       .prepare(
         `
+      WITH author_ranks AS (
+        SELECT
+          p.id AS post_id,
+          (ROW_NUMBER() OVER (PARTITION BY p.author_id ORDER BY p.id DESC) - 1) AS newer_author_posts
+        FROM posts p
+        JOIN users u ON p.author_id = u.id
+        LEFT JOIN artifact_views a ON p.artifact_view_id = a.id
+        WHERE (
+          p.author_id = ? OR
+          p.author_id IN (SELECT following_id FROM follows WHERE follower_id = ?) OR
+          p.author_id IN (SELECT f.user_id FROM user_rss_subscriptions s JOIN rss_feeds f ON s.rss_feed_id = f.id WHERE s.user_id = ?)
+        )
+          ${artFilter.sql}
+          ${tagFilter.sql}
+          ${visFilter.sql}
+          ${modFilter.sql}
+      )
       SELECT p.*,
         CAST(p.id AS TEXT) as id,
         CAST(p.artifact_view_id AS TEXT) as artifact_view_id,
@@ -5287,27 +5176,12 @@ export class LibraryDatabase {
         EXISTS(SELECT 1 FROM posts WHERE repost_of_id=p.id AND author_id=?) as reposted,
         EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked,
         (
-          strftime('%s', p.created_at) - 
-          (
-            SELECT COUNT(*) FROM posts p2 
-            WHERE p2.author_id = p.author_id 
-              AND p2.id > p.id 
-              AND p2.created_at >= p.created_at
-              AND p2.created_at <= datetime(p.created_at, '+24 hours')
-          ) * 14400 -- 4 hours penalty for each newer post by the same author within 24h after p
+          strftime('%s', p.created_at) -
+          ar.newer_author_posts * 14400 -- 4 hours penalty for each newer post by the same author
         ) as diversity_score
-      FROM posts p
+      FROM author_ranks ar
+      JOIN posts p ON p.id = ar.post_id
       JOIN users u ON p.author_id = u.id
-      LEFT JOIN artifact_views a ON p.artifact_view_id = a.id
-      WHERE (
-        p.author_id = ? OR
-        p.author_id IN (SELECT following_id FROM follows WHERE follower_id = ?) OR
-        p.author_id IN (SELECT f.user_id FROM user_rss_subscriptions s JOIN rss_feeds f ON s.rss_feed_id = f.id WHERE s.user_id = ?)
-      )
-        ${artFilter.sql}
-        ${tagFilter.sql}
-        ${visFilter.sql}
-        ${modFilter.sql}
       ORDER BY ${orderBy}
       LIMIT ? OFFSET ?
     `,
@@ -5315,7 +5189,7 @@ export class LibraryDatabase {
       .all(...allParams) as (Omit<PostRow, "metadata"> & {
       metadata?: PostMetadata | string | null | undefined;
     })[];
-    const hydrated = posts.map((p) => this.hydratePost(p, userId)!);
+    const hydrated = this.hydratePostsBatch(posts, userId);
     return this.applyContentFiltersToPosts(hydrated, "home", userId);
   }
 
@@ -5441,7 +5315,7 @@ export class LibraryDatabase {
       metadata?: PostMetadata | string | null | undefined;
     })[];
 
-    const hydrated = posts.map((p) => this.hydratePost(p, currentUserId)!);
+    const hydrated = this.hydratePostsBatch(posts, currentUserId);
     return this.applyContentFiltersToPosts(hydrated, "public", currentUserId);
   }
 
@@ -5502,7 +5376,7 @@ export class LibraryDatabase {
       metadata?: PostMetadata | string | null | undefined;
     })[];
 
-    const hydrated = posts.map((p) => this.hydratePost(p, currentUserId)!);
+    const hydrated = this.hydratePostsBatch(posts, currentUserId);
     return this.applyContentFiltersToPosts(hydrated, "public", currentUserId);
   }
 
@@ -5549,9 +5423,9 @@ export class LibraryDatabase {
       .all(uid, uid, uid, username, ...visFilter.params, limit) as (Omit<PostRow, "metadata"> & {
       metadata?: PostMetadata | string | null | undefined;
     })[];
-    const hydrated = posts
-      .map((p) => this.hydratePost(p, currentUserId)!)
-      .filter((p) => !p.repost_of_id || Boolean(p.repost_post));
+    const hydrated = this.hydratePostsBatch(posts, currentUserId).filter(
+      (p) => !p.repost_of_id || Boolean(p.repost_post),
+    );
     return this.applyContentFiltersToPosts(hydrated, "account", currentUserId);
   }
 
@@ -5767,7 +5641,7 @@ export class LibraryDatabase {
       .all(userId, userId, userId, userId, userId, userId, userId, userId, safeLimit) as (Omit<PostRow, "metadata"> & {
       metadata?: PostMetadata | string | null | undefined;
     })[];
-    return posts.map((p) => this.hydratePost(p, userId)!);
+    return this.hydratePostsBatch(posts, userId);
   }
 
   createNotification(
@@ -6395,83 +6269,8 @@ export class LibraryDatabase {
 
   // ── Federation Domain Moderation ─────────────────────────────────
 
-  getDomainTier(domain: string): {
-    domain: string;
-    tier: "allow" | "silence" | "suspend";
-    reason?: string | undefined;
-    rejectMedia: boolean;
-    rejectReports: boolean;
-    obfuscate: boolean;
-    publicComment?: string | null | undefined;
-    privateComment?: string | null | undefined;
-    unavailableSince?: string | null | undefined;
-    consecutiveFailures: number;
-    lastSeenAt?: string | null | undefined;
-  } {
-    const cleanDomain = domain.toLowerCase().trim();
-    let row = this.#db
-      .prepare(
-        `SELECT domain, tier, reason, reject_media, reject_reports, obfuscate, public_comment, private_comment,
-                unavailable_since, consecutive_failures, last_seen_at
-         FROM federation_domains WHERE domain = ?`,
-      )
-      .get(cleanDomain) as
-      | {
-          domain: string;
-          tier: "allow" | "silence" | "suspend";
-          reason: string | null;
-          reject_media?: number | null;
-          reject_reports?: number | null;
-          obfuscate?: number | null;
-          public_comment?: string | null;
-          private_comment?: string | null;
-          unavailable_since?: string | null;
-          consecutive_failures?: number | null;
-          last_seen_at?: string | null;
-        }
-      | undefined;
-
-    if (!row && cleanDomain.includes(".")) {
-      const parts = cleanDomain.split(".");
-      for (let i = 1; i < parts.length; i++) {
-        const parent = parts.slice(i).join(".");
-        const wildcard = `*.${parent}`;
-        const match = this.#db
-          .prepare(
-            `SELECT domain, tier, reason, reject_media, reject_reports, obfuscate, public_comment, private_comment,
-                    unavailable_since, consecutive_failures, last_seen_at
-             FROM federation_domains WHERE domain = ? OR domain = ?`,
-          )
-          .get(parent, wildcard) as typeof row;
-        if (match) {
-          row = match;
-          break;
-        }
-      }
-    }
-    if (!row) {
-      return {
-        domain: cleanDomain,
-        tier: "allow",
-        rejectMedia: false,
-        rejectReports: false,
-        obfuscate: false,
-        consecutiveFailures: 0,
-      };
-    }
-    return {
-      domain: row.domain,
-      tier: row.tier,
-      reason: row.reason || undefined,
-      rejectMedia: Boolean(row.reject_media),
-      rejectReports: Boolean(row.reject_reports),
-      obfuscate: Boolean(row.obfuscate),
-      publicComment: row.public_comment ?? row.reason ?? null,
-      privateComment: row.private_comment ?? null,
-      unavailableSince: row.unavailable_since ?? null,
-      consecutiveFailures: Number(row.consecutive_failures ?? 0),
-      lastSeenAt: row.last_seen_at ?? null,
-    };
+  getDomainTier(domain: string) {
+    return this.federation.getDomainTier(domain);
   }
 
   setDomainTier(
@@ -6486,136 +6285,31 @@ export class LibraryDatabase {
       privateComment?: string | null | undefined;
     },
   ): void {
-    const cleanDomain = domain.toLowerCase().trim();
-    const existing = this.getDomainTier(cleanDomain);
-    const rejectMedia =
-      options?.rejectMedia !== undefined ? (options.rejectMedia ? 1 : 0) : existing.rejectMedia ? 1 : 0;
-    const rejectReports =
-      options?.rejectReports !== undefined ? (options.rejectReports ? 1 : 0) : existing.rejectReports ? 1 : 0;
-    const obfuscate = options?.obfuscate !== undefined ? (options.obfuscate ? 1 : 0) : existing.obfuscate ? 1 : 0;
-    const publicComment =
-      options?.publicComment !== undefined ? options.publicComment : (reason ?? existing.publicComment ?? null);
-    const privateComment =
-      options?.privateComment !== undefined ? options.privateComment : (existing.privateComment ?? null);
-    const effectiveReason = reason ?? publicComment ?? existing.reason ?? null;
-
-    this.#db
-      .prepare(
-        `INSERT INTO federation_domains (domain, tier, reason, reject_media, reject_reports, obfuscate, public_comment, private_comment, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-         ON CONFLICT(domain) DO UPDATE SET
-           tier = excluded.tier,
-           reason = excluded.reason,
-           reject_media = excluded.reject_media,
-           reject_reports = excluded.reject_reports,
-           obfuscate = excluded.obfuscate,
-           public_comment = excluded.public_comment,
-           private_comment = excluded.private_comment,
-           updated_at = datetime('now')`,
-      )
-      .run(cleanDomain, tier, effectiveReason, rejectMedia, rejectReports, obfuscate, publicComment, privateComment);
+    this.federation.setDomainTier(domain, tier, reason, options);
   }
 
   deleteDomainTier(domain: string): void {
-    const cleanDomain = domain.toLowerCase().trim();
-    this.#db.prepare(`DELETE FROM federation_domains WHERE domain = ?`).run(cleanDomain);
+    this.federation.deleteDomainTier(domain);
   }
 
-  listFederationDomains(): {
-    domain: string;
-    tier: string;
-    reason?: string | undefined;
-    reject_media: number;
-    reject_reports: number;
-    obfuscate: number;
-    public_comment: string | null;
-    private_comment: string | null;
-    unavailable_since: string | null;
-    consecutive_failures: number;
-    last_seen_at: string | null;
-    created_at: string;
-    updated_at: string;
-  }[] {
-    return this.#db
-      .prepare(
-        `SELECT domain, tier, reason,
-                COALESCE(reject_media, 0) as reject_media,
-                COALESCE(reject_reports, 0) as reject_reports,
-                COALESCE(obfuscate, 0) as obfuscate,
-                public_comment, private_comment,
-                unavailable_since,
-                COALESCE(consecutive_failures, 0) as consecutive_failures,
-                last_seen_at,
-                created_at, updated_at
-         FROM federation_domains
-         ORDER BY created_at DESC`,
-      )
-      .all() as {
-      domain: string;
-      tier: string;
-      reason?: string | undefined;
-      reject_media: number;
-      reject_reports: number;
-      obfuscate: number;
-      public_comment: string | null;
-      private_comment: string | null;
-      unavailable_since: string | null;
-      consecutive_failures: number;
-      last_seen_at: string | null;
-      created_at: string;
-      updated_at: string;
-    }[];
+  listFederationDomains() {
+    return this.federation.listFederationDomains();
   }
 
   isDomainSuspended(domain: string): boolean {
-    return this.getDomainTier(domain).tier === "suspend";
+    return this.federation.isDomainSuspended(domain);
   }
 
   isDomainSilenced(domain: string): boolean {
-    return this.getDomainTier(domain).tier === "silence";
+    return this.federation.isDomainSilenced(domain);
   }
 
   isDomainAllowedForFederation(domain: string): boolean {
-    const cleanDomain = domain.toLowerCase().trim();
-    if (!cleanDomain) return false;
-    const settings = this.getInstanceSettings();
-    if (settings.federationMode === "disabled") {
-      return false;
-    }
-    if (settings.federationMode === "allowlist") {
-      const row = this.#db.prepare(`SELECT tier FROM federation_domains WHERE domain = ?`).get(cleanDomain) as
-        { tier: string } | undefined;
-      return row?.tier === "allow";
-    }
-    return !this.isDomainSuspended(cleanDomain);
+    return this.federation.isDomainAllowedForFederation(domain);
   }
 
   exportFederationDomains(format: "json" | "csv" = "json"): string {
-    const domains = this.listFederationDomains();
-    if (format === "csv") {
-      const header = "#domain,#severity,#reject_media,#reject_reports,#public_comment,#obfuscate";
-      const rows = domains.map((d) => {
-        const severity = d.tier === "suspend" ? "suspend" : d.tier === "silence" ? "silence" : "allow";
-        const comment = (d.public_comment ?? d.reason ?? "").replace(/"/g, '""');
-        return `${d.domain},${severity},${Boolean(d.reject_media)},${Boolean(d.reject_reports)},"${comment}",${Boolean(d.obfuscate)}`;
-      });
-      return [header, ...rows].join("\n");
-    }
-    return JSON.stringify(
-      domains.map((d) => ({
-        domain: d.domain,
-        tier: d.tier,
-        reason: d.reason ?? d.public_comment ?? "",
-        rejectMedia: Boolean(d.reject_media),
-        rejectReports: Boolean(d.reject_reports),
-        obfuscate: Boolean(d.obfuscate),
-        publicComment: d.public_comment ?? d.reason ?? "",
-        privateComment: d.private_comment ?? "",
-        updatedAt: d.updated_at,
-      })),
-      null,
-      2,
-    );
+    return this.federation.exportFederationDomains(format);
   }
 
   importFederationDomains(
@@ -6631,28 +6325,7 @@ export class LibraryDatabase {
     }[],
     mode: "merge" | "replace" = "merge",
   ): { importedCount: number } {
-    let importedCount = 0;
-    const tx = this.#db.transaction(() => {
-      if (mode === "replace") {
-        this.#db.prepare(`DELETE FROM federation_domains`).run();
-      }
-      for (const entry of entries) {
-        const cleanDomain = (entry.domain || "").toLowerCase().trim();
-        if (!cleanDomain || cleanDomain.startsWith("#")) continue;
-        const normalizedTier =
-          entry.tier === "suspend" || entry.tier === "silence" || entry.tier === "allow" ? entry.tier : "suspend";
-        this.setDomainTier(cleanDomain, normalizedTier, entry.reason ?? undefined, {
-          rejectMedia: entry.rejectMedia,
-          rejectReports: entry.rejectReports,
-          obfuscate: entry.obfuscate,
-          publicComment: entry.publicComment ?? entry.reason,
-          privateComment: entry.privateComment,
-        });
-        importedCount++;
-      }
-    });
-    tx();
-    return { importedCount };
+    return this.federation.importFederationDomains(entries, mode);
   }
 
   // ── Federation Delivery Queue ─────────────────────────────────────
@@ -6664,45 +6337,11 @@ export class LibraryDatabase {
     targetInboxUrl: string,
     targetDomain: string,
   ): { id: number; skipped?: boolean } {
-    const cleanDomain = targetDomain.toLowerCase().trim();
-    if (this.isDomainSuspended(cleanDomain) || this.isDomainUnavailable(cleanDomain)) {
-      return { id: 0, skipped: true };
-    }
-    const res = this.#db
-      .prepare(
-        `INSERT INTO federation_delivery_queue (activity_type, activity_id, payload, target_inbox_url, target_domain, status, next_retry_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'), datetime('now'), datetime('now'))`,
-      )
-      .run(activityType, activityId, JSON.stringify(payload), targetInboxUrl, cleanDomain);
-    return { id: Number(res.lastInsertRowid) };
+    return this.federation.enqueueFederationDelivery(activityType, activityId, payload, targetInboxUrl, targetDomain);
   }
 
-  fetchPendingFederationDeliveries(limit: number = 25): {
-    id: number;
-    activity_type: string;
-    activity_id: string;
-    payload: string;
-    target_inbox_url: string;
-    target_domain: string;
-    attempts: number;
-    max_attempts: number;
-  }[] {
-    return this.#db
-      .prepare(
-        `SELECT * FROM federation_delivery_queue 
-         WHERE status = 'pending' AND datetime(next_retry_at) <= datetime('now')
-         ORDER BY id ASC LIMIT ?`,
-      )
-      .all(limit) as {
-      id: number;
-      activity_type: string;
-      activity_id: string;
-      payload: string;
-      target_inbox_url: string;
-      target_domain: string;
-      attempts: number;
-      max_attempts: number;
-    }[];
+  fetchPendingFederationDeliveries(limit: number = 25) {
+    return this.federation.fetchPendingFederationDeliveries(limit);
   }
 
   updateFederationDeliveryStatus(
@@ -6711,217 +6350,27 @@ export class LibraryDatabase {
     error?: string,
     nextRetryMs?: number,
   ): void {
-    if (status === "completed") {
-      this.#db
-        .prepare(`UPDATE federation_delivery_queue SET status = 'completed', updated_at = datetime('now') WHERE id = ?`)
-        .run(id);
-    } else if (status === "failed") {
-      this.#db
-        .prepare(
-          `UPDATE federation_delivery_queue SET status = 'failed', last_error = ?, updated_at = datetime('now') WHERE id = ?`,
-        )
-        .run(error || null, id);
-    } else if (status === "processing") {
-      this.#db
-        .prepare(
-          `UPDATE federation_delivery_queue SET status = 'processing', attempts = attempts + 1, updated_at = datetime('now') WHERE id = ?`,
-        )
-        .run(id);
-    } else if (status === "pending" && nextRetryMs) {
-      const nextDate = new Date(Date.now() + nextRetryMs).toISOString();
-      this.#db
-        .prepare(
-          `UPDATE federation_delivery_queue SET status = 'pending', last_error = ?, next_retry_at = ?, updated_at = datetime('now') WHERE id = ?`,
-        )
-        .run(error || null, nextDate, id);
-    }
+    this.federation.updateFederationDeliveryStatus(id, status, error, nextRetryMs);
   }
 
-  getFederationQueueStats(): {
-    pending: number;
-    processing: number;
-    completed: number;
-    failed: number;
-    total: number;
-  } {
-    const rows = this.#db
-      .prepare(`SELECT status, COUNT(*) as count FROM federation_delivery_queue GROUP BY status`)
-      .all() as { status: string; count: number }[];
-    const stats = { pending: 0, processing: 0, completed: 0, failed: 0, total: 0 };
-    for (const r of rows) {
-      if (r.status === "pending") stats.pending = r.count;
-      else if (r.status === "processing") stats.processing = r.count;
-      else if (r.status === "completed") stats.completed = r.count;
-      else if (r.status === "failed") stats.failed = r.count;
-      stats.total += r.count;
-    }
-    return stats;
+  getFederationQueueStats() {
+    return this.federation.getFederationQueueStats();
   }
 
-  listFederationDeliveries(
-    status?: string,
-    domain?: string,
-    limit: number = 50,
-  ): {
-    id: number;
-    activity_type: string;
-    activity_id: string;
-    payload: string;
-    target_inbox_url: string;
-    target_domain: string;
-    attempts: number;
-    max_attempts: number;
-    next_retry_at: string;
-    last_error: string | null;
-    status: string;
-    created_at: string;
-    updated_at: string;
-  }[] {
-    const clauses: string[] = [];
-    const params: unknown[] = [];
-    if (status && status !== "all") {
-      clauses.push("status = ?");
-      params.push(status);
-    }
-    if (domain && domain.trim()) {
-      clauses.push("LOWER(target_domain) LIKE ?");
-      params.push(`%${domain.trim().toLowerCase()}%`);
-    }
-    const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
-    params.push(limit);
-    return this.#db
-      .prepare(
-        `SELECT id, activity_type, activity_id, payload, target_inbox_url, target_domain, attempts, max_attempts, next_retry_at, last_error, status, created_at, updated_at
-         FROM federation_delivery_queue
-         ${whereSql}
-         ORDER BY id DESC LIMIT ?`,
-      )
-      .all(...params) as {
-      id: number;
-      activity_type: string;
-      activity_id: string;
-      payload: string;
-      target_inbox_url: string;
-      target_domain: string;
-      attempts: number;
-      max_attempts: number;
-      next_retry_at: string;
-      last_error: string | null;
-      status: string;
-      created_at: string;
-      updated_at: string;
-    }[];
+  listFederationDeliveries(status?: string, domain?: string, limit: number = 50) {
+    return this.federation.listFederationDeliveries(status, domain, limit);
   }
 
   retryFailedFederationDeliveries(domain?: string): { retriedCount: number } {
-    if (domain && domain.trim()) {
-      const cleanDomain = domain.trim().toLowerCase();
-      this.#db
-        .prepare(
-          `UPDATE federation_domains SET unavailable_since = NULL, consecutive_failures = 0 WHERE LOWER(domain) = ?`,
-        )
-        .run(cleanDomain);
-      const res = this.#db
-        .prepare(
-          `UPDATE federation_delivery_queue
-           SET status = 'pending', attempts = 0, next_retry_at = datetime('now'), updated_at = datetime('now')
-           WHERE status = 'failed' AND LOWER(target_domain) = ?`,
-        )
-        .run(cleanDomain);
-      return { retriedCount: Number(res.changes) };
-    }
-    const res = this.#db
-      .prepare(
-        `UPDATE federation_delivery_queue
-         SET status = 'pending', attempts = 0, next_retry_at = datetime('now'), updated_at = datetime('now')
-         WHERE status = 'failed'`,
-      )
-      .run();
-    return { retriedCount: Number(res.changes) };
+    return this.federation.retryFailedFederationDeliveries(domain);
   }
 
   purgeFederationDeliveries(status?: string, domain?: string): { deletedCount: number } {
-    const clauses: string[] = [];
-    const params: unknown[] = [];
-    if (status && status !== "all") {
-      clauses.push("status = ?");
-      params.push(status);
-    }
-    if (domain && domain.trim()) {
-      clauses.push("LOWER(target_domain) = ?");
-      params.push(domain.trim().toLowerCase());
-    }
-    const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
-    const res = this.#db.prepare(`DELETE FROM federation_delivery_queue ${whereSql}`).run(...params);
-    return { deletedCount: Number(res.changes) };
+    return this.federation.purgeFederationDeliveries(status, domain);
   }
 
-  getFederationDomainHealth(): {
-    domain: string;
-    tier: "allow" | "silence" | "suspend";
-    pending: number;
-    processing: number;
-    completed: number;
-    failed: number;
-    total: number;
-    maxAttempts: number;
-    lastError: string | null;
-    lastUpdatedAt: string | null;
-    unavailableSince: string | null;
-    consecutiveFailures: number;
-    lastSeenAt: string | null;
-  }[] {
-    const rows = this.#db
-      .prepare(
-        `SELECT LOWER(q.target_domain) as domain,
-                COALESCE(d.tier, 'allow') as tier,
-                SUM(CASE WHEN q.status = 'pending' THEN 1 ELSE 0 END) as pending,
-                SUM(CASE WHEN q.status = 'processing' THEN 1 ELSE 0 END) as processing,
-                SUM(CASE WHEN q.status = 'completed' THEN 1 ELSE 0 END) as completed,
-                SUM(CASE WHEN q.status = 'failed' THEN 1 ELSE 0 END) as failed,
-                COUNT(*) as total,
-                MAX(q.attempts) as max_attempts,
-                MAX(q.last_error) as last_error,
-                MAX(q.updated_at) as last_updated_at,
-                MAX(d.unavailable_since) as unavailable_since,
-                COALESCE(MAX(d.consecutive_failures), 0) as consecutive_failures,
-                MAX(d.last_seen_at) as last_seen_at
-         FROM federation_delivery_queue q
-         LEFT JOIN federation_domains d ON LOWER(d.domain) = LOWER(q.target_domain)
-         GROUP BY LOWER(q.target_domain)
-         ORDER BY failed DESC, pending DESC, total DESC`,
-      )
-      .all() as {
-      domain: string;
-      tier: string;
-      pending: number;
-      processing: number;
-      completed: number;
-      failed: number;
-      total: number;
-      max_attempts: number;
-      last_error: string | null;
-      last_updated_at: string | null;
-      unavailable_since: string | null;
-      consecutive_failures: number;
-      last_seen_at: string | null;
-    }[];
-
-    return rows.map((r) => ({
-      domain: r.domain,
-      tier: r.tier === "suspend" || r.tier === "silence" ? r.tier : "allow",
-      pending: Number(r.pending || 0),
-      processing: Number(r.processing || 0),
-      completed: Number(r.completed || 0),
-      failed: Number(r.failed || 0),
-      total: Number(r.total || 0),
-      maxAttempts: Number(r.max_attempts || 0),
-      lastError: r.last_error ?? null,
-      lastUpdatedAt: r.last_updated_at ?? null,
-      unavailableSince: r.unavailable_since ?? null,
-      consecutiveFailures: Number(r.consecutive_failures || 0),
-      lastSeenAt: r.last_seen_at ?? null,
-    }));
+  getFederationDomainHealth() {
+    return this.federation.getFederationDomainHealth();
   }
 
   circuitBreakFederationDomain(
@@ -6933,21 +6382,7 @@ export class LibraryDatabase {
     tier: "silence" | "suspend";
     purgedDeliveries: number;
   } {
-    const cleanDomain = domain.trim().toLowerCase();
-    if (!cleanDomain) {
-      throw new Error("A valid target domain is required");
-    }
-    this.setDomainTier(
-      cleanDomain,
-      tier,
-      reason || `Circuit-breaker tripped for unresponsive/dead peer '${cleanDomain}'`,
-    );
-    const { deletedCount } = this.purgeFederationDeliveries(undefined, cleanDomain);
-    return {
-      domain: cleanDomain,
-      tier,
-      purgedDeliveries: deletedCount,
-    };
+    return this.federation.circuitBreakFederationDomain(domain, tier, reason);
   }
 
   getFollowState(followerId: number, followingId: number): "pending" | "accepted" | "rejected" | null {
@@ -6986,7 +6421,7 @@ export class LibraryDatabase {
       .all(userId, limit, offset) as (Omit<PostRow, "metadata"> & {
       metadata?: PostMetadata | string | null | undefined;
     })[];
-    return posts.map((p) => this.hydratePost(p)!);
+    return this.hydratePostsBatch(posts);
   }
 
   getUserFollowerActors(userId: number, limit: number = 50, offset: number = 0): string[] {
@@ -7114,63 +6549,6 @@ export class LibraryDatabase {
 
   // ── Moderation & Content Reports ─────────────────────────────────
 
-  #hydrateContentReport(raw: ContentReportRow): ContentReportRow {
-    let snapshot: {
-      targetType?: string | undefined;
-      targetResourceId?: string | null | undefined;
-      postId?: number | null | undefined;
-      postContent?: string | null | undefined;
-      authorId?: number | null | undefined;
-      authorUsername?: string | null | undefined;
-      authorDomain?: string | null | undefined;
-      apId?: string | null | undefined;
-    } | null = null;
-
-    if (raw.content_snapshot && typeof raw.content_snapshot === "string") {
-      try {
-        snapshot = JSON.parse(raw.content_snapshot);
-      } catch {
-        snapshot = null;
-      }
-    }
-
-    let parsedRuleIds: number[] = [];
-    if (Array.isArray(raw.rule_ids)) {
-      parsedRuleIds = raw.rule_ids.map((n) => Number(n)).filter((n) => Number.isFinite(n));
-    } else if (typeof raw.rule_ids === "string" && raw.rule_ids.trim()) {
-      try {
-        const arr = JSON.parse(raw.rule_ids);
-        if (Array.isArray(arr)) {
-          parsedRuleIds = arr.map((n) => Number(n)).filter((n) => Number.isFinite(n));
-        }
-      } catch {}
-    }
-
-    const postContent = raw.post_content ?? snapshot?.postContent ?? null;
-    const postAuthorId = raw.post_author_id ?? snapshot?.authorId ?? raw.target_user_id ?? null;
-    const authorUsername = raw.author_username || raw.target_username || snapshot?.authorUsername || null;
-    const targetUsername = raw.target_username || raw.author_username || snapshot?.authorUsername || null;
-    const authorDomain = raw.author_domain || snapshot?.authorDomain || null;
-    const targetType = raw.target_type || snapshot?.targetType || (raw.post_id != null ? "post" : "user");
-    const targetResourceId =
-      raw.target_resource_id ??
-      snapshot?.targetResourceId ??
-      (raw.post_id != null ? String(raw.post_id) : raw.target_user_id != null ? String(raw.target_user_id) : null);
-
-    return {
-      ...raw,
-      post_content: postContent,
-      post_author_id: postAuthorId,
-      author_username: authorUsername,
-      target_username: targetUsername,
-      author_domain: authorDomain,
-      target_type: targetType,
-      target_resource_id: targetResourceId,
-      rule_ids: parsedRuleIds,
-      category: raw.category || "other",
-    };
-  }
-
   createContentReport(
     reporterId: number,
     data: {
@@ -7184,170 +6562,11 @@ export class LibraryDatabase {
       category?: string | undefined;
     },
   ): { id: number; status: string; autoQuarantined?: boolean } {
-    let effectiveTargetUserId = data.targetUserId ?? null;
-    const resolvedTargetType = data.targetType || (data.postId ? "post" : "user");
-    const resolvedResourceId =
-      data.targetResourceId ??
-      (data.postId != null
-        ? String(data.postId)
-        : effectiveTargetUserId != null
-          ? String(effectiveTargetUserId)
-          : null);
-
-    let snapshotObj: Record<string, unknown> = {
-      targetType: resolvedTargetType,
-      targetResourceId: resolvedResourceId,
-      capturedAt: new Date().toISOString(),
-    };
-
-    if (data.postId) {
-      const postInfo = this.#db
-        .prepare(
-          `SELECT CAST(p.id AS TEXT) as id, p.content, p.author_id, p.ap_id, p.created_at, u.username, u.remote_domain
-           FROM posts p
-           LEFT JOIN users u ON p.author_id = u.id
-           WHERE p.id = ?`,
-        )
-        .get(data.postId) as
-        | {
-            id: string | number;
-            content: string | null;
-            author_id: number;
-            ap_id: string | null;
-            created_at: string;
-            username: string | null;
-            remote_domain: string | null;
-          }
-        | undefined;
-
-      if (postInfo) {
-        if (!effectiveTargetUserId) {
-          effectiveTargetUserId = postInfo.author_id;
-        }
-        snapshotObj = {
-          targetType: resolvedTargetType,
-          targetResourceId: resolvedResourceId,
-          postId: postInfo.id,
-          postContent: postInfo.content,
-          authorId: postInfo.author_id,
-          authorUsername: postInfo.username,
-          authorDomain: postInfo.remote_domain,
-          apId: postInfo.ap_id,
-          postCreatedAt: postInfo.created_at,
-          capturedAt: new Date().toISOString(),
-        };
-      }
-    } else if (effectiveTargetUserId) {
-      const userInfo = this.#db
-        .prepare(`SELECT id, username, display_name, bio, remote_domain, status FROM users WHERE id = ?`)
-        .get(effectiveTargetUserId) as
-        | {
-            id: number;
-            username: string;
-            display_name: string | null;
-            bio: string | null;
-            remote_domain: string | null;
-            status: string | null;
-          }
-        | undefined;
-      if (userInfo) {
-        snapshotObj = {
-          targetType: resolvedTargetType,
-          targetResourceId: resolvedResourceId,
-          authorId: userInfo.id,
-          authorUsername: userInfo.username,
-          authorDomain: userInfo.remote_domain,
-          displayName: userInfo.display_name,
-          bio: userInfo.bio,
-          userStatus: userInfo.status,
-          capturedAt: new Date().toISOString(),
-        };
-      }
-    }
-
-    const ruleIdsJson = Array.isArray(data.ruleIds)
-      ? JSON.stringify(data.ruleIds.map((id) => Number(id)).filter((id) => Number.isFinite(id)))
-      : "[]";
-    const category = data.category || (Array.isArray(data.ruleIds) && data.ruleIds.length > 0 ? "violation" : "other");
-
-    const result = this.#db
-      .prepare(
-        `INSERT INTO content_reports (reporter_id, post_id, target_user_id, target_type, target_resource_id, reason, details, content_snapshot, rule_ids, category)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        reporterId,
-        data.postId ?? null,
-        effectiveTargetUserId,
-        resolvedTargetType,
-        resolvedResourceId,
-        data.reason,
-        data.details ?? null,
-        JSON.stringify(snapshotObj),
-        ruleIdsJson,
-        category,
-      );
-
-    let autoQuarantined = false;
-    try {
-      const settings = this.getInstanceSettings();
-      const threshold = settings.autoQuarantineReportThreshold;
-      if (threshold > 0 && resolvedTargetType && resolvedResourceId) {
-        const countRow = this.#db
-          .prepare(
-            `SELECT COUNT(DISTINCT reporter_id) as c
-             FROM content_reports
-             WHERE status = 'pending'
-               AND ((? IS NOT NULL AND post_id = ?) OR (target_type = ? AND target_resource_id = ?))`,
-          )
-          .get(data.postId ?? null, data.postId ?? null, resolvedTargetType, resolvedResourceId) as
-          { c: number } | undefined;
-        const distinctReporters = countRow?.c ?? 0;
-        if (distinctReporters >= threshold) {
-          this.quarantineResource({
-            resourceType: resolvedTargetType,
-            resourceId: resolvedResourceId,
-            reason: `Auto-quarantined after reaching threshold of ${threshold} distinct user reports`,
-          });
-          if (resolvedTargetType === "post" && data.postId) {
-            this.#db
-              .prepare(
-                `UPDATE posts
-                 SET content_warning = COALESCE(content_warning, '[Auto-Quarantined Pending Moderator Review]')
-                 WHERE id = ?`,
-              )
-              .run(data.postId);
-          }
-          autoQuarantined = true;
-        }
-      }
-    } catch {
-      // Non-fatal if settings table not initialized in isolated unit test
-    }
-
-    return { id: Number(result.lastInsertRowid), status: "pending", autoQuarantined };
+    return this.admin.createContentReport(reporterId, data);
   }
 
   getContentReport(reportId: number): ContentReportRow | undefined {
-    const row = this.#db
-      .prepare(
-        `SELECT r.*, 
-                CAST(r.post_id AS TEXT) as post_id,
-                u.username as reporter_username, 
-                p.content as post_content,
-                p.author_id as post_author_id,
-                author_u.username as author_username,
-                target_u.username as target_username,
-                COALESCE(author_u.remote_domain, target_u.remote_domain) as author_domain
-         FROM content_reports r
-         LEFT JOIN users u ON r.reporter_id = u.id
-         LEFT JOIN posts p ON r.post_id = p.id
-         LEFT JOIN users author_u ON p.author_id = author_u.id
-         LEFT JOIN users target_u ON COALESCE(r.target_user_id, p.author_id) = target_u.id
-         WHERE r.id = ?`,
-      )
-      .get(reportId) as ContentReportRow | undefined;
-    return row ? this.#hydrateContentReport(row) : undefined;
+    return this.admin.getContentReport(reportId);
   }
 
   getModerationQueue(
@@ -7357,98 +6576,11 @@ export class LibraryDatabase {
     targetType?: string,
     search?: string,
   ): ContentReportRow[] {
-    const baseQuery = `
-      SELECT r.*, 
-             CAST(r.post_id AS TEXT) as post_id,
-             u.username as reporter_username, 
-             p.content as post_content,
-             p.author_id as post_author_id,
-             author_u.username as author_username,
-             target_u.username as target_username,
-             COALESCE(author_u.remote_domain, target_u.remote_domain) as author_domain,
-             (
-               SELECT COUNT(*) FROM content_reports r2
-               WHERE (r.post_id IS NOT NULL AND r2.post_id = r.post_id)
-                  OR (r.post_id IS NULL AND r.target_resource_id IS NOT NULL AND r2.target_resource_id = r.target_resource_id)
-                  OR (r.post_id IS NULL AND r.target_user_id IS NOT NULL AND r2.target_user_id = r.target_user_id)
-             ) as target_report_count,
-             (
-               SELECT COUNT(*) FROM content_reports r3
-               WHERE r3.status = 'resolved'
-                 AND COALESCE(r3.target_user_id, 0) = COALESCE(r.target_user_id, p.author_id, -1)
-             ) as author_prior_violations
-      FROM content_reports r
-      LEFT JOIN users u ON r.reporter_id = u.id
-      LEFT JOIN posts p ON r.post_id = p.id
-      LEFT JOIN users author_u ON p.author_id = author_u.id
-      LEFT JOIN users target_u ON COALESCE(r.target_user_id, p.author_id) = target_u.id
-    `;
-
-    const clauses: string[] = [];
-    const params: unknown[] = [];
-
-    if (status && status !== "all") {
-      clauses.push("r.status = ?");
-      params.push(status);
-    }
-    if (targetType && targetType !== "all") {
-      if (targetType === "post") {
-        clauses.push("(r.target_type = 'post' OR (r.target_type IS NULL AND r.post_id IS NOT NULL))");
-      } else {
-        clauses.push("r.target_type = ?");
-        params.push(targetType);
-      }
-    }
-    if (search && search.trim()) {
-      const q = `%${search.trim().toLowerCase()}%`;
-      clauses.push(
-        "(LOWER(COALESCE(r.reason, '')) LIKE ? OR LOWER(COALESCE(r.details, '')) LIKE ? OR LOWER(COALESCE(p.content, '')) LIKE ? OR LOWER(COALESCE(u.username, '')) LIKE ? OR LOWER(COALESCE(target_u.username, '')) LIKE ? OR LOWER(COALESCE(r.target_resource_id, '')) LIKE ?)",
-      );
-      params.push(q, q, q, q, q, q);
-    }
-
-    const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
-    const rows = this.#db
-      .prepare(`${baseQuery} ${whereSql} ORDER BY r.created_at DESC LIMIT ? OFFSET ?`)
-      .all(...params, limit, offset) as ContentReportRow[];
-
-    return rows.map((r) => this.#hydrateContentReport(r));
+    return this.admin.getModerationQueue(status, limit, offset, targetType, search);
   }
 
   getModerationQueueCount(status?: string, targetType?: string, search?: string): number {
-    const clauses: string[] = [];
-    const params: unknown[] = [];
-    if (status && status !== "all") {
-      clauses.push("r.status = ?");
-      params.push(status);
-    }
-    if (targetType && targetType !== "all") {
-      if (targetType === "post") {
-        clauses.push("(r.target_type = 'post' OR (r.target_type IS NULL AND r.post_id IS NOT NULL))");
-      } else {
-        clauses.push("r.target_type = ?");
-        params.push(targetType);
-      }
-    }
-    if (search && search.trim()) {
-      const q = `%${search.trim().toLowerCase()}%`;
-      clauses.push(
-        "(LOWER(COALESCE(r.reason, '')) LIKE ? OR LOWER(COALESCE(r.details, '')) LIKE ? OR LOWER(COALESCE(p.content, '')) LIKE ? OR LOWER(COALESCE(u.username, '')) LIKE ? OR LOWER(COALESCE(target_u.username, '')) LIKE ? OR LOWER(COALESCE(r.target_resource_id, '')) LIKE ?)",
-      );
-      params.push(q, q, q, q, q, q);
-    }
-    const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
-    const row = this.#db
-      .prepare(
-        `SELECT COUNT(*) as c
-         FROM content_reports r
-         LEFT JOIN users u ON r.reporter_id = u.id
-         LEFT JOIN posts p ON r.post_id = p.id
-         LEFT JOIN users target_u ON COALESCE(r.target_user_id, p.author_id) = target_u.id
-         ${whereSql}`,
-      )
-      .get(...params) as { c: number } | undefined;
-    return row?.c ?? 0;
+    return this.admin.getModerationQueueCount(status, targetType, search);
   }
 
   resolveContentReport(
@@ -7458,36 +6590,7 @@ export class LibraryDatabase {
     actionTaken?: string,
     resolveAllForTarget?: boolean,
   ): boolean {
-    const current = this.getContentReport(reportId);
-    const res = this.#db
-      .prepare(
-        `UPDATE content_reports
-         SET status = ?, resolution_notes = ?, action_taken = COALESCE(?, action_taken), resolved_at = datetime('now')
-         WHERE id = ?`,
-      )
-      .run(status, resolutionNotes ?? null, actionTaken ?? null, reportId);
-
-    if (resolveAllForTarget && current) {
-      if (current.post_id) {
-        this.#db
-          .prepare(
-            `UPDATE content_reports
-             SET status = ?, resolution_notes = ?, action_taken = COALESCE(?, action_taken), resolved_at = datetime('now')
-             WHERE post_id = ? AND status = 'pending' AND id != ?`,
-          )
-          .run(status, resolutionNotes ?? null, actionTaken ?? null, current.post_id, reportId);
-      } else if (current.target_user_id) {
-        this.#db
-          .prepare(
-            `UPDATE content_reports
-             SET status = ?, resolution_notes = ?, action_taken = COALESCE(?, action_taken), resolved_at = datetime('now')
-             WHERE target_user_id = ? AND post_id IS NULL AND status = 'pending' AND id != ?`,
-          )
-          .run(status, resolutionNotes ?? null, actionTaken ?? null, current.target_user_id, reportId);
-      }
-    }
-
-    return res.changes > 0;
+    return this.admin.resolveContentReport(reportId, status, resolutionNotes, actionTaken, resolveAllForTarget);
   }
 
   silencePost(postId: number | string, silenced: boolean = true): boolean {
@@ -7586,41 +6689,19 @@ export class LibraryDatabase {
     resourceType?: string | undefined;
     resourceId?: string | undefined;
   }): { id: number } {
-    const res = this.#db
-      .prepare(
-        `INSERT INTO dmca_notices (claimant_name, claimant_email, copyright_owner, work_description, infringing_url, resource_type, resource_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        data.claimantName,
-        data.claimantEmail,
-        data.copyrightOwner,
-        data.workDescription,
-        data.infringingUrl,
-        data.resourceType ?? "package",
-        data.resourceId ?? null,
-      );
-    return { id: Number(res.lastInsertRowid) };
+    return this.admin.createDmcaNotice(data);
   }
 
   listDmcaNotices(status?: string): DmcaNoticeRow[] {
-    if (status) {
-      return this.#db
-        .prepare(`SELECT * FROM dmca_notices WHERE status = ? ORDER BY created_at DESC`)
-        .all(status) as DmcaNoticeRow[];
-    }
-    return this.#db.prepare(`SELECT * FROM dmca_notices ORDER BY created_at DESC`).all() as DmcaNoticeRow[];
+    return this.admin.listDmcaNotices(status);
   }
 
   getDmcaNotice(id: number): DmcaNoticeRow | undefined {
-    return this.#db.prepare(`SELECT * FROM dmca_notices WHERE id = ?`).get(id) as DmcaNoticeRow | undefined;
+    return this.admin.getDmcaNotice(id);
   }
 
   resolveDmcaNotice(id: number, actionTaken: string, status: "resolved" | "rejected" = "resolved"): boolean {
-    const res = this.#db
-      .prepare(`UPDATE dmca_notices SET status = ?, action_taken = ?, resolved_at = datetime('now') WHERE id = ?`)
-      .run(status, actionTaken, id);
-    return res.changes > 0;
+    return this.admin.resolveDmcaNotice(id, actionTaken, status);
   }
 
   quarantineResource(data: {
@@ -7632,161 +6713,29 @@ export class LibraryDatabase {
     counterNotice?: string | null | undefined;
     restoreAfter?: string | null | undefined;
   }): { id: number; resourceType: string; resourceId: string } {
-    const cleanType = data.resourceType.trim().toLowerCase() || "package";
-    const cleanId = data.resourceId.trim();
-    this.#db
-      .prepare(
-        `INSERT INTO quarantined_resources (resource_type, resource_id, reason, dmca_notice_id, quarantined_by, status, counter_notice, restore_after, created_at, restored_at)
-         VALUES (?, ?, ?, ?, ?, 'quarantined', ?, ?, datetime('now'), NULL)
-         ON CONFLICT(resource_type, resource_id) DO UPDATE SET
-           reason = excluded.reason,
-           dmca_notice_id = COALESCE(excluded.dmca_notice_id, quarantined_resources.dmca_notice_id),
-           quarantined_by = excluded.quarantined_by,
-           status = 'quarantined',
-           counter_notice = COALESCE(excluded.counter_notice, quarantined_resources.counter_notice),
-           restore_after = COALESCE(excluded.restore_after, quarantined_resources.restore_after),
-           restored_at = NULL`,
-      )
-      .run(
-        cleanType,
-        cleanId,
-        data.reason,
-        data.dmcaNoticeId ?? null,
-        data.quarantinedBy ?? null,
-        data.counterNotice ?? null,
-        data.restoreAfter ?? null,
-      );
-    const row = this.#db
-      .prepare(`SELECT id FROM quarantined_resources WHERE resource_type = ? AND resource_id = ?`)
-      .get(cleanType, cleanId) as { id: number } | undefined;
-    return { id: row?.id ?? 0, resourceType: cleanType, resourceId: cleanId };
+    return this.admin.quarantineResource(data);
   }
 
   restoreQuarantinedResource(resourceType: string, resourceId: string): boolean {
-    const res = this.#db
-      .prepare(
-        `UPDATE quarantined_resources
-         SET status = 'restored', restored_at = datetime('now')
-         WHERE resource_type = ? AND resource_id = ? AND status = 'quarantined'`,
-      )
-      .run(resourceType.trim().toLowerCase(), resourceId.trim());
-    return res.changes > 0;
+    return this.admin.restoreQuarantinedResource(resourceType, resourceId);
   }
 
   isResourceQuarantined(resourceType: string, resourceId: string): boolean {
-    const row = this.#db
-      .prepare(
-        `SELECT 1 FROM quarantined_resources
-         WHERE resource_type = ? AND resource_id = ? AND status = 'quarantined'`,
-      )
-      .get(resourceType.trim().toLowerCase(), resourceId.trim());
-    return Boolean(row);
+    return this.admin.isResourceQuarantined(resourceType, resourceId);
   }
 
-  listQuarantinedResources(status?: string): {
-    id: number;
-    resource_type: string;
-    resource_id: string;
-    reason: string;
-    dmca_notice_id: number | null;
-    quarantined_by: number | null;
-    status: string;
-    counter_notice: string | null;
-    restore_after: string | null;
-    created_at: string;
-    restored_at: string | null;
-  }[] {
-    if (status && status !== "all") {
-      return this.#db
-        .prepare(`SELECT * FROM quarantined_resources WHERE status = ? ORDER BY created_at DESC`)
-        .all(status) as {
-        id: number;
-        resource_type: string;
-        resource_id: string;
-        reason: string;
-        dmca_notice_id: number | null;
-        quarantined_by: number | null;
-        status: string;
-        counter_notice: string | null;
-        restore_after: string | null;
-        created_at: string;
-        restored_at: string | null;
-      }[];
-    }
-    return this.#db.prepare(`SELECT * FROM quarantined_resources ORDER BY created_at DESC`).all() as {
-      id: number;
-      resource_type: string;
-      resource_id: string;
-      reason: string;
-      dmca_notice_id: number | null;
-      quarantined_by: number | null;
-      status: string;
-      counter_notice: string | null;
-      restore_after: string | null;
-      created_at: string;
-      restored_at: string | null;
-    }[];
+  listQuarantinedResources(status?: string) {
+    return this.admin.listQuarantinedResources(status);
   }
 
   fileDmcaCounterNotice(noticeId: number, counterNoticeText: string): { success: boolean; restoreAfter: string } {
-    const notice = this.getDmcaNotice(noticeId);
-    const restoreAfter = new Date(Date.now() + 14 * 86_400_000).toISOString();
-    if (!notice) {
-      return { success: false, restoreAfter };
-    }
-    const updatedAction = `${notice.action_taken ? `${notice.action_taken} | ` : ""}Counter-Notice filed: ${counterNoticeText} (Eligible for restoration after ${restoreAfter.slice(0, 10)})`;
-    this.#db.prepare(`UPDATE dmca_notices SET action_taken = ? WHERE id = ?`).run(updatedAction, noticeId);
-    this.#db
-      .prepare(
-        `UPDATE quarantined_resources
-         SET counter_notice = ?, restore_after = ?
-         WHERE dmca_notice_id = ?`,
-      )
-      .run(counterNoticeText, restoreAfter, noticeId);
-    return { success: true, restoreAfter };
+    return this.admin.fileDmcaCounterNotice(noticeId, counterNoticeText);
   }
 
   // ── Admin Overview & User Governance ─────────────────────────────
 
-  getAdminPendingCounts(): {
-    pendingReports: number;
-    pendingDmca: number;
-    failedDeliveries: number;
-    suspendedDomains: number;
-    restrictedUsers: number;
-  } {
-    const pendingReports =
-      (
-        this.#db.prepare(`SELECT COUNT(*) as c FROM content_reports WHERE status = 'pending'`).get() as
-          { c: number } | undefined
-      )?.c ?? 0;
-    const pendingDmca =
-      (
-        this.#db.prepare(`SELECT COUNT(*) as c FROM dmca_notices WHERE status = 'pending'`).get() as
-          { c: number } | undefined
-      )?.c ?? 0;
-    const failedDeliveries =
-      (
-        this.#db.prepare(`SELECT COUNT(*) as c FROM federation_delivery_queue WHERE status = 'failed'`).get() as
-          { c: number } | undefined
-      )?.c ?? 0;
-    const suspendedDomains =
-      (
-        this.#db.prepare(`SELECT COUNT(*) as c FROM federation_domains WHERE tier IN ('silence', 'suspend')`).get() as
-          { c: number } | undefined
-      )?.c ?? 0;
-    const restrictedUsers =
-      (
-        this.#db.prepare(`SELECT COUNT(*) as c FROM users WHERE status IN ('frozen', 'suspended')`).get() as
-          { c: number } | undefined
-      )?.c ?? 0;
-    return {
-      pendingReports,
-      pendingDmca,
-      failedDeliveries,
-      suspendedDomains,
-      restrictedUsers,
-    };
+  getAdminPendingCounts() {
+    return this.admin.getAdminPendingCounts();
   }
 
   listUsersForAdmin(options?: {
@@ -7958,31 +6907,7 @@ export class LibraryDatabase {
     previousBalance: number;
     newBalance: number;
   } {
-    const user = this.getUserById(userId);
-    if (!user) {
-      return { success: false, userId, previousBalance: 0, newBalance: 0 };
-    }
-    const previousBalance = Number(user.credit_balance ?? 0);
-    const newBalance = Math.max(0, Number((previousBalance + deltaCredits).toFixed(4)));
-    const txType = deltaCredits >= 0 ? "admin_grant" : "admin_deduction";
-
-    const tx = this.#db.transaction(() => {
-      this.#db.prepare(`UPDATE users SET credit_balance = ? WHERE id = ?`).run(newBalance, userId);
-      this.#db
-        .prepare(
-          `INSERT INTO credit_transactions (user_id, amount, balance_after, type, description)
-           VALUES (?, ?, ?, ?, ?)`,
-        )
-        .run(userId, deltaCredits, newBalance, txType, reason || "Administrator compute wallet adjustment");
-    });
-    tx();
-
-    return {
-      success: true,
-      userId,
-      previousBalance,
-      newBalance,
-    };
+    return this.billing.adjustUserCreditsForAdmin(userId, deltaCredits, reason);
   }
 
   static #hashAuditIpToken(ipAddress?: string | null): string {
@@ -11440,7 +10365,7 @@ export class LibraryDatabase {
     const posts = this.#db.prepare(query).all(...params) as (Omit<PostRow, "metadata"> & {
       metadata?: PostMetadata | string | null | undefined;
     })[];
-    const hydrated = posts.map((p) => this.hydratePost(p, currentUserId)!);
+    const hydrated = this.hydratePostsBatch(posts, currentUserId);
     return this.applyContentFiltersToPosts(hydrated, "public", currentUserId);
   }
 
@@ -13006,36 +11931,7 @@ export class LibraryDatabase {
     oidcWorkflowRef?: string | null | undefined;
     oidcRunId?: string | null | undefined;
   }): void {
-    const stmt = this.#db.prepare(`
-      INSERT INTO library_releases (
-        library_name, library_version, content_hash, signature, published_by,
-        oidc_issuer, oidc_subject, oidc_repository, oidc_workflow_ref, oidc_run_id
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(library_name, library_version) DO UPDATE SET
-        content_hash = excluded.content_hash,
-        signature = excluded.signature,
-        published_by = excluded.published_by,
-        oidc_issuer = excluded.oidc_issuer,
-        oidc_subject = excluded.oidc_subject,
-        oidc_repository = excluded.oidc_repository,
-        oidc_workflow_ref = excluded.oidc_workflow_ref,
-        oidc_run_id = excluded.oidc_run_id,
-        published_at = datetime('now')
-    `);
-    stmt.run(
-      release.libraryName,
-      release.libraryVersion,
-      release.contentHash,
-      release.signature ?? null,
-      release.publishedBy ?? null,
-      release.oidcIssuer ?? null,
-      release.oidcSubject ?? null,
-      release.oidcRepository ?? null,
-      release.oidcWorkflowRef ?? null,
-      release.oidcRunId ?? null,
-    );
-    this.invalidateLibraryDiscoveryCache();
+    this.packages.saveLibraryRelease(release);
   }
 
   /**
@@ -13075,111 +11971,42 @@ export class LibraryDatabase {
    * Get release metadata (content hash, signature, timestamp) for a library.
    */
   getLibraryRelease(libraryName: string, libraryVersion: string): LibraryReleaseRow | null {
-    const stmt = this.#db.prepare(`
-      SELECT * FROM library_releases
-      WHERE library_name = ? AND library_version = ?
-    `);
-    return (stmt.get(libraryName, libraryVersion) as LibraryReleaseRow | undefined) ?? null;
+    return this.packages.getLibraryRelease(libraryName, libraryVersion);
   }
 
   /**
    * Get all releases for a library name.
    */
   getLibraryReleases(libraryName: string): LibraryReleaseRow[] {
-    const stmt = this.#db.prepare(`
-      SELECT * FROM library_releases
-      WHERE library_name = ?
-    `);
-    return stmt.all(libraryName) as LibraryReleaseRow[];
+    return this.packages.getLibraryReleases(libraryName);
   }
 
   /**
    * Mark a library release as deprecated (or clear deprecation if reason is null).
    */
   deprecateLibraryRelease(libraryName: string, libraryVersion: string, reason: string | null): boolean {
-    const isDeprecated = reason !== null ? 1 : 0;
-    const info = this.#db
-      .prepare(
-        `UPDATE library_releases
-         SET is_deprecated = ?, deprecation_reason = ?
-         WHERE library_name = ? AND library_version = ?`,
-      )
-      .run(isDeprecated, reason, libraryName, libraryVersion);
-    if (info.changes > 0) {
-      this.invalidateLibraryDiscoveryCache();
-    }
-    return info.changes > 0;
+    return this.packages.deprecateLibraryRelease(libraryName, libraryVersion, reason);
   }
 
   /**
    * Yank a library release (tombstone download while preserving metadata).
    */
   yankLibraryRelease(libraryName: string, libraryVersion: string, reason: string | null): boolean {
-    const info = this.#db
-      .prepare(
-        `UPDATE library_releases
-         SET is_yanked = 1, yank_reason = ?, yanked_at = datetime('now')
-         WHERE library_name = ? AND library_version = ?`,
-      )
-      .run(reason, libraryName, libraryVersion);
-    if (info.changes > 0) {
-      this.invalidateLibraryDiscoveryCache();
-    }
-    return info.changes > 0;
+    return this.packages.yankLibraryRelease(libraryName, libraryVersion, reason);
   }
 
   /**
    * Restore/unyank a library release.
    */
   unyankLibraryRelease(libraryName: string, libraryVersion: string): boolean {
-    const info = this.#db
-      .prepare(
-        `UPDATE library_releases
-         SET is_yanked = 0, yank_reason = NULL, yanked_at = NULL
-         WHERE library_name = ? AND library_version = ?`,
-      )
-      .run(libraryName, libraryVersion);
-    if (info.changes > 0) {
-      this.invalidateLibraryDiscoveryCache();
-    }
-    return info.changes > 0;
+    return this.packages.unyankLibraryRelease(libraryName, libraryVersion);
   }
 
   /**
    * Check if a user has management permissions (owner/maintainer/admin) over a package.
    */
   canUserManagePackage(libraryName: string, userId: number): boolean {
-    const user = this.getUserById(userId);
-    if (!user) return false;
-    if (user.account_type === "admin") return true;
-
-    // Check if user is collaborator with admin or write
-    const collabPerm = this.getPackageCollaboratorPermission(libraryName, userId);
-    if (collabPerm === "admin" || collabPerm === "write") {
-      return true;
-    }
-
-    // If scoped package (@owner/pkg), check if user.username === owner or is org owner/maintainer
-    if (libraryName.startsWith("@")) {
-      const scope = libraryName.split("/")[0]!.slice(1).toLowerCase();
-      if (user.username.toLowerCase() === scope) {
-        return true;
-      }
-      const org = this.getOrganizationBySlug(scope);
-      if (org) {
-        const role = this.getOrganizationMemberRole(org.id, userId);
-        if (role === "owner" || role === "maintainer") {
-          return true;
-        }
-      }
-      return false;
-    }
-
-    // For unscoped packages, check if user is the primary owner (initial publisher / transfer recipient)
-    const initialRelease = this.#db
-      .prepare(`SELECT published_by FROM library_releases WHERE library_name = ? ORDER BY id ASC LIMIT 1`)
-      .get(libraryName) as { published_by: number } | undefined;
-    return initialRelease ? initialRelease.published_by === userId : false;
+    return this.packages.canUserManagePackage(libraryName, userId);
   }
 
   /**
@@ -13187,106 +12014,35 @@ export class LibraryDatabase {
    * Excludes 'write' collaborators from destructive/ownership/collaborator-management actions.
    */
   canUserAdministerPackage(libraryName: string, userId: number): boolean {
-    const user = this.getUserById(userId);
-    if (!user) return false;
-    if (user.account_type === "admin") return true;
-
-    const collabPerm = this.getPackageCollaboratorPermission(libraryName, userId);
-    if (collabPerm === "admin") {
-      return true;
-    }
-
-    if (libraryName.startsWith("@")) {
-      const scope = libraryName.split("/")[0]!.slice(1).toLowerCase();
-      if (user.username.toLowerCase() === scope) {
-        return true;
-      }
-      const org = this.getOrganizationBySlug(scope);
-      if (org) {
-        const role = this.getOrganizationMemberRole(org.id, userId);
-        if (role === "owner" || role === "maintainer") {
-          return true;
-        }
-      }
-      return false;
-    }
-
-    const initialRelease = this.#db
-      .prepare(`SELECT published_by FROM library_releases WHERE library_name = ? ORDER BY id ASC LIMIT 1`)
-      .get(libraryName) as { published_by: number } | undefined;
-    return initialRelease ? initialRelease.published_by === userId : false;
+    return this.packages.canUserAdministerPackage(libraryName, userId);
   }
 
   /**
    * Initiate a package ownership transfer request.
    */
   createPackageTransfer(packageName: string, fromUserId: number, toUserId: number): number {
-    const info = this.#db
-      .prepare(
-        `INSERT INTO package_ownership_transfers (package_name, from_user_id, to_user_id, status)
-         VALUES (?, ?, ?, 'pending')`,
-      )
-      .run(packageName, fromUserId, toUserId);
-    return Number(info.lastInsertRowid);
+    return this.packages.createPackageTransfer(packageName, fromUserId, toUserId);
   }
 
   /**
    * Accept an ownership transfer request.
    */
   acceptPackageTransfer(transferId: number, toUserId: number): boolean {
-    const transfer = this.#db
-      .prepare(`SELECT * FROM package_ownership_transfers WHERE id = ? AND to_user_id = ? AND status = 'pending'`)
-      .get(transferId, toUserId) as { id: number; package_name: string; to_user_id: number } | undefined;
-
-    if (!transfer) return false;
-
-    const tx = this.#db.transaction(() => {
-      this.#db
-        .prepare(
-          `UPDATE package_ownership_transfers
-           SET status = 'accepted', resolved_at = datetime('now')
-           WHERE id = ?`,
-        )
-        .run(transferId);
-
-      // Reassign published_by to new owner
-      this.#db
-        .prepare(`UPDATE library_releases SET published_by = ? WHERE library_name = ?`)
-        .run(toUserId, transfer.package_name);
-    });
-
-    tx();
-    return true;
+    return this.packages.acceptPackageTransfer(transferId, toUserId);
   }
 
   /**
    * Cancel an ownership transfer request.
    */
   cancelPackageTransfer(transferId: number, fromUserId: number): boolean {
-    const info = this.#db
-      .prepare(
-        `UPDATE package_ownership_transfers
-         SET status = 'canceled', resolved_at = datetime('now')
-         WHERE id = ? AND from_user_id = ? AND status = 'pending'`,
-      )
-      .run(transferId, fromUserId);
-    return info.changes > 0;
+    return this.packages.cancelPackageTransfer(transferId, fromUserId);
   }
 
   /**
    * Get pending transfers for a user (incoming and outgoing).
    */
   getPendingTransfers(userId: number): PackageTransferRow[] {
-    return this.#db
-      .prepare(
-        `SELECT t.*, u_from.username AS from_username, u_to.username AS to_username
-         FROM package_ownership_transfers t
-         JOIN users u_from ON t.from_user_id = u_from.id
-         JOIN users u_to ON t.to_user_id = u_to.id
-         WHERE (t.to_user_id = ? OR t.from_user_id = ?) AND t.status = 'pending'
-         ORDER BY t.created_at DESC`,
-      )
-      .all(userId, userId) as PackageTransferRow[];
+    return this.packages.getPendingTransfers(userId);
   }
 
   /**
@@ -13364,86 +12120,14 @@ export class LibraryDatabase {
    * Get packages that declare this package as a dependency.
    */
   getReverseDependencies(targetPackageName: string): { name: string; version: string; description: string | null }[] {
-    const rows = this.#db
-      .prepare(
-        `SELECT p.name, p.description, pv.version, pv.manifest
-         FROM packages p
-         JOIN dist_tags dt ON dt.package_id = p.id AND dt.tag = 'latest'
-         JOIN package_versions pv ON pv.package_id = p.id AND pv.version = dt.version
-         WHERE p.name != ?`,
-      )
-      .all(targetPackageName) as { name: string; description: string | null; version: string; manifest: string }[];
-
-    const result: { name: string; version: string; description: string | null }[] = [];
-    for (const row of rows) {
-      try {
-        const parsed = JSON.parse(row.manifest);
-        const deps = { ...parsed.dependencies, ...parsed.modelscript?.dependencies };
-        if (
-          deps &&
-          (deps[targetPackageName] !== undefined ||
-            Object.keys(deps).some((k) => k.toLowerCase() === targetPackageName.toLowerCase()))
-        ) {
-          result.push({ name: row.name, version: row.version, description: row.description ?? null });
-        }
-      } catch {
-        // ignore parse error
-      }
-    }
-    return result;
+    return this.packages.getReverseDependencies(targetPackageName);
   }
 
   /**
    * Check if a user is authorized to publish a package release.
    */
   canUserPublishPackage(libraryName: string, userId: number): { allowed: boolean; reason?: string | undefined } {
-    const user = this.getUserById(userId);
-    if (!user) return { allowed: false, reason: "User not found" };
-    if (user.account_type === "admin") return { allowed: true };
-
-    const existingReleases = this.getLibraryReleases(libraryName);
-    if (existingReleases.length > 0) {
-      if (this.canUserManagePackage(libraryName, userId)) {
-        return { allowed: true };
-      }
-      return {
-        allowed: false,
-        reason: `You do not have permission to publish new versions of package '${libraryName}'`,
-      };
-    }
-
-    // Reserved standard/core prefixes
-    if (/^(?:modelica|complex|modelscript|sysml|ansatz)/i.test(libraryName)) {
-      return {
-        allowed: false,
-        reason: `Reserved package name '${libraryName}' can only be published by system administrators.`,
-      };
-    }
-
-    // New package creation
-    if (libraryName.startsWith("@")) {
-      const scope = libraryName.split("/")[0]!.slice(1).toLowerCase();
-      if (user.username.toLowerCase() === scope) {
-        return { allowed: true };
-      }
-      const org = this.getOrganizationBySlug(scope);
-      if (org) {
-        const role = this.getOrganizationMemberRole(org.id, userId);
-        if (role === "owner" || role === "maintainer") {
-          return { allowed: true };
-        }
-        return {
-          allowed: false,
-          reason: `You must be an owner or maintainer of organization '@${scope}' to publish packages under its namespace`,
-        };
-      }
-      return {
-        allowed: false,
-        reason: `Namespace '@${scope}' does not match your username and is not a registered organization`,
-      };
-    }
-
-    return { allowed: true };
+    return this.packages.canUserPublishPackage(libraryName, userId);
   }
 
   // ==========================================
@@ -13607,40 +12291,19 @@ export class LibraryDatabase {
   // ==========================================
 
   addPackageCollaborator(libraryName: string, userId: number, permission: CollaboratorPermission): void {
-    this.#db
-      .prepare(
-        `INSERT INTO package_collaborators (library_name, user_id, permission)
-         VALUES (?, ?, ?)
-         ON CONFLICT(library_name, user_id)
-         DO UPDATE SET permission = excluded.permission`,
-      )
-      .run(libraryName, userId, permission);
+    this.packages.addPackageCollaborator(libraryName, userId, permission);
   }
 
   removePackageCollaborator(libraryName: string, userId: number): boolean {
-    const info = this.#db
-      .prepare(`DELETE FROM package_collaborators WHERE library_name = ? AND user_id = ?`)
-      .run(libraryName, userId);
-    return info.changes > 0;
+    return this.packages.removePackageCollaborator(libraryName, userId);
   }
 
   getPackageCollaborators(libraryName: string): PackageCollaboratorRecord[] {
-    return this.#db
-      .prepare(
-        `SELECT c.*, u.username
-         FROM package_collaborators c
-         JOIN users u ON c.user_id = u.id
-         WHERE c.library_name = ?
-         ORDER BY c.created_at ASC`,
-      )
-      .all(libraryName) as PackageCollaboratorRecord[];
+    return this.packages.getPackageCollaborators(libraryName);
   }
 
   getPackageCollaboratorPermission(libraryName: string, userId: number): CollaboratorPermission | null {
-    const row = this.#db
-      .prepare(`SELECT permission FROM package_collaborators WHERE library_name = ? AND user_id = ?`)
-      .get(libraryName, userId) as { permission: CollaboratorPermission } | undefined;
-    return row?.permission ?? null;
+    return this.packages.getPackageCollaboratorPermission(libraryName, userId);
   }
 
   // ── npm registry methods ────────────────────────────────────────
@@ -13649,13 +12312,7 @@ export class LibraryDatabase {
    * Get or create a package record by name.
    */
   getOrCreatePackage(name: string): { id: number; created: boolean } {
-    const existing = this.#db.prepare(`SELECT id FROM packages WHERE name = ?`).get(name) as { id: number } | undefined;
-    if (existing) {
-      return { id: existing.id, created: false };
-    }
-    const result = this.#db.prepare(`INSERT INTO packages (name) VALUES (?)`).run(name);
-    this.invalidateLibraryDiscoveryCache();
-    return { id: Number(result.lastInsertRowid), created: true };
+    return this.packages.getOrCreatePackage(name);
   }
 
   /**
@@ -13676,21 +12333,7 @@ export class LibraryDatabase {
         modified_at: string;
       }
     | undefined {
-    return this.#db.prepare(`SELECT * FROM packages WHERE name = ?`).get(name) as
-      | {
-          id: number;
-          name: string;
-          description: string | null;
-          readme: string | null;
-          readme_filename: string | null;
-          license: string | null;
-          homepage: string | null;
-          repository_type: string | null;
-          repository_url: string | null;
-          created_at: string;
-          modified_at: string;
-        }
-      | undefined;
+    return this.packages.getPackage(name);
   }
 
   /**
@@ -13708,30 +12351,7 @@ export class LibraryDatabase {
       repository_url?: string | null | undefined;
     },
   ): void {
-    this.#db
-      .prepare(
-        `UPDATE packages SET
-          description = COALESCE(?, description),
-          readme = COALESCE(?, readme),
-          readme_filename = COALESCE(?, readme_filename),
-          license = COALESCE(?, license),
-          homepage = COALESCE(?, homepage),
-          repository_type = COALESCE(?, repository_type),
-          repository_url = COALESCE(?, repository_url),
-          modified_at = datetime('now')
-        WHERE id = ?`,
-      )
-      .run(
-        meta.description ?? null,
-        meta.readme ?? null,
-        meta.readme_filename ?? null,
-        meta.license ?? null,
-        meta.homepage ?? null,
-        meta.repository_type ?? null,
-        meta.repository_url ?? null,
-        packageId,
-      );
-    this.invalidateLibraryDiscoveryCache();
+    this.packages.updatePackageMeta(packageId, meta);
   }
 
   /**
@@ -13748,33 +12368,24 @@ export class LibraryDatabase {
     modelscriptMeta: string | null,
     publishedBy: number | null,
   ): number {
-    const result = this.#db
-      .prepare(
-        `INSERT INTO package_versions
-          (package_id, version, tarball_path, tarball_shasum, tarball_integrity, tarball_size, manifest, modelscript_meta, published_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        packageId,
-        version,
-        tarballPath,
-        tarballShasum,
-        tarballIntegrity,
-        tarballSize,
-        manifest,
-        modelscriptMeta,
-        publishedBy,
-      );
-    this.invalidateLibraryDiscoveryCache();
-    return Number(result.lastInsertRowid);
+    return this.packages.storePackageVersion(
+      packageId,
+      version,
+      tarballPath,
+      tarballShasum,
+      tarballIntegrity,
+      tarballSize,
+      manifest,
+      modelscriptMeta,
+      publishedBy,
+    );
   }
 
   /**
    * Update the manifest of a package version.
    */
   updatePackageVersionManifest(versionId: number, manifest: string): void {
-    this.#db.prepare(`UPDATE package_versions SET manifest = ? WHERE id = ?`).run(manifest, versionId);
-    this.invalidateLibraryDiscoveryCache();
+    this.packages.updatePackageVersionManifest(versionId, manifest);
   }
 
   /**
@@ -13796,21 +12407,7 @@ export class LibraryDatabase {
         published_at: string;
       }
     | undefined {
-    return this.#db
-      .prepare(`SELECT * FROM package_versions WHERE package_id = ? AND version = ?`)
-      .get(packageId, version) as
-      | {
-          id: number;
-          version: string;
-          tarball_path: string;
-          tarball_shasum: string;
-          tarball_integrity: string | null;
-          tarball_size: number;
-          manifest: string;
-          modelscript_meta: string | null;
-          published_at: string;
-        }
-      | undefined;
+    return this.packages.getPackageVersion(packageId, version);
   }
 
   /**
@@ -13827,134 +12424,42 @@ export class LibraryDatabase {
     modelscript_meta: string | null;
     published_at: string;
   }[] {
-    return this.#db
-      .prepare(`SELECT * FROM package_versions WHERE package_id = ? ORDER BY published_at DESC`)
-      .all(packageId) as {
-      id: number;
-      version: string;
-      tarball_path: string;
-      tarball_shasum: string;
-      tarball_integrity: string | null;
-      tarball_size: number;
-      manifest: string;
-      modelscript_meta: string | null;
-      published_at: string;
-    }[];
+    return this.packages.getPackageVersions(packageId);
   }
 
   /**
    * Set a dist-tag for a package (e.g. "latest").
    */
   setDistTag(packageId: number, tag: string, version: string): void {
-    this.#db
-      .prepare(
-        `INSERT INTO dist_tags (package_id, tag, version) VALUES (?, ?, ?)
-        ON CONFLICT(package_id, tag) DO UPDATE SET version = excluded.version`,
-      )
-      .run(packageId, tag, version);
+    this.packages.setDistTag(packageId, tag, version);
   }
 
   /**
    * Get all dist-tags for a package.
    */
   getDistTags(packageId: number): Record<string, string> {
-    const rows = this.#db.prepare(`SELECT tag, version FROM dist_tags WHERE package_id = ?`).all(packageId) as {
-      tag: string;
-      version: string;
-    }[];
-    const tags: Record<string, string> = {};
-    for (const row of rows) {
-      tags[row.tag] = row.version;
-    }
-    return tags;
+    return this.packages.getDistTags(packageId);
   }
 
   /**
    * Store an artifact for a package version.
    */
   storeArtifact(versionId: number, type: string, artifactPath: string, metadata: string | null): number {
-    const result = this.#db
-      .prepare(`INSERT OR REPLACE INTO artifacts (version_id, type, path, metadata) VALUES (?, ?, ?, ?)`)
-      .run(versionId, type, artifactPath, metadata);
-    return Number(result.lastInsertRowid);
+    return this.packages.storeArtifact(versionId, type, artifactPath, metadata);
   }
 
   /**
    * Get artifacts for a package version.
    */
   getArtifacts(versionId: number): { id: number; type: string; path: string; metadata: string | null }[] {
-    return this.#db.prepare(`SELECT * FROM artifacts WHERE version_id = ?`).all(versionId) as {
-      id: number;
-      type: string;
-      path: string;
-      metadata: string | null;
-    }[];
+    return this.packages.getArtifacts(versionId);
   }
 
   /**
    * Build the full npm packument JSON for a package.
    */
   buildPackument(name: string, registryUrl: string): Record<string, unknown> | null {
-    const pkg = this.getPackage(name);
-    if (!pkg) return null;
-
-    const versions = this.getPackageVersions(pkg.id);
-    if (versions.length === 0) return null;
-
-    const sortedVersions = [...versions].sort((a, b) => {
-      if (semver.valid(a.version) && semver.valid(b.version)) return semver.rcompare(a.version, b.version);
-      return (b.published_at || "").localeCompare(a.published_at || "");
-    });
-
-    const distTags = this.getDistTags(pkg.id);
-    if (!distTags["latest"] && sortedVersions.length > 0) {
-      distTags["latest"] = sortedVersions[0]!.version;
-    }
-
-    const time: Record<string, string> = {
-      created: pkg.created_at,
-      modified: pkg.modified_at,
-    };
-
-    const versionsObj: Record<string, unknown> = {};
-    for (const v of sortedVersions) {
-      time[v.version] = v.published_at;
-      const manifest = JSON.parse(v.manifest) as Record<string, unknown>;
-      // Ensure dist info is present
-      manifest["dist"] = {
-        shasum: v.tarball_shasum,
-        integrity: v.tarball_integrity,
-        tarball: `${registryUrl}/${encodeURIComponent(name)}/-/${name}-${v.version}.tgz`,
-      };
-      manifest["_id"] = `${name}@${v.version}`;
-      const libRelease = this.getLibraryRelease(name, v.version);
-      if (libRelease?.is_deprecated && libRelease.deprecation_reason) {
-        manifest["deprecated"] = libRelease.deprecation_reason;
-      }
-      if (libRelease?.is_yanked) {
-        manifest["yanked"] = libRelease.yank_reason || true;
-        manifest["is_yanked"] = true;
-        manifest["yank_reason"] = libRelease.yank_reason;
-      }
-      versionsObj[v.version] = manifest;
-    }
-
-    const repository = pkg.repository_url ? { type: pkg.repository_type ?? "git", url: pkg.repository_url } : undefined;
-
-    return {
-      _id: name,
-      _rev: `1-${Date.now().toString(16)}`,
-      name,
-      description: pkg.description,
-      "dist-tags": distTags,
-      versions: versionsObj,
-      time,
-      readme: pkg.readme ?? "",
-      readmeFilename: pkg.readme_filename ?? "README.md",
-      license: pkg.license,
-      homepage: pkg.homepage,
-      repository,
-    };
+    return this.packages.buildPackument(name, registryUrl);
   }
 
   /**
@@ -13975,36 +12480,7 @@ export class LibraryDatabase {
     }[];
     total: number;
   } {
-    const countSql = `SELECT COUNT(*) as total FROM packages WHERE name LIKE ? OR description LIKE ?`;
-    const searchSql = `
-      SELECT p.name, p.description, p.modified_at,
-        (SELECT dt.version FROM dist_tags dt WHERE dt.package_id = p.id AND dt.tag = 'latest') as latest_version
-      FROM packages p
-      WHERE p.name LIKE ? OR p.description LIKE ?
-      ORDER BY p.modified_at DESC
-      LIMIT ? OFFSET ?
-    `;
-    const pattern = `%${text}%`;
-
-    const countRow = this.#db.prepare(countSql).get(pattern, pattern) as { total: number };
-    const rows = this.#db.prepare(searchSql).all(pattern, pattern, size, from) as {
-      name: string;
-      description: string | null;
-      modified_at: string;
-      latest_version: string | null;
-    }[];
-
-    return {
-      objects: rows.map((r) => ({
-        package: {
-          name: r.name,
-          version: r.latest_version ?? "0.0.0",
-          description: r.description,
-          date: r.modified_at,
-        },
-      })),
-      total: countRow.total,
-    };
+    return this.packages.searchPackages(text, size, from);
   }
 
   /**
@@ -14016,24 +12492,7 @@ export class LibraryDatabase {
     latest_version: string | null;
     modified_at: string;
   }[] {
-    let sql = `
-      SELECT p.name, p.description, p.modified_at,
-        (SELECT dt.version FROM dist_tags dt WHERE dt.package_id = p.id AND dt.tag = 'latest') as latest_version
-      FROM packages p
-    `;
-    const params: string[] = [];
-    if (query) {
-      sql += ` WHERE p.name LIKE ? OR p.description LIKE ?`;
-      const pattern = `%${query}%`;
-      params.push(pattern, pattern);
-    }
-    sql += ` ORDER BY p.modified_at DESC`;
-    return this.#db.prepare(sql).all(...params) as {
-      name: string;
-      description: string | null;
-      latest_version: string | null;
-      modified_at: string;
-    }[];
+    return this.packages.listPackages(query);
   }
 
   /**
@@ -14302,41 +12761,7 @@ export class LibraryDatabase {
    * Delete a package version. If no more versions remain, delete the package.
    */
   deletePackageVersion(name: string, version: string): boolean {
-    const pkg = this.getPackage(name);
-    if (!pkg) return false;
-
-    const v = this.getPackageVersion(pkg.id, version);
-    if (!v) return false;
-
-    this.#db.transaction(() => {
-      this.#db.prepare(`DELETE FROM artifacts WHERE version_id = ?`).run(v.id);
-      this.#db.prepare(`DELETE FROM package_versions WHERE id = ?`).run(v.id);
-      this.#db.prepare(`DELETE FROM classes WHERE library_name = ? AND library_version = ?`).run(name, version);
-      this.#db
-        .prepare(`DELETE FROM library_releases WHERE library_name = ? AND library_version = ?`)
-        .run(name, version);
-
-      // Clean up dist-tags pointing to this version
-      this.#db.prepare(`DELETE FROM dist_tags WHERE package_id = ? AND version = ?`).run(pkg.id, version);
-
-      // If no versions remain, delete the package
-      const remaining = this.getPackageVersions(pkg.id);
-      if (remaining.length === 0) {
-        this.#db.prepare(`DELETE FROM packages WHERE id = ?`).run(pkg.id);
-      } else {
-        // Re-point "latest" to the newest remaining version by semver
-        const sorted = [...remaining].sort((a, b) => {
-          if (semver.valid(a.version) && semver.valid(b.version)) return semver.rcompare(a.version, b.version);
-          return (b.published_at || "").localeCompare(a.published_at || "");
-        });
-        if (sorted[0]) {
-          this.setDistTag(pkg.id, "latest", sorted[0].version);
-        }
-      }
-    })();
-
-    this.invalidateLibraryDiscoveryCache();
-    return true;
+    return this.packages.deletePackageVersion(name, version);
   }
 
   // ── CAD Cache ───────────────────────────────────────────────────
@@ -14458,9 +12883,7 @@ export class LibraryDatabase {
   // ── Credit Ledger & Billing ─────────────────────────────────────
 
   getUserBalance(userId: number): number {
-    const row = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
-      { credit_balance?: number | undefined } | undefined;
-    return row?.credit_balance ?? 0;
+    return this.billing.getUserBalance(userId);
   }
 
   deductUserCredits(
@@ -14482,87 +12905,7 @@ export class LibraryDatabase {
     metadata?: string | undefined;
     newBalance: number;
   } {
-    if (amount <= 0) {
-      const balance = this.getUserBalance(userId);
-      return {
-        success: true,
-        user_id: userId,
-        job_id: jobId,
-        amount: 0,
-        balance_after: balance,
-        transaction_type: "job_settlement",
-        type: "job_settlement",
-        description,
-        newBalance: balance,
-      };
-    }
-
-    const deductTx = this.#db.transaction(() => {
-      const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
-        { credit_balance?: number | undefined } | undefined;
-
-      if (!user) {
-        throw new Error(`User with ID ${userId} not found`);
-      }
-
-      const currentBalance = user.credit_balance ?? 0;
-      if (currentBalance < amount) {
-        return {
-          success: false,
-          user_id: userId,
-          job_id: jobId,
-          amount: -amount,
-          balance_after: currentBalance,
-          transaction_type: "job_settlement",
-          type: "job_settlement",
-          description,
-          newBalance: currentBalance,
-        };
-      }
-
-      const roundedAmount = Math.round(amount * 100) / 100;
-      const newBalance = Math.round(Math.max(0, currentBalance - roundedAmount) * 100) / 100;
-
-      this.#db.prepare(`UPDATE users SET credit_balance = ? WHERE id = ?`).run(newBalance, userId);
-
-      const txResult = this.#db
-        .prepare(
-          `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
-           VALUES (?, ?, ?, ?, 'job_charge', ?, ?)`,
-        )
-        .run(userId, jobId, -roundedAmount, newBalance, description, JSON.stringify(metadata ?? {}));
-
-      const txId = txResult.lastInsertRowid as number;
-
-      if (newBalance <= 10) {
-        const existingUnread = this.#db
-          .prepare(`SELECT id FROM notifications WHERE user_id = ? AND type = 'credit_warning' AND read = 0`)
-          .get(userId);
-        if (!existingUnread) {
-          this.createNotification(userId, userId, "credit_warning", null, {
-            balance: newBalance,
-            threshold: 10,
-            message: `Your compute balance is ${newBalance} credits (below threshold of 10).`,
-          });
-        }
-      }
-
-      return {
-        id: txId,
-        user_id: userId,
-        job_id: jobId,
-        amount: -roundedAmount,
-        balance_after: newBalance,
-        transaction_type: "job_charge",
-        type: "job_charge",
-        description,
-        metadata: JSON.stringify(metadata ?? {}),
-        success: true,
-        newBalance,
-      };
-    });
-
-    return deductTx();
+    return this.billing.deductUserCredits(userId, amount, jobId, description, metadata);
   }
 
   grantUserCredits(
@@ -14572,48 +12915,11 @@ export class LibraryDatabase {
     description: string = "Credit Grant",
     metadata?: Record<string, unknown>,
   ): number {
-    if (!Number.isFinite(amount) || amount <= 0) {
-      throw new RangeError("Credit grant amount must be a positive finite number");
-    }
-    const grantTx = this.#db.transaction(() => {
-      const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
-        { credit_balance?: number | undefined } | undefined;
-
-      if (!user) {
-        throw new Error(`User with ID ${userId} not found`);
-      }
-
-      const currentBalance = user.credit_balance ?? 0;
-      const roundedAmount = Math.round(amount * 100) / 100;
-      const newBalance = Math.round((currentBalance + roundedAmount) * 100) / 100;
-
-      this.#db.prepare(`UPDATE users SET credit_balance = ? WHERE id = ?`).run(newBalance, userId);
-
-      this.#db
-        .prepare(
-          `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
-           VALUES (?, NULL, ?, ?, ?, ?, ?)`,
-        )
-        .run(userId, roundedAmount, newBalance, type, description, JSON.stringify(metadata ?? {}));
-
-      return newBalance;
-    });
-
-    return grantTx();
+    return this.billing.grantUserCredits(userId, amount, type, description, metadata);
   }
 
   hasProcessedStripeEvent(eventId?: string | null, paymentIntentId?: string | null): boolean {
-    if (eventId) {
-      const row = this.#db.prepare(`SELECT event_id FROM stripe_processed_events WHERE event_id = ?`).get(eventId);
-      if (row) return true;
-    }
-    if (paymentIntentId) {
-      const row = this.#db
-        .prepare(`SELECT event_id FROM stripe_processed_events WHERE payment_intent_id = ?`)
-        .get(paymentIntentId);
-      if (row) return true;
-    }
-    return false;
+    return this.billing.hasProcessedStripeEvent(eventId, paymentIntentId);
   }
 
   recordProcessedStripeEvent(
@@ -14622,17 +12928,7 @@ export class LibraryDatabase {
     userId: number | null,
     amountCredits: number,
   ): boolean {
-    try {
-      this.#db
-        .prepare(
-          `INSERT INTO stripe_processed_events (event_id, payment_intent_id, user_id, amount_credits)
-           VALUES (?, ?, ?, ?)`,
-        )
-        .run(eventId, paymentIntentId, userId, Math.round(amountCredits * 100) / 100);
-      return true;
-    } catch {
-      return false;
-    }
+    return this.billing.recordProcessedStripeEvent(eventId, paymentIntentId, userId, amountCredits);
   }
 
   saveMorselSnippet(
@@ -14688,57 +12984,7 @@ export class LibraryDatabase {
     newBalance: number;
     reason?: string | undefined;
   } {
-    if (amount <= 0) {
-      const balance = this.getUserBalance(userId);
-      return { success: true, heldAmount: 0, newBalance: balance };
-    }
-
-    const holdTx = this.#db.transaction(() => {
-      const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
-        { credit_balance?: number | undefined } | undefined;
-
-      if (!user) {
-        throw new Error(`User with ID ${userId} not found`);
-      }
-
-      const currentBalance = user.credit_balance ?? 0;
-      if (currentBalance < amount) {
-        return {
-          success: false,
-          heldAmount: 0,
-          newBalance: currentBalance,
-          reason: `Insufficient balance (${currentBalance.toFixed(1)} cr) to place required escrow hold of ${amount.toFixed(1)} cr`,
-        };
-      }
-
-      const newBalance = Math.round((currentBalance - amount) * 100) / 100;
-      this.#db.prepare(`UPDATE users SET credit_balance = ? WHERE id = ?`).run(newBalance, userId);
-
-      const holdRes = this.#db
-        .prepare(
-          `INSERT INTO credit_escrow_holds (user_id, job_id, amount, status, description, metadata)
-           VALUES (?, ?, ?, 'held', ?, ?)`,
-        )
-        .run(userId, jobId, amount, description, JSON.stringify(metadata ?? {}));
-
-      const holdId = holdRes.lastInsertRowid as number;
-
-      this.#db
-        .prepare(
-          `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
-           VALUES (?, ?, ?, ?, 'escrow_hold', ?, ?)`,
-        )
-        .run(userId, jobId, -amount, newBalance, description, JSON.stringify({ holdId, ...(metadata ?? {}) }));
-
-      return {
-        success: true,
-        holdId,
-        heldAmount: amount,
-        newBalance,
-      };
-    });
-
-    return holdTx();
+    return this.billing.holdUserCredits(userId, amount, jobId, description, metadata);
   }
 
   settleUserEscrow(
@@ -14748,105 +12994,7 @@ export class LibraryDatabase {
     description: string = "HPC Compute Final Settlement",
     metadata?: Record<string, unknown>,
   ): { success: boolean; settledAmount: number; refundedAmount: number; newBalance: number } {
-    if (!Number.isFinite(actualCost) || actualCost < 0) {
-      throw new RangeError("Escrow settlement actualCost must be a non-negative finite number");
-    }
-    const settleTx = this.#db.transaction(() => {
-      const hold = this.#db
-        .prepare(
-          `SELECT * FROM credit_escrow_holds WHERE user_id = ? AND job_id = ? AND status = 'held' ORDER BY id DESC LIMIT 1`,
-        )
-        .get(userId, jobId) as { id: number; amount: number } | undefined;
-
-      const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
-        { credit_balance?: number | undefined } | undefined;
-
-      if (!user) {
-        throw new Error(`User with ID ${userId} not found`);
-      }
-
-      let currentBalance = user.credit_balance ?? 0;
-      let refundedAmount = 0;
-      const finalCost = actualCost;
-
-      if (hold) {
-        const heldAmount = hold.amount;
-        if (heldAmount > actualCost) {
-          refundedAmount = Math.round((heldAmount - actualCost) * 100) / 100;
-          currentBalance = Math.round((currentBalance + refundedAmount) * 100) / 100;
-          this.#db.prepare(`UPDATE users SET credit_balance = ? WHERE id = ?`).run(currentBalance, userId);
-
-          this.#db
-            .prepare(
-              `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
-               VALUES (?, ?, ?, ?, 'escrow_refund', ?, ?)`,
-            )
-            .run(
-              userId,
-              jobId,
-              refundedAmount,
-              currentBalance,
-              `Escrow refund for job ${jobId}`,
-              JSON.stringify(metadata ?? {}),
-            );
-        } else if (actualCost > heldAmount) {
-          const overage = Math.round((actualCost - heldAmount) * 100) / 100;
-          currentBalance = Math.round(Math.max(0, currentBalance - overage) * 100) / 100;
-          this.#db.prepare(`UPDATE users SET credit_balance = ? WHERE id = ?`).run(currentBalance, userId);
-
-          this.#db
-            .prepare(
-              `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
-               VALUES (?, ?, ?, ?, 'escrow_overage', ?, ?)`,
-            )
-            .run(
-              userId,
-              jobId,
-              -overage,
-              currentBalance,
-              `Escrow overage for job ${jobId}`,
-              JSON.stringify(metadata ?? {}),
-            );
-        }
-
-        this.#db
-          .prepare(`UPDATE credit_escrow_holds SET status = 'settled', settled_at = datetime('now') WHERE id = ?`)
-          .run(hold.id);
-      } else {
-        if (actualCost > 0) {
-          currentBalance = Math.round(Math.max(0, currentBalance - actualCost) * 100) / 100;
-          this.#db.prepare(`UPDATE users SET credit_balance = ? WHERE id = ?`).run(currentBalance, userId);
-          this.#db
-            .prepare(
-              `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
-               VALUES (?, ?, ?, ?, 'job_charge', ?, ?)`,
-            )
-            .run(userId, jobId, -actualCost, currentBalance, description, JSON.stringify(metadata ?? {}));
-        }
-      }
-
-      if (currentBalance <= 10) {
-        const existingUnread = this.#db
-          .prepare(`SELECT id FROM notifications WHERE user_id = ? AND type = 'credit_warning' AND read = 0`)
-          .get(userId);
-        if (!existingUnread) {
-          this.createNotification(userId, userId, "credit_warning", null, {
-            balance: currentBalance,
-            threshold: 10,
-            message: `Your compute balance is ${currentBalance} credits (below threshold of 10).`,
-          });
-        }
-      }
-
-      return {
-        success: true,
-        settledAmount: finalCost,
-        refundedAmount,
-        newBalance: currentBalance,
-      };
-    });
-
-    return settleTx();
+    return this.billing.settleUserEscrow(userId, jobId, actualCost, description, metadata);
   }
 
   releaseUserEscrow(
@@ -14854,112 +13002,27 @@ export class LibraryDatabase {
     jobId: number,
     reason: string = "Job canceled / aborted",
   ): { success: boolean; refundedAmount: number; newBalance: number } {
-    const releaseTx = this.#db.transaction(() => {
-      const hold = this.#db
-        .prepare(
-          `SELECT * FROM credit_escrow_holds WHERE user_id = ? AND job_id = ? AND status = 'held' ORDER BY id DESC LIMIT 1`,
-        )
-        .get(userId, jobId) as { id: number; amount: number } | undefined;
-
-      const user = this.#db.prepare(`SELECT credit_balance FROM users WHERE id = ?`).get(userId) as
-        { credit_balance?: number | undefined } | undefined;
-
-      if (!user) {
-        throw new Error(`User with ID ${userId} not found`);
-      }
-
-      let currentBalance = user.credit_balance ?? 0;
-      let refundedAmount = 0;
-
-      if (hold) {
-        refundedAmount = hold.amount;
-        currentBalance = Math.round((currentBalance + refundedAmount) * 100) / 100;
-        this.#db.prepare(`UPDATE users SET credit_balance = ? WHERE id = ?`).run(currentBalance, userId);
-
-        this.#db
-          .prepare(
-            `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
-             VALUES (?, ?, ?, ?, 'escrow_release', ?, ?)`,
-          )
-          .run(
-            userId,
-            jobId,
-            refundedAmount,
-            currentBalance,
-            `Escrow released: ${reason}`,
-            JSON.stringify({ holdId: hold.id, reason }),
-          );
-
-        this.#db
-          .prepare(`UPDATE credit_escrow_holds SET status = 'released', settled_at = datetime('now') WHERE id = ?`)
-          .run(hold.id);
-      }
-
-      return {
-        success: true,
-        refundedAmount,
-        newBalance: currentBalance,
-      };
-    });
-
-    return releaseTx();
+    return this.billing.releaseUserEscrow(userId, jobId, reason);
   }
 
   releaseAllHeldEscrowsOnShutdown(): number {
-    try {
-      const heldRows = this.#db
-        .prepare(`SELECT id, user_id, job_id, amount FROM credit_escrow_holds WHERE status = 'held'`)
-        .all() as { id: number; user_id: number; job_id: number; amount: number }[];
-      let releasedCount = 0;
-      for (const row of heldRows) {
-        try {
-          this.releaseUserEscrow(row.user_id, row.job_id, "Server shutdown recovery");
-          releasedCount++;
-        } catch {}
-      }
-      this.#db
-        .prepare(
-          `UPDATE jobs SET status = 'CANCELLED', completed_at = datetime('now') WHERE status IN ('RUNNING', 'QUEUED', 'PENDING')`,
-        )
-        .run();
-      return releasedCount;
-    } catch {
-      return 0;
-    }
+    return this.billing.releaseAllHeldEscrowsOnShutdown();
   }
 
   getUserTransactions(userId: number, limit: number = 50, offset: number = 0): CreditTransactionRow[] {
-    return this.#db
-      .prepare(
-        `SELECT id, user_id, job_id, amount, balance_after, type, type as transaction_type, description, metadata, created_at
-         FROM credit_transactions
-         WHERE user_id = ?
-         ORDER BY id DESC
-         LIMIT ? OFFSET ?`,
-      )
-      .all(userId, limit, offset) as CreditTransactionRow[];
+    return this.billing.getUserTransactions(userId, limit, offset);
   }
 
   getUserTransactionCount(userId: number): number {
-    const row = this.#db.prepare(`SELECT COUNT(*) as count FROM credit_transactions WHERE user_id = ?`).get(userId) as
-      { count?: number | undefined } | undefined;
-    return row?.count ?? 0;
+    return this.billing.getUserTransactionCount(userId);
   }
 
   getCreditTransactionById(txId: number): CreditTransactionRow | undefined {
-    return this.#db
-      .prepare(
-        `SELECT id, user_id, job_id, amount, balance_after, type, type as transaction_type, description, metadata, created_at
-         FROM credit_transactions
-         WHERE id = ?`,
-      )
-      .get(txId) as CreditTransactionRow | undefined;
+    return this.billing.getCreditTransactionById(txId);
   }
 
   getOrgBalance(orgId: number): number {
-    const row = this.#db.prepare(`SELECT credit_balance FROM organizations WHERE id = ?`).get(orgId) as
-      { credit_balance?: number | undefined } | undefined;
-    return row?.credit_balance ?? 0;
+    return this.billing.getOrgBalance(orgId);
   }
 
   grantOrgCredits(
@@ -14969,34 +13032,7 @@ export class LibraryDatabase {
     description: string = "Organization Shared Wallet Top-Up",
     metadata?: Record<string, unknown>,
   ): number {
-    if (!Number.isFinite(amount) || amount <= 0) {
-      throw new RangeError("Credit grant amount must be a positive finite number");
-    }
-    const grantTx = this.#db.transaction(() => {
-      const org = this.#db
-        .prepare(`SELECT id, credit_balance, created_by FROM organizations WHERE id = ?`)
-        .get(orgId) as { id: number; credit_balance?: number | undefined; created_by?: number | undefined } | undefined;
-      if (!org) {
-        throw new Error(`Organization with ID ${orgId} not found`);
-      }
-
-      const currentBalance = org.credit_balance ?? 0;
-      const roundedAmount = Math.round(amount * 100) / 100;
-      const newBalance = Math.round((currentBalance + roundedAmount) * 100) / 100;
-
-      this.#db.prepare(`UPDATE organizations SET credit_balance = ? WHERE id = ?`).run(newBalance, orgId);
-
-      const effectiveUserId = actorUserId ?? org.created_by ?? 1;
-      this.#db
-        .prepare(
-          `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
-           VALUES (?, NULL, ?, ?, 'org_top_up', ?, ?)`,
-        )
-        .run(effectiveUserId, roundedAmount, newBalance, description, JSON.stringify({ orgId, ...(metadata ?? {}) }));
-
-      return newBalance;
-    });
-    return grantTx();
+    return this.billing.grantOrgCredits(orgId, amount, actorUserId, description, metadata);
   }
 
   deductOrgCredits(
@@ -15007,53 +13043,7 @@ export class LibraryDatabase {
     description: string = "Organization Compute Charge",
     metadata?: Record<string, unknown>,
   ): { success: boolean; newBalance: number; amount: number } {
-    if (amount <= 0) {
-      return { success: true, newBalance: this.getOrgBalance(orgId), amount: 0 };
-    }
-    const deductTx = this.#db.transaction(() => {
-      const org = this.#db
-        .prepare(`SELECT id, credit_balance, total_spent, created_by FROM organizations WHERE id = ?`)
-        .get(orgId) as
-        | {
-            id: number;
-            credit_balance?: number | undefined;
-            total_spent?: number | undefined;
-            created_by?: number | undefined;
-          }
-        | undefined;
-      if (!org) {
-        throw new Error(`Organization with ID ${orgId} not found`);
-      }
-      const currentBalance = org.credit_balance ?? 0;
-      const roundedAmount = Math.round(amount * 100) / 100;
-      if (currentBalance < roundedAmount) {
-        return { success: false, newBalance: currentBalance, amount: -roundedAmount };
-      }
-      const newBalance = Math.round(Math.max(0, currentBalance - roundedAmount) * 100) / 100;
-      const newTotalSpent = Math.round(((org.total_spent ?? 0) + roundedAmount) * 100) / 100;
-
-      this.#db
-        .prepare(`UPDATE organizations SET credit_balance = ?, total_spent = ? WHERE id = ?`)
-        .run(newBalance, newTotalSpent, orgId);
-
-      const effectiveUserId = actorUserId ?? org.created_by ?? 1;
-      this.#db
-        .prepare(
-          `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
-           VALUES (?, ?, ?, ?, 'org_job_charge', ?, ?)`,
-        )
-        .run(
-          effectiveUserId,
-          jobId,
-          -roundedAmount,
-          newBalance,
-          description,
-          JSON.stringify({ orgId, ...(metadata ?? {}) }),
-        );
-
-      return { success: true, newBalance, amount: -roundedAmount };
-    });
-    return deductTx();
+    return this.billing.deductOrgCredits(orgId, amount, actorUserId, jobId, description, metadata);
   }
 
   holdOrgCredits(
@@ -15070,61 +13060,7 @@ export class LibraryDatabase {
     newBalance: number;
     reason?: string | undefined;
   } {
-    if (amount <= 0) {
-      const balance = this.getOrgBalance(orgId);
-      return { success: true, heldAmount: 0, newBalance: balance };
-    }
-
-    const holdTx = this.#db.transaction(() => {
-      const org = this.#db
-        .prepare(`SELECT id, credit_balance, created_by FROM organizations WHERE id = ?`)
-        .get(orgId) as { id: number; credit_balance?: number | undefined; created_by?: number | undefined } | undefined;
-
-      if (!org) {
-        throw new Error(`Organization with ID ${orgId} not found`);
-      }
-
-      const currentBalance = org.credit_balance ?? 0;
-      if (currentBalance < amount) {
-        return {
-          success: false,
-          heldAmount: 0,
-          newBalance: currentBalance,
-          reason: `Insufficient organization balance (${currentBalance.toFixed(1)} cr) to place required escrow hold of ${amount.toFixed(1)} cr`,
-        };
-      }
-
-      const newBalance = Math.round((currentBalance - amount) * 100) / 100;
-      this.#db.prepare(`UPDATE organizations SET credit_balance = ? WHERE id = ?`).run(newBalance, orgId);
-
-      const effectiveUserId = actorUserId ?? org.created_by ?? 1;
-      const combinedMeta = { orgId, ...(metadata ?? {}) };
-
-      const holdRes = this.#db
-        .prepare(
-          `INSERT INTO credit_escrow_holds (user_id, job_id, amount, status, description, metadata)
-           VALUES (?, ?, ?, 'held', ?, ?)`,
-        )
-        .run(effectiveUserId, jobId, amount, description, JSON.stringify(combinedMeta));
-
-      const holdId = holdRes.lastInsertRowid as number;
-
-      this.#db
-        .prepare(
-          `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
-           VALUES (?, ?, ?, ?, 'org_escrow_hold', ?, ?)`,
-        )
-        .run(effectiveUserId, jobId, -amount, newBalance, description, JSON.stringify({ holdId, ...combinedMeta }));
-
-      return {
-        success: true,
-        holdId,
-        heldAmount: amount,
-        newBalance,
-      };
-    });
-
-    return holdTx();
+    return this.billing.holdOrgCredits(orgId, amount, actorUserId, jobId, description, metadata);
   }
 
   settleOrgEscrow(
@@ -15135,122 +13071,7 @@ export class LibraryDatabase {
     description: string = "Organization HPC Compute Final Settlement",
     metadata?: Record<string, unknown>,
   ): { success: boolean; settledAmount: number; refundedAmount: number; newBalance: number } {
-    if (!Number.isFinite(actualCost) || actualCost < 0) {
-      throw new RangeError("Escrow settlement actualCost must be a non-negative finite number");
-    }
-    const settleTx = this.#db.transaction(() => {
-      const allHolds = this.#db
-        .prepare(`SELECT * FROM credit_escrow_holds WHERE job_id = ? AND status = 'held' ORDER BY id DESC`)
-        .all(jobId) as { id: number; amount: number; user_id: number; metadata: string }[];
-
-      const hold =
-        allHolds.find((h) => {
-          try {
-            const parsed = JSON.parse(h.metadata || "{}");
-            return Number(parsed.orgId) === orgId;
-          } catch {
-            return false;
-          }
-        }) || allHolds[0];
-
-      const org = this.#db
-        .prepare(`SELECT id, credit_balance, total_spent, created_by FROM organizations WHERE id = ?`)
-        .get(orgId) as
-        | {
-            id: number;
-            credit_balance?: number | undefined;
-            total_spent?: number | undefined;
-            created_by?: number | undefined;
-          }
-        | undefined;
-
-      if (!org) {
-        throw new Error(`Organization with ID ${orgId} not found`);
-      }
-
-      let currentBalance = org.credit_balance ?? 0;
-      let refundedAmount = 0;
-      const effectiveUserId = actorUserId ?? org.created_by ?? 1;
-      const combinedMeta = { orgId, ...(metadata ?? {}) };
-
-      if (hold) {
-        const heldAmount = hold.amount;
-        if (heldAmount > actualCost) {
-          refundedAmount = Math.round((heldAmount - actualCost) * 100) / 100;
-          currentBalance = Math.round((currentBalance + refundedAmount) * 100) / 100;
-          const newTotalSpent = Math.round(((org.total_spent ?? 0) + actualCost) * 100) / 100;
-          this.#db
-            .prepare(`UPDATE organizations SET credit_balance = ?, total_spent = ? WHERE id = ?`)
-            .run(currentBalance, newTotalSpent, orgId);
-
-          this.#db
-            .prepare(
-              `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
-               VALUES (?, ?, ?, ?, 'org_escrow_refund', ?, ?)`,
-            )
-            .run(
-              effectiveUserId,
-              jobId,
-              refundedAmount,
-              currentBalance,
-              `Escrow refund for job ${jobId}`,
-              JSON.stringify(combinedMeta),
-            );
-        } else if (actualCost > heldAmount) {
-          const overage = Math.round((actualCost - heldAmount) * 100) / 100;
-          currentBalance = Math.round(Math.max(0, currentBalance - overage) * 100) / 100;
-          const newTotalSpent = Math.round(((org.total_spent ?? 0) + actualCost) * 100) / 100;
-          this.#db
-            .prepare(`UPDATE organizations SET credit_balance = ?, total_spent = ? WHERE id = ?`)
-            .run(currentBalance, newTotalSpent, orgId);
-
-          this.#db
-            .prepare(
-              `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
-               VALUES (?, ?, ?, ?, 'org_escrow_overage', ?, ?)`,
-            )
-            .run(
-              effectiveUserId,
-              jobId,
-              -overage,
-              currentBalance,
-              `Escrow overage charge for job ${jobId}`,
-              JSON.stringify(combinedMeta),
-            );
-        } else {
-          const newTotalSpent = Math.round(((org.total_spent ?? 0) + actualCost) * 100) / 100;
-          this.#db.prepare(`UPDATE organizations SET total_spent = ? WHERE id = ?`).run(newTotalSpent, orgId);
-        }
-
-        this.#db
-          .prepare(`UPDATE credit_escrow_holds SET status = 'settled', settled_at = datetime('now') WHERE id = ?`)
-          .run(hold.id);
-      } else {
-        if (actualCost > 0) {
-          currentBalance = Math.round(Math.max(0, currentBalance - actualCost) * 100) / 100;
-          const newTotalSpent = Math.round(((org.total_spent ?? 0) + actualCost) * 100) / 100;
-          this.#db
-            .prepare(`UPDATE organizations SET credit_balance = ?, total_spent = ? WHERE id = ?`)
-            .run(currentBalance, newTotalSpent, orgId);
-
-          this.#db
-            .prepare(
-              `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
-               VALUES (?, ?, ?, ?, 'org_direct_charge', ?, ?)`,
-            )
-            .run(effectiveUserId, jobId, -actualCost, currentBalance, description, JSON.stringify(combinedMeta));
-        }
-      }
-
-      return {
-        success: true,
-        settledAmount: actualCost,
-        refundedAmount,
-        newBalance: currentBalance,
-      };
-    });
-
-    return settleTx();
+    return this.billing.settleOrgEscrow(orgId, jobId, actualCost, actorUserId, description, metadata);
   }
 
   releaseOrgEscrow(
@@ -15258,65 +13079,7 @@ export class LibraryDatabase {
     jobId: number,
     reason: string = "Job canceled / aborted",
   ): { success: boolean; refundedAmount: number; newBalance: number } {
-    const releaseTx = this.#db.transaction(() => {
-      const allHolds = this.#db
-        .prepare(`SELECT * FROM credit_escrow_holds WHERE job_id = ? AND status = 'held' ORDER BY id DESC`)
-        .all(jobId) as { id: number; amount: number; user_id: number; metadata: string }[];
-
-      const hold =
-        allHolds.find((h) => {
-          try {
-            const parsed = JSON.parse(h.metadata || "{}");
-            return Number(parsed.orgId) === orgId;
-          } catch {
-            return false;
-          }
-        }) || allHolds[0];
-
-      const org = this.#db
-        .prepare(`SELECT id, credit_balance, created_by FROM organizations WHERE id = ?`)
-        .get(orgId) as { id: number; credit_balance?: number | undefined; created_by?: number | undefined } | undefined;
-
-      if (!org) {
-        throw new Error(`Organization with ID ${orgId} not found`);
-      }
-
-      let currentBalance = org.credit_balance ?? 0;
-      let refundedAmount = 0;
-
-      if (hold) {
-        refundedAmount = hold.amount;
-        currentBalance = Math.round((currentBalance + refundedAmount) * 100) / 100;
-        this.#db.prepare(`UPDATE organizations SET credit_balance = ? WHERE id = ?`).run(currentBalance, orgId);
-
-        const effectiveUserId = hold.user_id || org.created_by || 1;
-        this.#db
-          .prepare(
-            `INSERT INTO credit_transactions (user_id, job_id, amount, balance_after, type, description, metadata)
-             VALUES (?, ?, ?, ?, 'org_escrow_release', ?, ?)`,
-          )
-          .run(
-            effectiveUserId,
-            jobId,
-            refundedAmount,
-            currentBalance,
-            `Escrow released: ${reason}`,
-            JSON.stringify({ holdId: hold.id, orgId, reason }),
-          );
-
-        this.#db
-          .prepare(`UPDATE credit_escrow_holds SET status = 'released', settled_at = datetime('now') WHERE id = ?`)
-          .run(hold.id);
-      }
-
-      return {
-        success: true,
-        refundedAmount,
-        newBalance: currentBalance,
-      };
-    });
-
-    return releaseTx();
+    return this.billing.releaseOrgEscrow(orgId, jobId, reason);
   }
 
   getOrgWalletSummary(orgId: number): {
@@ -15327,37 +13090,7 @@ export class LibraryDatabase {
     totalSpent: number;
     transactions: CreditTransactionRow[];
   } | null {
-    const org = this.#db
-      .prepare(`SELECT id, name, slug, credit_balance, total_spent FROM organizations WHERE id = ?`)
-      .get(orgId) as
-      | {
-          id: number;
-          name: string;
-          slug: string;
-          credit_balance?: number | undefined;
-          total_spent?: number | undefined;
-        }
-      | undefined;
-    if (!org) return null;
-
-    const transactions = this.#db
-      .prepare(
-        `SELECT id, user_id, job_id, amount, balance_after, type, type as transaction_type, description, metadata, created_at
-         FROM credit_transactions
-         WHERE json_valid(metadata) AND CAST(json_extract(metadata, '$.orgId') AS INTEGER) = ?
-         ORDER BY id DESC
-         LIMIT 50`,
-      )
-      .all(orgId) as CreditTransactionRow[];
-
-    return {
-      orgId: org.id,
-      name: org.name,
-      slug: org.slug,
-      balance: org.credit_balance ?? 0,
-      totalSpent: org.total_spent ?? 0,
-      transactions,
-    };
+    return this.billing.getOrgWalletSummary(orgId);
   }
 
   #readOrComputeBackupSha256(backupPath: string): string {
@@ -15448,6 +13181,8 @@ export class LibraryDatabase {
       }
     }
 
+    const secondaryBackups: Array<{ backupPath: string; shaPath: string }> = [];
+
     if (this.#auditDb) {
       try {
         const auditFileName = path.basename(fileName.replace("modelscript-backup-", "audit-backup-"));
@@ -15465,6 +13200,7 @@ export class LibraryDatabase {
           if (auditShaPath.startsWith(backupDir + path.sep)) {
             fs.writeFileSync(auditShaPath, auditSha, "utf8");
           }
+          secondaryBackups.push({ backupPath: auditBackupPath, shaPath: auditShaPath });
         }
       } catch {}
     }
@@ -15486,6 +13222,7 @@ export class LibraryDatabase {
           if (analyticsShaPath.startsWith(backupDir + path.sep)) {
             fs.writeFileSync(analyticsShaPath, analyticsSha, "utf8");
           }
+          secondaryBackups.push({ backupPath: analyticsBackupPath, shaPath: analyticsShaPath });
         }
       } catch {}
     }
@@ -15500,10 +13237,12 @@ export class LibraryDatabase {
     }
 
     if (process.env["STORAGE_BACKEND"] === "s3" && process.env["S3_BUCKET"]?.trim()) {
-      const p = this.#replicateBackupToS3(backupPath, shaPath).finally(() => {
-        this.#pendingBackupReplications.delete(p);
-      });
-      this.#pendingBackupReplications.add(p);
+      for (const entry of [{ backupPath, shaPath }, ...secondaryBackups]) {
+        const p = this.#replicateBackupToS3(entry.backupPath, entry.shaPath).finally(() => {
+          this.#pendingBackupReplications.delete(p);
+        });
+        this.#pendingBackupReplications.add(p);
+      }
     }
 
     return {
@@ -15594,14 +13333,25 @@ export class LibraryDatabase {
   pruneBackups(keepCount: number = 7): { deletedCount: number; deletedFiles: string[] } {
     const safeKeep = Math.max(1, Math.min(100, Math.floor(keepCount)));
     const all = this.listBackups();
-    if (all.length <= safeKeep) {
-      return { deletedCount: 0, deletedFiles: [] };
+    const byPrefix = new Map<string, typeof all>();
+    for (const item of all) {
+      const prefix = item.fileName.startsWith("audit-")
+        ? "audit"
+        : item.fileName.startsWith("analytics-")
+          ? "analytics"
+          : "modelscript";
+      const list = byPrefix.get(prefix) ?? [];
+      list.push(item);
+      byPrefix.set(prefix, list);
     }
-    const toDelete = all.slice(safeKeep);
+
     const deletedFiles: string[] = [];
-    for (const item of toDelete) {
-      if (this.deleteBackup(item.fileName)) {
-        deletedFiles.push(item.fileName);
+    for (const group of byPrefix.values()) {
+      if (group.length <= safeKeep) continue;
+      for (const item of group.slice(safeKeep)) {
+        if (this.deleteBackup(item.fileName)) {
+          deletedFiles.push(item.fileName);
+        }
       }
     }
     return { deletedCount: deletedFiles.length, deletedFiles };
@@ -15618,16 +13368,38 @@ export class LibraryDatabase {
       throw new Error(`Backup snapshot '${fileName}' not found.`);
     }
 
-    // 1. Verify integrity of the target backup snapshot before touching the live database
-    const verifyDb = new Database(target.backupPath, { readonly: true });
-    try {
-      const check = verifyDb.pragma("integrity_check") as { integrity_check: string }[];
-      const isOk = check.length === 1 && check[0]?.integrity_check === "ok";
-      if (!isOk) {
-        throw new Error(`Backup snapshot '${fileName}' failed SQLite integrity_check.`);
+    const siblingRestores: Array<{ db: Database.Database; backup: { fileName: string; backupPath: string } }> = [];
+    if (this.#isMultiDb && target.fileName.startsWith("modelscript-")) {
+      if (this.#auditDb && this.#auditDb.open) {
+        const auditSibling = this.getBackupByFileName(target.fileName.replace(/^modelscript-/, "audit-"));
+        if (auditSibling) {
+          siblingRestores.push({ db: this.#auditDb, backup: auditSibling });
+        }
       }
-    } finally {
-      verifyDb.close();
+      if (this.#analyticsDb && this.#analyticsDb.open) {
+        const analyticsSibling = this.getBackupByFileName(target.fileName.replace(/^modelscript-/, "analytics-"));
+        if (analyticsSibling) {
+          siblingRestores.push({ db: this.#analyticsDb, backup: analyticsSibling });
+        }
+      }
+    }
+
+    // 1. Verify integrity of the target backup snapshot (and any matching sibling snapshots) before touching live DBs
+    const verifySnapshotIntegrity = (snapshotPath: string, snapshotName: string): void => {
+      const verifyDb = new Database(snapshotPath, { readonly: true });
+      try {
+        const check = verifyDb.pragma("integrity_check") as { integrity_check: string }[];
+        const isOk = check.length === 1 && check[0]?.integrity_check === "ok";
+        if (!isOk) {
+          throw new Error(`Backup snapshot '${snapshotName}' failed SQLite integrity_check.`);
+        }
+      } finally {
+        verifyDb.close();
+      }
+    };
+    verifySnapshotIntegrity(target.backupPath, fileName);
+    for (const sibling of siblingRestores) {
+      verifySnapshotIntegrity(sibling.backup.backupPath, sibling.backup.fileName);
     }
 
     // 2. Create an automatic pre-restore safety snapshot
@@ -15637,63 +13409,71 @@ export class LibraryDatabase {
     this.analyticsBuffer?.clear();
     this.#auditChainCache = null;
 
-    // 3. Perform online atomic table restoration from the attached backup snapshot
-    this.#db.pragma("foreign_keys = OFF");
-    this.#db.prepare(`ATTACH DATABASE ? AS restore_src`).run(target.backupPath);
-    let tablesRestored = 0;
-    try {
-      const mainTables = (
-        this.#db
-          .prepare(`SELECT name FROM main.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`)
-          .all() as { name: string }[]
-      ).map((r) => r.name);
-
-      const srcTables = new Set(
-        (
-          this.#db
-            .prepare(`SELECT name FROM restore_src.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`)
-            .all() as { name: string }[]
-        ).map((r) => r.name),
-      );
-
-      const restoreTx = this.#db.transaction(() => {
-        for (const table of mainTables) {
-          if (!/^[a-zA-Z0-9_]+$/.test(table)) continue;
-          // Always clear main table even if it didn't exist in the older backup snapshot
-          this.#db.prepare(`DELETE FROM main."${table}"`).run();
-          if (!srcTables.has(table)) continue;
-
-          const mainCols = (this.#db.prepare(`PRAGMA main.table_info("${table}")`).all() as { name: string }[]).map(
-            (c) => c.name,
-          );
-          const srcCols = new Set(
-            (this.#db.prepare(`PRAGMA restore_src.table_info("${table}")`).all() as { name: string }[]).map(
-              (c) => c.name,
-            ),
-          );
-          const sharedCols = mainCols.filter((c) => srcCols.has(c) && /^[a-zA-Z0-9_]+$/.test(c));
-          if (sharedCols.length === 0) continue;
-
-          const colList = sharedCols.map((c) => `"${c}"`).join(", ");
-          this.#db
-            .prepare(`INSERT INTO main."${table}" (${colList}) SELECT ${colList} FROM restore_src."${table}"`)
-            .run();
-          tablesRestored++;
-        }
-      });
-      restoreTx.immediate();
-    } finally {
+    // 3. Perform online atomic table restoration from the attached backup snapshot(s)
+    const restoreDbTables = (db: Database.Database, snapshotPath: string): number => {
+      db.pragma("foreign_keys = OFF");
+      db.prepare(`ATTACH DATABASE ? AS restore_src`).run(snapshotPath);
+      let restoredCount = 0;
       try {
-        this.#db.prepare(`DETACH DATABASE restore_src`).run();
-      } catch {
-        // Ignore if already detached
+        const mainTables = (
+          db.prepare(`SELECT name FROM main.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`).all() as {
+            name: string;
+          }[]
+        ).map((r) => r.name);
+
+        const srcTables = new Set(
+          (
+            db
+              .prepare(`SELECT name FROM restore_src.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`)
+              .all() as { name: string }[]
+          ).map((r) => r.name),
+        );
+
+        const restoreTx = db.transaction(() => {
+          for (const table of mainTables) {
+            if (!/^[a-zA-Z0-9_]+$/.test(table)) continue;
+            // Always clear main table even if it didn't exist in the older backup snapshot
+            db.prepare(`DELETE FROM main."${table}"`).run();
+            if (!srcTables.has(table)) continue;
+
+            const mainCols = (db.prepare(`PRAGMA main.table_info("${table}")`).all() as { name: string }[]).map(
+              (c) => c.name,
+            );
+            const srcCols = new Set(
+              (db.prepare(`PRAGMA restore_src.table_info("${table}")`).all() as { name: string }[]).map((c) => c.name),
+            );
+            const sharedCols = mainCols.filter((c) => srcCols.has(c) && /^[a-zA-Z0-9_]+$/.test(c));
+            if (sharedCols.length === 0) continue;
+
+            const colList = sharedCols.map((c) => `"${c}"`).join(", ");
+            db.prepare(`INSERT INTO main."${table}" (${colList}) SELECT ${colList} FROM restore_src."${table}"`).run();
+            restoredCount++;
+          }
+        });
+        restoreTx.immediate();
+      } finally {
+        try {
+          db.prepare(`DETACH DATABASE restore_src`).run();
+        } catch {
+          // Ignore if already detached
+        }
+        db.pragma("foreign_keys = ON");
       }
-      this.#db.pragma("foreign_keys = ON");
+      return restoredCount;
+    };
+
+    let tablesRestored = restoreDbTables(this.#db, target.backupPath);
+    for (const sibling of siblingRestores) {
+      tablesRestored += restoreDbTables(sibling.db, sibling.backup.backupPath);
     }
 
     // Re-run any migrations that were not yet applied in the restored snapshot
     this.#runner.runPendingSync(allMigrations, { silent: true, skipBackup: true });
     this.#auditChainCache = null;
+    this.#instanceSettingsMapCache = null;
+    this.#libraryDiscoveryBaseCache = null;
+    this.#registryCatalogCache = null;
+    this.#userTopicsDerivedAt.clear();
 
     return {
       success: true,
@@ -15784,64 +13564,7 @@ export class LibraryDatabase {
   }
 
   getUserBillingSummary(userId: number): UserBillingSummary {
-    const balance = this.getUserBalance(userId);
-    const jobs = this.#db
-      .prepare(
-        `SELECT compute_profile, cpu_seconds, gpu_seconds, cost_credits
-         FROM jobs
-         WHERE user_id = ? AND status = 'SUCCESS'`,
-      )
-      .all(userId) as {
-      compute_profile: string | null;
-      cpu_seconds: number | null;
-      gpu_seconds: number | null;
-      cost_credits: number | null;
-    }[];
-
-    let totalSpent = 0;
-    let totalCpuSeconds = 0;
-    let totalGpuSeconds = 0;
-    const profileUsage: Record<string, { jobsCount: number; costCredits: number; cpuSeconds: number }> = {};
-
-    for (const j of jobs) {
-      const p = j.compute_profile || "standard";
-      const credits = j.cost_credits || 0;
-      const cpu = j.cpu_seconds || 0;
-      const gpu = j.gpu_seconds || 0;
-
-      totalSpent += credits;
-      totalCpuSeconds += cpu;
-      totalGpuSeconds += gpu;
-
-      if (!profileUsage[p]) {
-        profileUsage[p] = { jobsCount: 0, costCredits: 0, cpuSeconds: 0 };
-      }
-      profileUsage[p].jobsCount += 1;
-      profileUsage[p].costCredits += credits;
-      profileUsage[p].cpuSeconds += cpu;
-    }
-
-    const recentTransactions = this.getUserTransactions(userId, 20, 0);
-
-    return {
-      userId,
-      creditBalance: balance,
-      totalSpent,
-      totalJobs: jobs.length,
-      totalCpuSeconds,
-      totalGpuSeconds,
-      profileUsage,
-      recentTransactions,
-      wallet: {
-        balance,
-        total_spent: totalSpent,
-        total_jobs_dispatched: jobs.length,
-        total_cpu_core_hours: Number((totalCpuSeconds / 3600).toFixed(4)),
-        total_gpu_hours: Number((totalGpuSeconds / 3600).toFixed(4)),
-      },
-      recent_transactions: recentTransactions,
-      profiles: listComputeProfiles(),
-    };
+    return this.billing.getUserBillingSummary(userId);
   }
 
   getJob(jobId: number | string): JobRow | undefined {
@@ -16894,74 +14617,20 @@ export class LibraryDatabase {
     return rows.map((r) => JSON.parse(r.rel_json) as Record<string, unknown>);
   }
 
-  getFeatureFlags(): {
-    flag_key: string;
-    is_enabled: number;
-    rollout_percentage: number;
-    allowed_roles: string;
-    updated_at: string;
-  }[] {
-    return this.#db.prepare(`SELECT * FROM feature_flags`).all() as {
-      flag_key: string;
-      is_enabled: number;
-      rollout_percentage: number;
-      allowed_roles: string;
-      updated_at: string;
-    }[];
+  getFeatureFlags() {
+    return this.admin.getFeatureFlags();
   }
 
-  getFeatureFlag(key: string):
-    | {
-        flag_key: string;
-        is_enabled: number;
-        rollout_percentage: number;
-        allowed_roles: string;
-        updated_at: string;
-      }
-    | undefined {
-    return this.#db.prepare(`SELECT * FROM feature_flags WHERE flag_key = ?`).get(key) as
-      | {
-          flag_key: string;
-          is_enabled: number;
-          rollout_percentage: number;
-          allowed_roles: string;
-          updated_at: string;
-        }
-      | undefined;
+  getFeatureFlag(key: string) {
+    return this.admin.getFeatureFlag(key);
   }
 
   isFeatureFlagEnabled(key: string): boolean {
-    const envKey = `FEATURE_FLAG_${key.toUpperCase()}`;
-    const envVal = process.env[envKey];
-    if (envVal !== undefined) {
-      const normalized = envVal.toLowerCase().trim();
-      if (normalized === "true" || normalized === "1") return true;
-      if (normalized === "false" || normalized === "0") return false;
-    }
-
-    const flag = this.getFeatureFlag(key);
-    if (flag !== undefined) {
-      return flag.is_enabled === 1;
-    }
-    const def = FEATURE_FLAGS[key];
-    return def ? def.defaultValue : false;
+    return this.admin.isFeatureFlagEnabled(key);
   }
 
   setFeatureFlag(key: string, isEnabled: boolean, allowedRoles?: string, rolloutPercentage = 100): void {
-    const roles = allowedRoles !== undefined ? allowedRoles : "";
-    this.#db
-      .prepare(
-        `
-      INSERT INTO feature_flags (flag_key, is_enabled, rollout_percentage, allowed_roles, updated_at)
-      VALUES (?, ?, ?, ?, datetime('now'))
-      ON CONFLICT(flag_key) DO UPDATE SET
-        is_enabled = excluded.is_enabled,
-        rollout_percentage = excluded.rollout_percentage,
-        allowed_roles = excluded.allowed_roles,
-        updated_at = datetime('now')
-    `,
-      )
-      .run(key, isEnabled ? 1 : 0, rolloutPercentage, roles);
+    this.admin.setFeatureFlag(key, isEnabled, allowedRoles, rolloutPercentage);
   }
 
   createThreadProposal(proposal: {
@@ -17259,24 +14928,7 @@ export class LibraryDatabase {
     ipAllowlist?: string | null | undefined;
     expiresAt?: string | null | undefined;
   }): number {
-    const scopesJson = JSON.stringify(params.scopes);
-    const pattern = params.packagePattern || "*";
-    const result = this.#db
-      .prepare(
-        `INSERT INTO api_tokens (user_id, name, token_prefix, token_hash, scopes, package_pattern, ip_allowlist, expires_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        params.userId,
-        params.name,
-        params.tokenPrefix,
-        params.tokenHash,
-        scopesJson,
-        pattern,
-        params.ipAllowlist ?? null,
-        params.expiresAt ?? null,
-      );
-    return Number(result.lastInsertRowid);
+    return this.users.storeApiTokenRow(params);
   }
 
   insertApiTokenRecord(params: {
@@ -17289,7 +14941,7 @@ export class LibraryDatabase {
     ipAllowlist?: string | null | undefined;
     expiresAt?: string | null | undefined;
   }): number {
-    return this.storeApiTokenRow(params);
+    return this.users.insertApiTokenRecord(params);
   }
 
   createApiKey(params: {
@@ -17302,7 +14954,7 @@ export class LibraryDatabase {
     ipAllowlist?: string | null | undefined;
     expiresAt?: string | null | undefined;
   }): number {
-    return this.storeApiTokenRow(params);
+    return this.users.createApiKey(params);
   }
 
   createApiToken(params: {
@@ -17315,67 +14967,23 @@ export class LibraryDatabase {
     ipAllowlist?: string | null | undefined;
     expiresAt?: string | null | undefined;
   }): number {
-    return this.storeApiTokenRow(params);
+    return this.users.createApiToken(params);
   }
 
   getApiTokenByHash(tokenHash: string): ApiTokenRecord | null {
-    const row = this.#db
-      .prepare(
-        `SELECT id, user_id, name, token_prefix, token_hash, scopes, package_pattern, ip_allowlist, expires_at, last_used_at, last_used_ip, created_at
-         FROM api_tokens
-         WHERE token_hash = ?`,
-      )
-      .get(tokenHash) as (Omit<ApiTokenRecord, "scopes"> & { scopes: string }) | undefined;
-    if (!row) return null;
-    let scopes: string[] = [];
-    try {
-      scopes = JSON.parse(row.scopes) as string[];
-    } catch {
-      scopes = [];
-    }
-    return {
-      ...row,
-      scopes,
-    };
+    return this.users.getApiTokenByHash(tokenHash);
   }
 
   listApiTokens(userId: number): Omit<ApiTokenRecord, "token_hash">[] {
-    const rows = this.#db
-      .prepare(
-        `SELECT id, user_id, name, token_prefix, scopes, package_pattern, ip_allowlist, expires_at, last_used_at, last_used_ip, created_at
-         FROM api_tokens
-         WHERE user_id = ?
-         ORDER BY created_at DESC`,
-      )
-      .all(userId) as (Omit<ApiTokenRecord, "token_hash" | "scopes"> & { scopes: string })[];
-
-    return rows.map((r) => {
-      let scopes: string[] = [];
-      try {
-        scopes = JSON.parse(r.scopes) as string[];
-      } catch {
-        scopes = [];
-      }
-      return {
-        ...r,
-        scopes,
-      };
-    });
+    return this.users.listApiTokens(userId);
   }
 
   deleteApiToken(tokenId: number, userId: number): boolean {
-    const res = this.#db.prepare(`DELETE FROM api_tokens WHERE id = ? AND user_id = ?`).run(tokenId, userId);
-    return res.changes > 0;
+    return this.users.deleteApiToken(tokenId, userId);
   }
 
   touchApiToken(tokenId: number, ip?: string): void {
-    try {
-      this.#db
-        .prepare(`UPDATE api_tokens SET last_used_at = datetime('now'), last_used_ip = ? WHERE id = ?`)
-        .run(ip ?? null, tokenId);
-    } catch {
-      // non-critical
-    }
+    this.users.touchApiToken(tokenId, ip);
   }
 
   getUserSolutions(username: string): SolutionRow[] {
@@ -17617,143 +15225,44 @@ export class LibraryDatabase {
   // ── Domain Availability, Auto-Circuit-Breaking & Transparency ────
 
   recordDomainDeliverySuccess(domain: string): void {
-    const cleanDomain = domain.toLowerCase().trim();
-    if (!cleanDomain) return;
-    try {
-      this.#db
-        .prepare(
-          `INSERT INTO federation_domains (domain, tier, unavailable_since, consecutive_failures, last_seen_at, updated_at)
-           VALUES (?, 'allow', NULL, 0, datetime('now'), datetime('now'))
-           ON CONFLICT(domain) DO UPDATE SET
-             unavailable_since = NULL,
-             consecutive_failures = 0,
-             last_seen_at = datetime('now'),
-             updated_at = datetime('now')`,
-        )
-        .run(cleanDomain);
-    } catch {
-      // Ignore if table not yet migrated in isolated unit test
-    }
+    this.federation.recordDomainDeliverySuccess(domain);
   }
 
   recordDomainDeliveryFailure(
     domain: string,
     errorMessage?: string,
   ): { consecutiveFailures: number; unavailableSince: string | null } {
-    const cleanDomain = domain.toLowerCase().trim();
-    if (!cleanDomain) return { consecutiveFailures: 0, unavailableSince: null };
-
-    let threshold = 5;
-    try {
-      threshold = Math.max(1, this.getInstanceSettings().autoCircuitBreakThreshold || 5);
-    } catch {}
-
-    const existing = this.getDomainTier(cleanDomain);
-    const nextFailures = (existing.consecutiveFailures || 0) + 1;
-    const shouldMarkUnavailable = nextFailures >= threshold;
-    const nowIso = new Date().toISOString();
-    const unavailableSince = shouldMarkUnavailable ? existing.unavailableSince || nowIso : null;
-
-    this.#db
-      .prepare(
-        `INSERT INTO federation_domains (domain, tier, reason, unavailable_since, consecutive_failures, updated_at)
-         VALUES (?, 'allow', ?, ?, ?, datetime('now'))
-         ON CONFLICT(domain) DO UPDATE SET
-           unavailable_since = COALESCE(federation_domains.unavailable_since, excluded.unavailable_since),
-           consecutive_failures = excluded.consecutive_failures,
-           private_comment = COALESCE(federation_domains.private_comment, excluded.reason),
-           updated_at = datetime('now')`,
-      )
-      .run(
-        cleanDomain,
-        errorMessage ? `Delivery failure: ${errorMessage.slice(0, 200)}` : null,
-        unavailableSince,
-        nextFailures,
-      );
-
-    const updated = this.getDomainTier(cleanDomain);
-    return {
-      consecutiveFailures: updated.consecutiveFailures,
-      unavailableSince: updated.unavailableSince ?? null,
-    };
+    return this.federation.recordDomainDeliveryFailure(domain, errorMessage);
   }
 
   isDomainUnavailable(domain: string): boolean {
-    const cleanDomain = domain.toLowerCase().trim();
-    if (!cleanDomain) return false;
-    const tierInfo = this.getDomainTier(cleanDomain);
-    if (!tierInfo.unavailableSince) return false;
-    // Allow automatic cooldown probe after 6 hours
-    const unavailableMs = new Date(tierInfo.unavailableSince).getTime();
-    if (Number.isFinite(unavailableMs) && Date.now() - unavailableMs > 6 * 3600 * 1000) {
-      return false;
-    }
-    return true;
+    return this.federation.isDomainUnavailable(domain);
   }
 
   static obfuscateDomainName(domain: string): string {
-    const parts = domain.split(".");
-    return parts
-      .map((part, idx) => {
-        if (idx === parts.length - 1 || part.length <= 2) return part;
-        return `${part[0]}${"*".repeat(Math.min(5, part.length - 2))}${part[part.length - 1]}`;
-      })
-      .join(".");
+    return FederationRepository.obfuscateDomainName(domain);
   }
 
-  listPublicDomainBlocks(): {
-    domain: string;
-    digest: string;
-    severity: "silence" | "suspend";
-    comment: string;
-  }[] {
-    const rows = this.listFederationDomains().filter((d) => d.tier === "silence" || d.tier === "suspend");
-    return rows.map((d) => {
-      const digest = crypto.createHash("sha256").update(d.domain.toLowerCase()).digest("hex");
-      const displayDomain = d.obfuscate ? LibraryDatabase.obfuscateDomainName(d.domain) : d.domain;
-      return {
-        domain: displayDomain,
-        digest,
-        severity: d.tier === "suspend" ? "suspend" : "silence",
-        comment: d.public_comment ?? d.reason ?? "",
-      };
-    });
+  listPublicDomainBlocks() {
+    return this.federation.listPublicDomainBlocks();
   }
 
   listKnownPeers(): string[] {
-    const peerSet = new Set<string>();
-    const domainRows = this.#db.prepare(`SELECT domain FROM federation_domains WHERE tier != 'suspend'`).all() as {
-      domain: string;
-    }[];
-    for (const r of domainRows) {
-      if (r.domain) peerSet.add(r.domain.toLowerCase());
-    }
-    const userDomains = this.#db
-      .prepare(`SELECT DISTINCT remote_domain FROM users WHERE remote_domain IS NOT NULL AND remote_domain != ''`)
-      .all() as { remote_domain: string }[];
-    for (const u of userDomains) {
-      const dom = u.remote_domain.toLowerCase();
-      if (!this.isDomainSuspended(dom)) {
-        peerSet.add(dom);
-      }
-    }
-    return Array.from(peerSet).sort();
+    return this.federation.listKnownPeers();
   }
 
   // ── ActivityPub Relays (FEP-ae97) ────────────────────────────────
 
   listFederationRelays(): FederationRelayRow[] {
-    return this.#db.prepare(`SELECT * FROM federation_relays ORDER BY id DESC`).all() as FederationRelayRow[];
+    return this.federation.listFederationRelays();
   }
 
   getFederationRelayById(id: number): FederationRelayRow | undefined {
-    return this.#db.prepare(`SELECT * FROM federation_relays WHERE id = ?`).get(id) as FederationRelayRow | undefined;
+    return this.federation.getFederationRelayById(id);
   }
 
   getFederationRelayByActor(actorUrl: string): FederationRelayRow | undefined {
-    return this.#db
-      .prepare(`SELECT * FROM federation_relays WHERE actor_url = ? OR inbox_url = ?`)
-      .get(actorUrl.trim(), actorUrl.trim()) as FederationRelayRow | undefined;
+    return this.federation.getFederationRelayByActor(actorUrl);
   }
 
   addFederationRelay(
@@ -17762,28 +15271,7 @@ export class LibraryDatabase {
     followActivityId?: string,
     state: "pending" | "accepted" | "rejected" | "paused" = "pending",
   ): FederationRelayRow {
-    const cleanInbox = inboxUrl.trim();
-    const cleanActor = (actorUrl || cleanInbox.replace(/\/inbox\/?$/, "/actor")).trim();
-    let domain = "unknown";
-    try {
-      domain = new URL(cleanInbox).hostname.toLowerCase();
-    } catch {}
-
-    this.#db
-      .prepare(
-        `INSERT INTO federation_relays (inbox_url, actor_url, domain, state, follow_activity_id, updated_at)
-         VALUES (?, ?, ?, ?, ?, datetime('now'))
-         ON CONFLICT(inbox_url) DO UPDATE SET
-           actor_url = excluded.actor_url,
-           state = excluded.state,
-           follow_activity_id = COALESCE(excluded.follow_activity_id, federation_relays.follow_activity_id),
-           updated_at = datetime('now')`,
-      )
-      .run(cleanInbox, cleanActor, domain, state, followActivityId ?? null);
-
-    return this.#db
-      .prepare(`SELECT * FROM federation_relays WHERE inbox_url = ?`)
-      .get(cleanInbox) as FederationRelayRow;
+    return this.federation.addFederationRelay(inboxUrl, actorUrl, followActivityId, state);
   }
 
   updateFederationRelayState(
@@ -17791,47 +15279,15 @@ export class LibraryDatabase {
     state: "pending" | "accepted" | "rejected" | "paused",
     lastError?: string | null,
   ): FederationRelayRow | undefined {
-    if (typeof idOrActorUrl === "number") {
-      this.#db
-        .prepare(
-          `UPDATE federation_relays
-           SET state = ?, last_error = COALESCE(?, last_error), updated_at = datetime('now')
-           WHERE id = ?`,
-        )
-        .run(state, lastError === undefined ? null : lastError, idOrActorUrl);
-      return this.getFederationRelayById(idOrActorUrl);
-    }
-    const clean = idOrActorUrl.trim();
-    this.#db
-      .prepare(
-        `UPDATE federation_relays
-         SET state = ?, last_error = COALESCE(?, last_error), updated_at = datetime('now')
-         WHERE actor_url = ? OR inbox_url = ?`,
-      )
-      .run(state, lastError === undefined ? null : lastError, clean, clean);
-    return this.getFederationRelayByActor(clean);
+    return this.federation.updateFederationRelayState(idOrActorUrl, state, lastError);
   }
 
   deleteFederationRelay(id: number): FederationRelayRow | undefined {
-    const existing = this.getFederationRelayById(id);
-    if (!existing) return undefined;
-    this.#db.prepare(`DELETE FROM federation_relays WHERE id = ?`).run(id);
-    return existing;
+    return this.federation.deleteFederationRelay(id);
   }
 
   incrementRelayStats(idOrActorUrl: number | string, direction: "forwarded" | "received"): void {
-    const col = direction === "forwarded" ? "forwarded_count" : "received_count";
-    if (typeof idOrActorUrl === "number") {
-      this.#db
-        .prepare(`UPDATE federation_relays SET ${col} = ${col} + 1, updated_at = datetime('now') WHERE id = ?`)
-        .run(idOrActorUrl);
-    } else {
-      this.#db
-        .prepare(
-          `UPDATE federation_relays SET ${col} = ${col} + 1, updated_at = datetime('now') WHERE actor_url = ? OR inbox_url = ?`,
-        )
-        .run(idOrActorUrl, idOrActorUrl);
-    }
+    this.federation.incrementRelayStats(idOrActorUrl, direction);
   }
 
   // ── Structured Instance Rules ────────────────────────────────────

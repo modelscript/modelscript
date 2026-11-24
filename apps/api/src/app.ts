@@ -47,10 +47,10 @@ import { ideWorkbenchRouter } from "./routes/ide-workbench.js";
 import { instancesRouter } from "./routes/instances.js";
 import { markdownMirrorRouter } from "./routes/markdown-mirror.js";
 import { mcpRouter } from "./routes/mcp.js";
-import { npmAuthRouter } from "./routes/npm-auth.js";
-import { npmRegistryRouter } from "./routes/npm-registry.js";
+import { npmCompatRouter } from "./routes/npm-compat.js";
 import { oembedRouter, renderStandaloneEmbedBundle } from "./routes/oembed.js";
 import { ogRouter } from "./routes/og.js";
+import { openapiRouter } from "./routes/openapi.js";
 import { organizationsRouter } from "./routes/organizations.js";
 import { packagesRouter } from "./routes/packages.js";
 import { physicsRouter } from "./routes/physics.js";
@@ -91,6 +91,7 @@ import { preloadOpenAlexS3Slice } from "./services/openalex.js";
 import { SysML2OmgService } from "./services/sysml2-omg-service.js";
 import { LibraryStorage } from "./storage.js";
 import { SANCTIONED_COUNTRIES, SANCTIONED_REGIONS } from "./util/compliance.js";
+import { PeriodicWorker } from "./util/periodic-worker.js";
 import { seedInitialAdmin } from "./util/seed-admin.js";
 import { seedPrepackagedLibraries } from "./util/seed-examples.js";
 import { injectSeoIntoHtml, resolveSeoMetadata } from "./util/seo-injector.js";
@@ -346,42 +347,49 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
 
   // ── Periodic Workers (disabled in test environment) ──
   if (shouldEnableWorkers) {
-    const decayWorkerInterval = setInterval(
-      () => {
-        try {
-          if (database.getInstanceSettings().maintenanceMode) return;
-          database.decayTrendingTopics();
-        } catch (err) {
-          console.error("Failed to decay trending topics:", err);
-        }
+    const isMaintenance = () => {
+      try {
+        return !database.isOpen() || database.getInstanceSettings().maintenanceMode;
+      } catch {
+        return false;
+      }
+    };
+
+    const periodicWorkers: PeriodicWorker[] = [];
+
+    const decayWorker = new PeriodicWorker({
+      name: "DecayWorker",
+      intervalMs: 15 * 60 * 1000,
+      shouldSkip: isMaintenance,
+      task: () => {
+        database.decayTrendingTopics();
       },
-      15 * 60 * 1000,
-    );
-    app.locals["decayWorkerInterval"] = decayWorkerInterval;
+    });
+    decayWorker.start();
+    periodicWorkers.push(decayWorker);
 
     if (!isStartupAirgap) {
-      const runRssWorker = () => {
-        try {
-          if (database.getInstanceSettings().maintenanceMode) return;
-        } catch {
-          // proceed
-        }
-        import("./util/rss-worker.js")
-          .then(({ processRssFeeds }) => {
-            void processRssFeeds(database);
-          })
-          .catch(console.error);
-      };
-
-      runRssWorker();
-      const rssWorkerInterval = setInterval(runRssWorker, 15 * 60 * 1000);
-      app.locals["rssWorkerInterval"] = rssWorkerInterval;
+      const rssWorker = new PeriodicWorker({
+        name: "RssWorker",
+        intervalMs: 15 * 60 * 1000,
+        shouldSkip: isMaintenance,
+        runImmediately: true,
+        task: async () => {
+          const { processRssFeeds } = await import("./util/rss-worker.js");
+          await processRssFeeds(database);
+        },
+      });
+      rssWorker.start();
+      periodicWorkers.push(rssWorker);
     }
 
     // Automated GDPR / Security Log Retention Worker (Daily purge of expired logs > 30 days)
-    const runLogPurgeWorker = () => {
-      try {
-        if (database.getInstanceSettings().maintenanceMode) return;
+    const logPurgeWorker = new PeriodicWorker({
+      name: "LogRetentionWorker",
+      intervalMs: 24 * 60 * 60 * 1000,
+      shouldSkip: isMaintenance,
+      runImmediately: true,
+      task: () => {
         const { deletedCount } = database.purgeExpiredLogs(30);
         if (deletedCount > 0) {
           console.log(
@@ -392,18 +400,17 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
         if (removedCount > 0) {
           console.log(`[ArchiveRetentionWorker] Cleaned up ${removedCount} expired data archive files (> 24h TTL).`);
         }
-      } catch (err) {
-        console.error("[LogRetentionWorker] Error executing retention log purge:", err);
-      }
-    };
-
-    runLogPurgeWorker();
-    const logPurgeInterval = setInterval(runLogPurgeWorker, 24 * 60 * 60 * 1000);
-    app.locals["logPurgeInterval"] = logPurgeInterval;
+      },
+    });
+    logPurgeWorker.start();
+    periodicWorkers.push(logPurgeWorker);
 
     // Automated SQLite Hot Backup & Retention Pruning Worker (Checks hourly against autoBackupIntervalHours)
-    const runAutoBackupWorker = () => {
-      try {
+    const autoBackupWorker = new PeriodicWorker({
+      name: "AutoBackupWorker",
+      intervalMs: 60 * 60 * 1000,
+      shouldSkip: () => !database.isOpen(),
+      task: () => {
         const settings = database.getInstanceSettings();
         const intervalHours = settings.autoBackupIntervalHours;
         if (intervalHours <= 0) return;
@@ -418,12 +425,12 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
             `[AutoBackupWorker] Created scheduled SQLite snapshot '${snapshot.fileName}' (${snapshot.sizeBytes} bytes, pruned ${pruned.deletedCount} older backups).`,
           );
         }
-      } catch (err) {
-        console.error("[AutoBackupWorker] Error executing scheduled backup:", err);
-      }
-    };
-    const autoBackupInterval = setInterval(runAutoBackupWorker, 60 * 60 * 1000);
-    app.locals["autoBackupInterval"] = autoBackupInterval;
+      },
+    });
+    autoBackupWorker.start();
+    periodicWorkers.push(autoBackupWorker);
+
+    app.locals["periodicWorkers"] = periodicWorkers;
 
     // Automated Social Bot Mention Worker (Polls pending @bot mentions and synthesizes LLM responses)
     if (!isStartupAirgap || process.env["ALLOW_AIRGAP_BOTS"] === "true") {
@@ -439,60 +446,74 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     }
   }
 
-  // Reject oversized payloads before body buffering to prevent unauthenticated JSON DOS
+  // Shared rawBody capture for webhook & ActivityPub HTTP signature/digest verification
+  const captureRawBody = (req: express.Request, _res: express.Response, buf: Buffer) => {
+    const url = req.originalUrl || req.url || "";
+    if (
+      url.includes("/webhooks") ||
+      url.includes("/inbox") ||
+      url.startsWith("/users/") ||
+      req.headers["x-hub-signature-256"] !== undefined ||
+      req.headers["x-gitlab-token"] !== undefined ||
+      req.headers["x-gitlab-event-token"] !== undefined ||
+      req.headers["x-webhook-secret"] !== undefined ||
+      req.headers["stripe-signature"] !== undefined ||
+      req.headers["signature"] !== undefined ||
+      req.headers["signature-input"] !== undefined
+    ) {
+      req.rawBody = buf;
+    }
+  };
+
+  // Route-scoped JSON body parsers (fast Content-Length pre-check + streamed byte limit for chunked encoding)
+  const authJsonParser = express.json({ limit: "256kb", verify: captureRawBody });
+  const largeJsonParser = express.json({ limit: "50mb", verify: captureRawBody });
+  const defaultJsonParser = express.json({ limit: "2mb", verify: captureRawBody });
+
   app.use((req, res, next) => {
+    const isAuthRoute = req.path.startsWith("/api/v1/auth") || req.path.startsWith("/auth");
+    const isLargePayloadRoute =
+      req.path.includes("/admin/") ||
+      req.path.includes("/backups") ||
+      req.path.includes("/bundle/import") ||
+      req.path.startsWith("/api/v1/libraries") ||
+      req.path.startsWith("/libraries") ||
+      req.path.startsWith("/api/v1/storage") ||
+      req.path.startsWith("/storage") ||
+      req.path.startsWith("/api/v1/npm") ||
+      req.path.startsWith("/npm") ||
+      req.path.startsWith("/api/v1/physics") ||
+      req.path.startsWith("/api/v1/cae") ||
+      req.path.startsWith("/api/v1/cloud");
+
     const cl = req.headers["content-length"];
     if (cl) {
       const length = parseInt(cl, 10);
-      if (req.path.startsWith("/api/v1/auth") || req.path.startsWith("/auth")) {
-        if (length > 256 * 1024) {
+      if (Number.isFinite(length)) {
+        if (isAuthRoute && length > 256 * 1024) {
           res.status(413).json({ error: "Payload too large for authentication endpoint (max 256KB)" });
           return;
         }
-      } else {
-        const isExcluded =
-          req.path.includes("/admin/") ||
-          req.path.includes("/backups") ||
-          req.path.includes("/bundle/import") ||
-          req.path.startsWith("/api/v1/libraries") ||
-          req.path.startsWith("/libraries") ||
-          req.path.startsWith("/api/v1/storage") ||
-          req.path.startsWith("/storage") ||
-          req.path.startsWith("/api/v1/npm") ||
-          req.path.startsWith("/npm");
-
-        if (!isExcluded && length > 2 * 1024 * 1024) {
+        if (!isAuthRoute && !isLargePayloadRoute && length > 2 * 1024 * 1024) {
           res.status(413).json({ error: "Payload too large for API endpoint (max 2MB)" });
           return;
         }
       }
     }
-    next();
+
+    if (isAuthRoute) {
+      authJsonParser(req, res, next);
+      return;
+    }
+    if (isLargePayloadRoute) {
+      largeJsonParser(req, res, next);
+      return;
+    }
+    defaultJsonParser(req, res, next);
   });
 
-  // Increased limit for npm publish payloads (base64-encoded tarballs in JSON body)
-  app.use(
-    express.json({
-      limit: "50mb",
-      verify: (req: express.Request, _res, buf) => {
-        const url = req.originalUrl || req.url || "";
-        if (
-          url.includes("/webhooks") ||
-          req.headers["x-hub-signature-256"] !== undefined ||
-          req.headers["x-gitlab-token"] !== undefined ||
-          req.headers["x-gitlab-event-token"] !== undefined ||
-          req.headers["x-webhook-secret"] !== undefined ||
-          req.headers["stripe-signature"] !== undefined
-        ) {
-          req.rawBody = buf;
-        }
-      },
-    }),
-  );
-
-  // Cookie parser middleware (HttpOnly session cookies) & per-app auth DB binding
+  // Cookie parser middleware (HttpOnly session cookies)
   app.use((req, _res, next) => {
-    setAuthDatabase(database);
     const cookieHeader = req.headers["cookie"];
     const cookies: Record<string, string> = {};
     if (cookieHeader) {
@@ -719,28 +740,6 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     res.json(featureFlagService.getAllFlagsForUser(reqWithUser.user));
   });
 
-  // Auth & Community routes
-  app.use("/api/v1/auth", authRouter(database));
-  app.use("/api/v1/waitlist", waitlistRouter(database));
-  const mountedUsersRouter = usersRouter(database, federationWorker);
-  app.use("/api/v1/users", mountedUsersRouter);
-  app.use("/api/v1/user", mountedUsersRouter);
-  app.use("/api/v1/users", createSigningKeysRouter(database));
-  app.use("/api/v1/posts", createPostEvidenceRouter(database));
-  app.use("/api/v1/solutions", solutionsRouter(database));
-  app.use("/api/v1/canvas", canvasRouter());
-  app.use("/api/v1/diagram", diagramRouter());
-  app.use("/api/v1/spaces", spacesRouter(database));
-  app.use("/api/v1/spaces", rfqRouter());
-  app.use("/api/v1/supply-chain", supplyChainRouter());
-  app.use("/api/v1/provisioning", provisioningRouter());
-  app.use("/api/v1/social", socialRouter(database, federationWorker, featureFlagService));
-  const mountedReferencesRouter = referencesRouter(database);
-  app.use("/api/v1/references", mountedReferencesRouter);
-  app.use("/api/v1/sources", mountedReferencesRouter);
-  app.use("/api/v1/citations", mountedReferencesRouter);
-  app.use("/api/v1", pushRouter(database));
-
   // FMU storage & open-standard FMU registry routes
   const fmuStorageDir = path.resolve(database.dbDir, "fmus");
   const fmuStorage = new FmuStorage(fmuStorageDir);
@@ -750,6 +749,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   const sharedGitRouter = gitRouter(database);
 
   // ── Enterprise Edition (ee/) Subsystems (Batches A–I) ──
+  // Mounted before authRouter so EE/CE guards on /api/v1/auth/oidc execute prior to auth routes.
   const omgRouter = sysml2OmgRouter(new SysML2OmgService(database));
   mountEditionRoutes(
     {
@@ -810,6 +810,25 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     opts.enterprisePlugin,
   );
 
+  // Auth & Community routes
+  app.use("/api/v1/auth", authRouter(database));
+  app.use("/api/v1/waitlist", waitlistRouter(database));
+  const mountedUsersRouter = usersRouter(database, federationWorker);
+  app.use("/api/v1/users", mountedUsersRouter);
+  app.use("/api/v1/users", createSigningKeysRouter(database));
+  app.use("/api/v1/posts", createPostEvidenceRouter(database));
+  app.use("/api/v1/solutions", solutionsRouter(database));
+  app.use("/api/v1/canvas", canvasRouter());
+  app.use("/api/v1/diagram", diagramRouter());
+  app.use("/api/v1/spaces", spacesRouter(database));
+  app.use("/api/v1/spaces", rfqRouter());
+  app.use("/api/v1/supply-chain", supplyChainRouter());
+  app.use("/api/v1/provisioning", provisioningRouter());
+  app.use("/api/v1/social", socialRouter(database, federationWorker, featureFlagService));
+  const mountedReferencesRouter = referencesRouter(database);
+  app.use("/api/v1/references", mountedReferencesRouter);
+  app.use("/api/v1", pushRouter(database));
+
   app.use("/api/v1/repos", reposRouter(database));
   app.use("/api/v1/search", searchRouter(database));
   app.use("/api/v1/storage", storageRouter());
@@ -818,8 +837,6 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   // Mount the library & cross-registry streaming catalog routers
   const mountedRegistryCatalogRouter = registryCatalogRouter(libraryStorage, database);
   app.use("/api/v1", mountedRegistryCatalogRouter);
-  app.use("/api/v1/registry", mountedRegistryCatalogRouter);
-  app.use("/registry", mountedRegistryCatalogRouter);
   app.use("/api/v1/libraries", rdfRouter(database));
   app.use("/api/v1/libraries", graphqlRouter(database));
   app.use("/api/v1/libraries", packagesRouter(libraryStorage, jobQueue, database));
@@ -828,8 +845,9 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.use("/api/v1", optionalAuth, physicsRouter(jobQueue, database));
   app.use("/api/v1", optionalAuth, aiRouter(database));
 
-  app.use("/api/v1/jobs", scriptsRouter(database));
-  app.use("/api/v1/studies", scriptsRouter(database));
+  const mountedScriptsRouter = scriptsRouter(database);
+  app.use("/api/v1/jobs", mountedScriptsRouter);
+  app.use("/api/v1/studies", mountedScriptsRouter);
 
   // Artifact viewer routes (query artifact metadata, viewer configs)
   app.use("/api/v1", artifactViewerRouter(database));
@@ -869,12 +887,8 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.use("/api/v1/pscad", optionalAuth, pscadRouter());
   app.use("/api/v1/alm", optionalAuth, almRouter());
   app.use("/git", gitServerRouter(database));
-  app.use("/api/v1/git-server", gitServerRouter(database));
-  app.use("/api/thumbnails", express.static(path.resolve(API_ROOT, "public/thumbnails")));
   app.use("/thumbnails", express.static(path.resolve(API_ROOT, "public/thumbnails")));
-  app.use("/api/avatars", express.static(path.resolve(API_ROOT, "public/avatars")));
   app.use("/avatars", express.static(path.resolve(API_ROOT, "public/avatars")));
-  app.use("/api/banners", express.static(path.resolve(API_ROOT, "public/banners")));
   app.use("/banners", express.static(path.resolve(API_ROOT, "public/banners")));
   app.use("/uploads", express.static(path.resolve(API_ROOT, "uploads")));
 
@@ -924,6 +938,9 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.get("/legal", legalHandler);
   app.get("/api/v1/compliance/policy", legalHandler);
 
+  // OpenAPI 3.1.0 specification endpoint (/api/v1/openapi.json)
+  app.use("/api/v1", openapiRouter(app));
+
   // Health check
   app.get("/health", (_req, res) => {
     res.json({
@@ -971,9 +988,9 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     }
   });
 
-  // ── npm-compatible registry (mounted at /api/v1/npm) ──
-  app.use("/api/v1/npm", npmAuthRouter(database));
-  app.use("/api/v1/npm", npmRegistryRouter(database, libraryStorage));
+  // ── npm-compatible registry (mounted at /api/v1/npm and root fallback) ──
+  const mountedNpmCompatRouter = npmCompatRouter(database, libraryStorage);
+  app.use("/api/v1/npm", mountedNpmCompatRouter);
 
   // ── Integrated VS Code Web IDE Workbench, Extensions, Models & User Languages ──
   app.use(ideWorkbenchRouter(database));
@@ -1097,6 +1114,16 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   if (staticWebDir && fs.existsSync(staticWebDir)) {
     app.use(express.static(staticWebDir, { dotfiles: "deny" }));
 
+    const indexPath = path.join(staticWebDir, "index.html");
+    let cachedIndexHtml: string | null = null;
+    try {
+      if (fs.existsSync(indexPath)) {
+        cachedIndexHtml = fs.readFileSync(indexPath, "utf8");
+      }
+    } catch {
+      cachedIndexHtml = null;
+    }
+
     // Client-side SPA routing fallback for unmatched non-API routes
     app.use((req, res, next) => {
       if (req.method !== "GET" && req.method !== "HEAD") {
@@ -1135,12 +1162,10 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
         next();
         return;
       }
-      const indexPath = path.join(staticWebDir, "index.html");
-      if (fs.existsSync(indexPath)) {
+      if (cachedIndexHtml !== null) {
         try {
-          const rawHtml = fs.readFileSync(indexPath, "utf8");
           const meta = resolveSeoMetadata(req, database);
-          const injectedHtml = injectSeoIntoHtml(rawHtml, meta);
+          const injectedHtml = injectSeoIntoHtml(cachedIndexHtml, meta);
           res.setHeader("Content-Type", "text/html; charset=utf-8");
           res.send(injectedHtml);
         } catch {
@@ -1192,8 +1217,43 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   }
 
   // ── Root npm registry fallback (for legacy npm clients using registry root) ──
-  app.use("/", npmAuthRouter(database));
-  app.use("/", npmRegistryRouter(database, libraryStorage));
+  app.use("/", mountedNpmCompatRouter);
+
+  // ── JSON 404 fallback for unmatched /api/* routes ──
+  app.use("/api", (req, res) => {
+    res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl}` });
+  });
+
+  // ── Global Express 5 JSON Error Handler ──
+  app.use((err: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (res.headersSent) {
+      next(err);
+      return;
+    }
+    const errObj = err as { status?: number; statusCode?: number; type?: string; message?: string } | null;
+    const status =
+      typeof errObj?.status === "number"
+        ? errObj.status
+        : typeof errObj?.statusCode === "number"
+          ? errObj.statusCode
+          : errObj?.type === "entity.too.large"
+            ? 413
+            : errObj?.type === "entity.parse.failed"
+              ? 400
+              : 500;
+    const isClientError = status >= 400 && status < 500;
+    const message =
+      isClientError && errObj?.message
+        ? errObj.message
+        : process.env["NODE_ENV"] === "production"
+          ? "Internal server error"
+          : errObj?.message || "Internal server error";
+
+    if (status >= 500) {
+      console.error(`[API Error] ${req.method} ${req.originalUrl}:`, err);
+    }
+    res.status(status).json({ error: message });
+  });
 
   return app;
 }

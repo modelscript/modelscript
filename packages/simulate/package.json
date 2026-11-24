@@ -109,6 +109,7 @@
   "scripts": {
     "asbuild": "node scripts/build-as.js",
     "asbuild:force": "node scripts/build-as.js --force",
+    "asbuild:native": "asc assembly/index.ts --target native",
     "build": "npm run asbuild && tsc && node scripts/copy-wasm.js",
     "clean": "rimraf dist build",
     "lint": "eslint src tests --no-warn-ignored",

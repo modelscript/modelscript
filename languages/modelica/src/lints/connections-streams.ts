@@ -292,6 +292,11 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
       }
       // Report diagnostic when a connector has `stream` variables but `flowCount !== 1`
       if (hasStream && flowCount != 1) {
+        if (flowCount == 0 && $.extends_clause != 0) {
+          for (const ext of db.ast.getDescendants(node, $.extends_clause)) {
+            if (!isDescendantOfInnerClass(db, ext, node, $)) return;
+          }
+        }
         let nameNode: u32 = 0;
         for (const spec of db.ast.getDescendants(node, $.long_class_specifier)) {
           nameNode = db.ast.getChildByFieldId(spec, "name");

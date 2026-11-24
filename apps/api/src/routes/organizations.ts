@@ -4,7 +4,118 @@ import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { LibraryDatabase, OrgRole } from "../database.js";
 import { optionalAuth, requireAuth, requireTokenScope } from "../middleware/auth-middleware.js";
-import { defaultApiLimiter } from "../middleware/rate-limiter.js";
+import { type ObjectSchema, registerOpenApiOperation, validateBody } from "../middleware/validate.js";
+
+const ORG_AUTH_SECURITY: Array<Record<string, string[]>> = [{ bearerAuth: [] }, { cookieAuth: [] }, { patAuth: [] }];
+
+const createOrganizationSchema: ObjectSchema = {
+  type: "object",
+  required: ["slug", "name"],
+  description: "Payload for creating a new organization namespace.",
+  properties: {
+    slug: {
+      type: "string",
+      required: true,
+      minLength: 2,
+      maxLength: 50,
+      description: "URL-safe organization slug (2-50 alphanumeric, dash, or underscore characters).",
+    },
+    name: {
+      type: "string",
+      required: true,
+      minLength: 1,
+      description: "Human-readable organization name.",
+    },
+    description: {
+      type: "string",
+      description: "Optional description of the organization.",
+    },
+    avatarUrl: {
+      type: "string",
+      description: "Optional avatar image URL for the organization.",
+    },
+  },
+};
+
+const upsertOrganizationMemberSchema: ObjectSchema = {
+  type: "object",
+  description: "Payload for adding or updating an organization member's role. Supply either `userId` or `username`.",
+  properties: {
+    userId: {
+      type: "number",
+      min: 1,
+      description: "Numeric ID of the target user.",
+    },
+    username: {
+      type: "string",
+      minLength: 1,
+      description: "Username of the target user (used when userId is omitted).",
+    },
+    role: {
+      type: "string",
+      description:
+        "Organization role ('owner', 'maintainer', or 'contributor'; aliases 'admin' and 'member' are normalized).",
+    },
+  },
+};
+
+registerOpenApiOperation("post", "/api/v1/organizations", {
+  summary: "Create a new organization",
+  description: "Create a new organization namespace and assign the authenticated creator as 'owner'.",
+  tags: ["organizations"],
+  security: ORG_AUTH_SECURITY,
+  requestBody: createOrganizationSchema,
+  responses: {
+    "201": {
+      description: "Organization created successfully.",
+    },
+    "400": {
+      description: "Invalid organization slug or missing name.",
+      content: { "application/json": { schema: { $ref: "#/components/schemas/ApiError" } } },
+    },
+    "401": {
+      description: "Unauthorized.",
+      content: { "application/json": { schema: { $ref: "#/components/schemas/ApiError" } } },
+    },
+    "403": {
+      description: "Insufficient token scope.",
+      content: { "application/json": { schema: { $ref: "#/components/schemas/ApiError" } } },
+    },
+    "409": {
+      description: "Organization slug already exists or conflicts with a user namespace.",
+      content: { "application/json": { schema: { $ref: "#/components/schemas/ApiError" } } },
+    },
+  },
+});
+
+registerOpenApiOperation("post", "/api/v1/organizations/:slug/members", {
+  summary: "Add or update an organization member",
+  description: "Add a user to an organization or update their role. Requires owner or maintainer privileges.",
+  tags: ["organizations"],
+  security: ORG_AUTH_SECURITY,
+  requestBody: upsertOrganizationMemberSchema,
+  responses: {
+    "200": {
+      description: "Member role added or updated successfully.",
+    },
+    "400": {
+      description: "Invalid role, missing userId/username, or cannot demote last owner.",
+      content: { "application/json": { schema: { $ref: "#/components/schemas/ApiError" } } },
+    },
+    "401": {
+      description: "Unauthorized.",
+      content: { "application/json": { schema: { $ref: "#/components/schemas/ApiError" } } },
+    },
+    "403": {
+      description: "Caller lacks permission to manage organization membership.",
+      content: { "application/json": { schema: { $ref: "#/components/schemas/ApiError" } } },
+    },
+    "404": {
+      description: "Organization not found.",
+      content: { "application/json": { schema: { $ref: "#/components/schemas/ApiError" } } },
+    },
+  },
+});
 
 function isValidSlug(slug: string): boolean {
   return /^[a-zA-Z0-9_-]{2,50}$/.test(slug);
@@ -22,7 +133,6 @@ function normalizeOrgRole(raw: unknown): OrgRole | null {
 
 export function organizationsRouter(database: LibraryDatabase): Router {
   const router = createRouter();
-  router.use(defaultApiLimiter);
   const requireOrgWriteScope = requireTokenScope("org:write", "account:write");
 
   /**
@@ -40,53 +150,59 @@ export function organizationsRouter(database: LibraryDatabase): Router {
    *
    * Create a new organization and assign the creator as 'owner'.
    */
-  router.post("/", requireAuth, requireOrgWriteScope, (req: Request, res: Response): void => {
-    const slug = String(req.body?.slug ?? "")
-      .trim()
-      .toLowerCase();
-    const name = String(req.body?.name ?? "").trim();
-    const description = req.body?.description ? String(req.body.description).trim() : null;
-    const avatarUrl = req.body?.avatarUrl ? String(req.body.avatarUrl).trim() : null;
+  router.post(
+    "/",
+    requireAuth,
+    requireOrgWriteScope,
+    validateBody(createOrganizationSchema),
+    (req: Request, res: Response): void => {
+      const slug = String(req.body?.slug ?? "")
+        .trim()
+        .toLowerCase();
+      const name = String(req.body?.name ?? "").trim();
+      const description = req.body?.description ? String(req.body.description).trim() : null;
+      const avatarUrl = req.body?.avatarUrl ? String(req.body.avatarUrl).trim() : null;
 
-    if (!slug || !isValidSlug(slug)) {
-      res.status(400).json({ error: "Organization slug must be 2-50 alphanumeric or dash/underscore characters" });
-      return;
-    }
+      if (!slug || !isValidSlug(slug)) {
+        res.status(400).json({ error: "Organization slug must be 2-50 alphanumeric or dash/underscore characters" });
+        return;
+      }
 
-    if (!name) {
-      res.status(400).json({ error: "Organization name is required" });
-      return;
-    }
+      if (!name) {
+        res.status(400).json({ error: "Organization name is required" });
+        return;
+      }
 
-    const existingOrg = database.getOrganizationBySlug(slug);
-    if (existingOrg) {
-      res.status(409).json({ error: `Organization with slug '${slug}' already exists` });
-      return;
-    }
+      const existingOrg = database.getOrganizationBySlug(slug);
+      if (existingOrg) {
+        res.status(409).json({ error: `Organization with slug '${slug}' already exists` });
+        return;
+      }
 
-    // Check if user with this username exists (prevent namespace confusion)
-    const existingUser = database.getUserByUsername(slug);
-    if (existingUser && existingUser.id !== req.user!.id) {
-      res.status(409).json({ error: `Namespace '${slug}' is already reserved by a user account` });
-      return;
-    }
+      // Check if user with this username exists (prevent namespace confusion)
+      const existingUser = database.getUserByUsername(slug);
+      if (existingUser && existingUser.id !== req.user!.id) {
+        res.status(409).json({ error: `Namespace '${slug}' is already reserved by a user account` });
+        return;
+      }
 
-    try {
-      const org = database.createOrganization({
-        slug,
-        name,
-        description,
-        avatarUrl,
-        createdBy: req.user!.id,
-      });
+      try {
+        const org = database.createOrganization({
+          slug,
+          name,
+          description,
+          avatarUrl,
+          createdBy: req.user!.id,
+        });
 
-      res.status(201).json({ organization: org });
-    } catch (err: unknown) {
-      res
-        .status(500)
-        .json({ error: (err instanceof Error ? err.message : String(err)) || "Failed to create organization" });
-    }
-  });
+        res.status(201).json({ organization: org });
+      } catch (err: unknown) {
+        res
+          .status(500)
+          .json({ error: (err instanceof Error ? err.message : String(err)) || "Failed to create organization" });
+      }
+    },
+  );
 
   /**
    * GET /api/v1/organizations/:slug
@@ -323,9 +439,15 @@ export function organizationsRouter(database: LibraryDatabase): Router {
    * Add or update an organization member's role.
    * Requires caller to be an 'owner' or 'maintainer' in the organization.
    */
-  router.post("/:slug/members", requireAuth, requireOrgWriteScope, (req: Request, res: Response): void => {
-    handleUpsertMemberRole(req, res);
-  });
+  router.post(
+    "/:slug/members",
+    requireAuth,
+    requireOrgWriteScope,
+    validateBody(upsertOrganizationMemberSchema),
+    (req: Request, res: Response): void => {
+      handleUpsertMemberRole(req, res);
+    },
+  );
 
   /**
    * PATCH /api/v1/organizations/:slug/members/:userOrId

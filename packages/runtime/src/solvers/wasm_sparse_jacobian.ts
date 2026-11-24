@@ -8,6 +8,7 @@
 
 import { DAEBuilder, EqKind, ExprKind } from "../dae/wasm_dae.js";
 import { Dual, evaluateArenaDualExpression } from "../dae/wasm_evaluator.js";
+import { getDefaultWasmExports } from "../dae/wasm_loader.js";
 
 /** Compressed Column Storage sparse matrix. */
 export interface CCSMatrix {
@@ -23,9 +24,54 @@ export interface ColoringResult {
 }
 
 /**
- * Distance-2 column coloring for sparse Jacobian compression.
+ * Distance-2 column coloring for sparse Jacobian compression
+ * using the compiled AssemblyScript `colorJacobianColumnsFlatWasm` kernel.
  */
 export function colorJacobianColumns(ccs: { row_indices: number[]; col_ptr: number[] }, nCols: number): ColoringResult {
+  if (nCols <= 0) {
+    return { colors: [], numColors: 0, colorGroups: [] };
+  }
+
+  const w = getDefaultWasmExports();
+  if (
+    w &&
+    typeof w.colorJacobianColumnsFlatWasm === "function" &&
+    typeof w.alloc === "function" &&
+    typeof w.free === "function"
+  ) {
+    const colPtrLen = Math.max(nCols + 1, ccs.col_ptr.length);
+    const nnz = ccs.row_indices.length;
+    const colPtrBuf = w.alloc(colPtrLen * 4);
+    const rowIdxBuf = w.alloc(Math.max(1, nnz) * 4);
+    const outColorsBuf = w.alloc(nCols * 4);
+    const forbiddenBuf = w.alloc((nCols + 1) * 4);
+    try {
+      const colView = new Int32Array(w.memory.buffer, colPtrBuf, colPtrLen);
+      for (let i = 0; i < colPtrLen; i++) colView[i] = ccs.col_ptr[i] ?? 0;
+      if (nnz > 0) {
+        const rowView = new Int32Array(w.memory.buffer, rowIdxBuf, nnz);
+        for (let i = 0; i < nnz; i++) rowView[i] = ccs.row_indices[i] ?? -1;
+      }
+
+      const numColors: number = w.colorJacobianColumnsFlatWasm(colPtrBuf, rowIdxBuf, nCols, outColorsBuf, forbiddenBuf);
+      const outView = new Int32Array(w.memory.buffer, outColorsBuf, nCols);
+      const colors: number[] = new Array(nCols);
+      const colorGroups: number[][] = Array.from({ length: numColors }, () => []);
+      for (let j = 0; j < nCols; j++) {
+        const c = outView[j]!;
+        colors[j] = c;
+        colorGroups[c]?.push(j);
+      }
+      return { colors, numColors, colorGroups };
+    } finally {
+      w.free(colPtrBuf);
+      w.free(rowIdxBuf);
+      w.free(outColorsBuf);
+      w.free(forbiddenBuf);
+    }
+  }
+
+  // Fallback when WASM runtime has not been initialized
   const colors = new Array(nCols).fill(-1);
   const colorGroups: number[][] = [];
 

@@ -318,7 +318,9 @@ export class FederationWorker {
 
     // Trigger queue processing asynchronously outside of tests
     if (process.env["NODE_ENV"] !== "test") {
-      void this.processQueue();
+      void this.processQueue().catch((err) => {
+        console.error("[FederationWorker] Error processing broadcast queue:", err);
+      });
     }
     return enqueued;
   }

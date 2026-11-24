@@ -38,11 +38,17 @@ import {
   parseCode,
   runFormalLints,
   setPreferredLspLanguageId,
+  updateLspSettings,
   type MorselOnDemandLintMode,
 } from "./util/lsp-bridge";
 import { startLsp } from "./util/lsp-worker";
 
-import { getEditorLanguageUi, useEditorFeatureFlag as useFeatureFlag, useEditorToast as useToast } from "../host";
+import {
+  getEditorLanguageUi,
+  useEditorModelingPreferences,
+  useEditorFeatureFlag as useFeatureFlag,
+  useEditorToast as useToast,
+} from "../host";
 import { useMorselEngine } from "./hooks";
 import { useMorselHost } from "./MorselHostContext";
 import {
@@ -58,6 +64,7 @@ import {
   MorselView as View,
   type MobileTab,
 } from "./panels";
+import { WorkspaceSymbolModal } from "./panels/WorkspaceSymbolModal";
 import ParameterSliderRibbon from "./ParameterSliderRibbon";
 import { formatMonacoMarkers, type MorselToolHost } from "./util/morsel-tool-bridge";
 
@@ -129,6 +136,9 @@ const isSplit = (v: View) => v === View.SPLIT_COLUMNS || v === View.SPLIT_ROWS;
 
 export default function MorselEditor(props: MorselEditorProps) {
   const toast = useToast();
+  const { preferences: modelingPrefs } = useEditorModelingPreferences();
+  const [isLspReady, setIsLspReady] = useState(false);
+  const [isWorkspaceSymbolOpen, setIsWorkspaceSymbolOpen] = useState(false);
   const resolvedInitialDialect = props.initialDialect ?? props.initialLanguage;
   const initialLangInfo = getLanguageInfo(resolvedInitialDialect);
   const [dialect, setDialectState] = useState<string>(initialLangInfo.id);
@@ -825,6 +835,10 @@ export default function MorselEditor(props: MorselEditorProps) {
     handleRibbonParamReset,
     handleReplaySession,
     handleSaveCadBindings,
+    handleCommitCadGizmoDelta,
+    handleCommitCadDimensionDelta,
+    handleCommitCadFaceTag,
+    handleCommitCadAssemblyJoint,
     handleSimulate,
     amplSolveResult,
   } = useMorselEngine({
@@ -1320,6 +1334,7 @@ export default function MorselEditor(props: MorselEditorProps) {
             setContextVersion((v) => v + 1);
           }
         });
+        setIsLspReady(true);
       } catch (e) {
         console.error("Failed to start LSP:", e);
       }
@@ -1354,6 +1369,141 @@ export default function MorselEditor(props: MorselEditorProps) {
     };
     init();
   }, [content, dialect, documentUri]);
+
+  // Surface LSP window/showMessage errors & warnings via toast (deduplicated/throttled)
+  const lspToastThrottleRef = useRef<Map<string, number>>(new Map());
+  useEffect(() => {
+    const THROTTLE_MS = 5000;
+    const handleLspMessage = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ type?: number; message?: string } | undefined>).detail;
+      if (!detail || typeof detail.message !== "string") return;
+      const msg = detail.message.trim();
+      if (!msg) return;
+      if (detail.type !== 1 && detail.type !== 2) return;
+
+      const now = Date.now();
+      const cache = lspToastThrottleRef.current;
+      const key = `${detail.type}:${msg}`;
+      const lastShown = cache.get(key);
+      if (lastShown !== undefined && now - lastShown < THROTTLE_MS) return;
+
+      cache.set(key, now);
+      if (cache.size > 50) {
+        for (const [k, ts] of cache.entries()) {
+          if (now - ts >= THROTTLE_MS) cache.delete(k);
+        }
+      }
+
+      if (detail.type === 1) {
+        toast.error(msg);
+      } else {
+        toast.warning(msg);
+      }
+    };
+
+    window.addEventListener("modelscript:lsp-message", handleLspMessage);
+    return () => {
+      window.removeEventListener("modelscript:lsp-message", handleLspMessage);
+    };
+  }, [toast]);
+
+  // Sync modeling preferences to LSP on startup and whenever preferences change
+  useEffect(() => {
+    if (!isLspReady) return;
+    void updateLspSettings({
+      editor: { ...modelingPrefs },
+    }).catch(() => {
+      // Ignore transient LSP errors while worker is shutting down or restarting
+    });
+  }, [isLspReady, modelingPrefs]);
+
+  // Bind Ctrl+Shift+O / Cmd+Shift+O for Workspace Symbol Quick-Open
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        setIsWorkspaceSymbolOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
+  const handleSelectWorkspaceSymbol = useCallback(
+    (uri: string, line: number, symbolName?: string) => {
+      const files = projectFilesRef.current;
+      let targetFileName: string | undefined;
+
+      if (files && uri) {
+        const cleanUri = uri.split(/[?#]/)[0] ?? uri;
+        const decodedUri = (() => {
+          try {
+            return decodeURIComponent(cleanUri);
+          } catch {
+            return cleanUri;
+          }
+        })();
+
+        const stripped = decodedUri
+          .replace(new RegExp(`^${embedRootPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/?`), "")
+          .replace(/^file:\/\/\/?/, "")
+          .replace(/^\/+/, "");
+
+        const fileKeys = Object.keys(files);
+        if (stripped in files) {
+          targetFileName = stripped;
+        } else {
+          const exactMatch = fileKeys.find((k) => k.replace(/^\/+/, "") === stripped);
+          if (exactMatch) {
+            targetFileName = exactMatch;
+          } else {
+            const base = stripped.split("/").pop();
+            if (base) {
+              const baseMatches = fileKeys.filter((k) => k.split("/").pop() === base);
+              if (baseMatches.length === 1) {
+                targetFileName = baseMatches[0];
+              }
+            }
+          }
+        }
+      }
+
+      const switchedFile = Boolean(targetFileName && targetFileName !== activeFileNameRef.current);
+      if (switchedFile && targetFileName) {
+        props.onSelectProjectFile?.(targetFileName);
+      }
+
+      const switchedView = view !== View.CODE && !isSplit(view);
+      if (switchedView) {
+        const splitMode =
+          props.splitOrientation === "rows" ||
+          (props.splitOrientation !== "columns" && windowWidth < 960 && windowHeight >= 560)
+            ? View.SPLIT_ROWS
+            : View.SPLIT_COLUMNS;
+        setView(splitMode);
+      }
+
+      const shortIdentifier = symbolName?.split(".").pop();
+      if (switchedFile || switchedView) {
+        window.setTimeout(() => {
+          handleRevealLine(line, shortIdentifier);
+        }, 120);
+      } else {
+        handleRevealLine(line, shortIdentifier);
+      }
+    },
+    [
+      embedRootPrefix,
+      handleRevealLine,
+      props.onSelectProjectFile,
+      props.splitOrientation,
+      view,
+      windowHeight,
+      windowWidth,
+    ],
+  );
 
   useEffect(() => {
     setIsSearching(true);
@@ -1817,25 +1967,29 @@ export default function MorselEditor(props: MorselEditorProps) {
   useEffect(() => {
     const langInfo = getLanguageInfo(dialect);
     const requiresClassName = dialect === "modelica" || dialect === "modelscript";
-    if (!langInfo.supportsDiagram || (requiresClassName && !selectedTreeClassName)) {
+    const effectiveClassName = requiresClassName ? selectedTreeClassName : null;
+    if (!langInfo.supportsDiagram || (requiresClassName && !effectiveClassName)) {
       setDiagramData(null);
       setIsDiagramLoading(false);
       return;
     }
 
     let cancelled = false;
-    const targetKey = `${documentUri}|${dialect}|${selectedTreeClassName ?? ""}|${diagramType}`;
+    const targetKey = `${documentUri}|${dialect}|${effectiveClassName ?? ""}|${diagramType}`;
     const isTargetSwitch = lastDiagramTargetKeyRef.current !== targetKey;
     lastDiagramTargetKeyRef.current = targetKey;
 
-    if (isTargetSwitch || !diagramDataRef.current || diagramDataRef.current.isLoading) {
+    if (isTargetSwitch) {
+      setDiagramData(null);
+      setIsDiagramLoading(true);
+    } else if (!diagramDataRef.current || diagramDataRef.current.isLoading) {
       setIsDiagramLoading(true);
     }
 
     const currentCode = editorRef.current?.getValue() ?? lastLoadedContentRef.current ?? content;
     getDiagramData(
       documentUri,
-      selectedTreeClassName || undefined,
+      effectiveClassName || undefined,
       diagramType,
       sidecarContent,
       currentCode,
@@ -1851,7 +2005,7 @@ export default function MorselEditor(props: MorselEditorProps) {
               setContextVersion((v) => v + 1);
             }
           }, 600);
-        } else if (!data || (!data.isLoading && (!data.nodes || data.nodes.length === 0))) {
+        } else {
           setIsDiagramLoading(false);
         }
       })
@@ -2399,6 +2553,10 @@ export default function MorselEditor(props: MorselEditorProps) {
                 diagnosticsBottomOffset={diagnosticsBottomOffset}
                 expectedComponentNameRef={expectedComponentNameRef}
                 handleSaveCadBindings={handleSaveCadBindings}
+                handleCommitCadGizmoDelta={handleCommitCadGizmoDelta}
+                handleCommitCadDimensionDelta={handleCommitCadDimensionDelta}
+                handleCommitCadFaceTag={handleCommitCadFaceTag}
+                handleCommitCadAssemblyJoint={handleCommitCadAssemblyJoint}
                 simulationVariables={simulationVariables || []}
                 selectedSimulationVariables={selectedSimulationVariables}
                 cosimDataSource={cosimDataSource}
@@ -2925,6 +3083,13 @@ export default function MorselEditor(props: MorselEditorProps) {
             setSimulationStatus({ status: "completed", error: null });
             setIsCloudModalOpen(false);
           }}
+        />
+
+        <WorkspaceSymbolModal
+          isOpen={isWorkspaceSymbolOpen}
+          onClose={() => setIsWorkspaceSymbolOpen(false)}
+          onSelectSymbol={handleSelectWorkspaceSymbol}
+          colorMode={colorMode}
         />
 
         {(props.embed || props.showParameterRibbon) &&

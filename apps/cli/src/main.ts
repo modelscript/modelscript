@@ -1102,6 +1102,14 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
+      "twentysim <action> [files..]",
+      "Inspect, lint (SCAP causality), simulate, render SVG, and lower 20-sim Bond Graph & SIDOPS models (.emx, .emxz, .sid)",
+      () => import("./commands/twentysim.js"),
+      "TwentySimCommand",
+    ),
+  )
+  .command(
+    lazy(
       "autosar <action> [files..]",
       "Inspect, lint, simulate Virtual RTE, lower to DAE, and project AUTOSAR Classic and Adaptive architectures (.arxml)",
       () => import("./commands/autosar.js"),

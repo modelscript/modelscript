@@ -1,6 +1,6 @@
 # ModelScript
 
-> Open-core computable digital thread for polyglot engineering and simulation. Imports 168 simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.
+> Open-core computable digital thread for polyglot engineering and simulation. Imports 169 simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.
 
 ## Quick Links
 - [Official Website](https://modelscript.org/)
@@ -57,10 +57,10 @@
 
 ## Command-Line Interface (`msx`)
 - [CLI Overview](https://modelscript.org/cli/overview): Overview of the `msx` binary, global flags, and architecture.
-- [Commands Reference](https://modelscript.org/cli/commands): Comprehensive reference for all 147 CLI commands and subcommands.
+- [Commands Reference](https://modelscript.org/cli/commands): Comprehensive reference for all 148 CLI commands and subcommands.
 
-## Polyglot Languages (168 Formats)
-- [Polyglot Overview & Capability Matrix](https://modelscript.org/languages/overview): Cross-language capability matrix across all 168 formats.
+## Polyglot Languages (169 Formats)
+- [Polyglot Overview & Capability Matrix](https://modelscript.org/languages/overview): Cross-language capability matrix across all 169 formats.
 - [Modelica (.mo) [beta]](https://modelscript.org/languages/modelica): Acausal multi-domain physics.
 - [AMPL (.mod, .dat, .run, .nl, .mps) [beta]](https://modelscript.org/languages/ampl): Mathematical programming & optimization (LP, MILP, NLP).
 - [SysML v2 / KerML (.sysml) [beta]](https://modelscript.org/languages/sysml2): Systems architecture & requirements.
@@ -83,6 +83,7 @@
 - [NASA ROCETS (.roc) [beta]](https://modelscript.org/languages/rocets): Liquid rocket engine transients.
 - [CCSDS (.xtce) [beta]](https://modelscript.org/languages/ccsds): Astrodynamics & spacecraft telemetry.
 - [EASY5 (.ez5) [beta]](https://modelscript.org/languages/easy5): Dynamic simulation & linear control.
+- [20-sim (.emx) [beta]](https://modelscript.org/languages/twentysim): Multi-domain Bond Graphs & SIDOPS simulation.
 - [AUTOSAR (.arxml) [alpha]](https://modelscript.org/languages/autosar): Classic & Adaptive software architecture.
 - [MATLAB Simulink (.slx) [beta]](https://modelscript.org/languages/simulink): Block diagrams & control systems.
 - [GT-SUITE (.gtm) [alpha]](https://modelscript.org/languages/gtsuite): Engine, powertrain & thermal flow.
@@ -246,7 +247,7 @@
 - [Life Sciences, Healthcare & Medical](https://modelscript.org/industries/life-sciences): Systems biology, pharmacometrics, radiotherapy & surgical CAS (SBML L2/L3 & SED-ML, SBOL3 & GenBank, NONMEM NMTRAN & Monolix MLXTRAN).
 
 ## Reference & Tooling
-- [Linter Rules Catalog](https://modelscript.org/reference/linter-rules): Directory of 2384 diagnostics across 148 engineering languages.
+- [Linter Rules Catalog](https://modelscript.org/reference/linter-rules): Directory of 2392 diagnostics across 149 engineering languages.
 - [Export Formats](https://modelscript.org/reference/export-formats): Exporting to FMI 2.0/3.0 FMUs, SSP, STEP, CSV, and C code.
 - [MCP & IDE Integration](https://modelscript.org/reference/mcp-and-ide): Model Context Protocol server for AI coding agents and VS Code integration.
 - [Radiology & Surgical CAS](https://modelscript.org/reference/radiology-and-surgery): Radiation oncology, medical imaging, and computer-assisted surgery suite.

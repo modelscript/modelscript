@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { xml } from "@modelscript/dsl";
-import type { UnifiedWorkspace } from "./wasm_workspace.js";
+import type { UnifiedWorkspace } from "./workspace.js";
 
 /**
  * Supported inputs for multi-file workspace linters:

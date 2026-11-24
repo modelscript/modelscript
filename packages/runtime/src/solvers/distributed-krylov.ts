@@ -23,6 +23,31 @@
  *   Algorithms, Theory, and Parallel Implementation. SIAM.
  */
 
+import { WasmScratchPool } from "@modelscript/solve";
+import { getDefaultWasmExports } from "../dae/wasm_loader.js";
+
+const _dkScratchPools = new WeakMap<object, WasmScratchPool>();
+
+function hasWasmAllocator(wasm: ReturnType<typeof getDefaultWasmExports>): boolean {
+  return Boolean(
+    wasm?.memory &&
+    (typeof wasm.atomicChunkAlloc === "function" ||
+      typeof wasm.arena_alloc === "function" ||
+      typeof wasm._malloc === "function" ||
+      typeof wasm.malloc === "function" ||
+      typeof wasm.__new === "function"),
+  );
+}
+
+function getDkPool(wasm: NonNullable<ReturnType<typeof getDefaultWasmExports>>): WasmScratchPool {
+  let pool = _dkScratchPools.get(wasm);
+  if (!pool) {
+    pool = new WasmScratchPool(wasm, 65536);
+    _dkScratchPools.set(wasm, pool);
+  }
+  return pool;
+}
+
 export interface DenseLUFactorization {
   /** Combined L (unit lower) and U (upper) factors of dimension m x m. */
   lu: Float64Array;
@@ -101,6 +126,25 @@ export interface DistributedGMRESResult {
 export function factorDenseLU(matrix: Float64Array, m: number): DenseLUFactorization {
   const lu = new Float64Array(matrix);
   const perm = new Int32Array(m);
+
+  if (m > 0) {
+    const wasm = getDefaultWasmExports();
+    if (wasm && hasWasmAllocator(wasm) && typeof wasm.dk_dense_lu_factor === "function") {
+      const scope = getDkPool(wasm).scope();
+      try {
+        const luSlice = scope.allocF64(m * m);
+        const permSlice = scope.allocI32(m);
+        luSlice.view().set(matrix.subarray(0, m * m));
+        wasm.dk_dense_lu_factor(m, luSlice.ptr, permSlice.ptr);
+        lu.set(luSlice.view());
+        perm.set(permSlice.view());
+        return { lu, perm, m };
+      } finally {
+        scope.dispose();
+      }
+    }
+  }
+
   for (let i = 0; i < m; i++) perm[i] = i;
 
   for (let k = 0; k < m; k++) {
@@ -149,6 +193,27 @@ export function factorDenseLU(matrix: Float64Array, m: number): DenseLUFactoriza
 export function solveDenseLU(fact: DenseLUFactorization, rhs: Float64Array): Float64Array {
   const { lu, perm, m } = fact;
   const x = new Float64Array(m);
+
+  if (m > 0) {
+    const wasm = getDefaultWasmExports();
+    if (wasm && hasWasmAllocator(wasm) && typeof wasm.dk_dense_lu_solve === "function") {
+      const scope = getDkPool(wasm).scope();
+      try {
+        const luSlice = scope.allocF64(m * m);
+        const permSlice = scope.allocI32(m);
+        const rhsSlice = scope.allocF64(m);
+        const xSlice = scope.allocF64(m);
+        luSlice.view().set(lu.subarray(0, m * m));
+        permSlice.view().set(perm.subarray(0, m));
+        rhsSlice.view().set(rhs.subarray(0, m));
+        wasm.dk_dense_lu_solve(m, luSlice.ptr, permSlice.ptr, rhsSlice.ptr, xSlice.ptr);
+        x.set(xSlice.view());
+        return x;
+      } finally {
+        scope.dispose();
+      }
+    }
+  }
 
   // Permute RHS and forward substitute L y = P rhs
   for (let i = 0; i < m; i++) {
@@ -288,6 +353,52 @@ export function partitionDomainGraph(
 export function applyRASPreconditioner(partitions: SubdomainPartition[], r: Float64Array): Float64Array {
   const z = new Float64Array(r.length);
 
+  if (partitions.length > 0) {
+    const wasm = getDefaultWasmExports();
+    if (wasm && hasWasmAllocator(wasm) && typeof wasm.dk_dense_lu_solve === "function") {
+      let maxM = 0;
+      for (const part of partitions) {
+        if (!part.localLU) {
+          throw new Error(`applyRASPreconditioner: Subdomain ${part.subdomainId} has no factored localLU block.`);
+        }
+        if (part.overlapIndices.length > maxM) maxM = part.overlapIndices.length;
+      }
+      if (maxM > 0) {
+        const scope = getDkPool(wasm).scope();
+        try {
+          const luSlice = scope.allocF64(maxM * maxM);
+          const permSlice = scope.allocI32(maxM);
+          const rhsSlice = scope.allocF64(maxM);
+          const uSlice = scope.allocF64(maxM);
+          const luView = luSlice.view();
+          const permView = permSlice.view();
+          const rhsView = rhsSlice.view();
+          const uView = uSlice.view();
+
+          for (const part of partitions) {
+            const fact = part.localLU!;
+            const m = part.overlapIndices.length;
+            if (m === 0) continue;
+            luView.set(fact.lu.subarray(0, m * m));
+            permView.set(fact.perm.subarray(0, m));
+            for (let i = 0; i < m; i++) {
+              rhsView[i] = r[part.overlapIndices[i]!]!;
+            }
+            wasm.dk_dense_lu_solve(m, luSlice.ptr, permSlice.ptr, rhsSlice.ptr, uSlice.ptr);
+
+            const nInterior = part.interiorIndices.length;
+            for (let i = 0; i < nInterior; i++) {
+              z[part.interiorIndices[i]!] = uView[i]!;
+            }
+          }
+          return z;
+        } finally {
+          scope.dispose();
+        }
+      }
+    }
+  }
+
   for (const part of partitions) {
     if (!part.localLU) {
       throw new Error(`applyRASPreconditioner: Subdomain ${part.subdomainId} has no factored localLU block.`);
@@ -322,8 +433,64 @@ export function haloExchangeMatVec(
   values: Float64Array | number[],
   x: Float64Array,
 ): { y: Float64Array; haloMessagesExchanged: number } {
-  const y = new Float64Array(x.length);
+  const n = x.length;
+  const y = new Float64Array(n);
   let haloMessagesExchanged = 0;
+
+  if (n > 0 && partitions.length > 0) {
+    const wasm = getDefaultWasmExports();
+    if (wasm && hasWasmAllocator(wasm) && typeof wasm.dk_csr_spmv_rows === "function") {
+      let maxInterior = 0;
+      for (const part of partitions) {
+        haloMessagesExchanged += part.haloIndices.length;
+        if (part.interiorIndices.length > maxInterior) {
+          maxInterior = part.interiorIndices.length;
+        }
+      }
+      if (maxInterior > 0) {
+        const rowPtrArr = rowPtr instanceof Int32Array ? rowPtr : new Int32Array(rowPtr);
+        const colIdxArr = colIdx instanceof Int32Array ? colIdx : new Int32Array(colIdx);
+        const valuesArr = values instanceof Float64Array ? values : new Float64Array(values);
+        const scope = getDkPool(wasm).scope();
+        try {
+          const rowPtrSlice = scope.allocI32(rowPtrArr.length);
+          const colIdxSlice = scope.allocI32(Math.max(1, colIdxArr.length));
+          const valuesSlice = scope.allocF64(Math.max(1, valuesArr.length));
+          const xSlice = scope.allocF64(n);
+          const ySlice = scope.allocF64(n);
+          const rowsSlice = scope.allocI32(maxInterior);
+
+          rowPtrSlice.view().set(rowPtrArr);
+          if (colIdxArr.length > 0) colIdxSlice.view().set(colIdxArr);
+          if (valuesArr.length > 0) valuesSlice.view().set(valuesArr);
+          xSlice.view().set(x);
+          ySlice.view().fill(0);
+          const rowsView = rowsSlice.view();
+
+          for (const part of partitions) {
+            const interior = part.interiorIndices;
+            if (interior.length === 0) continue;
+            rowsView.set(interior);
+            wasm.dk_csr_spmv_rows(
+              interior.length,
+              rowsSlice.ptr,
+              rowPtrSlice.ptr,
+              colIdxSlice.ptr,
+              valuesSlice.ptr,
+              xSlice.ptr,
+              ySlice.ptr,
+            );
+          }
+
+          y.set(ySlice.view());
+          return { y, haloMessagesExchanged };
+        } finally {
+          scope.dispose();
+        }
+      }
+      return { y, haloMessagesExchanged };
+    }
+  }
 
   for (const part of partitions) {
     // Gather halo buffer from neighboring subdomains
@@ -388,6 +555,201 @@ export function distributedGMRES(options: DistributedGMRESOptions): DistributedG
   const bVec = b instanceof Float64Array ? b : new Float64Array(b);
   const x = x0 ? new Float64Array(x0) : new Float64Array(n);
 
+  const m = Math.min(restart, n);
+  const wasm = getDefaultWasmExports();
+  const canUseWasm =
+    n > 0 &&
+    m > 0 &&
+    Boolean(wasm) &&
+    hasWasmAllocator(wasm) &&
+    typeof wasm.dk_norm2 === "function" &&
+    typeof wasm.dk_mgs_arnoldi_step === "function" &&
+    typeof wasm.dk_gmres_givens_step === "function" &&
+    typeof wasm.dk_gmres_back_sub === "function" &&
+    typeof wasm.dk_gmres_update_solution === "function" &&
+    typeof wasm.dk_dense_lu_solve === "function" &&
+    (Boolean(customMatVec) || typeof wasm.dk_csr_spmv === "function");
+
+  if (canUseWasm) {
+    let haloPerMatVec = 0;
+    let maxSubM = 0;
+    for (const part of partitions) {
+      if (!part.localLU) {
+        throw new Error(`applyRASPreconditioner: Subdomain ${part.subdomainId} has no factored localLU block.`);
+      }
+      haloPerMatVec += part.haloIndices.length;
+      if (part.overlapIndices.length > maxSubM) maxSubM = part.overlapIndices.length;
+    }
+
+    const rowPtrArr = !customMatVec ? (rowPtr instanceof Int32Array ? rowPtr : new Int32Array(rowPtr)) : null;
+    const colIdxArr = !customMatVec ? (colIdx instanceof Int32Array ? colIdx : new Int32Array(colIdx)) : null;
+    const valuesArr = !customMatVec ? (values instanceof Float64Array ? values : new Float64Array(values)) : null;
+
+    const scope = getDkPool(wasm).scope();
+    try {
+      // Allocate all linear-memory buffers up front so views stay valid across the entire solve
+      const bSlice = scope.allocF64(n);
+      const xSlice = scope.allocF64(n);
+      const rSlice = scope.allocF64(n);
+      const wSlice = scope.allocF64(n);
+      const vBasisSlice = scope.allocF64((m + 1) * n);
+      const zBasisSlice = scope.allocF64(m * n);
+      const hSlice = scope.allocF64((m + 1) * m);
+      const csSlice = scope.allocF64(m);
+      const snSlice = scope.allocF64(m);
+      const gSlice = scope.allocF64(m + 1);
+      const yCoeffSlice = scope.allocF64(m);
+      const luScratchSlice = scope.allocF64(Math.max(1, maxSubM * maxSubM));
+      const permScratchSlice = scope.allocI32(Math.max(1, maxSubM));
+      const rhsScratchSlice = scope.allocF64(Math.max(1, maxSubM));
+      const uScratchSlice = scope.allocF64(Math.max(1, maxSubM));
+
+      const rowPtrSlice = rowPtrArr ? scope.allocI32(rowPtrArr.length) : null;
+      const colIdxSlice = colIdxArr ? scope.allocI32(Math.max(1, colIdxArr.length)) : null;
+      const valuesSlice = valuesArr ? scope.allocF64(Math.max(1, valuesArr.length)) : null;
+
+      const bView = bSlice.view();
+      const xView = xSlice.view();
+      const rView = rSlice.view();
+      const wView = wSlice.view();
+      const vBasisView = vBasisSlice.view();
+      const zBasisView = zBasisSlice.view();
+      const hView = hSlice.view();
+      const csView = csSlice.view();
+      const snView = snSlice.view();
+      const gView = gSlice.view();
+      const luScratchView = luScratchSlice.view();
+      const permScratchView = permScratchSlice.view();
+      const rhsScratchView = rhsScratchSlice.view();
+      const uScratchView = uScratchSlice.view();
+
+      bView.set(bVec);
+      xView.set(x);
+      if (rowPtrSlice && colIdxSlice && valuesSlice && rowPtrArr && colIdxArr && valuesArr) {
+        rowPtrSlice.view().set(rowPtrArr);
+        if (colIdxArr.length > 0) colIdxSlice.view().set(colIdxArr);
+        if (valuesArr.length > 0) valuesSlice.view().set(valuesArr);
+      }
+
+      let totalHaloMessages = 0;
+      const customInBuf = customMatVec ? new Float64Array(n) : null;
+
+      const evalMatVecIntoW = (inView: Float64Array, inOffset: number, inPtr: number): void => {
+        totalHaloMessages += haloPerMatVec;
+        if (customMatVec && customInBuf) {
+          customInBuf.set(inView.subarray(inOffset, inOffset + n));
+          const res = customMatVec(customInBuf);
+          wView.set(res);
+          return;
+        }
+        wasm.dk_csr_spmv(n, rowPtrSlice!.ptr, colIdxSlice!.ptr, valuesSlice!.ptr, inPtr, wSlice.ptr);
+      };
+
+      const applyRASIntoZ = (vOffset: number, zOffset: number): void => {
+        zBasisView.fill(0, zOffset, zOffset + n);
+        for (const part of partitions) {
+          const fact = part.localLU!;
+          const subM = part.overlapIndices.length;
+          if (subM === 0) continue;
+          luScratchView.set(fact.lu.subarray(0, subM * subM));
+          permScratchView.set(fact.perm.subarray(0, subM));
+          for (let i = 0; i < subM; i++) {
+            rhsScratchView[i] = vBasisView[vOffset + part.overlapIndices[i]!]!;
+          }
+          wasm.dk_dense_lu_solve(
+            subM,
+            luScratchSlice.ptr,
+            permScratchSlice.ptr,
+            rhsScratchSlice.ptr,
+            uScratchSlice.ptr,
+          );
+          const nInterior = part.interiorIndices.length;
+          for (let i = 0; i < nInterior; i++) {
+            zBasisView[zOffset + part.interiorIndices[i]!] = uScratchView[i]!;
+          }
+        }
+      };
+
+      const bNorm: number = wasm.dk_norm2(n, bSlice.ptr);
+      const tol = atol + rtol * bNorm;
+
+      // Initial residual r = b - A x
+      evalMatVecIntoW(xView, 0, xSlice.ptr);
+      for (let i = 0; i < n; i++) rView[i] = bView[i]! - wView[i]!;
+
+      let resNorm: number = wasm.dk_norm2(n, rSlice.ptr);
+      const residualHistory: number[] = [resNorm];
+      let totalIters = 0;
+
+      if (resNorm <= tol) {
+        return {
+          solution: x,
+          residualNorm: resNorm,
+          iterations: 0,
+          converged: true,
+          numSubdomains: partitions.length,
+          haloMessagesExchanged: totalHaloMessages,
+          residualHistory,
+          partitions,
+        };
+      }
+
+      while (totalIters < maxIterations && resNorm > tol) {
+        hView.fill(0);
+        csView.fill(0);
+        snView.fill(0);
+        gView.fill(0);
+        gView[0] = resNorm;
+
+        const invRes = 1.0 / resNorm;
+        for (let i = 0; i < n; i++) vBasisView[i] = rView[i]! * invRes;
+
+        let k = 0;
+        for (; k < m && totalIters < maxIterations; k++) {
+          totalIters++;
+          const vecOffset = k * n;
+          // Right preconditioning: z_k = M_RAS^{-1} v_k, w = A z_k
+          applyRASIntoZ(vecOffset, vecOffset);
+          evalMatVecIntoW(zBasisView, vecOffset, zBasisSlice.ptr + vecOffset * 8);
+
+          // Modified Gram-Schmidt Arnoldi orthogonalization + Givens QR update
+          wasm.dk_mgs_arnoldi_step(n, k, m, vBasisSlice.ptr, wSlice.ptr, hSlice.ptr);
+          resNorm = wasm.dk_gmres_givens_step(k, m, hSlice.ptr, csSlice.ptr, snSlice.ptr, gSlice.ptr);
+          residualHistory.push(resNorm);
+
+          if (resNorm <= tol) {
+            k++;
+            break;
+          }
+        }
+
+        // Back-substitution for upper triangular H(0..k-1, 0..k-1) y = g(0..k-1)
+        wasm.dk_gmres_back_sub(k, m, hSlice.ptr, gSlice.ptr, yCoeffSlice.ptr);
+        // Update global solution x += sum_{i=0}^{k-1} yCoeff[i] * Z[i]
+        wasm.dk_gmres_update_solution(n, k, zBasisSlice.ptr, yCoeffSlice.ptr, xSlice.ptr);
+
+        // Recompute true residual r = b - A x
+        evalMatVecIntoW(xView, 0, xSlice.ptr);
+        for (let i = 0; i < n; i++) rView[i] = bView[i]! - wView[i]!;
+        resNorm = wasm.dk_norm2(n, rSlice.ptr);
+      }
+
+      x.set(xView);
+      return {
+        solution: x,
+        residualNorm: resNorm,
+        iterations: totalIters,
+        converged: resNorm <= tol,
+        numSubdomains: partitions.length,
+        haloMessagesExchanged: totalHaloMessages,
+        residualHistory,
+        partitions,
+      };
+    } finally {
+      scope.dispose();
+    }
+  }
+
   let totalHaloMessages = 0;
   const evalMatVec = (v: Float64Array): Float64Array => {
     if (customMatVec) {
@@ -423,8 +785,6 @@ export function distributedGMRES(options: DistributedGMRESOptions): DistributedG
       partitions,
     };
   }
-
-  const m = Math.min(restart, n);
 
   while (totalIters < maxIterations && resNorm > tol) {
     const V: Float64Array[] = [];

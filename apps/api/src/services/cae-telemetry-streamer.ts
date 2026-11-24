@@ -31,6 +31,8 @@ export interface CaeErrorEvent {
 
 export type CaeTelemetryEvent = CaeIterationEvent | CaePhaseEvent | CaeErrorEvent;
 
+const MAX_LINE_BUFFER_CHARS = 1024 * 1024; // 1 MB cap to prevent OOM on newline-less solver output
+
 /**
  * Real-time CAE Telemetry Streamer.
  * Parses stdout/stderr streams from CalculiX, SU2, and OpenFOAM into structured telemetry events.
@@ -48,9 +50,17 @@ export class CaeTelemetryStreamer extends EventEmitter {
    * Ingests a raw stdout/stderr text chunk and emits parsed telemetry events.
    */
   public processChunk(chunk: string): void {
+    if (!chunk) return;
     this.buffer += chunk;
+    if (!this.buffer.includes("\n")) {
+      if (this.buffer.length > MAX_LINE_BUFFER_CHARS) {
+        this.buffer = this.buffer.slice(-MAX_LINE_BUFFER_CHARS);
+      }
+      return;
+    }
     const lines = this.buffer.split("\n");
-    this.buffer = lines.pop() || ""; // keep incomplete line in buffer
+    const trailing = lines.pop() || ""; // keep incomplete line in buffer
+    this.buffer = trailing.length > MAX_LINE_BUFFER_CHARS ? trailing.slice(-MAX_LINE_BUFFER_CHARS) : trailing;
 
     for (const rawLine of lines) {
       const line = rawLine.trim();
@@ -262,22 +272,44 @@ export class CaeTelemetryStreamer extends EventEmitter {
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders?.();
 
+    let closed = false;
+
+    const safeWrite = (chunk: string): boolean => {
+      if (closed || res.writableEnded || res.destroyed) {
+        return false;
+      }
+      try {
+        res.write(chunk);
+        return true;
+      } catch {
+        cleanup();
+        return false;
+      }
+    };
+
     const onTelemetry = (event: CaeTelemetryEvent) => {
-      res.write(`data: ${JSON.stringify(event)}\n\n`);
+      if (!safeWrite(`data: ${JSON.stringify(event)}\n\n`)) {
+        cleanup();
+      }
     };
 
     // Heartbeat every 15s to keep connection open through reverse proxies
     const heartbeat = setInterval(() => {
-      res.write(": heartbeat\n\n");
+      if (!safeWrite(": heartbeat\n\n")) {
+        cleanup();
+      }
     }, 15000);
-
-    this.on("telemetry", onTelemetry);
+    heartbeat.unref?.();
 
     const cleanup = () => {
+      if (closed) return;
+      closed = true;
       clearInterval(heartbeat);
       this.off("telemetry", onTelemetry);
+      res.off?.("close", cleanup);
     };
 
+    this.on("telemetry", onTelemetry);
     res.on("close", cleanup);
     return cleanup;
   }

@@ -846,7 +846,7 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
           name,
           isInput,
           isOutput,
-          hasDefault,
+          hasDefault: hasDefault || (isOutput && /\[\s*0\s*(?:,|\])/.test(compText)),
           isArray,
           startOffset: nameStartByte,
           endOffset: nameEndByte,
@@ -972,7 +972,7 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
     activeLoopVars: Set<string> = new Set(),
   ) => {
     const maskedExpr = maskCommentsAndStringsPreservingLength(expr);
-    for (let idx = 0; idx < maskedExpr.length; ) {
+    for (let idx = 0; idx < maskedExpr.length;) {
       if (!isAsciiIdentStart(maskedExpr.charCodeAt(idx))) {
         idx++;
         continue;

@@ -39,7 +39,7 @@ describe("Discrete-State Stochastic Jump Processes (Gillespie SSA & Tau-Leaping)
       ],
     };
 
-    const ensemble = simulateJumpEnsemble(problem, 200, {
+    const ensemble = simulateJumpEnsemble(problem, 500, {
       method: "direct",
       gridSteps: 20,
       seed: 12345,

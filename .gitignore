@@ -144,3 +144,8 @@ languages/modelica/testsuite/OpenModelica/flattening/modelica/**/*.h
 
 # Staged browser LSP & WASM assets for docs showcase
 apps/docs/docs/public/lsp/
+
+# Native wasm2c generated C sources & N-API binaries
+packages/native/generated/
+*.node
+

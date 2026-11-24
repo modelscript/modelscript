@@ -42,6 +42,16 @@ export function isExplicitlySolvableArena(arena: DAEBuilder, eqIdx: number, targ
  * @returns ExprId of the isolated RHS, or -1 if isolation fails.
  */
 export function isolateSymbolicallyArena(arena: DAEBuilder, eqIdx: number, targetVarIdx: number): number {
+  // Fast path: execute symbolic isolation directly in WebAssembly linear memory
+  const w = arena.exports;
+  const daePtr = arena.ptr;
+  if (w && daePtr && typeof w.dae_isolateEquation === "function") {
+    const wasmRes = w.dae_isolateEquation(daePtr, eqIdx >>> 0, targetVarIdx >>> 0) >>> 0;
+    if (wasmRes !== 0xffffffff) {
+      return wasmRes;
+    }
+  }
+
   // Strategy 0: Explicit form
   const explicitRhs = isExplicitlySolvableArena(arena, eqIdx, targetVarIdx);
   if (explicitRhs !== -1) return explicitRhs;

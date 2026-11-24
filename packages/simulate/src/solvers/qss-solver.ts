@@ -18,7 +18,112 @@
  *   continuous system simulation. Simulation, 90(7), 782-799 (QSS Solver / CIFASIS modelicacc).
  */
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
+import { WasmScratchPool, type WasmMemoryHost, type WasmScratchScope } from "@modelscript/solve";
 import type { CommonSolverResult, SolverStats } from "../core/problem-types.js";
+
+interface QssWasmExports extends WasmMemoryHost {
+  qss_smallest_positive_poly_root?: (c0: number, c1: number, c2: number, c3: number) => number;
+  qss_find_min_event?: (n: number, nextEventTimePtr: number) => number;
+  qss_eval_q_all?: (
+    n: number,
+    order: number,
+    t: number,
+    q0Ptr: number,
+    q1Ptr: number,
+    q2Ptr: number,
+    tqPtr: number,
+    outPtr: number,
+  ) => void;
+  qss_eval_x_all?: (
+    n: number,
+    order: number,
+    t: number,
+    x0Ptr: number,
+    x1Ptr: number,
+    x2Ptr: number,
+    x3Ptr: number,
+    txPtr: number,
+    outPtr: number,
+  ) => void;
+  qss_advance_quantized_state?: (
+    minIdx: number,
+    order: number,
+    isLiqss: number,
+    currentTime: number,
+    rtol: number,
+    atol: number,
+    x0Ptr: number,
+    x1Ptr: number,
+    x2Ptr: number,
+    x3Ptr: number,
+    txPtr: number,
+    q0Ptr: number,
+    q1Ptr: number,
+    q2Ptr: number,
+    tqPtr: number,
+    dqPtr: number,
+    diagJacPtr: number,
+  ) => number;
+  qss_schedule_next_crossing?: (
+    i: number,
+    order: number,
+    t: number,
+    isSelfUpdate: number,
+    x0Ptr: number,
+    x1Ptr: number,
+    x2Ptr: number,
+    x3Ptr: number,
+    q0Ptr: number,
+    q1Ptr: number,
+    q2Ptr: number,
+    tqPtr: number,
+    dqPtr: number,
+    nextEventTimePtr: number,
+  ) => number;
+  qss_schedule_affected_crossings?: (
+    minIdx: number,
+    affectedCount: number,
+    affectedPtr: number,
+    order: number,
+    t: number,
+    x0Ptr: number,
+    x1Ptr: number,
+    x2Ptr: number,
+    x3Ptr: number,
+    q0Ptr: number,
+    q1Ptr: number,
+    q2Ptr: number,
+    tqPtr: number,
+    dqPtr: number,
+    nextEventTimePtr: number,
+  ) => void;
+  qss_schedule_all_self_crossings?: (
+    n: number,
+    order: number,
+    t: number,
+    x0Ptr: number,
+    x1Ptr: number,
+    x2Ptr: number,
+    x3Ptr: number,
+    q0Ptr: number,
+    q1Ptr: number,
+    q2Ptr: number,
+    tqPtr: number,
+    dqPtr: number,
+    nextEventTimePtr: number,
+  ) => void;
+}
+
+const _qssScratchPools = new WeakMap<object, WasmScratchPool>();
+function getQssPool(wasm: WasmMemoryHost): WasmScratchPool {
+  let pool = _qssScratchPools.get(wasm);
+  if (!pool) {
+    pool = new WasmScratchPool(wasm, 65536);
+    _qssScratchPools.set(wasm, pool);
+  }
+  return pool;
+}
 
 export type QSSMethod = "qss1" | "qss2" | "qss3" | "liqss2";
 
@@ -213,427 +318,674 @@ export function qssSolve(
     };
   }
 
+  const wasm = getDefaultWasmExports() as QssWasmExports | null;
+  const hasWasmAlloc = Boolean(
+    wasm &&
+    (typeof wasm.atomicChunkAlloc === "function" ||
+      typeof wasm.arena_alloc === "function" ||
+      typeof wasm._malloc === "function" ||
+      typeof wasm.malloc === "function" ||
+      typeof wasm.__new === "function"),
+  );
+  const useWasm = Boolean(
+    hasWasmAlloc &&
+    wasm &&
+    typeof wasm.qss_find_min_event === "function" &&
+    typeof wasm.qss_eval_q_all === "function" &&
+    typeof wasm.qss_eval_x_all === "function" &&
+    typeof wasm.qss_advance_quantized_state === "function" &&
+    typeof wasm.qss_schedule_next_crossing === "function" &&
+    typeof wasm.qss_schedule_affected_crossings === "function" &&
+    typeof wasm.qss_schedule_all_self_crossings === "function",
+  );
+
+  let wasmScope: WasmScratchScope | null = null;
+  let x0Ptr = 0;
+  let x1Ptr = 0;
+  let x2Ptr = 0;
+  let x3Ptr = 0;
+  let txPtr = 0;
+  let q0Ptr = 0;
+  let q1Ptr = 0;
+  let q2Ptr = 0;
+  let tqPtr = 0;
+  let dqPtr = 0;
+  let diagJacPtr = 0;
+  let nextEventTimePtr = 0;
+  let evalOutPtr = 0;
+  let affectedPtr = 0;
+  const affectedCap = n;
+
   // Polynomial state coefficients: x_i(t) = x0[i] + x1[i]*dt + x2[i]*dt^2 + x3[i]*dt^3
-  const x0 = Float64Array.from(y0);
-  const x1 = new Float64Array(n);
-  const x2 = new Float64Array(n);
-  const x3 = new Float64Array(n);
-  const tx = new Float64Array(n).fill(t0);
+  let x0: Float64Array;
+  let x1: Float64Array;
+  let x2: Float64Array;
+  let x3: Float64Array;
+  let tx: Float64Array;
 
   // Quantized state coefficients: q_i(t) = q0[i] + q1[i]*dt + q2[i]*dt^2
-  const q0 = Float64Array.from(y0);
-  const q1 = new Float64Array(n);
-  const q2 = new Float64Array(n);
-  const tq = new Float64Array(n).fill(t0);
+  let q0: Float64Array;
+  let q1: Float64Array;
+  let q2: Float64Array;
+  let tq: Float64Array;
 
-  // Quantum per state variable and next transition time
-  const dq = new Float64Array(n);
-  const nextEventTime = new Float64Array(n).fill(Infinity);
-
-  // Probe sparsity and diagonal Jacobian
-  const providedDeps = options?.dependencies ?? options?.dependencyGraph;
-  let dependents: number[][];
+  // Quantum per state variable, diagonal Jacobian, next transition time, and WASM scratch views
+  let dq: Float64Array;
   let diagJac: Float64Array;
-  let initNfev = 0;
+  let nextEventTime: Float64Array;
+  let evalOutView: Float64Array | null = null;
+  let affectedView: Int32Array | null = null;
+  let cachedWasmBuffer: ArrayBuffer | null = null;
 
-  if (providedDeps && !isLiqss) {
-    dependents = Array.from({ length: n }, (_, i) => (i < providedDeps.length ? [...providedDeps[i]!] : [i]));
-    diagJac = new Float64Array(n);
+  const ensureViews = (): void => {
+    if (!useWasm || !wasm) return;
+    const buf = wasm.memory.buffer;
+    if (cachedWasmBuffer === buf) return;
+    cachedWasmBuffer = buf;
+    x0 = new Float64Array(buf, x0Ptr, n);
+    x1 = new Float64Array(buf, x1Ptr, n);
+    x2 = new Float64Array(buf, x2Ptr, n);
+    x3 = new Float64Array(buf, x3Ptr, n);
+    tx = new Float64Array(buf, txPtr, n);
+    q0 = new Float64Array(buf, q0Ptr, n);
+    q1 = new Float64Array(buf, q1Ptr, n);
+    q2 = new Float64Array(buf, q2Ptr, n);
+    tq = new Float64Array(buf, tqPtr, n);
+    dq = new Float64Array(buf, dqPtr, n);
+    diagJac = new Float64Array(buf, diagJacPtr, n);
+    nextEventTime = new Float64Array(buf, nextEventTimePtr, n);
+    evalOutView = new Float64Array(buf, evalOutPtr, n);
+    affectedView = new Int32Array(buf, affectedPtr, affectedCap);
+  };
+
+  if (useWasm && wasm) {
+    wasmScope = getQssPool(wasm).scope();
+    x0Ptr = wasmScope.allocF64(n).ptr;
+    x1Ptr = wasmScope.allocF64(n).ptr;
+    x2Ptr = wasmScope.allocF64(n).ptr;
+    x3Ptr = wasmScope.allocF64(n).ptr;
+    txPtr = wasmScope.allocF64(n).ptr;
+    q0Ptr = wasmScope.allocF64(n).ptr;
+    q1Ptr = wasmScope.allocF64(n).ptr;
+    q2Ptr = wasmScope.allocF64(n).ptr;
+    tqPtr = wasmScope.allocF64(n).ptr;
+    dqPtr = wasmScope.allocF64(n).ptr;
+    diagJacPtr = wasmScope.allocF64(n).ptr;
+    nextEventTimePtr = wasmScope.allocF64(n).ptr;
+    evalOutPtr = wasmScope.allocF64(n).ptr;
+    affectedPtr = wasmScope.allocI32(affectedCap).ptr;
+    const buf = wasm.memory.buffer;
+    cachedWasmBuffer = buf;
+    x0 = new Float64Array(buf, x0Ptr, n);
+    x1 = new Float64Array(buf, x1Ptr, n);
+    x2 = new Float64Array(buf, x2Ptr, n);
+    x3 = new Float64Array(buf, x3Ptr, n);
+    tx = new Float64Array(buf, txPtr, n);
+    q0 = new Float64Array(buf, q0Ptr, n);
+    q1 = new Float64Array(buf, q1Ptr, n);
+    q2 = new Float64Array(buf, q2Ptr, n);
+    tq = new Float64Array(buf, tqPtr, n);
+    dq = new Float64Array(buf, dqPtr, n);
+    diagJac = new Float64Array(buf, diagJacPtr, n);
+    nextEventTime = new Float64Array(buf, nextEventTimePtr, n);
+    evalOutView = new Float64Array(buf, evalOutPtr, n);
+    affectedView = new Int32Array(buf, affectedPtr, affectedCap);
+    x0.set(y0);
+    x1.fill(0);
+    x2.fill(0);
+    x3.fill(0);
+    tx.fill(t0);
+    q0.set(y0);
+    q1.fill(0);
+    q2.fill(0);
+    tq.fill(t0);
+    dq.fill(0);
+    diagJac.fill(0);
+    nextEventTime.fill(Infinity);
   } else {
-    const probed = probeSparsityGraph(f, t0, y0);
-    dependents = probed.dependents;
-    diagJac = probed.diagJac;
-    initNfev = probed.nfev;
-    if (providedDeps) {
-      for (let i = 0; i < Math.min(n, providedDeps.length); i++) {
-        dependents[i] = [...providedDeps[i]!];
+    x0 = Float64Array.from(y0);
+    x1 = new Float64Array(n);
+    x2 = new Float64Array(n);
+    x3 = new Float64Array(n);
+    tx = new Float64Array(n).fill(t0);
+    q0 = Float64Array.from(y0);
+    q1 = new Float64Array(n);
+    q2 = new Float64Array(n);
+    tq = new Float64Array(n).fill(t0);
+    dq = new Float64Array(n);
+    diagJac = new Float64Array(n);
+    nextEventTime = new Float64Array(n).fill(Infinity);
+  }
+
+  try {
+    // Probe sparsity and diagonal Jacobian
+    const providedDeps = options?.dependencies ?? options?.dependencyGraph;
+    let dependents: number[][];
+    let initNfev = 0;
+
+    if (providedDeps && !isLiqss) {
+      dependents = Array.from({ length: n }, (_, i) => (i < providedDeps.length ? [...providedDeps[i]!] : [i]));
+    } else {
+      const probed = probeSparsityGraph(f, t0, y0);
+      ensureViews();
+      dependents = probed.dependents;
+      diagJac.set(probed.diagJac);
+      initNfev = probed.nfev;
+      if (providedDeps) {
+        for (let i = 0; i < Math.min(n, providedDeps.length); i++) {
+          dependents[i] = [...providedDeps[i]!];
+        }
       }
     }
-  }
-  let nfev = initNfev;
+    let nfev = initNfev;
 
-  const evalQAt = (t: number, out: number[]): void => {
-    for (let i = 0; i < n; i++) {
-      const dt = t - tq[i]!;
-      out[i] = q0[i]! + (order >= 2 ? q1[i]! * dt : 0) + (order >= 3 ? q2[i]! * dt * dt : 0);
-    }
-  };
+    const evalQAt = (t: number, out: number[]): void => {
+      if (useWasm && wasm) {
+        wasm.qss_eval_q_all!(n, order, t, q0Ptr, q1Ptr, q2Ptr, tqPtr, evalOutPtr);
+        ensureViews();
+        for (let i = 0; i < n; i++) {
+          out[i] = evalOutView![i]!;
+        }
+        return;
+      }
+      for (let i = 0; i < n; i++) {
+        const dt = t - tq[i]!;
+        out[i] = q0[i]! + (order >= 2 ? q1[i]! * dt : 0) + (order >= 3 ? q2[i]! * dt * dt : 0);
+      }
+    };
 
-  const evalXAt = (i: number, t: number): number => {
-    const dt = t - tx[i]!;
-    return x0[i]! + x1[i]! * dt + (order >= 2 ? x2[i]! * dt * dt : 0) + (order >= 3 ? x3[i]! * dt * dt * dt : 0);
-  };
+    const evalXAt = (i: number, t: number): number => {
+      const dt = t - tx[i]!;
+      return x0[i]! + x1[i]! * dt + (order >= 2 ? x2[i]! * dt * dt : 0) + (order >= 3 ? x3[i]! * dt * dt * dt : 0);
+    };
 
-  const updateQuantum = (i: number): void => {
-    dq[i] = Math.max(rtol * Math.abs(x0[i]!), atol);
-  };
+    const evalAllXAt = (t: number, out: number[]): void => {
+      if (useWasm && wasm) {
+        wasm.qss_eval_x_all!(n, order, t, x0Ptr, x1Ptr, x2Ptr, x3Ptr, txPtr, evalOutPtr);
+        ensureViews();
+        for (let i = 0; i < n; i++) {
+          out[i] = evalOutView![i]!;
+        }
+        return;
+      }
+      for (let i = 0; i < n; i++) {
+        out[i] = evalXAt(i, t);
+      }
+    };
 
-  const qBuf = new Array<number>(n);
-  const qPert = new Array<number>(n);
+    const updateQuantum = (i: number): void => {
+      dq[i] = Math.max(rtol * Math.abs(x0[i]!), atol);
+    };
 
-  /**
-   * Recomputes Taylor derivative coefficients `(x1[j], x2[j], x3[j])` at time `t`
-   * using directional finite differences along the quantized state polynomial $q(\tau)$.
-   */
-  const computeDerivativesAt = (t: number, indices: readonly number[]): void => {
-    evalQAt(t, qBuf);
-    const fBase = f(t, qBuf);
-    nfev++;
+    const qBuf = new Array<number>(n);
+    const qPert = new Array<number>(n);
 
-    let fFwd1: number[] | null = null;
-    let fFwd2: number[] | null = null;
-    let fBwd2: number[] | null = null;
-    const hDir1 = 1e-6;
-    const hDir2 = 1e-4;
-
-    if (order >= 2) {
-      evalQAt(t + hDir1, qPert);
-      fFwd1 = f(t + hDir1, qPert);
+    /**
+     * Recomputes Taylor derivative coefficients `(x1[j], x2[j], x3[j])` at time `t`
+     * using directional finite differences along the quantized state polynomial $q(\tau)$.
+     */
+    const computeDerivativesAt = (t: number, indices: readonly number[]): void => {
+      evalQAt(t, qBuf);
+      const fBase = f(t, qBuf);
       nfev++;
-    }
-    if (order >= 3) {
-      evalQAt(t + hDir2, qPert);
-      fFwd2 = f(t + hDir2, qPert);
-      evalQAt(t - hDir2, qPert);
-      fBwd2 = f(t - hDir2, qPert);
-      nfev += 2;
-    }
 
-    for (const j of indices) {
-      // Advance x_j to time t before updating its slopes
-      if (t > tx[j]!) {
-        x0[j] = evalXAt(j, t);
-        tx[j] = t;
-      }
-      x1[j] = fBase[j]!;
-      if (order >= 2 && fFwd1) {
-        const ddf = (fFwd1[j]! - fBase[j]!) / hDir1;
-        x2[j] = 0.5 * ddf;
-      } else {
-        x2[j] = 0;
-      }
-      if (order >= 3 && fFwd2 && fBwd2) {
-        const d2f = (fFwd2[j]! - 2 * fBase[j]! + fBwd2[j]!) / (hDir2 * hDir2);
-        x3[j] = d2f / 6.0;
-      } else {
-        x3[j] = 0;
-      }
-    }
-  };
+      let fFwd1: number[] | null = null;
+      let fFwd2: number[] | null = null;
+      let fBwd2: number[] | null = null;
+      const hDir1 = 1e-6;
+      const hDir2 = 1e-4;
 
-  /**
-   * Computes the next quantum-crossing time `nextEventTime[i]` from current time `t`
-   * where $|x_i(\tau) - q_i(\tau)| = \Delta Q_i$.
-   */
-  const scheduleNextCrossing = (i: number, t: number, isSelfUpdate: boolean): void => {
-    const quant = dq[i]!;
-    if (isSelfUpdate) {
-      if (order === 1) {
-        const slope = Math.abs(x1[i]!);
-        nextEventTime[i] = slope > 1e-18 ? t + quant / slope : Infinity;
-      } else if (order === 2) {
-        const accel = Math.abs(x2[i]!);
-        if (accel > 1e-18) {
-          nextEventTime[i] = t + Math.sqrt(quant / accel);
-        } else {
-          const slopeDiff = Math.abs(x1[i]! - q1[i]!);
-          nextEventTime[i] = slopeDiff > 1e-18 ? t + quant / slopeDiff : Infinity;
+      if (order >= 2) {
+        evalQAt(t + hDir1, qPert);
+        fFwd1 = f(t + hDir1, qPert);
+        nfev++;
+      }
+      if (order >= 3) {
+        evalQAt(t + hDir2, qPert);
+        fFwd2 = f(t + hDir2, qPert);
+        evalQAt(t - hDir2, qPert);
+        fBwd2 = f(t - hDir2, qPert);
+        nfev += 2;
+      }
+      ensureViews();
+
+      for (const j of indices) {
+        // Advance x_j to time t before updating its slopes
+        if (t > tx[j]!) {
+          x0[j] = evalXAt(j, t);
+          tx[j] = t;
         }
-      } else {
-        const jerk = Math.abs(x3[i]!);
-        if (jerk > 1e-18) {
-          nextEventTime[i] = t + Math.cbrt(quant / jerk);
-        } else if (Math.abs(x2[i]! - q2[i]!) > 1e-18) {
-          nextEventTime[i] = t + Math.sqrt(quant / Math.abs(x2[i]! - q2[i]!));
+        x1[j] = fBase[j]!;
+        if (order >= 2 && fFwd1) {
+          const ddf = (fFwd1[j]! - fBase[j]!) / hDir1;
+          x2[j] = 0.5 * ddf;
         } else {
-          nextEventTime[i] = Infinity;
+          x2[j] = 0;
+        }
+        if (order >= 3 && fFwd2 && fBwd2) {
+          const d2f = (fFwd2[j]! - 2 * fBase[j]! + fBwd2[j]!) / (hDir2 * hDir2);
+          x3[j] = d2f / 6.0;
+        } else {
+          x3[j] = 0;
         }
       }
-      return;
-    }
+    };
 
-    // Dependent update: compute difference polynomial e(tau) = x_i(t + tau) - q_i(t + tau)
-    const dtQ = t - tq[i]!;
-    const qVal = q0[i]! + (order >= 2 ? q1[i]! * dtQ : 0) + (order >= 3 ? q2[i]! * dtQ * dtQ : 0);
-    const qSlope = (order >= 2 ? q1[i]! : 0) + (order >= 3 ? 2 * q2[i]! * dtQ : 0);
-    const qCurv = order >= 3 ? q2[i]! : 0;
-
-    const e0 = x0[i]! - qVal;
-    if (!isSelfUpdate && Math.abs(e0) >= quant * (1 - 1e-12)) {
-      nextEventTime[i] = t;
-      return;
-    }
-    const e1 = x1[i]! - qSlope;
-    const e2 = (order >= 2 ? x2[i]! : 0) - qCurv;
-    const e3 = order >= 3 ? x3[i]! : 0;
-
-    // Solve e(tau) - quant = 0 and e(tau) + quant = 0 for smallest positive tau
-    const rUpper = smallestPositivePolyRoot(e0 - quant, e1, e2, e3);
-    const rLower = smallestPositivePolyRoot(e0 + quant, e1, e2, e3);
-    const dt = Math.min(rUpper, rLower);
-    nextEventTime[i] = t + dt;
-  };
-
-  const bootstrapAllTaylorCoefficients = (t: number): void => {
-    computeDerivativesAt(t, allIndices);
-    if (order >= 2) {
-      for (let i = 0; i < n; i++) q1[i] = x1[i]!;
-      computeDerivativesAt(t, allIndices);
-    }
-    if (order >= 3) {
-      for (let i = 0; i < n; i++) q2[i] = x2[i]!;
-      computeDerivativesAt(t, allIndices);
-    }
-    for (let i = 0; i < n; i++) {
-      if (order >= 2) q1[i] = x1[i]!;
-      if (order >= 3) q2[i] = x2[i]!;
-    }
-  };
-
-  // Initialize all states and derivatives at t0
-  const allIndices = Array.from({ length: n }, (_, idx) => idx);
-  for (let i = 0; i < n; i++) {
-    updateQuantum(i);
-  }
-  bootstrapAllTaylorCoefficients(t0);
-  for (let i = 0; i < n; i++) {
-    scheduleNextCrossing(i, t0, true);
-  }
-
-  // Zero-crossing event setup
-  const eventFns = options?.eventFunctions ?? [];
-  const eventDirs = options?.eventDirections ?? [];
-  const eventCb = options?.eventCallback;
-  const prevEventVals = new Float64Array(eventFns.length);
-  if (eventFns.length > 0) {
-    const yInit = Array.from(x0);
-    for (let k = 0; k < eventFns.length; k++) {
-      prevEventVals[k] = eventFns[k]!(t0, yInit);
-    }
-  }
-
-  // Output recording buffers
-  const times: number[] = [];
-  const states: number[][] = [];
-  let outIdx = 0;
-
-  while (outIdx < outputTimes.length && outputTimes[outIdx]! <= t0 + 1e-15) {
-    times.push(outputTimes[outIdx]!);
-    states.push(Array.from(x0));
-    outIdx++;
-  }
-
-  let currentTime = t0;
-  let quantumCrossings = 0;
-
-  while (currentTime < tf && quantumCrossings < maxEvents) {
-    // Find state `minIdx` with earliest scheduled quantum crossing time
-    let minTime = Infinity;
-    let minIdx = -1;
-    for (let i = 0; i < n; i++) {
-      if (nextEventTime[i]! < minTime) {
-        minTime = nextEventTime[i]!;
-        minIdx = i;
+    /**
+     * Computes the next quantum-crossing time `nextEventTime[i]` from current time `t`
+     * where $|x_i(\tau) - q_i(\tau)| = \Delta Q_i$.
+     */
+    const scheduleNextCrossing = (i: number, t: number, isSelfUpdate: boolean): void => {
+      if (useWasm && wasm) {
+        wasm.qss_schedule_next_crossing!(
+          i,
+          order,
+          t,
+          isSelfUpdate ? 1 : 0,
+          x0Ptr,
+          x1Ptr,
+          x2Ptr,
+          x3Ptr,
+          q0Ptr,
+          q1Ptr,
+          q2Ptr,
+          tqPtr,
+          dqPtr,
+          nextEventTimePtr,
+        );
+        return;
       }
+      const quant = dq[i]!;
+      if (isSelfUpdate) {
+        if (order === 1) {
+          const slope = Math.abs(x1[i]!);
+          nextEventTime[i] = slope > 1e-18 ? t + quant / slope : Infinity;
+        } else if (order === 2) {
+          const accel = Math.abs(x2[i]!);
+          if (accel > 1e-18) {
+            nextEventTime[i] = t + Math.sqrt(quant / accel);
+          } else {
+            const slopeDiff = Math.abs(x1[i]! - q1[i]!);
+            nextEventTime[i] = slopeDiff > 1e-18 ? t + quant / slopeDiff : Infinity;
+          }
+        } else {
+          const jerk = Math.abs(x3[i]!);
+          if (jerk > 1e-18) {
+            nextEventTime[i] = t + Math.cbrt(quant / jerk);
+          } else if (Math.abs(x2[i]! - q2[i]!) > 1e-18) {
+            nextEventTime[i] = t + Math.sqrt(quant / Math.abs(x2[i]! - q2[i]!));
+          } else {
+            nextEventTime[i] = Infinity;
+          }
+        }
+        return;
+      }
+
+      // Dependent update: compute difference polynomial e(tau) = x_i(t + tau) - q_i(t + tau)
+      const dtQ = t - tq[i]!;
+      const qVal = q0[i]! + (order >= 2 ? q1[i]! * dtQ : 0) + (order >= 3 ? q2[i]! * dtQ * dtQ : 0);
+      const qSlope = (order >= 2 ? q1[i]! : 0) + (order >= 3 ? 2 * q2[i]! * dtQ : 0);
+      const qCurv = order >= 3 ? q2[i]! : 0;
+
+      const e0 = x0[i]! - qVal;
+      if (!isSelfUpdate && Math.abs(e0) >= quant * (1 - 1e-12)) {
+        nextEventTime[i] = t;
+        return;
+      }
+      const e1 = x1[i]! - qSlope;
+      const e2 = (order >= 2 ? x2[i]! : 0) - qCurv;
+      const e3 = order >= 3 ? x3[i]! : 0;
+
+      // Solve e(tau) - quant = 0 and e(tau) + quant = 0 for smallest positive tau
+      const rUpper = smallestPositivePolyRoot(e0 - quant, e1, e2, e3);
+      const rLower = smallestPositivePolyRoot(e0 + quant, e1, e2, e3);
+      const dt = Math.min(rUpper, rLower);
+      nextEventTime[i] = t + dt;
+    };
+
+    const scheduleAllSelfCrossings = (t: number): void => {
+      if (useWasm && wasm) {
+        wasm.qss_schedule_all_self_crossings!(
+          n,
+          order,
+          t,
+          x0Ptr,
+          x1Ptr,
+          x2Ptr,
+          x3Ptr,
+          q0Ptr,
+          q1Ptr,
+          q2Ptr,
+          tqPtr,
+          dqPtr,
+          nextEventTimePtr,
+        );
+        return;
+      }
+      for (let i = 0; i < n; i++) {
+        scheduleNextCrossing(i, t, true);
+      }
+    };
+
+    const bootstrapAllTaylorCoefficients = (t: number): void => {
+      computeDerivativesAt(t, allIndices);
+      if (order >= 2) {
+        for (let i = 0; i < n; i++) q1[i] = x1[i]!;
+        computeDerivativesAt(t, allIndices);
+      }
+      if (order >= 3) {
+        for (let i = 0; i < n; i++) q2[i] = x2[i]!;
+        computeDerivativesAt(t, allIndices);
+      }
+      for (let i = 0; i < n; i++) {
+        if (order >= 2) q1[i] = x1[i]!;
+        if (order >= 3) q2[i] = x2[i]!;
+      }
+    };
+
+    // Initialize all states and derivatives at t0
+    const allIndices = Array.from({ length: n }, (_, idx) => idx);
+    for (let i = 0; i < n; i++) {
+      updateQuantum(i);
     }
+    bootstrapAllTaylorCoefficients(t0);
+    scheduleAllSelfCrossings(t0);
 
-    const stepTargetTime = Math.min(minTime, tf);
-
-    // Check external zero-crossing event functions over [currentTime, stepTargetTime]
-    let firedExternalEvent = false;
-    if (eventFns.length > 0 && stepTargetTime > currentTime) {
-      const yTarget = new Array<number>(n);
-      for (let i = 0; i < n; i++) yTarget[i] = evalXAt(i, stepTargetTime);
-
+    // Zero-crossing event setup
+    const eventFns = options?.eventFunctions ?? [];
+    const eventDirs = options?.eventDirections ?? [];
+    const eventCb = options?.eventCallback;
+    const prevEventVals = new Float64Array(eventFns.length);
+    if (eventFns.length > 0) {
+      const yInit = Array.from(x0);
       for (let k = 0; k < eventFns.length; k++) {
-        const g0 = prevEventVals[k]!;
-        const g1 = eventFns[k]!(stepTargetTime, yTarget);
-        const dir = eventDirs[k] ?? 0;
-        const rising = g0 < 0 && g1 >= 0 && (dir === 0 || dir === 1);
-        const falling = g0 > 0 && g1 <= 0 && (dir === 0 || dir === -1);
-        if (rising || falling) {
-          // Locate zero crossing time via secant/bisection on continuous polynomial x(t)
-          let a = currentTime;
-          let b = stepTargetTime;
-          let ga = g0;
-          for (let iter = 0; iter < 24; iter++) {
-            const mid = 0.5 * (a + b);
-            const yMid = new Array<number>(n);
-            for (let i = 0; i < n; i++) yMid[i] = evalXAt(i, mid);
-            const gm = eventFns[k]!(mid, yMid);
-            if (Math.abs(gm) < 1e-12 || b - a < 1e-12) {
-              a = mid;
-              break;
-            }
-            if (ga * gm <= 0) {
-              b = mid;
-            } else {
-              a = mid;
-              ga = gm;
-            }
-          }
-          const tEvent = 0.5 * (a + b);
+        prevEventVals[k] = eventFns[k]!(t0, yInit);
+      }
+      ensureViews();
+    }
 
-          // Flush any output times prior to tEvent
-          while (outIdx < outputTimes.length && outputTimes[outIdx]! <= tEvent) {
-            const tSample = outputTimes[outIdx]!;
-            times.push(tSample);
-            const row = new Array<number>(n);
-            for (let i = 0; i < n; i++) row[i] = evalXAt(i, tSample);
-            states.push(row);
-            outIdx++;
-          }
+    // Output recording buffers
+    const times: number[] = [];
+    const states: number[][] = [];
+    let outIdx = 0;
 
-          currentTime = tEvent;
-          const yAtEvent = new Array<number>(n);
-          for (let i = 0; i < n; i++) yAtEvent[i] = evalXAt(i, tEvent);
-          const yUpdated = eventCb ? eventCb(tEvent, yAtEvent, k, rising ? 1 : -1) : yAtEvent;
+    while (outIdx < outputTimes.length && outputTimes[outIdx]! <= t0 + 1e-15) {
+      times.push(outputTimes[outIdx]!);
+      states.push(Array.from(x0));
+      outIdx++;
+    }
 
-          // Reinitialize all QSS polynomials at tEvent
-          for (let i = 0; i < n; i++) {
-            x0[i] = yUpdated[i]!;
-            q0[i] = yUpdated[i]!;
-            tx[i] = tEvent;
-            tq[i] = tEvent;
-            updateQuantum(i);
-          }
+    let currentTime = t0;
+    let quantumCrossings = 0;
 
-          if (options?.reprobeOnEvents) {
-            const reprobed = probeSparsityGraph(f, tEvent, yUpdated);
-            for (let i = 0; i < n; i++) {
-              const depSet = new Set(dependents[i]);
-              for (const dep of reprobed.dependents[i] ?? []) {
-                depSet.add(dep);
-              }
-              dependents[i] = Array.from(depSet);
-              if (isLiqss) {
-                diagJac[i] = reprobed.diagJac[i]!;
-              }
-            }
-            nfev += reprobed.nfev;
+    while (currentTime < tf && quantumCrossings < maxEvents) {
+      // Find state `minIdx` with earliest scheduled quantum crossing time
+      let minTime = Infinity;
+      let minIdx = -1;
+      if (useWasm && wasm) {
+        minIdx = wasm.qss_find_min_event!(n, nextEventTimePtr);
+        ensureViews();
+        minTime = minIdx >= 0 ? nextEventTime[minIdx]! : Infinity;
+      } else {
+        for (let i = 0; i < n; i++) {
+          if (nextEventTime[i]! < minTime) {
+            minTime = nextEventTime[i]!;
+            minIdx = i;
           }
-
-          bootstrapAllTaylorCoefficients(tEvent);
-          for (let i = 0; i < n; i++) {
-            scheduleNextCrossing(i, tEvent, true);
-          }
-          for (let eIdx = 0; eIdx < eventFns.length; eIdx++) {
-            prevEventVals[eIdx] = eventFns[eIdx]!(tEvent, yUpdated);
-          }
-          firedExternalEvent = true;
-          break;
         }
-        prevEventVals[k] = g1;
+      }
+
+      const stepTargetTime = Math.min(minTime, tf);
+
+      // Check external zero-crossing event functions over [currentTime, stepTargetTime]
+      let firedExternalEvent = false;
+      if (eventFns.length > 0 && stepTargetTime > currentTime) {
+        const yTarget = new Array<number>(n);
+        evalAllXAt(stepTargetTime, yTarget);
+
+        for (let k = 0; k < eventFns.length; k++) {
+          const g0 = prevEventVals[k]!;
+          const g1 = eventFns[k]!(stepTargetTime, yTarget);
+          ensureViews();
+          const dir = eventDirs[k] ?? 0;
+          const rising = g0 < 0 && g1 >= 0 && (dir === 0 || dir === 1);
+          const falling = g0 > 0 && g1 <= 0 && (dir === 0 || dir === -1);
+          if (rising || falling) {
+            // Locate zero crossing time via secant/bisection on continuous polynomial x(t)
+            let a = currentTime;
+            let b = stepTargetTime;
+            let ga = g0;
+            for (let iter = 0; iter < 24; iter++) {
+              const mid = 0.5 * (a + b);
+              const yMid = new Array<number>(n);
+              evalAllXAt(mid, yMid);
+              const gm = eventFns[k]!(mid, yMid);
+              ensureViews();
+              if (Math.abs(gm) < 1e-12 || b - a < 1e-12) {
+                a = mid;
+                break;
+              }
+              if (ga * gm <= 0) {
+                b = mid;
+              } else {
+                a = mid;
+                ga = gm;
+              }
+            }
+            const tEvent = 0.5 * (a + b);
+
+            // Flush any output times prior to tEvent
+            while (outIdx < outputTimes.length && outputTimes[outIdx]! <= tEvent) {
+              const tSample = outputTimes[outIdx]!;
+              times.push(tSample);
+              const row = new Array<number>(n);
+              evalAllXAt(tSample, row);
+              states.push(row);
+              outIdx++;
+            }
+
+            currentTime = tEvent;
+            const yAtEvent = new Array<number>(n);
+            evalAllXAt(tEvent, yAtEvent);
+            const yUpdated = eventCb ? eventCb(tEvent, yAtEvent, k, rising ? 1 : -1) : yAtEvent;
+            ensureViews();
+
+            // Reinitialize all QSS polynomials at tEvent
+            for (let i = 0; i < n; i++) {
+              x0[i] = yUpdated[i]!;
+              q0[i] = yUpdated[i]!;
+              tx[i] = tEvent;
+              tq[i] = tEvent;
+              updateQuantum(i);
+            }
+
+            if (options?.reprobeOnEvents) {
+              const reprobed = probeSparsityGraph(f, tEvent, yUpdated);
+              ensureViews();
+              for (let i = 0; i < n; i++) {
+                const depSet = new Set(dependents[i]);
+                for (const dep of reprobed.dependents[i] ?? []) {
+                  depSet.add(dep);
+                }
+                dependents[i] = Array.from(depSet);
+                if (isLiqss) {
+                  diagJac[i] = reprobed.diagJac[i]!;
+                }
+              }
+              nfev += reprobed.nfev;
+            }
+
+            bootstrapAllTaylorCoefficients(tEvent);
+            scheduleAllSelfCrossings(tEvent);
+            for (let eIdx = 0; eIdx < eventFns.length; eIdx++) {
+              prevEventVals[eIdx] = eventFns[eIdx]!(tEvent, yUpdated);
+            }
+            ensureViews();
+            firedExternalEvent = true;
+            break;
+          }
+          prevEventVals[k] = g1;
+        }
+      }
+
+      if (firedExternalEvent) continue;
+
+      // Emit all requested output samples in (currentTime, stepTargetTime]
+      while (outIdx < outputTimes.length && outputTimes[outIdx]! <= stepTargetTime + 1e-15) {
+        const tSample = outputTimes[outIdx]!;
+        times.push(tSample);
+        const row = new Array<number>(n);
+        evalAllXAt(tSample, row);
+        states.push(row);
+        outIdx++;
+      }
+
+      if (minTime >= tf || minIdx < 0) {
+        currentTime = tf;
+        break;
+      }
+
+      // Advance to the quantum transition at `minTime` for state `minIdx`
+      currentTime = minTime;
+      quantumCrossings++;
+
+      let lockedOnEquilibrium = false;
+      if (useWasm && wasm) {
+        lockedOnEquilibrium =
+          wasm.qss_advance_quantized_state!(
+            minIdx,
+            order,
+            isLiqss ? 1 : 0,
+            currentTime,
+            rtol,
+            atol,
+            x0Ptr,
+            x1Ptr,
+            x2Ptr,
+            x3Ptr,
+            txPtr,
+            q0Ptr,
+            q1Ptr,
+            q2Ptr,
+            tqPtr,
+            dqPtr,
+            diagJacPtr,
+          ) !== 0;
+        ensureViews();
+      } else {
+        const dtPrevX = currentTime - tx[minIdx]!;
+        x0[minIdx] = evalXAt(minIdx, currentTime);
+        tx[minIdx] = currentTime;
+        updateQuantum(minIdx);
+
+        if (isLiqss && diagJac[minIdx]! < -1e-6) {
+          // Stiff LIQSS2 update: position q0 on the boundary in the direction of motion
+          // or lock onto the slow manifold equilibrium where a_ii * q + u_i = 0
+          const aii = diagJac[minIdx]!;
+          const dtPrev = currentTime - tq[minIdx]!;
+          const qPrev = q0[minIdx]! + q1[minIdx]! * dtPrev;
+          const dxPrev = x1[minIdx]! + 2 * x2[minIdx]! * dtPrevX;
+          const ddxPrev = 2 * x2[minIdx]!;
+          const u0 = dxPrev - aii * qPrev;
+          const u1 = ddxPrev - aii * q1[minIdx]!;
+          const q1Eq = -u1 / aii;
+          const eqState = (q1Eq - u0) / aii;
+          const quant = dq[minIdx]!;
+          if (Math.abs(eqState - x0[minIdx]!) <= quant) {
+            q0[minIdx] = eqState;
+            q1[minIdx] = q1Eq;
+            lockedOnEquilibrium = true;
+          } else {
+            q0[minIdx] = x0[minIdx]! + Math.sign(eqState - x0[minIdx]!) * quant;
+            q1[minIdx] = x1[minIdx]! + 2 * x2[minIdx]! * dtPrevX;
+          }
+          tq[minIdx] = currentTime;
+        } else {
+          q0[minIdx] = x0[minIdx]!;
+          tq[minIdx] = currentTime;
+          if (order >= 2) {
+            q1[minIdx] = x1[minIdx]! + 2 * x2[minIdx]! * dtPrevX + 3 * x3[minIdx]! * dtPrevX * dtPrevX;
+          }
+          if (order >= 3) {
+            q2[minIdx] = x2[minIdx]! + 3 * x3[minIdx]! * dtPrevX;
+          }
+        }
+      }
+
+      // Recompute derivatives ONLY for the sparse set of dependent states `dependents[minIdx]`
+      const affected = dependents[minIdx] && dependents[minIdx]!.length > 0 ? dependents[minIdx]! : [minIdx];
+      computeDerivativesAt(currentTime, affected);
+
+      if (order >= 2 && !lockedOnEquilibrium) {
+        q1[minIdx] = x1[minIdx]!;
+        computeDerivativesAt(currentTime, affected);
+      }
+      if (order >= 3 && !lockedOnEquilibrium) {
+        q2[minIdx] = x2[minIdx]!;
+        computeDerivativesAt(currentTime, affected);
+        q1[minIdx] = x1[minIdx]!;
+        q2[minIdx] = x2[minIdx]!;
+      }
+
+      // Reschedule `minIdx` and all affected dependent states
+      if (useWasm && wasm && affected.length <= affectedCap) {
+        ensureViews();
+        for (let k = 0; k < affected.length; k++) {
+          affectedView![k] = affected[k]!;
+        }
+        wasm.qss_schedule_affected_crossings!(
+          minIdx,
+          affected.length,
+          affectedPtr,
+          order,
+          currentTime,
+          x0Ptr,
+          x1Ptr,
+          x2Ptr,
+          x3Ptr,
+          q0Ptr,
+          q1Ptr,
+          q2Ptr,
+          tqPtr,
+          dqPtr,
+          nextEventTimePtr,
+        );
+      } else {
+        scheduleNextCrossing(minIdx, currentTime, true);
+        for (const j of affected) {
+          if (j !== minIdx) {
+            scheduleNextCrossing(j, currentTime, false);
+          }
+        }
       }
     }
 
-    if (firedExternalEvent) continue;
-
-    // Emit all requested output samples in (currentTime, stepTargetTime]
-    while (outIdx < outputTimes.length && outputTimes[outIdx]! <= stepTargetTime + 1e-15) {
+    // Ensure any remaining output times at tf are populated
+    while (outIdx < outputTimes.length) {
       const tSample = outputTimes[outIdx]!;
       times.push(tSample);
       const row = new Array<number>(n);
-      for (let i = 0; i < n; i++) row[i] = evalXAt(i, tSample);
+      evalAllXAt(tSample, row);
       states.push(row);
       outIdx++;
     }
 
-    if (minTime >= tf || minIdx < 0) {
-      currentTime = tf;
-      break;
-    }
-
-    // Advance to the quantum transition at `minTime` for state `minIdx`
-    currentTime = minTime;
-    quantumCrossings++;
-
-    const dtPrevX = currentTime - tx[minIdx]!;
-    x0[minIdx] = evalXAt(minIdx, currentTime);
-    tx[minIdx] = currentTime;
-    updateQuantum(minIdx);
-
-    let lockedOnEquilibrium = false;
-    if (isLiqss && diagJac[minIdx]! < -1e-6) {
-      // Stiff LIQSS2 update: position q0 on the boundary in the direction of motion
-      // or lock onto the slow manifold equilibrium where a_ii * q + u_i = 0
-      const aii = diagJac[minIdx]!;
-      const dtPrev = currentTime - tq[minIdx]!;
-      const qPrev = q0[minIdx]! + q1[minIdx]! * dtPrev;
-      const dxPrev = x1[minIdx]! + 2 * x2[minIdx]! * dtPrevX;
-      const ddxPrev = 2 * x2[minIdx]!;
-      const u0 = dxPrev - aii * qPrev;
-      const u1 = ddxPrev - aii * q1[minIdx]!;
-      const q1Eq = -u1 / aii;
-      const eqState = (q1Eq - u0) / aii;
-      const quant = dq[minIdx]!;
-      if (Math.abs(eqState - x0[minIdx]!) <= quant) {
-        q0[minIdx] = eqState;
-        q1[minIdx] = q1Eq;
-        lockedOnEquilibrium = true;
-      } else {
-        q0[minIdx] = x0[minIdx]! + Math.sign(eqState - x0[minIdx]!) * quant;
-        q1[minIdx] = x1[minIdx]! + 2 * x2[minIdx]! * dtPrevX;
-      }
-      tq[minIdx] = currentTime;
-    } else {
-      q0[minIdx] = x0[minIdx]!;
-      tq[minIdx] = currentTime;
-      if (order >= 2) {
-        q1[minIdx] = x1[minIdx]! + 2 * x2[minIdx]! * dtPrevX + 3 * x3[minIdx]! * dtPrevX * dtPrevX;
-      }
-      if (order >= 3) {
-        q2[minIdx] = x2[minIdx]! + 3 * x3[minIdx]! * dtPrevX;
-      }
-    }
-
-    // Recompute derivatives ONLY for the sparse set of dependent states `dependents[minIdx]`
-    const affected = dependents[minIdx] && dependents[minIdx]!.length > 0 ? dependents[minIdx]! : [minIdx];
-    computeDerivativesAt(currentTime, affected);
-
-    if (order >= 2 && !lockedOnEquilibrium) {
-      q1[minIdx] = x1[minIdx]!;
-      computeDerivativesAt(currentTime, affected);
-    }
-    if (order >= 3 && !lockedOnEquilibrium) {
-      q2[minIdx] = x2[minIdx]!;
-      computeDerivativesAt(currentTime, affected);
-      q1[minIdx] = x1[minIdx]!;
-      q2[minIdx] = x2[minIdx]!;
-    }
-
-    // Reschedule `minIdx` and all affected dependent states
-    scheduleNextCrossing(minIdx, currentTime, true);
-    for (const j of affected) {
-      if (j !== minIdx) {
-        scheduleNextCrossing(j, currentTime, false);
-      }
-    }
+    return {
+      times,
+      states,
+      stats: {
+        acceptedSteps: quantumCrossings,
+        rejectedSteps: 0,
+        fEvals: nfev,
+        jacobianEvals: 1,
+        luFactorizations: 0,
+        converged: true,
+        quantumCrossings,
+      },
+    };
+  } finally {
+    wasmScope?.dispose();
   }
-
-  // Ensure any remaining output times at tf are populated
-  while (outIdx < outputTimes.length) {
-    const tSample = outputTimes[outIdx]!;
-    times.push(tSample);
-    const row = new Array<number>(n);
-    for (let i = 0; i < n; i++) row[i] = evalXAt(i, tSample);
-    states.push(row);
-    outIdx++;
-  }
-
-  return {
-    times,
-    states,
-    stats: {
-      acceptedSteps: quantumCrossings,
-      rejectedSteps: 0,
-      fEvals: nfev,
-      jacobianEvals: 1,
-      luFactorizations: 0,
-      converged: true,
-      quantumCrossings,
-    },
-  };
 }
 
 /** First-Order Quantized State System (`QSS1`) solver. */

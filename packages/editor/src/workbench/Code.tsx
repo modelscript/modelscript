@@ -14,7 +14,7 @@ import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import styledImport from "styled-components";
 import { useEditorModelingPreferences as useModelingPreferences } from "../host";
 import { ensureMonacoThemesDefined, getMonacoThemeName } from "../internal/monaco-theme";
-import { didChange, didChangeVisibleRanges, didOpen } from "./util/lsp-bridge";
+import { didChange, didChangeVisibleRanges, didOpen, didSave } from "./util/lsp-bridge";
 import { getLsp, startLsp } from "./util/lsp-worker";
 import { registerAllModelscriptLanguages, setupMonacoLspAdapter } from "./util/monaco-lsp-adapter";
 
@@ -161,6 +161,7 @@ interface CodeEditorProps {
   onDiagnostics?: ((markers: editor.IMarkerData[], uri?: string) => void) | undefined;
   onStatusChange?: ((state: string, message: string) => void) | undefined;
   onSimulate?: (() => void | Promise<void>) | undefined;
+  onSave?: ((value: string) => void) | undefined;
   theme: Theme;
   embed: boolean;
   readOnly?: boolean | undefined;
@@ -204,12 +205,14 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
   const onPasteRef = useRef(props.onPaste);
   const onParsedRef = useRef(props.onParsed);
   const onSimulateRef = useRef(props.onSimulate);
+  const onSaveRef = useRef(props.onSave);
   uriRef.current = props.uri;
   languageIdRef.current = props.languageId ?? "modelica";
   lintOnTypeRef.current = lintOnType;
   onPasteRef.current = props.onPaste;
   onParsedRef.current = props.onParsed;
   onSimulateRef.current = props.onSimulate;
+  onSaveRef.current = props.onSave;
 
   const overflowWidgetsDomNode = useMemo(() => {
     if (typeof document === "undefined") return undefined;
@@ -381,6 +384,11 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
         didChange(uriRef.current, lastValueRef.current);
         props.onParsed?.();
       }
+    });
+    ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      const value = ed.getValue();
+      void didSave(uriRef.current, value);
+      onSaveRef.current?.(value);
     });
     sendVisibleRanges();
   };

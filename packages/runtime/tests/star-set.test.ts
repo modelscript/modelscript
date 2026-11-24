@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { DecomposedReachabilitySolver, type DecomposedSystemProblem } from "../src/analysis/wasm_decomposed_reach.js";
+import { DecomposedReachabilitySolver, type DecomposedSystemProblem } from "../src/analysis/decomposed_reach.js";
 import { Interval } from "../src/analysis/wasm_interval.js";
 import { StarSet } from "../src/analysis/wasm_star_set.js";
 

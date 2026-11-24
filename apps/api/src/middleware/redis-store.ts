@@ -219,6 +219,247 @@ export class MinimalRedisClient {
   }
 }
 
+export const MAX_RATE_LIMIT_RECORDS = 10_000;
+
+export const ATOMIC_INCR_LUA =
+  "local c = redis.call('INCR', KEYS[1]); if c == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]); end; local t = redis.call('PTTL', KEYS[1]); return {c, t}";
+
+export interface ExpiringRecord {
+  resetAt: number;
+}
+
+/**
+ * Shared eviction helper for bounded in-memory rate-limit Maps.
+ * First purges expired entries; if still at or above `maxRecords`, evicts the oldest entry (FIFO).
+ */
+export function enforceMapLimit<K, V extends ExpiringRecord>(
+  map: Map<K, V>,
+  now: number,
+  maxRecords = MAX_RATE_LIMIT_RECORDS,
+): void {
+  if (map.size < maxRecords) return;
+  for (const [k, v] of map) {
+    if (now >= v.resetAt) {
+      map.delete(k);
+    }
+  }
+  while (map.size >= maxRecords) {
+    const oldestKey = map.keys().next().value;
+    if (oldestKey === undefined) break;
+    map.delete(oldestKey);
+  }
+}
+
+/**
+ * Starts an unref'd periodic cleanup timer that purges expired records from a Map.
+ */
+export function startExpiringMapCleanup<K, V extends ExpiringRecord>(
+  map: Map<K, V>,
+  intervalMs = 60_000,
+): NodeJS.Timeout {
+  const timer = setInterval(() => {
+    const now = Date.now();
+    for (const [k, v] of map) {
+      if (now >= v.resetAt) {
+        map.delete(k);
+      }
+    }
+  }, intervalMs);
+  timer.unref?.();
+  return timer;
+}
+
+let sharedRedisClient: MinimalRedisClient | undefined;
+let sharedRedisUrl: string | undefined;
+
+/**
+ * Returns a lazily initialized shared MinimalRedisClient when `REDIS_URL` (or an explicit URL)
+ * is configured, or `undefined` when running in single-node memory-only mode.
+ */
+export function getSharedRedisClient(redisUrl?: string): MinimalRedisClient | undefined {
+  const url = redisUrl ?? process.env["REDIS_URL"];
+  if (!url) return undefined;
+
+  if (sharedRedisClient && sharedRedisUrl === url) {
+    return sharedRedisClient;
+  }
+
+  try {
+    const client = new MinimalRedisClient(url);
+    void client.connect().catch(() => {
+      // Ignore connection failure; callers gracefully use local fallback
+    });
+    if (!redisUrl) {
+      sharedRedisClient = client;
+      sharedRedisUrl = url;
+    }
+    return client;
+  } catch {
+    return undefined;
+  }
+}
+
+export interface DistributedCounterRecord extends ExpiringRecord {
+  count: number;
+  lastEventAt: number;
+}
+
+export interface DistributedCounterBridgeOptions {
+  prefix: string;
+  windowMs: number;
+  maxRecords?: number;
+  cleanupIntervalMs?: number;
+  redisUrl?: string;
+  client?: MinimalRedisClient;
+}
+
+/**
+ * Lightweight bridge backing synchronous custom rate limiters with a bounded in-memory Map
+ * (capped at MAX_RATE_LIMIT_RECORDS with unref'd periodic expiration) and fire-and-forget
+ * atomic Redis Lua replication when REDIS_URL is configured.
+ */
+export class DistributedCounterBridge {
+  private readonly records = new Map<string, DistributedCounterRecord>();
+  private readonly prefix: string;
+  private readonly windowMs: number;
+  private readonly maxRecords: number;
+  private readonly explicitClient?: MinimalRedisClient | undefined;
+  private readonly explicitRedisUrl?: string | undefined;
+  private cleanupTimer?: NodeJS.Timeout | undefined;
+
+  constructor(options: DistributedCounterBridgeOptions) {
+    this.prefix = options.prefix;
+    this.windowMs = options.windowMs;
+    this.maxRecords = options.maxRecords ?? MAX_RATE_LIMIT_RECORDS;
+    this.explicitClient = options.client;
+    this.explicitRedisUrl = options.redisUrl;
+    this.cleanupTimer = startExpiringMapCleanup(this.records, options.cleanupIntervalMs ?? 60_000);
+  }
+
+  private resolveClient(): MinimalRedisClient | undefined {
+    return this.explicitClient ?? getSharedRedisClient(this.explicitRedisUrl);
+  }
+
+  public get size(): number {
+    return this.records.size;
+  }
+
+  public get(key: string, now = Date.now()): DistributedCounterRecord | undefined {
+    const record = this.records.get(key);
+    if (!record) return undefined;
+    if (now >= record.resetAt) {
+      this.records.delete(key);
+      return undefined;
+    }
+    return record;
+  }
+
+  public increment(key: string, now = Date.now()): DistributedCounterRecord {
+    let record = this.records.get(key);
+    if (!record || now >= record.resetAt) {
+      if (!record) {
+        enforceMapLimit(this.records, now, this.maxRecords);
+      }
+      record = {
+        count: 1,
+        resetAt: now + this.windowMs,
+        lastEventAt: now,
+      };
+      this.records.set(key, record);
+    } else {
+      record.count += 1;
+      record.lastEventAt = now;
+    }
+
+    this.syncIncrementToRedis(key, record);
+    return record;
+  }
+
+  public delete(key: string): void {
+    this.records.delete(key);
+    this.syncDeleteToRedis([key]);
+  }
+
+  public clear(): void {
+    const keys = Array.from(this.records.keys());
+    this.records.clear();
+    this.syncDeleteToRedis(keys);
+  }
+
+  public shutdown(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = undefined;
+    }
+    this.records.clear();
+  }
+
+  private syncIncrementToRedis(key: string, localRecord: DistributedCounterRecord): void {
+    const client = this.resolveClient();
+    if (!client) return;
+
+    const redisKey = `${this.prefix}${key}`;
+    void (async () => {
+      try {
+        let hits: number | undefined;
+        let ttlMs: number | undefined;
+        try {
+          const evalRes = (await client.sendCommand([
+            "EVAL",
+            ATOMIC_INCR_LUA,
+            "1",
+            redisKey,
+            String(this.windowMs),
+          ])) as [number, number];
+          if (Array.isArray(evalRes) && typeof evalRes[0] === "number") {
+            hits = evalRes[0];
+            ttlMs = typeof evalRes[1] === "number" && evalRes[1] > 0 ? evalRes[1] : this.windowMs;
+          }
+        } catch {
+          // Fall back to sequential commands if Redis server/mock doesn't support EVAL
+          const incrHits = (await client.sendCommand(["INCR", redisKey])) as number;
+          if (incrHits === 1) {
+            await client.sendCommand(["PEXPIRE", redisKey, String(this.windowMs)]);
+          }
+          const pttl = (await client.sendCommand(["PTTL", redisKey])) as number;
+          if (typeof incrHits === "number") {
+            hits = incrHits;
+            ttlMs = typeof pttl === "number" && pttl > 0 ? pttl : this.windowMs;
+          }
+        }
+
+        if (typeof hits === "number") {
+          const current = this.records.get(key);
+          if (current === localRecord) {
+            if (hits > current.count) {
+              current.count = hits;
+            }
+            if (typeof ttlMs === "number" && ttlMs > 0) {
+              current.resetAt = Date.now() + ttlMs;
+            }
+          }
+        }
+      } catch {
+        // Redis unavailable: local bounded Map remains authoritative
+      }
+    })();
+  }
+
+  private syncDeleteToRedis(keys: string[]): void {
+    if (keys.length === 0) return;
+    const client = this.resolveClient();
+    if (!client) return;
+
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < keys.length; i += BATCH_SIZE) {
+      const batch = keys.slice(i, i + BATCH_SIZE).map((k) => `${this.prefix}${k}`);
+      void client.sendCommand(["DEL", ...batch]).catch(() => {
+        // Redis unavailable: ignore
+      });
+    }
+  }
+}
+
 /**
  * Distributed rate limit store implementing the express-rate-limit Store contract.
  * Backed by Redis when available, falling back safely to local memory when Redis is not reachable.
@@ -267,6 +508,12 @@ export class RedisRateLimitStore implements Store {
     const now = Date.now();
     let record = this.fallbackMap.get(key);
     if (!record || record.resetTime.getTime() <= now) {
+      if (this.fallbackMap.size >= MAX_RATE_LIMIT_RECORDS) {
+        const oldestKey = this.fallbackMap.keys().next().value;
+        if (oldestKey !== undefined) {
+          this.fallbackMap.delete(oldestKey);
+        }
+      }
       record = { totalHits: 1, resetTime: new Date(now + this.windowMs) };
       this.fallbackMap.set(key, record);
     } else {
@@ -279,6 +526,22 @@ export class RedisRateLimitStore implements Store {
     const redisKey = `${this.prefix}${key}`;
     if (this.client) {
       try {
+        try {
+          const evalRes = (await this.client.sendCommand([
+            "EVAL",
+            ATOMIC_INCR_LUA,
+            "1",
+            redisKey,
+            String(this.windowMs),
+          ])) as [number, number];
+          if (Array.isArray(evalRes) && typeof evalRes[0] === "number") {
+            const hits = evalRes[0];
+            const ttlMs = typeof evalRes[1] === "number" && evalRes[1] > 0 ? evalRes[1] : this.windowMs;
+            return { totalHits: hits, resetTime: new Date(Date.now() + ttlMs) };
+          }
+        } catch {
+          // Fall back to sequential commands if Redis server/mock doesn't support EVAL
+        }
         const hits = (await this.client.sendCommand(["INCR", redisKey])) as number;
         if (hits === 1) {
           await this.client.sendCommand(["PEXPIRE", redisKey, String(this.windowMs)]);

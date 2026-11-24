@@ -4482,9 +4482,11 @@ export function instantiateElements(
                     endOffset: elemCst.endIndex ?? elemCst.endOffset,
                   }
                 : undefined;
-            const typeName = compInst.typeSpecifier?.startsWith(".")
-              ? compInst.typeSpecifier
-              : `.${compInst.typeSpecifier}`;
+            const isOldFe = Boolean(dae.extensionMetadata?.["isOldFrontend"]);
+            const typeName =
+              isOldFe && compInst.typeSpecifier && !compInst.typeSpecifier.startsWith(".")
+                ? `.${compInst.typeSpecifier}`
+                : (compInst.typeSpecifier ?? "");
             dae.diagnostics.push({
               severity: "error",
               code: ModelicaErrorCode.FUNCTION_INVALID_VAR_TYPE.code,

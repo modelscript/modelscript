@@ -52,14 +52,8 @@ export interface OgClassData {
     | undefined;
 }
 
-export function escapeXml(str: string): string {
-  return String(str ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
+import { escapeXml } from "./escape.js";
+export { escapeXml };
 
 function truncate(str: string, maxLen: number): string {
   const clean = String(str ?? "").trim();

@@ -524,11 +524,14 @@ export class ModelicaFileSystemProvider implements vscode.FileSystemProvider {
     }
 
     try {
-      const res = await client.sendRequest<{ content?: string | undefined; encoding?: string | undefined }>(
-        "modelscript/readVirtualFile",
-        { uri: key },
-      );
-      if (res && res.content) {
+      const res = await client.sendRequest<{
+        exists?: boolean | undefined;
+        isDirectory?: boolean | undefined;
+        content?: string | undefined;
+        size?: number | undefined;
+        encoding?: string | undefined;
+      }>("modelscript/getVirtualFile", { uri: key });
+      if (res && res.exists !== false && !res.isDirectory && typeof res.content === "string") {
         const data =
           res.encoding === "base64" ? decodeBase64ToArray(res.content) : new TextEncoder().encode(res.content);
         this.cache.set(key, data);

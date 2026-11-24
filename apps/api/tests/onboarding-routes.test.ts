@@ -205,9 +205,9 @@ test("Ansatz Onboarding, Waitlist & Referral HTTP Routes Suite", async (t) => {
     assert.strictEqual(resStatus1.body.persona, null);
     assert.strictEqual(resStatus1.body.invitesRemaining, 5);
 
-    // Test singular /api/v1/user/onboarding route alias
+    // Test /api/v1/users/onboarding route
     const resAlias = await request(app)
-      .get("/api/v1/user/onboarding")
+      .get("/api/v1/users/onboarding")
       .set("Authorization", `Bearer ${memberToken}`)
       .expect(200);
     assert.strictEqual(resAlias.body.completed, false);

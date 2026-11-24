@@ -20,7 +20,7 @@ Welcome to **ModelScript**, the open-core **computable digital thread** platform
 
 ## What is the Computable Digital Thread?
 
-Modern cyber-physical systems — from electric vehicles, utility power grids, and satellites to surgical robots, proton therapy nozzles, and subsea flowlines — require tight coordination across **168 documented engineering formats** (**95 Beta, 72 Alpha, 1 Pre-Alpha**) spanning **12 industry verticals**:
+Modern cyber-physical systems — from electric vehicles, utility power grids, and satellites to surgical robots, proton therapy nozzles, and subsea flowlines — require tight coordination across **169 documented engineering formats** (**96 Beta, 72 Alpha, 1 Pre-Alpha**) spanning **12 industry verticals**:
 
 - **System Architecture, Requirements, Security & Ontologies** (`SysML v2`, `KerML`, `ReqIF`, `NIST OSCAL`, `OSLC 3.0`, `OWL2`, `AAS / DDP`)
 - **Multi-Domain Acausal, Optimization & Block-Diagram Simulation** (`Modelica 3.x`, `ModelScript .msx`, `AMPL`, `MATLAB Simulink`, `EASY5`, `FMI 2.0/3.0 FMU`, `SSP 1.0/2.0`)
@@ -59,7 +59,7 @@ flowchart LR
 
 ## Core Pillars of ModelScript
 
-### 1. Code-First Engineering Across 168 Documented Formats (95 Beta, 72 Alpha, 1 Pre-Alpha)
+### 1. Code-First Engineering Across 169 Documented Formats (96 Beta, 72 Alpha, 1 Pre-Alpha)
 
 Every model, schematic, requirement, netlist, and mesh configuration lives as clean text in Git. Engineers diff, review, merge, and gate physical hardware designs using standard pull requests, SARIF code scanning, and reproducible CI/CD pipelines.
 
@@ -2591,7 +2591,7 @@ ModelScript is built on a **data-oriented, WebAssembly-first compiler architectu
 
 ```mermaid
 flowchart TB
-    subgraph Languages["Polyglot Source Languages (168 Documented Formats — 95 Beta, 72 Alpha, 1 Pre-Alpha)"]
+    subgraph Languages["Polyglot Source Languages (169 Documented Formats — 96 Beta, 72 Alpha, 1 Pre-Alpha)"]
         direction TB
         MO[".mo (Modelica 3.x) / .mod (AMPL)"]
         SYS[".sysml / .kerml / .reqif / .oscal.json"]
@@ -6111,7 +6111,7 @@ When `--daemon` is passed, `msx` connects to the local Unix domain socket (`~/.m
 
 ## Complete Command Reference by Category
 
-The `msx` CLI registers **146 commands** organized across **168 documented engineering formats** (95 Beta, 72 Alpha, 1 Pre-Alpha) and six functional domains. See [CLI Commands](./commands.md) for exhaustive flag tables and examples for every command.
+The `msx` CLI registers **146 commands** organized across **169 documented engineering formats** (96 Beta, 72 Alpha, 1 Pre-Alpha) and six functional domains. See [CLI Commands](./commands.md) for exhaustive flag tables and examples for every command.
 
 ### 1. Compilation, Simulation & Optimization
 
@@ -9118,7 +9118,7 @@ Search by name, file extension, maturity tier, or engineering domain, or filter 
 Filter by platform group, maturity tier (`Beta`, `Alpha`, `Pre-Alpha`), industry, or capability across all engineering languages to inspect simulation engines, linear-memory DAE lowering, and polyglot projections:
 
 ### Polyglot Language Capability Matrix
-ModelScript supports 168 modeling, simulation, and engineering formats across 5 pipeline capabilities:
+ModelScript supports 169 modeling, simulation, and engineering formats across 5 pipeline capabilities:
 | Language | Tier | Extension | Role | Parse | Lint | DAE Arena | Simulate | Projections |
 | :--- | :---: | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
 | Modelica | `beta` | `.mo` | Acausal multi-domain physics | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -9143,6 +9143,7 @@ ModelScript supports 168 modeling, simulation, and engineering formats across 5 
 | NASA ROCETS | `beta` | `.roc` | Liquid rocket engine transients | ✓ | ✓ | ✓ | ✓ | ✓ |
 | CCSDS | `beta` | `.xtce` | Astrodynamics & spacecraft telemetry | ✓ | ✓ | ✓ | ✓ | ✓ |
 | EASY5 | `beta` | `.ez5` | Dynamic simulation & linear control | ✓ | ✓ | ✓ | — | ✓ |
+| 20-sim | `beta` | `.emx` | Multi-domain Bond Graphs & SIDOPS simulation | ✓ | ✓ | ✓ | ✓ | ✓ |
 | AUTOSAR | `alpha` | `.arxml` | Classic & Adaptive software architecture | ✓ | ✓ | ✓ | ✓ | ✓ |
 | MATLAB Simulink | `beta` | `.slx` | Block diagrams & control systems | ✓ | ✓ | ✓ | — | ✓ |
 | GT-SUITE | `alpha` | `.gtm` | Engine, powertrain & thermal flow | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -12550,6 +12551,62 @@ Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.36 ms (p95: 0.63 ms)
 | Closed-Loop Eigenvalue Stability Analysis | micro | MSC Easy5 / Analytical Linear State-Space | `max-relative-error <= 0.000001` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=easy5`
+
+================================================================================
+DOCUMENT: 20-sim (.emx) Language Reference
+CANONICAL URL: https://modelscript.org/languages/twentysim
+================================================================================
+
+# 20-sim (`.emx`, `.emxz`, `.sid`)
+
+ModelScript provides **Beta**-tier native support for Controllab **20-sim** multi-domain Bond Graph and SIDOPS / SIDOPS+ simulation models via `@modelscript/twentysim`.
+
+## Capabilities
+
+- **Container & Equation Parsing:** Ingests 20-sim XML models (`.emx`), ZIP-packed archives (`.emxz`), embedded `<SpecificationCode><![CDATA[...]]></SpecificationCode>` blocks, and standalone SIDOPS files (`.sid`) with a native WebAssembly GLR parser (`parser.wasm`).
+- **Bond Graph & SIDOPS Lowering:** Lowers `0`-junctions (common effort), `1`-junctions (common flow), canonical elements (`R`, `C`, `I`, `Se`, `Sf`, `MSe`, `MSf`, `TF`, `GY`, `MTF`, `MGY`), Signal/Control catalog blocks (`Gain`, `PlusMinus`, `Integrate`, `Step`, `Sine`, `PID`, `Constant`), and SIDOPS `ddt()`/`int()` equations directly into `@modelscript/runtime`'s `DAEBuilder` linear-memory arena.
+- **SCAP Causality Linting:** Executes the Sequential Causality Assignment Procedure (SCAP) to flag effort/flow causality conflicts (`TS4001`), derivative causality on storage elements (`TS4002`), causal signal algebraic loops (`TS4003`), port kind mismatches (`TS3001`), and unconnected power ports (`TS5001`).
+- **RK4 Simulation & SVG Rendering:** Simulates Bond Graph and SIDOPS models with exact power-conservation verification and renders Bond Graph SVGs with power half-arrows and causal stroke bars.
+- **Bidirectional Modelica TGG:** Translates between 20-sim and Modelica via `twentySimToModelica()` and `modelicaToTwentySim()`.
+
+## CLI Usage
+
+```bash
+msx twentysim inspect model.emx
+msx twentysim lint model.emx
+msx twentysim simulate model.emx --stop 5 --step 0.01
+msx twentysim render model.emx -o bondgraph.svg
+msx twentysim to-dae model.emx
+msx twentysim to-modelica model.emx -o model.mo
+```
+
+---
+
+## Linters & Diagnostic Rules
+
+### Diagnostics for 20-sim (8 rules)
+| Code | Severity | Identifier | Summary |
+| :--- | :--- | :--- | :--- |
+| `M1001` | error | `syntax-error` | 20-sim syntax error: <detail>. |
+| `M2001` | error | `unresolved-reference` | Unresolved submodel or port reference '<ref>' in connection. |
+| `M2002` | error | `duplicate-submodel` | Duplicate submodel declaration '<name>' in current scope. |
+| `M3001` | error | `port-kind-mismatch` | Port kind mismatch between '<fromRef>' and '<toRef>' (cannot connect power bond port to signal port). |
+| `M4001` | error | `causality-conflict` | SCAP causality conflict at '<node>': <detail>. |
+| `M4002` | warning | `derivative-causality` | Storage element '<element>' (<kind>) assigned derivative causality (dependent state / index > 1 DAE). |
+| `M4003` | warning | `algebraic-loop` | Algebraic loop detected in causal signal graph: <cycle>. |
+| `M5001` | warning | `unconnected-port` | Power port '<element>.<port>' is unconnected. |
+
+---
+
+## Verification, Maturity & Benchmarks
+
+Tier: `beta` | Pass Rate: 100% (1/1) | Parse Latency: 0.06 ms (p95: 0.15 ms)
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=twentysim`
 
 ================================================================================
 DOCUMENT: AUTOSAR (.arxml) Language Reference
@@ -27161,7 +27218,7 @@ CANONICAL URL: https://modelscript.org/reference/linter-rules
 
 # Linter Rules Reference
 
-ModelScript ships **2384 diagnostic rules** across **148 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
+ModelScript ships **2392 diagnostic rules** across **149 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
 
 ## Running the linters
 
@@ -27203,6 +27260,7 @@ The **CLI** column below shows which command reports each language's rules.
 | [NASA ROCETS](#rocets)                    | `@modelscript/rocets`       |    14 | `msx lint`              |
 | [CCSDS](#ccsds)                           | `@modelscript/ccsds`        |     8 | `msx ccsds lint`        |
 | [EASY5](#easy5)                           | `@modelscript/easy5`        |    12 | `msx lint`              |
+| [20-sim](#twentysim)                      | `@modelscript/twentysim`    |     8 | `msx twentysim lint`    |
 | [AUTOSAR](#autosar)                       | `@modelscript/autosar`      |    15 | `msx autosar lint`      |
 | [MATLAB Simulink](#simulink)              | `@modelscript/simulink`     |    10 | `msx simulink lint`     |
 | [GT-SUITE](#gtsuite)                      | `@modelscript/gtsuite`      |    15 | `msx lint`              |
@@ -28216,6 +28274,21 @@ Dynamic simulation & linear control. **12 rules** · `@modelscript/easy5` · Sou
 | <span id="easy5-m7010"></span>`M7010` | `user-fortran-syntax-error`  | [error]    | User Fortran subroutine in '<code>&lt;comp&gt;</code>' has defect: <code>&lt;detail&gt;</code>                                                                                    |
 | <span id="easy5-m7011"></span>`M7011` | `unstable-linear-pole`       | [warning] | Component '<code>&lt;comp&gt;</code>' has open-loop pole in right-half plane (Re = +<code>&lt;value&gt;</code>), indicating open-loop instability.                                |
 | <span id="easy5-m7012"></span>`M7012` | `table-extrapolation-hazard` | [warning] | Component '<code>&lt;comp&gt;</code>' references table '<code>&lt;tableName&gt;</code>' without bounded extrapolation protection.                                                 |
+
+## 20-sim {#twentysim}
+
+Multi-domain Bond Graphs & SIDOPS simulation. **8 rules** · `@modelscript/twentysim` · Source: `languages/twentysim/src/errors.ts` · [Language guide](../languages/twentysim.md)
+
+| Code                                      | Rule                   | Severity                                | Message                                                                                                                                        |
+| :---------------------------------------- | :--------------------- | :-------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="twentysim-m1001"></span>`M1001` | `syntax-error`         | [error]    | 20-sim syntax error: <code>&lt;detail&gt;</code>.                                                                                              |
+| <span id="twentysim-m2001"></span>`M2001` | `unresolved-reference` | [error]    | Unresolved submodel or port reference '<code>&lt;ref&gt;</code>' in connection.                                                                |
+| <span id="twentysim-m2002"></span>`M2002` | `duplicate-submodel`   | [error]    | Duplicate submodel declaration '<code>&lt;name&gt;</code>' in current scope.                                                                   |
+| <span id="twentysim-m3001"></span>`M3001` | `port-kind-mismatch`   | [error]    | Port kind mismatch between '<code>&lt;fromRef&gt;</code>' and '<code>&lt;toRef&gt;</code>' (cannot connect power bond port to signal port).    |
+| <span id="twentysim-m4001"></span>`M4001` | `causality-conflict`   | [error]    | SCAP causality conflict at '<code>&lt;node&gt;</code>': <code>&lt;detail&gt;</code>.                                                           |
+| <span id="twentysim-m4002"></span>`M4002` | `derivative-causality` | [warning] | Storage element '<code>&lt;element&gt;</code>' (<code>&lt;kind&gt;</code>) assigned derivative causality (dependent state / index &gt; 1 DAE). |
+| <span id="twentysim-m4003"></span>`M4003` | `algebraic-loop`       | [warning] | Algebraic loop detected in causal signal graph: <code>&lt;cycle&gt;</code>.                                                                    |
+| <span id="twentysim-m5001"></span>`M5001` | `unconnected-port`     | [warning] | Power port '<code>&lt;element&gt;</code>.<code>&lt;port&gt;</code>' is unconnected.                                                            |
 
 ## AUTOSAR {#autosar}
 

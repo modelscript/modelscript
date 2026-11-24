@@ -17,8 +17,7 @@ export function registerMCPTools(context: vscode.ExtensionContext, client: Langu
   }
 
   const contributedList = context.extension?.packageJSON?.contributes?.languageModelTools as
-    | { name?: string | undefined }[]
-    | undefined;
+    { name?: string | undefined }[] | undefined;
   const contributedTools = Array.isArray(contributedList)
     ? new Set(contributedList.map((t) => t.name).filter((n): n is string => Boolean(n)))
     : null;
@@ -209,7 +208,7 @@ export function registerMCPTools(context: vscode.ExtensionContext, client: Langu
     async invoke(
       options: vscode.LanguageModelToolInvocationOptions<Record<string, unknown>>,
     ): Promise<vscode.LanguageModelToolResult> {
-      const result = await client.sendRequest<unknown>("modelscript/reconcileConflict", options.input);
+      const result = await client.sendRequest<unknown>("modelscript/reconcileConflicts", options.input);
       return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(result ?? {}))]);
     },
   });

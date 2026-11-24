@@ -7,7 +7,7 @@
  */
 
 import type * as Monaco from "monaco-editor";
-import { MORSEL_LANGUAGES, type MorselSyntaxFamily } from "../constants";
+import { ALL_MORSEL_LANGUAGES, MORSEL_LANGUAGES, type MorselSyntaxFamily } from "../constants";
 import { startLsp } from "./lsp-worker";
 
 // ────────────────────────────────────────────────────────────────────
@@ -1076,14 +1076,48 @@ export function registerAllModelscriptLanguages(monaco: typeof Monaco): void {
   allLanguagesRegistered = true;
 
   const existingIds = new Set(monaco.languages.getLanguages().map((l) => l.id));
+  const languagesToRegister: Array<{
+    id: string;
+    name: string;
+    extensions: string[];
+    family: MorselSyntaxFamily | string;
+  }> = [];
+  const seenLangIds = new Set<string>();
+  const addLang = (lang: { id: string; name: string; extensions: string[]; family: MorselSyntaxFamily | string }) => {
+    if (seenLangIds.has(lang.id)) return;
+    seenLangIds.add(lang.id);
+    languagesToRegister.push(lang);
+  };
 
+  for (const lang of ALL_MORSEL_LANGUAGES) {
+    addLang(lang);
+    if (lang.id === "sysml2") {
+      addLang({
+        id: "sysml",
+        name: lang.name,
+        extensions: lang.extensions,
+        family: lang.family,
+      });
+    }
+  }
   for (const lang of MORSEL_LANGUAGES) {
+    addLang(lang);
+  }
+  if (!seenLangIds.has("sysml")) {
+    addLang({ id: "sysml", name: "SysML v2", extensions: [".sysml", ".kerml"], family: "sysml2" });
+  }
+  if (!seenLangIds.has("modelscript")) {
+    addLang({ id: "modelscript", name: "ModelScript", extensions: [".msx"], family: "modelica" });
+  }
+
+  for (const lang of languagesToRegister) {
     if (!existingIds.has(lang.id)) {
       monaco.languages.register({
         id: lang.id,
         extensions: lang.extensions,
         aliases: [lang.name, lang.id],
       });
+      existingIds.add(lang.id);
     }
     monaco.languages.setMonarchTokensProvider(lang.id, getMonarchForFamily(lang.family));
     monaco.languages.setLanguageConfiguration(lang.id, {
@@ -1162,10 +1196,12 @@ export function setupMonacoLspAdapter(
       try {
         const handled = await callbacks?.onExecuteCommand?.(commandId, args);
         if (handled) return;
-        const match = /^modelscript\.([^.]+)\.(.+)$/.exec(commandId);
-        if (match) {
-          const [, ns, action] = match;
-          const languageId = ns === "action" ? undefined : ns;
+        const match3 = /^modelscript\.([^.]+)\.(.+)$/.exec(commandId);
+        const match2 = !match3 ? /^modelscript\.([^.]+)$/.exec(commandId) : null;
+        if (match3 || match2) {
+          const ns = match3 ? match3[1] : undefined;
+          const action = match3 ? match3[2] : match2![1];
+          const languageId = ns && ns !== "action" ? ns : undefined;
           const arg0 = args[0];
           const uri =
             typeof arg0 === "string"
@@ -1176,7 +1212,7 @@ export function setupMonacoLspAdapter(
           const model = uri ? monaco.editor.getModels().find((m) => m.uri.toString() === uri) : undefined;
           await connection.sendRequest("modelscript/executeAction", {
             actionId: action,
-            languageId,
+            ...(languageId ? { languageId } : {}),
             uri,
             inputs: model ? { documentText: model.getValue() } : {},
           });
@@ -1187,7 +1223,9 @@ export function setupMonacoLspAdapter(
     });
     disposables.push(cmdDisp);
   };
-  const languageSelector = MORSEL_LANGUAGES.map((l) => l.id);
+  const languageSelector = Array.from(
+    new Set([...ALL_MORSEL_LANGUAGES.map((l) => l.id), ...MORSEL_LANGUAGES.map((l) => l.id), "sysml", "modelscript"]),
+  );
 
   // ── Status notifications ──
   if (callbacks?.onStatus) {
@@ -1239,11 +1277,15 @@ export function setupMonacoLspAdapter(
   disposables.push(
     monaco.languages.registerCompletionItemProvider(languageSelector, {
       triggerCharacters: [".", ":", "$", "@"],
-      provideCompletionItems: async (model, position) => {
+      provideCompletionItems: async (model, position, context) => {
         try {
           const result: any = await connection.sendRequest("textDocument/completion", {
             textDocument: { uri: model.uri.toString() },
             position: monacoPositionToLsp(position),
+            context: {
+              triggerKind: context.triggerKind,
+              triggerCharacter: context.triggerCharacter,
+            },
           });
           const items: any[] = Array.isArray(result) ? result : (result?.items ?? []);
           const word = model.getWordUntilPosition(position);
@@ -1267,6 +1309,15 @@ export function setupMonacoLspAdapter(
             };
             if (item.insertTextFormat === 2) {
               ci.insertTextRules = monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
+            }
+            if (Array.isArray(item.commitCharacters)) {
+              ci.commitCharacters = item.commitCharacters;
+            }
+            if (Array.isArray(item.additionalTextEdits)) {
+              ci.additionalTextEdits = item.additionalTextEdits.map((edit: any) => ({
+                range: lspRangeToMonaco(edit.range),
+                text: edit.newText,
+              }));
             }
             return ci;
           });
@@ -1403,6 +1454,30 @@ export function setupMonacoLspAdapter(
     }),
   );
 
+  // ── Document Range Formatting ──
+  disposables.push(
+    monaco.languages.registerDocumentRangeFormattingEditProvider(languageSelector, {
+      provideDocumentRangeFormattingEdits: async (model, range, options) => {
+        try {
+          const result = (await connection.sendRequest("textDocument/rangeFormatting", {
+            textDocument: { uri: model.uri.toString() },
+            range: monacoRangeToLsp(range),
+            options: { tabSize: options.tabSize, insertSpaces: options.insertSpaces },
+          })) as Array<{
+            range: { start: { line: number; character: number }; end: { line: number; character: number } };
+            newText: string;
+          }> | null;
+          return (result ?? []).map((edit) => ({
+            range: lspRangeToMonaco(edit.range),
+            text: edit.newText,
+          }));
+        } catch {
+          return [];
+        }
+      },
+    }),
+  );
+
   // ── Color Provider ──
   disposables.push(
     monaco.languages.registerColorProvider(languageSelector, {
@@ -1443,11 +1518,16 @@ export function setupMonacoLspAdapter(
   disposables.push(
     monaco.languages.registerSignatureHelpProvider(languageSelector, {
       signatureHelpTriggerCharacters: ["(", ","],
-      provideSignatureHelp: async (model, position) => {
+      provideSignatureHelp: async (model, position, _token, context) => {
         try {
           const result: any = await connection.sendRequest("textDocument/signatureHelp", {
             textDocument: { uri: model.uri.toString() },
             position: monacoPositionToLsp(position),
+            context: {
+              triggerKind: context.triggerKind,
+              triggerCharacter: context.triggerCharacter,
+              isRetrigger: context.isRetrigger,
+            },
           });
           if (!result) return null;
           return {
@@ -1628,6 +1708,7 @@ export function setupMonacoLspAdapter(
     monaco.languages.registerCodeActionProvider(languageSelector, {
       provideCodeActions: async (model, range, context) => {
         try {
+          const only = context.only ? (Array.isArray(context.only) ? context.only : [context.only]) : undefined;
           const result: any = await connection.sendRequest("textDocument/codeAction", {
             textDocument: { uri: model.uri.toString() },
             range: monacoRangeToLsp(range),
@@ -1639,6 +1720,7 @@ export function setupMonacoLspAdapter(
                 code: typeof m.code === "object" ? m.code.value : m.code,
                 source: m.source,
               })),
+              ...(only ? { only } : {}),
             },
           });
           const actions: Monaco.languages.CodeAction[] = (result ?? []).map((ca: any) => {
@@ -1670,36 +1752,95 @@ export function setupMonacoLspAdapter(
   );
 
   // ── Code Lens ──
-  disposables.push(
-    monaco.languages.registerCodeLensProvider(languageSelector, {
-      provideCodeLenses: async (model) => {
-        try {
-          const result: any = await connection.sendRequest("textDocument/codeLens", {
-            textDocument: { uri: model.uri.toString() },
-          });
-          const lenses: Monaco.languages.CodeLens[] = (result ?? []).map((cl: any) => {
-            if (cl.command?.command) {
-              ensureCommandRegistered(cl.command.command);
-            }
-            return {
-              range: lspRangeToMonaco(cl.range),
-              id: cl.data ? String(cl.data) : undefined,
-              command: cl.command
-                ? {
-                    id: cl.command.command ?? "",
-                    title: cl.command.title ?? "",
-                    arguments: cl.command.arguments,
-                  }
-                : undefined,
-            };
-          });
-          return { lenses, dispose: () => {} };
-        } catch {
-          return { lenses: [], dispose: () => {} };
+  const codeLensEmitter = new monaco.Emitter<Monaco.languages.CodeLensProvider>();
+  disposables.push(codeLensEmitter);
+  type LspCodeLensItem = {
+    range: { start: { line: number; character: number }; end: { line: number; character: number } };
+    data?: unknown;
+    command?: { command?: string; title?: string; arguments?: unknown[] };
+  };
+  const codeLensDataMap = new WeakMap<Monaco.languages.CodeLens, LspCodeLensItem>();
+  const codeLensProvider: Monaco.languages.CodeLensProvider = {
+    onDidChange: codeLensEmitter.event,
+    provideCodeLenses: async (model) => {
+      try {
+        const result = (await connection.sendRequest("textDocument/codeLens", {
+          textDocument: { uri: model.uri.toString() },
+        })) as LspCodeLensItem[] | null;
+        const lenses: Monaco.languages.CodeLens[] = (result ?? []).map((cl) => {
+          if (cl.command?.command) {
+            ensureCommandRegistered(cl.command.command);
+          }
+          const lens: Monaco.languages.CodeLens = {
+            range: lspRangeToMonaco(cl.range),
+            id: cl.data ? String(cl.data) : undefined,
+            command: cl.command
+              ? {
+                  id: cl.command.command ?? "",
+                  title: cl.command.title ?? "",
+                  arguments: cl.command.arguments,
+                }
+              : undefined,
+          };
+          codeLensDataMap.set(lens, cl);
+          return lens;
+        });
+        return { lenses, dispose: () => {} };
+      } catch {
+        return { lenses: [], dispose: () => {} };
+      }
+    },
+    resolveCodeLens: async (_model, codeLens) => {
+      try {
+        const raw = codeLensDataMap.get(codeLens);
+        const payload = raw ?? {
+          range: monacoRangeToLsp(codeLens.range),
+          ...(codeLens.id !== undefined ? { data: codeLens.id } : {}),
+          ...(codeLens.command
+            ? {
+                command: {
+                  command: codeLens.command.id,
+                  title: codeLens.command.title,
+                  arguments: codeLens.command.arguments,
+                },
+              }
+            : {}),
+        };
+        const resolved = (await connection.sendRequest("codeLens/resolve", payload)) as LspCodeLensItem | null;
+        if (!resolved) return codeLens;
+        if (resolved.command?.command) {
+          ensureCommandRegistered(resolved.command.command);
         }
-      },
+        return {
+          ...codeLens,
+          range: resolved.range ? lspRangeToMonaco(resolved.range) : codeLens.range,
+          command: resolved.command
+            ? {
+                id: resolved.command.command ?? "",
+                title: resolved.command.title ?? "",
+                arguments: resolved.command.arguments,
+              }
+            : codeLens.command,
+        };
+      } catch {
+        return codeLens;
+      }
+    },
+  };
+  if (typeof connection.onRequest === "function") {
+    disposables.push(
+      connection.onRequest("workspace/codeLens/refresh", () => {
+        codeLensEmitter.fire(codeLensProvider);
+        return null;
+      }),
+    );
+  }
+  disposables.push(
+    connection.onNotification("workspace/codeLens/refresh", () => {
+      codeLensEmitter.fire(codeLensProvider);
     }),
   );
+  disposables.push(monaco.languages.registerCodeLensProvider(languageSelector, codeLensProvider));
 
   // ── Inlay Hints ──
   disposables.push(

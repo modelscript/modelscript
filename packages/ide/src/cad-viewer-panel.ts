@@ -2,6 +2,7 @@
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
+import { handleOpenInVrWebviewMessage } from "./vr-handoff.js";
 import { BaseWebviewPanel } from "./webview/base-panel.js";
 
 /**
@@ -26,8 +27,7 @@ export class CadViewerPanel extends BaseWebviewPanel {
   private _suppressDocSyncUntil = 0;
   /** Optional pre-evaluated CAD components provided on panel creation. */
   private _initialComponents:
-    | { proceduralMesh?: unknown; cad?: string | Record<string, unknown> | undefined }[]
-    | undefined;
+    { proceduralMesh?: unknown; cad?: string | Record<string, unknown> | undefined }[] | undefined;
 
   /**
    * Creates a new 3D CAD Viewer webview panel beside the active editor, or reveals
@@ -86,8 +86,7 @@ export class CadViewerPanel extends BaseWebviewPanel {
       client,
       resolvedUri,
       initialComponents as
-        | { proceduralMesh?: unknown; cad?: string | Record<string, unknown> | undefined }[]
-        | undefined,
+        { proceduralMesh?: unknown; cad?: string | Record<string, unknown> | undefined }[] | undefined,
     );
     if (initialFocusPart) {
       CadViewerPanel.currentPanel.focusPart(initialFocusPart);
@@ -136,6 +135,13 @@ export class CadViewerPanel extends BaseWebviewPanel {
             break;
           case "commitCadBinding":
             void this.handleCommitCadBinding(message.payload);
+            break;
+          case "openInVr":
+            void handleOpenInVrWebviewMessage(message, {
+              artifactUri: this._targetDocumentUri,
+              title: "3D CAD Viewer",
+              kind: "cad",
+            });
             break;
         }
       },
@@ -228,8 +234,7 @@ export class CadViewerPanel extends BaseWebviewPanel {
     }
 
     const activeTabInput = vscode.window.tabGroups?.activeTabGroup?.activeTab?.input as
-      | { uri?: vscode.Uri | undefined }
-      | undefined;
+      { uri?: vscode.Uri | undefined } | undefined;
     if (activeTabInput?.uri) {
       const tabUriStr = activeTabInput.uri.toString();
       const matched = vscode.workspace.textDocuments.find((d) => d.uri.toString() === tabUriStr);

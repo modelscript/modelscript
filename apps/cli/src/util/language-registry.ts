@@ -168,6 +168,7 @@ export const BUILT_IN_LANGUAGES: LanguageManifest[] = [
   { id: "spice", name: "SPICE", extensions: [".cir", ".sp", ".lib", ".net"], isBuiltIn: true },
   { id: "swmm", name: "SWMM", extensions: [".swmm", ".swmm.inp"], isBuiltIn: true },
   { id: "tough", name: "TOUGH", extensions: [".tough", ".dat", ".tgh"], isBuiltIn: true },
+  { id: "twentysim", name: "20-sim", extensions: [".emx", ".emxz", ".sid"], isBuiltIn: true },
   {
     id: "touchstone",
     name: "Touchstone",

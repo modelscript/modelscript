@@ -23,13 +23,25 @@ import {
   useEditorFeatureFlag as useFeatureFlag,
 } from "../../host";
 import Spinner from "../../internal/Spinner";
-import type { CadComponent } from "../cad-viewer";
+import type {
+  CadComponent,
+  CommitAssemblyJointPayload,
+  CommitDimensionPayload,
+  CommitFaceTagPayload,
+  GizmoCommitPayload,
+} from "../cad-viewer";
 import type { AnimationController } from "../cad-viewer/animation-controller";
 import { getLanguageInfo } from "../constants";
 import { CosimPanel, type HistorianSession } from "../CosimPanel";
 import DiagramEditor, { type DiagramEditorHandle } from "../Diagram";
 import PropertiesWidget from "../Properties";
 import { getDiagramPalette } from "../util/lsp-bridge";
+import {
+  buildRotundaCanvasDocument,
+  type RotundaCadPartInput,
+  type RotundaModelEntry,
+  type RotundaModelKind,
+} from "../vr-rotunda/types";
 import { AmplOptimizationResults } from "./AmplOptimizationResults";
 import { IconPrimitiveInspector } from "./inspectors/IconPrimitiveInspector";
 import { MorselCalibrationPanel } from "./MorselCalibrationPanel";
@@ -40,9 +52,17 @@ import { PscadComponentWizardModal } from "./PscadComponentWizardModal";
 import { MorselView } from "./types";
 
 const CadViewerPanel = React.lazy(() => import("../cad-viewer").then((m) => ({ default: m.CadViewer })));
+const EngineeringRotundaPanel = React.lazy(() => import("../vr-rotunda/EngineeringRotunda"));
 const SimulationResults = React.lazy(() =>
   import("../SimulationResults").then((m) => ({ default: m.SimulationResults })),
 );
+const MorselRtmContractsPanel = React.lazy(() =>
+  import("./MorselRtmContractsPanel").then((m) => ({ default: m.MorselRtmContractsPanel })),
+);
+const MorselOptimizationUqPanel = React.lazy(() =>
+  import("./MorselOptimizationUqPanel").then((m) => ({ default: m.MorselOptimizationUqPanel })),
+);
+const MorselReplPanel = React.lazy(() => import("./MorselReplPanel").then((m) => ({ default: m.MorselReplPanel })));
 
 import { getDslStencilsForDialect } from "../util/LanguagePanelHost";
 
@@ -148,6 +168,10 @@ export interface MorselVisualizerPaneProps {
   isPropertiesLoading: boolean;
   expectedComponentNameRef: React.MutableRefObject<string | null>;
   handleSaveCadBindings: (componentName: string, bindings: DynamicBindingConfig[]) => void;
+  handleCommitCadGizmoDelta?: ((payload: GizmoCommitPayload) => void) | undefined;
+  handleCommitCadDimensionDelta?: ((payload: CommitDimensionPayload) => void) | undefined;
+  handleCommitCadFaceTag?: ((payload: CommitFaceTagPayload) => void) | undefined;
+  handleCommitCadAssemblyJoint?: ((payload: CommitAssemblyJointPayload) => void) | undefined;
   simulationVariables: string[];
   selectedSimulationVariables: string[];
   onToggleSimulationVariable?: ((variable: string) => void) | undefined;
@@ -258,6 +282,10 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   isPropertiesLoading,
   expectedComponentNameRef,
   handleSaveCadBindings,
+  handleCommitCadGizmoDelta,
+  handleCommitCadDimensionDelta,
+  handleCommitCadFaceTag,
+  handleCommitCadAssemblyJoint,
   simulationVariables,
   selectedSimulationVariables,
   onToggleSimulationVariable,
@@ -307,7 +335,9 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   const [isPropResizerDragging, setIsPropResizerDragging] = useState(false);
   const [isEmptyStateDismissed, setIsEmptyStateDismissed] = useState(false);
   const hasMultiFileProject = Boolean(projectFiles && Object.keys(projectFiles).length >= 2);
-  const [inspectorSubtab, setInspectorSubtab] = useState<"domain" | "thread" | "calibrate">("domain");
+  const [inspectorSubtab, setInspectorSubtab] = useState<"domain" | "thread" | "calibrate" | "rtm" | "uq" | "repl">(
+    "domain",
+  );
 
   useEffect(() => {
     setIsEmptyStateDismissed(false);
@@ -316,6 +346,15 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   const [internalShowAnalysisView, setInternalShowAnalysisView] = useState(false);
   const showAnalysisView = controlledShowAnalysisView ?? internalShowAnalysisView;
   const setShowAnalysisView = controlledSetShowAnalysisView ?? setInternalShowAnalysisView;
+  const [showVrRotunda, setShowVrRotunda] = useState(false);
+  const prevCenterPaneKeyRef = useRef(`${showResultsView ? 1 : 0}:${showCadView ? 1 : 0}:${showAnalysisView ? 1 : 0}`);
+  useEffect(() => {
+    const nextKey = `${showResultsView ? 1 : 0}:${showCadView ? 1 : 0}:${showAnalysisView ? 1 : 0}`;
+    if (prevCenterPaneKeyRef.current !== nextKey) {
+      prevCenterPaneKeyRef.current = nextKey;
+      setShowVrRotunda(false);
+    }
+  }, [showResultsView, showCadView, showAnalysisView]);
   const [showPalette, setShowPalette] = useState(false);
   const [showComponentWizard, setShowComponentWizard] = useState(false);
   const [lspPaletteCategories, setLspPaletteCategories] = useState<
@@ -721,7 +760,238 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
     !isDiagramLoading &&
     !showResultsView &&
     !showCadView &&
-    !showAnalysisView;
+    !showAnalysisView &&
+    !showVrRotunda;
+
+  const rotundaTitle = selectedTreeClassName || activeFileName || activeLangInfo.label;
+
+  const rotundaParameters = useMemo(() => {
+    const params: Array<{ name: string; value: string | number; unit?: string | undefined }> = [];
+    const rawParams = selectedComponentProperties?.parameters;
+    if (Array.isArray(rawParams)) {
+      for (const p of rawParams) {
+        if (!p || typeof p.name !== "string" || !p.name.trim()) continue;
+        const rawVal = p.value !== undefined && p.value !== "" ? p.value : p.defaultValue;
+        if (rawVal === undefined || rawVal === null || rawVal === "") continue;
+        const val: string | number = typeof rawVal === "number" || typeof rawVal === "string" ? rawVal : String(rawVal);
+        params.push({
+          name: p.name,
+          value: val,
+          unit: typeof p.unit === "string" && p.unit.trim() ? p.unit : undefined,
+        });
+      }
+    }
+    if (
+      params.length === 0 &&
+      selectedComponentProperties?.values &&
+      typeof selectedComponentProperties.values === "object"
+    ) {
+      for (const [k, v] of Object.entries(selectedComponentProperties.values as Record<string, unknown>)) {
+        if (v === undefined || v === null || v === "") continue;
+        const val: string | number = typeof v === "number" || typeof v === "string" ? v : String(v);
+        params.push({ name: k, value: val });
+      }
+    }
+    return params.length > 0 ? params : undefined;
+  }, [selectedComponentProperties]);
+
+  const rotundaSimulationSeries = useMemo(() => {
+    if (!localSimulationData || localSimulationData.length < 2) return undefined;
+    const sampleRow = localSimulationData[0];
+    if (!sampleRow) return undefined;
+    const timeKey = "time" in sampleRow ? "time" : "t" in sampleRow ? "t" : null;
+    const candidateKeys = (
+      selectedSimulationVariables.length > 0 ? selectedSimulationVariables : Object.keys(sampleRow)
+    ).filter((k) => k !== timeKey && k !== "time" && k !== "t");
+    const palette = ["#38bdf8", "#f97316", "#22c55e", "#a855f7"];
+    const series: Array<{
+      id: string;
+      label: string;
+      color?: string | undefined;
+      x: number[];
+      y: number[];
+    }> = [];
+    for (const key of candidateKeys.slice(0, 4)) {
+      const xs: number[] = [];
+      const ys: number[] = [];
+      for (let idx = 0; idx < localSimulationData.length; idx += 1) {
+        const row = localSimulationData[idx];
+        if (!row) continue;
+        const yNum = Number(row[key]);
+        if (!Number.isFinite(yNum)) continue;
+        const xRaw = timeKey ? Number(row[timeKey]) : idx;
+        xs.push(Number.isFinite(xRaw) ? xRaw : idx);
+        ys.push(yNum);
+      }
+      if (ys.length >= 2) {
+        series.push({
+          id: key,
+          label: key,
+          color: palette[series.length % palette.length],
+          x: xs,
+          y: ys,
+        });
+      }
+    }
+    return series.length > 0 ? series : undefined;
+  }, [localSimulationData, selectedSimulationVariables]);
+
+  const rotundaDocument = useMemo(
+    () =>
+      buildRotundaCanvasDocument({
+        title: rotundaTitle,
+        languageId: dialect || "modelica",
+        artifactUri: activeFileName || documentUri,
+        diagramData: diagramData && typeof diagramData === "object" ? (diagramData as Record<string, unknown>) : null,
+        simulationSeries: rotundaSimulationSeries,
+        parameters: rotundaParameters,
+        vtkBuffer: vtkBuffer ?? null,
+      }),
+    [
+      rotundaTitle,
+      dialect,
+      activeFileName,
+      documentUri,
+      diagramData,
+      rotundaSimulationSeries,
+      rotundaParameters,
+      vtkBuffer,
+    ],
+  );
+
+  const rotundaModels = useMemo<RotundaModelEntry[]>(() => {
+    const normalizedDialect = (dialect || "modelica").toLowerCase();
+    const lowerFile = (activeFileName || "").toLowerCase();
+    const primaryKind: RotundaModelKind =
+      normalizedDialect === "fea" || lowerFile.endsWith(".inp") || lowerFile.endsWith(".bdf")
+        ? "fea"
+        : normalizedDialect === "cfd" || lowerFile.endsWith(".su2") || lowerFile.endsWith(".vtu")
+          ? "cfd"
+          : normalizedDialect === "urdf" || lowerFile.endsWith(".urdf") || lowerFile.endsWith(".sdf")
+            ? "urdf"
+            : normalizedDialect === "gcode" || lowerFile.endsWith(".gcode") || lowerFile.endsWith(".nc")
+              ? "gcode"
+              : normalizedDialect === "step" || lowerFile.endsWith(".step") || lowerFile.endsWith(".stp")
+                ? "step"
+                : normalizedDialect === "simpack" || normalizedDialect === "gensys" || normalizedDialect === "adams"
+                  ? "multibody"
+                  : vtkBuffer
+                    ? "vtk"
+                    : "cad";
+
+    const mappedCadParts: RotundaCadPartInput[] | undefined =
+      cadComponents.length > 0
+        ? cadComponents.map((comp) => {
+            const rgba = comp.proceduralMesh?.color ?? comp.sourceMetadata?.color;
+            const colorHex =
+              rgba && rgba.length >= 3
+                ? (() => {
+                    const needs255Norm = rgba[0]! > 1 || rgba[1]! > 1 || rgba[2]! > 1;
+                    return `#${[rgba[0]!, rgba[1]!, rgba[2]!]
+                      .map((c) =>
+                        Math.max(0, Math.min(255, Math.round(needs255Norm ? c : c * 255)))
+                          .toString(16)
+                          .padStart(2, "0"),
+                      )
+                      .join("")}`;
+                  })()
+                : undefined;
+            const isBakedCsgMesh = Boolean(
+              comp.proceduralMesh && !comp.defaults && !comp.cad?.uri?.startsWith("procedural://msl"),
+            );
+            return {
+              name: comp.name,
+              shape: comp.shapeType ?? comp.sourceMetadata?.primitiveType,
+              color: colorHex,
+              position: comp.cad?.position,
+              rotation: isBakedCsgMesh ? undefined : comp.cad?.rotation,
+              scale: isBakedCsgMesh ? undefined : comp.cad?.scale,
+              url: comp.cad?.uri,
+              proceduralMesh: comp.proceduralMesh
+                ? {
+                    vertices: comp.proceduralMesh.vertices,
+                    indices: comp.proceduralMesh.indices,
+                    normals: comp.proceduralMesh.normals,
+                    color: colorHex,
+                  }
+                : undefined,
+            };
+          })
+        : undefined;
+
+    const firstGltfUri = cadComponents.find((c) => {
+      const u = (c.cad?.uri ?? "").trim().toLowerCase();
+      return (
+        (u.startsWith("/") || u.startsWith("http") || u.startsWith("blob:")) &&
+        (u.endsWith(".glb") || u.endsWith(".gltf"))
+      );
+    })?.cad.uri;
+
+    const primaryAccent =
+      primaryKind === "fea"
+        ? "#f97316"
+        : primaryKind === "cfd"
+          ? "#06b6d4"
+          : primaryKind === "urdf"
+            ? "#a855f7"
+            : primaryKind === "gcode"
+              ? "#f59e0b"
+              : "#38bdf8";
+
+    const models: RotundaModelEntry[] = [
+      {
+        id: `editor-primary-${normalizedDialect}`,
+        title: rotundaTitle,
+        subtitle:
+          cadComponents.length > 0
+            ? `${cadComponents.length} Active 3D CAD ${cadComponents.length === 1 ? "Part" : "Parts"}`
+            : vtkBuffer
+              ? "Live VTK Volumetric Field"
+              : `${activeLangInfo.label} 3D Digital Twin`,
+        kind: primaryKind,
+        artifactUri: firstGltfUri ?? activeFileName ?? documentUri,
+        vtkBuffer: vtkBuffer ?? null,
+        cadComponents: mappedCadParts,
+        sourceTileId: "tile_primary_cad",
+        accentColor: primaryAccent,
+      },
+    ];
+
+    if (models.length < 2) {
+      if (primaryKind !== "fea") {
+        models.push({
+          id: `editor-twin-fea-${normalizedDialect}`,
+          title: `${rotundaTitle} — Structural FEA`,
+          subtitle: "Von Mises Stress & Modal Deflection Twin",
+          kind: "fea",
+          sourceTileId: "tile_primary_cad",
+          accentColor: "#f97316",
+        });
+      }
+      if (primaryKind !== "cfd") {
+        models.push({
+          id: `editor-twin-cfd-${normalizedDialect}`,
+          title: `${rotundaTitle} — Aero/Thermal CFD`,
+          subtitle: "Velocity Streamlines & Thermal Field Twin",
+          kind: "cfd",
+          sourceTileId: "tile_primary_cad",
+          accentColor: "#06b6d4",
+        });
+      }
+      if (models.length < 3 && primaryKind !== "cad") {
+        models.push({
+          id: `editor-twin-cad-${normalizedDialect}`,
+          title: `${rotundaTitle} — B-Rep Assembly`,
+          subtitle: "Parametric 3D CAD Reference Twin",
+          kind: "cad",
+          sourceTileId: "tile_primary_cad",
+          accentColor: "#38bdf8",
+        });
+      }
+    }
+
+    return models;
+  }, [dialect, activeFileName, documentUri, rotundaTitle, activeLangInfo.label, cadComponents, vtkBuffer]);
 
   const editorHost = useEditorHost();
   const starterExamples = useMemo(() => {
@@ -952,6 +1222,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
       {!hideCenterFloatingToolbar &&
         !isPlaygroundRoute &&
         (!isNarrow ||
+          showVrRotunda ||
           (!showResultsView && !showCadView && !showAnalysisView) ||
           cadComponents.length > 0 ||
           (showCadView && Boolean(animationControllerRef.current?.hasData))) && (
@@ -1021,6 +1292,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   onChange={(i) => {
                     const targetTab = centerViewTabs[i];
                     if (!targetTab) return;
+                    setShowVrRotunda(false);
                     if (targetTab.id === "diagram") {
                       setShowResultsView(false);
                       setShowCadView(false);
@@ -1042,13 +1314,14 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 >
                   {centerViewTabs.map((tab) => {
                     const isSelected =
-                      tab.id === "diagram"
+                      !showVrRotunda &&
+                      (tab.id === "diagram"
                         ? !showResultsView && !showCadView && !showAnalysisView
                         : tab.id === "simulation"
                           ? showResultsView && !showAnalysisView
                           : tab.id === "3d"
                             ? showCadView && !showAnalysisView
-                            : showAnalysisView;
+                            : showAnalysisView);
                     return (
                       <SegmentedControl.Button key={tab.id} selected={isSelected} leadingVisual={tab.icon}>
                         {tab.label}
@@ -1058,7 +1331,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 </SegmentedControl>
               )}
 
-              {!showResultsView &&
+              {!showVrRotunda &&
+                !showResultsView &&
                 !showCadView &&
                 !showAnalysisView &&
                 activeLangInfo.supportsDiagram &&
@@ -1104,7 +1378,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   </div>
                 )}
 
-              {!showResultsView && !showCadView && !showAnalysisView && (
+              {!showVrRotunda && !showResultsView && !showCadView && !showAnalysisView && (
                 <button
                   type="button"
                   onClick={() => setShowPalette((v) => !v)}
@@ -1133,6 +1407,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 <button
                   type="button"
                   onClick={() => {
+                    setShowVrRotunda(false);
                     setShowResultsView(false);
                     setShowAnalysisView(false);
                     setShowCadView(true);
@@ -1146,7 +1421,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                     fontWeight: 600,
                     borderRadius: 20,
                     border: "1px solid rgba(6, 182, 212, 0.4)",
-                    background: showCadView ? "rgba(6, 182, 212, 0.2)" : "rgba(6, 182, 212, 0.08)",
+                    background: showCadView && !showVrRotunda ? "rgba(6, 182, 212, 0.2)" : "rgba(6, 182, 212, 0.08)",
                     color: "#06b6d4",
                     cursor: "pointer",
                     transition: "all 0.15s ease",
@@ -1158,7 +1433,40 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 </button>
               )}
 
-              {showCadView && animationControllerRef.current?.hasData && (
+              <button
+                type="button"
+                data-testid="morsel-vr-rotunda-toggle"
+                onClick={() => setShowVrRotunda((prev) => !prev)}
+                aria-pressed={showVrRotunda}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  padding: "4px 10px",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  borderRadius: 999,
+                  border: showVrRotunda ? "1px solid rgba(129, 140, 248, 0.85)" : "1px solid rgba(99, 102, 241, 0.45)",
+                  background: showVrRotunda
+                    ? "linear-gradient(135deg, #6366f1 0%, #06b6d4 100%)"
+                    : colorMode === "dark"
+                      ? "linear-gradient(135deg, rgba(99, 102, 241, 0.24) 0%, rgba(6, 182, 212, 0.18) 100%)"
+                      : "linear-gradient(135deg, rgba(99, 102, 241, 0.14) 0%, rgba(6, 182, 212, 0.12) 100%)",
+                  color: showVrRotunda ? "#ffffff" : colorMode === "dark" ? "#c7d2fe" : "#4338ca",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  boxShadow: showVrRotunda ? "0 4px 14px rgba(99, 102, 241, 0.35)" : "none",
+                  transition: "all 0.15s ease",
+                }}
+                title="Open in Engineering VR Rotunda (45° Drafting Podium, 3D Plinth, CAE Overlays & WebXR VR/AR)"
+              >
+                <span aria-hidden="true" style={{ fontSize: 12 }}>
+                  🥽
+                </span>
+                <span>VR Rotunda</span>
+              </button>
+
+              {showCadView && !showVrRotunda && animationControllerRef.current?.hasData && (
                 <Button
                   variant="primary"
                   size="small"
@@ -1201,7 +1509,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
             </div>
 
             {/* Collapsible Stencil Palette Bar */}
-            {showPalette && !showResultsView && !showCadView && !showAnalysisView && (
+            {showPalette && !showVrRotunda && !showResultsView && !showCadView && !showAnalysisView && (
               <div
                 style={{
                   display: "flex",
@@ -1354,10 +1662,10 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
             inset: 0,
             display: "flex",
             flexDirection: "row",
-            visibility: !showResultsView && !showCadView && !showAnalysisView ? "visible" : "hidden",
-            opacity: !showResultsView && !showCadView && !showAnalysisView ? 1 : 0,
-            pointerEvents: !showResultsView && !showCadView && !showAnalysisView ? "auto" : "none",
-            zIndex: !showResultsView && !showCadView && !showAnalysisView ? 1 : 0,
+            visibility: !showVrRotunda && !showResultsView && !showCadView && !showAnalysisView ? "visible" : "hidden",
+            opacity: !showVrRotunda && !showResultsView && !showCadView && !showAnalysisView ? 1 : 0,
+            pointerEvents: !showVrRotunda && !showResultsView && !showCadView && !showAnalysisView ? "auto" : "none",
+            zIndex: !showVrRotunda && !showResultsView && !showCadView && !showAnalysisView ? 1 : 0,
           }}
         >
           {/* Hierarchical Drill-Down Breadcrumbs Bar */}
@@ -3159,7 +3467,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
         </div>
 
         {/* 3D CAD Viewer pane */}
-        {showCadView && !showAnalysisView && (
+        {showCadView && !showAnalysisView && !showVrRotunda && (
           <div
             style={{
               position: "absolute",
@@ -3183,6 +3491,11 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 animationController={animationControllerRef.current}
                 availableVariables={simulationVariables}
                 onSaveBindings={handleSaveCadBindings}
+                onCommitGizmoDelta={handleCommitCadGizmoDelta}
+                onCommitDimensionDelta={handleCommitCadDimensionDelta}
+                onCommitFaceTag={handleCommitCadFaceTag}
+                onCommitAssemblyJoint={handleCommitCadAssemblyJoint}
+                sourceCode={editorValue}
                 vtkBuffer={vtkBuffer ?? undefined}
                 gdtOverlay={gdtOverlay}
                 caeSourceCode={
@@ -3196,6 +3509,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                     targetEditor.setValue(nextCode);
                   }
                 }}
+                onOpenVrRotunda={() => setShowVrRotunda(true)}
                 fitInsets={
                   isFloatingLayout
                     ? {
@@ -3214,6 +3528,54 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                       }
                     : undefined
                 }
+              />
+            </Suspense>
+          </div>
+        )}
+
+        {/* Engineering VR Rotunda Workstation Pane */}
+        {showVrRotunda && (
+          <div
+            data-testid="morsel-vr-rotunda-pane"
+            style={{
+              position: "absolute",
+              inset: 0,
+              paddingTop: isFloatingLayout ? 68 : hideCenterFloatingToolbar ? 0 : 56,
+              paddingRight:
+                isFullScreenSplitCanvas && view === MorselView.SPLIT_COLUMNS
+                  ? `calc(${(1 - splitRatio) * 100}% + 12px)`
+                  : 0,
+              boxSizing: "border-box",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+              minHeight: 0,
+              zIndex: 35,
+              backgroundColor: "#050914",
+            }}
+          >
+            <Suspense
+              fallback={
+                <div
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "#050914",
+                  }}
+                >
+                  <Spinner />
+                </div>
+              }
+            >
+              <EngineeringRotundaPanel
+                document={rotundaDocument}
+                models={rotundaModels}
+                mode="spatial-3d"
+                title={rotundaTitle}
+                animationController={animationControllerRef.current}
+                onExitTo2D={() => setShowVrRotunda(false)}
               />
             </Suspense>
           </div>
@@ -3239,11 +3601,11 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   ? Math.max(12, diagnosticsBottomOffset)
                   : 0,
             boxSizing: "border-box",
-            display: showResultsView && !showAnalysisView ? "flex" : "none",
+            display: showResultsView && !showAnalysisView && !showVrRotunda ? "flex" : "none",
             flexDirection: "column",
             overflow: "hidden",
             minHeight: 0,
-            zIndex: showResultsView && !showAnalysisView ? 2 : 0,
+            zIndex: showResultsView && !showAnalysisView && !showVrRotunda ? 2 : 0,
             backgroundColor: "var(--color-canvas-default)",
           }}
         >
@@ -3271,6 +3633,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                     }),
                   );
                 }
+                setShowVrRotunda(false);
                 setShowResultsView(true);
                 setShowCadView(false);
                 setShowAnalysisView(false);
@@ -3368,11 +3731,11 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   ? Math.max(12, diagnosticsBottomOffset)
                   : 0,
             boxSizing: "border-box",
-            display: showAnalysisView ? "flex" : "none",
+            display: showAnalysisView && !showVrRotunda ? "flex" : "none",
             flexDirection: "column",
             overflow: "hidden",
             minHeight: 0,
-            zIndex: showAnalysisView ? 2 : 0,
+            zIndex: showAnalysisView && !showVrRotunda ? 2 : 0,
             backgroundColor: "var(--color-canvas-default)",
           }}
         >
@@ -3391,11 +3754,10 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 aria-label="Inspector Mode"
                 size="small"
                 onChange={(idx) => {
-                  if (hasMultiFileProject) {
-                    setInspectorSubtab(idx === 1 ? "thread" : idx === 2 ? "calibrate" : "domain");
-                  } else {
-                    setInspectorSubtab(idx === 1 ? "calibrate" : "domain");
-                  }
+                  const tabOrder: ("domain" | "thread" | "calibrate" | "rtm" | "uq" | "repl")[] = hasMultiFileProject
+                    ? ["domain", "thread", "calibrate", "rtm", "uq", "repl"]
+                    : ["domain", "calibrate", "rtm", "uq", "repl"];
+                  setInspectorSubtab(tabOrder[idx] ?? "domain");
                 }}
               >
                 <SegmentedControl.Button selected={inspectorSubtab === "domain"}>
@@ -3409,6 +3771,11 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 <SegmentedControl.Button selected={inspectorSubtab === "calibrate"}>
                   Calibration
                 </SegmentedControl.Button>
+                <SegmentedControl.Button selected={inspectorSubtab === "rtm"}>
+                  RTM &amp; Contracts
+                </SegmentedControl.Button>
+                <SegmentedControl.Button selected={inspectorSubtab === "uq"}>Opt / UQ</SegmentedControl.Button>
+                <SegmentedControl.Button selected={inspectorSubtab === "repl"}>REPL</SegmentedControl.Button>
               </SegmentedControl>
             </div>
           )}
@@ -3443,12 +3810,29 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   }
                 }}
               />
+            ) : inspectorSubtab === "rtm" ? (
+              <Suspense fallback={null}>
+                <MorselRtmContractsPanel documentUri={documentUri} colorMode={colorMode} onRevealLine={onRevealLine} />
+              </Suspense>
+            ) : inspectorSubtab === "uq" ? (
+              <Suspense fallback={null}>
+                <MorselOptimizationUqPanel
+                  documentUri={documentUri}
+                  dialect={dialect}
+                  selectedClassName={selectedTreeClassName ?? nestedModels[selectedModelIndex]?.name ?? undefined}
+                  colorMode={colorMode}
+                />
+              </Suspense>
+            ) : inspectorSubtab === "repl" ? (
+              <Suspense fallback={null}>
+                <MorselReplPanel documentUri={documentUri} dialect={dialect} colorMode={colorMode} />
+              </Suspense>
             ) : (
               <PolyglotDomainPanel
                 dialect={dialect}
                 code={editorValue}
                 colorMode={colorMode}
-                isVisible={showAnalysisView && inspectorSubtab === "domain"}
+                isVisible={showAnalysisView && !showVrRotunda && inspectorSubtab === "domain"}
                 documentUri={documentUri}
                 activeClassName={selectedTreeClassName ?? nestedModels[selectedModelIndex]?.name ?? undefined}
                 projectFiles={projectFiles}

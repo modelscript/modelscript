@@ -6,10 +6,13 @@ import React, { Suspense, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import * as THREE from "three";
 import { GCodeLoader } from "three/examples/jsm/loaders/GCodeLoader.js";
+import { VrButton, registerSharedVsCodeApi } from "./cad-viewer/vr-mode";
 
 const vscode = (
   window as unknown as { acquireVsCodeApi?: () => { postMessage(msg: unknown): void } }
 ).acquireVsCodeApi?.();
+
+registerSharedVsCodeApi(vscode);
 
 function Loader() {
   const { progress } = useProgress();
@@ -165,6 +168,18 @@ function GCodeApp() {
           style={{ flexGrow: 1, cursor: "pointer" }}
         />
       </div>
+
+      <VrButton
+        style={{ bottom: 76 }}
+        onOpenExternalVr={() => {
+          vscode?.postMessage({
+            type: "openInVr",
+            environment: "warehouse",
+            kind: "gcode",
+            title: "GCode Toolpath",
+          });
+        }}
+      />
     </div>
   );
 }

@@ -438,7 +438,7 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
     positionEncoding: PositionEncodingKind.UTF16,
     textDocumentSync: {
       openClose: true,
-      change: TextDocumentSyncKind.Full,
+      change: TextDocumentSyncKind.Incremental,
       save: {
         includeText: true,
       },
@@ -478,7 +478,7 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       ],
     },
     codeLensProvider: {
-      resolveProvider: false,
+      resolveProvider: true,
     },
     inlayHintProvider: {
       resolveProvider: false,

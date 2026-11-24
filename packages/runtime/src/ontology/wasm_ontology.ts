@@ -1190,6 +1190,7 @@ export interface WasmOntologyInstance {
   ontology_areDisjoint?(class1Hash: number, class2Hash: number): number;
   ontology_isInstanceOf?(individualHash: number, classHash: number): number;
   ontology_getTransitiveClosure?(propertyHash: number, sourceHash: number): number;
+  ontology_getTransitiveClosureWithPath?(propertyHash: number, sourceHash: number): number;
   ontology_getTaxonomy?(): number;
   ontology_queryTriples?(subjectPattern: number, predicatePattern: number, objectPattern: number): number;
   ontology_getAxiomCount?(): number;
@@ -1414,6 +1415,17 @@ export class WasmOntologyReasoner implements IOWLReasoner {
   private _wasmIriToId = new Map<string, number>();
   /** Forward IRI lookup table for WASM entity IDs synchronized by this reasoner. */
   private _wasmIdToIri = new Map<number, string>();
+  /** True if TS-only classification rules inferred object property edges not yet mirrored in WASM. */
+  private _wasmEdgesDirty = false;
+
+  /** Counts total asserted/inferred object property assertion edges currently held in TS maps. */
+  private _countObjectPropertyEdges(): number {
+    let total = 0;
+    for (const edges of this.objectPropertyAssertions.values()) {
+      total += edges.length;
+    }
+    return total;
+  }
 
   /** Creates a new `WasmOntologyReasoner`, optionally bound to a compiled WASM instance. */
   constructor(wasmInstance?: WasmOntologyInstance | null) {
@@ -1544,6 +1556,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
       }
     }
 
+    this._wasmEdgesDirty = false;
     this._classified = false;
     this._bgpIndex = null;
     this._revision++;
@@ -1925,6 +1938,7 @@ export class WasmOntologyReasoner implements IOWLReasoner {
   classify(): void {
     this._status = "classifying";
     this._bgpIndex = null;
+    const preClassifyEdgeCount = this._wasmInstance ? this._countObjectPropertyEdges() : 0;
 
     for (const node of this.classes.values()) {
       node.allSuperClasses = null;
@@ -2302,6 +2316,18 @@ export class WasmOntologyReasoner implements IOWLReasoner {
         }
       }
       for (const t of inferredTypes) types.add(t);
+    }
+
+    if (this._wasmInstance) {
+      if (this._countObjectPropertyEdges() !== preClassifyEdgeCount) {
+        this._wasmEdgesDirty = true;
+      }
+      if (typeof this._wasmInstance.ontology_saturateELRules === "function") {
+        this._wasmInstance.ontology_saturateELRules();
+      }
+      if (typeof this._wasmInstance.ontology_computeIntervalIndex === "function") {
+        this._wasmInstance.ontology_computeIntervalIndex();
+      }
     }
 
     const consistency = this.checkConsistencyInternal();
@@ -2924,6 +2950,45 @@ export class WasmOntologyReasoner implements IOWLReasoner {
 
   /** Computes the transitive closure of `propertyIri` starting from `fromIri` via breadth-first search. */
   getTransitiveClosure(propertyIri: string, fromIri: string): PropertyChainResult {
+    const wasm = this._wasmInstance;
+    if (
+      !this._wasmEdgesDirty &&
+      wasm?.ontology_getTransitiveClosureWithPath &&
+      wasm.ontology_getQueryBuffer &&
+      wasm.memory
+    ) {
+      const propId = this._wasmIriToId.get(propertyIri);
+      const fromId = this._wasmIriToId.get(fromIri);
+      if (propId === undefined || fromId === undefined) {
+        return { propertyIri, sourceIri: fromIri, reachable: [], path: [] };
+      }
+      const reachCount = wasm.ontology_getTransitiveClosureWithPath(propId, fromId);
+      if (reachCount === 0) {
+        return { propertyIri, sourceIri: fromIri, reachable: [], path: [] };
+      }
+      const bufPtr = wasm.ontology_getQueryBuffer();
+      const headerView = new Uint32Array(wasm.memory.buffer, bufPtr, reachCount + 2);
+      const actualReach = headerView[0]!;
+      const edgeCount = headerView[actualReach + 1]!;
+      const fullView = new Uint32Array(wasm.memory.buffer, bufPtr, actualReach + 2 + edgeCount * 2);
+      const reachable: string[] = new Array(actualReach);
+      for (let i = 0; i < actualReach; i++) {
+        const id = fullView[1 + i]!;
+        reachable[i] = this._wasmIdToIri.get(id) ?? String(id);
+      }
+      const path: { subjectIri: string; objectIri: string }[] = new Array(edgeCount);
+      const edgeBase = actualReach + 2;
+      for (let i = 0; i < edgeCount; i++) {
+        const sId = fullView[edgeBase + i * 2]!;
+        const oId = fullView[edgeBase + i * 2 + 1]!;
+        path[i] = {
+          subjectIri: this._wasmIdToIri.get(sId) ?? String(sId),
+          objectIri: this._wasmIdToIri.get(oId) ?? String(oId),
+        };
+      }
+      return { propertyIri, sourceIri: fromIri, reachable, path };
+    }
+
     const edges = this.objectPropertyAssertions.get(propertyIri) ?? [];
     const visited = new Set<string>();
     const reachable: string[] = [];
@@ -3030,6 +3095,53 @@ export class WasmOntologyReasoner implements IOWLReasoner {
     fromIri: string,
     stepPropertyIri2?: string,
   ): readonly string[] {
+    const wasm = this._wasmInstance;
+    if (!this._wasmEdgesDirty && wasm?.ontology_evaluatePropertyPath && wasm.ontology_getQueryBuffer && wasm.memory) {
+      const opCode =
+        pathOp === "direct"
+          ? 1
+          : pathOp === "plus"
+            ? 2
+            : pathOp === "star"
+              ? 3
+              : pathOp === "inverse"
+                ? 4
+                : pathOp === "inverse-plus"
+                  ? 5
+                  : pathOp === "sequence"
+                    ? 6
+                    : pathOp === "alternation"
+                      ? 7
+                      : 0;
+      if (opCode !== 0) {
+        const fromId = this._wasmIriToId.get(fromIri);
+        if (fromId === undefined) {
+          return pathOp === "star" ? [fromIri] : [];
+        }
+        const propId = this._wasmIriToId.get(propertyIri);
+        const prop2Id = stepPropertyIri2 ? this._wasmIriToId.get(stepPropertyIri2) : undefined;
+        if (pathOp === "sequence") {
+          if (propId === undefined || prop2Id === undefined) return [];
+        } else if (pathOp === "alternation") {
+          if (propId === undefined && prop2Id === undefined) return [];
+        } else if (propId === undefined) {
+          return pathOp === "star" ? [fromIri] : [];
+        }
+        const count = wasm.ontology_evaluatePropertyPath(propId ?? 0, opCode, prop2Id ?? 0, fromId);
+        if (count === 0) {
+          return pathOp === "star" ? [fromIri] : [];
+        }
+        const bufPtr = wasm.ontology_getQueryBuffer();
+        const raw = new Uint32Array(wasm.memory.buffer, bufPtr, count);
+        const out = new Set<string>();
+        for (let i = 0; i < count; i++) {
+          const id = raw[i]!;
+          out.add(this._wasmIdToIri.get(id) ?? String(id));
+        }
+        return Array.from(out);
+      }
+    }
+
     const reachable = new Set<string>();
 
     switch (pathOp) {
@@ -6664,6 +6776,114 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
       return this._wasmInstance.ontology_checkConsistency() !== 0;
     }
     return true;
+  }
+
+  /** Runs polynomial EL++ consequence-based saturation rules in the attached WASM store. */
+  saturateELRules(): number {
+    if (this._wasmInstance?.ontology_saturateELRules) {
+      return this._wasmInstance.ontology_saturateELRules();
+    }
+    return 0;
+  }
+
+  /** Runs the full hybrid interleaved saturation fixpoint loop in the attached WASM store. */
+  runHybridFixpoint(): number {
+    if (this._wasmInstance?.ontology_runHybridFixpoint) {
+      return this._wasmInstance.ontology_runHybridFixpoint();
+    }
+    return 0;
+  }
+
+  /** Recomputes the O(1) Euler-interval dominance index for class subsumption in WASM. */
+  computeIntervalIndex(): void {
+    this._wasmInstance?.ontology_computeIntervalIndex?.();
+  }
+
+  /** Computes the transitive closure of `propertyIri` from `fromIri` via the WASM SPO index. */
+  getTransitiveClosure(propertyIri: string, fromIri: string): PropertyChainResult {
+    const wasm = this._wasmInstance;
+    if (wasm?.ontology_getTransitiveClosureWithPath && wasm.ontology_getQueryBuffer && wasm.memory) {
+      const propId = this._iriEntityMap.get(propertyIri);
+      const fromId = this._iriEntityMap.get(fromIri);
+      if (propId === undefined || fromId === undefined) {
+        return { propertyIri, sourceIri: fromIri, reachable: [], path: [] };
+      }
+      const reachCount = wasm.ontology_getTransitiveClosureWithPath(propId, fromId);
+      if (reachCount === 0) {
+        return { propertyIri, sourceIri: fromIri, reachable: [], path: [] };
+      }
+      const bufPtr = wasm.ontology_getQueryBuffer();
+      const headerView = new Uint32Array(wasm.memory.buffer, bufPtr, reachCount + 2);
+      const actualReach = headerView[0]!;
+      const edgeCount = headerView[actualReach + 1]!;
+      const fullView = new Uint32Array(wasm.memory.buffer, bufPtr, actualReach + 2 + edgeCount * 2);
+      const reachable: string[] = new Array(actualReach);
+      for (let i = 0; i < actualReach; i++) {
+        const id = fullView[1 + i]!;
+        reachable[i] = this._entityIriMap.get(id) ?? String(id);
+      }
+      const path: { subjectIri: string; objectIri: string }[] = new Array(edgeCount);
+      const edgeBase = actualReach + 2;
+      for (let i = 0; i < edgeCount; i++) {
+        const sId = fullView[edgeBase + i * 2]!;
+        const oId = fullView[edgeBase + i * 2 + 1]!;
+        path[i] = {
+          subjectIri: this._entityIriMap.get(sId) ?? String(sId),
+          objectIri: this._entityIriMap.get(oId) ?? String(oId),
+        };
+      }
+      return { propertyIri, sourceIri: fromIri, reachable, path };
+    }
+    return { propertyIri, sourceIri: fromIri, reachable: [], path: [] };
+  }
+
+  /** Evaluates a SPARQL 1.1 property path expression in WASM linear memory. */
+  evaluatePropertyPath(
+    propertyIri: string,
+    pathOp: PropertyPathOp,
+    fromIri: string,
+    stepPropertyIri2?: string,
+  ): readonly string[] {
+    const wasm = this._wasmInstance;
+    if (!wasm?.ontology_evaluatePropertyPath || !wasm.ontology_getQueryBuffer || !wasm.memory) {
+      return pathOp === "star" ? [fromIri] : [];
+    }
+    const opCode =
+      pathOp === "direct"
+        ? 1
+        : pathOp === "plus"
+          ? 2
+          : pathOp === "star"
+            ? 3
+            : pathOp === "inverse"
+              ? 4
+              : pathOp === "inverse-plus"
+                ? 5
+                : pathOp === "sequence"
+                  ? 6
+                  : pathOp === "alternation"
+                    ? 7
+                    : 0;
+    if (opCode === 0) return [];
+    const fromId = this._iriEntityMap.get(fromIri);
+    if (fromId === undefined) return pathOp === "star" ? [fromIri] : [];
+    const propId = this._iriEntityMap.get(propertyIri);
+    const prop2Id = stepPropertyIri2 ? this._iriEntityMap.get(stepPropertyIri2) : undefined;
+    if (pathOp === "sequence" && (propId === undefined || prop2Id === undefined)) return [];
+    if (pathOp === "alternation" && propId === undefined && prop2Id === undefined) return [];
+    if (pathOp !== "alternation" && pathOp !== "sequence" && propId === undefined) {
+      return pathOp === "star" ? [fromIri] : [];
+    }
+    const count = wasm.ontology_evaluatePropertyPath(propId ?? 0, opCode, prop2Id ?? 0, fromId);
+    if (count === 0) return pathOp === "star" ? [fromIri] : [];
+    const bufPtr = wasm.ontology_getQueryBuffer();
+    const raw = new Uint32Array(wasm.memory.buffer, bufPtr, count);
+    const out = new Set<string>();
+    for (let i = 0; i < count; i++) {
+      const id = raw[i]!;
+      out.add(this._entityIriMap.get(id) ?? String(id));
+    }
+    return Array.from(out);
   }
 
   /** Returns all `ClassDeclaration` axioms in the store. */

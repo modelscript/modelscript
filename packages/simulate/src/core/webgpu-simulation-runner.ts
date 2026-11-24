@@ -51,16 +51,20 @@ export class WebGPUSimulationRunner {
    * Attempt to initialize WebGPU. Returns true if successful, false if unsupported.
    */
   async initialize(): Promise<boolean> {
-    const nav =
+    const g =
       typeof globalThis !== "undefined"
-        ? (globalThis as { navigator?: { gpu?: GPU | undefined } | undefined }).navigator
+        ? (globalThis as {
+            navigator?: { gpu?: GPU | undefined } | undefined;
+            __modelscript_native_gpu__?: GPU | undefined;
+          })
         : undefined;
-    if (!nav || !nav.gpu) {
+    const gpuProvider = g?.navigator?.gpu ?? g?.__modelscript_native_gpu__;
+    if (!gpuProvider) {
       return false; // WebGPU not available in this environment
     }
 
     try {
-      const adapter = await nav.gpu.requestAdapter({
+      const adapter = await gpuProvider.requestAdapter({
         powerPreference: "high-performance",
       });
       if (!adapter) return false;

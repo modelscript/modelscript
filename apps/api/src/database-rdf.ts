@@ -275,3 +275,76 @@ export class SqliteRdfSource implements Source {
     }
   }
 }
+
+export interface SqliteRdfSourceCacheOptions {
+  /** Maximum number of library@version RDF graphs held in memory (default: 16). */
+  maxEntries?: number | undefined;
+  /** Time-to-live in milliseconds before a cached graph is re-materialized (default: 60_000). */
+  ttlMs?: number | undefined;
+}
+
+interface RdfCacheEntry {
+  source: SqliteRdfSource;
+  expiresAt: number;
+}
+
+/**
+ * Bounded LRU + TTL cache for `SqliteRdfSource` instances keyed by `${libraryName}@${version}`.
+ * Prevents repeated SPARQL HTTP requests from re-materializing the entire library into JS Maps.
+ */
+export class SqliteRdfSourceCache {
+  readonly #db: Database;
+  readonly #maxEntries: number;
+  readonly #ttlMs: number;
+  readonly #cache = new Map<string, RdfCacheEntry>();
+
+  constructor(db: Database, options?: SqliteRdfSourceCacheOptions) {
+    this.#db = db;
+    this.#maxEntries = Math.max(1, options?.maxEntries ?? 16);
+    this.#ttlMs = Math.max(0, options?.ttlMs ?? 60_000);
+  }
+
+  get(libraryName: string, version: string): SqliteRdfSource {
+    const key = `${libraryName}@${version}`;
+    const now = Date.now();
+    const existing = this.#cache.get(key);
+    if (existing) {
+      if (existing.expiresAt > now) {
+        // Refresh LRU recency by moving key to the end of the Map
+        this.#cache.delete(key);
+        this.#cache.set(key, existing);
+        return existing.source;
+      }
+      this.#cache.delete(key);
+    }
+
+    if (this.#cache.size >= this.#maxEntries) {
+      for (const [k, entry] of this.#cache.entries()) {
+        if (entry.expiresAt <= now) {
+          this.#cache.delete(k);
+        }
+      }
+      while (this.#cache.size >= this.#maxEntries) {
+        const oldestKey = this.#cache.keys().next().value;
+        if (oldestKey === undefined) break;
+        this.#cache.delete(oldestKey);
+      }
+    }
+
+    const source = new SqliteRdfSource(this.#db, libraryName, version);
+    this.#cache.set(key, { source, expiresAt: now + this.#ttlMs });
+    return source;
+  }
+
+  invalidate(libraryName: string, version: string): boolean {
+    return this.#cache.delete(`${libraryName}@${version}`);
+  }
+
+  clear(): void {
+    this.#cache.clear();
+  }
+
+  get size(): number {
+    return this.#cache.size;
+  }
+}

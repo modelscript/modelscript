@@ -613,6 +613,14 @@ export const EXTENDED_LANGUAGE_EXAMPLES: HeroExample[] = [
     code: 'MODEL: AeroUserComponent\nCOMPONENTS:\n  UG01 TYPE=GP/UG TITLE="Aerodynamic Damping Block"\n    PORTS: IN=input, OUT=output\n    XP: DAMP=0.15\n    FORTRAN:\n      ! Continuous derivative equation\n      SD(1) = -XP(1) * IN + S(1)\n      OUT = S(1)\n    ENDFORTRAN',
   },
   {
+    id: "twentysim-example-1",
+    title: "20-sim Mass-Spring-Damper Bond Graph",
+    category: "20-sim",
+    lang: "twentysim",
+    description: "20-sim Bond Graph (.sid / .emx) mass-spring-damper oscillator",
+    code: "model MassSpringDamper\n  submodels\n    Se F (effort = 2.0);\n    OneJunction j1;\n    I m (i = 1.0, p0 = 0.0);\n    R b (r = 1.0);\n    C k (c = 0.5, q0 = 0.0);\n  connections\n    F.p => j1.p;\n    j1.p => m.p;\n    j1.p => b.p;\n    j1.p => k.p;\nend MassSpringDamper;",
+  },
+  {
     id: "eclipse-example-1",
     title: "ECLIPSE Example 1",
     category: "ECLIPSE",

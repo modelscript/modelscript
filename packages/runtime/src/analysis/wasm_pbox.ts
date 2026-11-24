@@ -16,6 +16,7 @@
  * certification (`rigor: "rigorous"`).
  */
 
+import { getDefaultWasmExports } from "../dae/wasm_loader.js";
 import { probabilisticVerdictFromBounds, type ProbabilisticVerdict, type VerdictRigor } from "../formal/verdict.js";
 import { ivAdd, ivDiv, ivMul, ivSub, nextDown, nextUp } from "./outward_rounding.js";
 import { Interval } from "./wasm_interval.js";
@@ -248,6 +249,40 @@ export class PBox {
 
   /** Sound bounds [meanLo, meanHi] on the expectation E[X]. */
   public meanBounds(): [number, number] {
+    const n = this.focals.length;
+    const w = getDefaultWasmExports();
+    if (
+      w &&
+      typeof w.pbox_meanBounds === "function" &&
+      typeof w.alloc === "function" &&
+      typeof w.free === "function" &&
+      n > 0
+    ) {
+      const loPtr = w.alloc(n * 8);
+      const hiPtr = w.alloc(n * 8);
+      const mPtr = w.alloc(n * 8);
+      const outPtr = w.alloc(16);
+      try {
+        const loV = new Float64Array(w.memory.buffer, loPtr, n);
+        const hiV = new Float64Array(w.memory.buffer, hiPtr, n);
+        const mV = new Float64Array(w.memory.buffer, mPtr, n);
+        for (let i = 0; i < n; i++) {
+          const f = this.focals[i]!;
+          loV[i] = f.lo;
+          hiV[i] = f.hi;
+          mV[i] = f.mass;
+        }
+        w.pbox_meanBounds(loPtr, hiPtr, mPtr, n, outPtr);
+        const out = new Float64Array(w.memory.buffer, outPtr, 2);
+        return [out[0]!, out[1]!];
+      } finally {
+        w.free(loPtr);
+        w.free(hiPtr);
+        w.free(mPtr);
+        w.free(outPtr);
+      }
+    }
+
     let lo = 0;
     let hi = 0;
     for (const f of this.focals) {
@@ -270,6 +305,41 @@ export class PBox {
 
   /** Sound probability bounds [pMin, pMax] for P(X op threshold). */
   public probBound(op: PBoxComparisonOp, threshold: number): [number, number] {
+    const n = this.focals.length;
+    const w = getDefaultWasmExports();
+    if (
+      w &&
+      typeof w.pbox_probBound === "function" &&
+      typeof w.alloc === "function" &&
+      typeof w.free === "function" &&
+      n > 0
+    ) {
+      const opCode = op === ">" ? 0 : op === ">=" ? 1 : op === "<" ? 2 : 3;
+      const loPtr = w.alloc(n * 8);
+      const hiPtr = w.alloc(n * 8);
+      const mPtr = w.alloc(n * 8);
+      const outPtr = w.alloc(16);
+      try {
+        const loV = new Float64Array(w.memory.buffer, loPtr, n);
+        const hiV = new Float64Array(w.memory.buffer, hiPtr, n);
+        const mV = new Float64Array(w.memory.buffer, mPtr, n);
+        for (let i = 0; i < n; i++) {
+          const f = this.focals[i]!;
+          loV[i] = f.lo;
+          hiV[i] = f.hi;
+          mV[i] = f.mass;
+        }
+        w.pbox_probBound(loPtr, hiPtr, mPtr, n, opCode, threshold, outPtr);
+        const out = new Float64Array(w.memory.buffer, outPtr, 2);
+        return [out[0]!, out[1]!];
+      } finally {
+        w.free(loPtr);
+        w.free(hiPtr);
+        w.free(mPtr);
+        w.free(outPtr);
+      }
+    }
+
     let pMin = 0;
     let pMax = 0;
     for (const f of this.focals) {
@@ -372,10 +442,88 @@ function combinePBoxes(
   a: PBox,
   b: PBox,
   op: BinaryIntervalOp,
+  opCode: 0 | 1 | 2 | 3,
   dependence: PBoxDependence = "independent",
   maxBins = 64,
 ): PBox {
   if (dependence === "independent") {
+    const nA = a.focals.length;
+    const nB = b.focals.length;
+    const w = getDefaultWasmExports();
+    if (
+      w &&
+      typeof w.pbox_combineIndependent === "function" &&
+      typeof w.alloc === "function" &&
+      typeof w.free === "function" &&
+      nA > 0 &&
+      nB > 0
+    ) {
+      const nOut = nA * nB;
+      const aLoPtr = w.alloc(nA * 8);
+      const aHiPtr = w.alloc(nA * 8);
+      const aMPtr = w.alloc(nA * 8);
+      const bLoPtr = w.alloc(nB * 8);
+      const bHiPtr = w.alloc(nB * 8);
+      const bMPtr = w.alloc(nB * 8);
+      const oLoPtr = w.alloc(nOut * 8);
+      const oHiPtr = w.alloc(nOut * 8);
+      const oMPtr = w.alloc(nOut * 8);
+      try {
+        const aLoV = new Float64Array(w.memory.buffer, aLoPtr, nA);
+        const aHiV = new Float64Array(w.memory.buffer, aHiPtr, nA);
+        const aMV = new Float64Array(w.memory.buffer, aMPtr, nA);
+        for (let i = 0; i < nA; i++) {
+          const f = a.focals[i]!;
+          aLoV[i] = f.lo;
+          aHiV[i] = f.hi;
+          aMV[i] = f.mass;
+        }
+        const bLoV = new Float64Array(w.memory.buffer, bLoPtr, nB);
+        const bHiV = new Float64Array(w.memory.buffer, bHiPtr, nB);
+        const bMV = new Float64Array(w.memory.buffer, bMPtr, nB);
+        for (let j = 0; j < nB; j++) {
+          const f = b.focals[j]!;
+          bLoV[j] = f.lo;
+          bHiV[j] = f.hi;
+          bMV[j] = f.mass;
+        }
+
+        const count: number = w.pbox_combineIndependent(
+          aLoPtr,
+          aHiPtr,
+          aMPtr,
+          nA,
+          bLoPtr,
+          bHiPtr,
+          bMPtr,
+          nB,
+          opCode,
+          oLoPtr,
+          oHiPtr,
+          oMPtr,
+        );
+
+        const oLoV = new Float64Array(w.memory.buffer, oLoPtr, count);
+        const oHiV = new Float64Array(w.memory.buffer, oHiPtr, count);
+        const oMV = new Float64Array(w.memory.buffer, oMPtr, count);
+        const raw: FocalElement[] = new Array(count);
+        for (let k = 0; k < count; k++) {
+          raw[k] = { lo: oLoV[k]!, hi: oHiV[k]!, mass: oMV[k]! };
+        }
+        return new PBox(raw).condense(maxBins);
+      } finally {
+        w.free(aLoPtr);
+        w.free(aHiPtr);
+        w.free(aMPtr);
+        w.free(bLoPtr);
+        w.free(bHiPtr);
+        w.free(bMPtr);
+        w.free(oLoPtr);
+        w.free(oHiPtr);
+        w.free(oMPtr);
+      }
+    }
+
     const raw: FocalElement[] = [];
     for (const fa of a.focals) {
       const ia = new Interval(fa.lo, fa.hi);
@@ -422,19 +570,19 @@ function combinePBoxes(
 }
 
 export function pboxAdd(a: PBox, b: PBox, dependence: PBoxDependence = "independent", maxBins = 64): PBox {
-  return combinePBoxes(a, b, ivAdd, dependence, maxBins);
+  return combinePBoxes(a, b, ivAdd, 0, dependence, maxBins);
 }
 
 export function pboxSub(a: PBox, b: PBox, dependence: PBoxDependence = "independent", maxBins = 64): PBox {
-  return combinePBoxes(a, b, ivSub, dependence, maxBins);
+  return combinePBoxes(a, b, ivSub, 1, dependence, maxBins);
 }
 
 export function pboxMul(a: PBox, b: PBox, dependence: PBoxDependence = "independent", maxBins = 64): PBox {
-  return combinePBoxes(a, b, ivMul, dependence, maxBins);
+  return combinePBoxes(a, b, ivMul, 2, dependence, maxBins);
 }
 
 export function pboxDiv(a: PBox, b: PBox, dependence: PBoxDependence = "independent", maxBins = 64): PBox {
-  return combinePBoxes(a, b, ivDiv, dependence, maxBins);
+  return combinePBoxes(a, b, ivDiv, 3, dependence, maxBins);
 }
 
 // ─────────────────────────────────────────────────────────────────────

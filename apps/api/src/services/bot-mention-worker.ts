@@ -17,8 +17,11 @@ export class BotMentionWorker {
   start(intervalMs: number = 2000): void {
     if (this.#timer) return;
     this.#timer = setInterval(() => {
-      void this.processQueue();
+      void this.processQueue().catch((err) => {
+        console.error("[BotMentionWorker] Error processing queue:", err);
+      });
     }, intervalMs);
+    this.#timer.unref?.();
   }
 
   stop(): void {
@@ -29,7 +32,7 @@ export class BotMentionWorker {
   }
 
   async processQueue(batchSize: number = 5): Promise<number> {
-    if (this.#isProcessing) return 0;
+    if (this.#isProcessing || !this.#database.isOpen()) return 0;
     this.#isProcessing = true;
 
     let processedCount = 0;

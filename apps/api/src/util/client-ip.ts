@@ -15,13 +15,14 @@ function isValidIp(ip: string | undefined): boolean {
  */
 export function getClientIp(req: Request): string {
   const explicitDisable = process.env["TRUST_PROXY"] === "false";
-  const hasCfTunnel = Boolean(process.env["CLOUDFLARE_TUNNEL_TOKEN"]?.trim() && req.headers["cf-ray"]);
   const socketIp = req.socket?.remoteAddress || req.ip || "";
   const isTest = process.env["NODE_ENV"] === "test";
+  const peerIsTrustedProxy = isTest || !socketIp || isIpTrustedProxy(socketIp);
+  const hasCfTunnel = Boolean(
+    process.env["CLOUDFLARE_TUNNEL_TOKEN"]?.trim() && req.headers["cf-ray"] && peerIsTrustedProxy,
+  );
   const trustForwarded =
-    hasCfTunnel ||
-    (!explicitDisable &&
-      (isTest || (process.env["TRUST_PROXY"] === "true" && (!socketIp || isIpTrustedProxy(socketIp)))));
+    hasCfTunnel || (!explicitDisable && (isTest || (process.env["TRUST_PROXY"] === "true" && peerIsTrustedProxy)));
 
   if (trustForwarded) {
     const cfIp = req.headers["cf-connecting-ip"];

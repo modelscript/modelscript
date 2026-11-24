@@ -2,8 +2,8 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { ActivityBmcEngine } from "../src/statemachine/wasm_bmc_engine.js";
-import { ActivityEdgeKind, ActivityNodeKind, WasmFumlEngine } from "../src/statemachine/wasm_fuml_engine.js";
+import { ActivityBmcEngine } from "../src/statemachine/bmc_engine.js";
+import { ActivityEdgeKind, ActivityNodeKind, WasmFumlEngine } from "../src/statemachine/fuml_engine.js";
 
 describe("Discrete Activity Bounded Model Checking (BMC) & k-Induction Suite", () => {
   it("should detect violation when a forbidden node is reachable in bounded execution", () => {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import crypto from "node:crypto";
 import { JWT_SECRET } from "../middleware/auth-middleware.js";
+import { signHmacToken, verifyHmacToken } from "./hmac-token.js";
 
 export interface VerificationTokenPayload {
   userId: number;
@@ -20,16 +20,7 @@ export function signEmailVerificationToken(
   secret: string = JWT_SECRET,
   expiresInMs: number = DEFAULT_EXPIRY_MS,
 ): string {
-  const payload: VerificationTokenPayload = {
-    userId,
-    email: email.toLowerCase().trim(),
-    expiresAt: Date.now() + expiresInMs,
-  };
-
-  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const signature = crypto.createHmac("sha256", secret).update(payloadB64).digest("base64url");
-
-  return `${payloadB64}.${signature}`;
+  return signHmacToken({ userId, email: email.toLowerCase().trim() }, secret, expiresInMs);
 }
 
 /**
@@ -39,43 +30,22 @@ export function verifyEmailVerificationToken(
   token: string,
   secret: string = JWT_SECRET,
 ): { valid: boolean; userId?: number | undefined; email?: string | undefined; error?: string | undefined } {
-  if (!token || typeof token !== "string" || !token.includes(".")) {
-    return { valid: false, error: "Malformed token format" };
-  }
-
-  const [payloadB64, providedSig] = token.split(".");
-  if (!payloadB64 || !providedSig) {
-    return { valid: false, error: "Malformed token parts" };
-  }
-
-  const expectedSig = crypto.createHmac("sha256", secret).update(payloadB64).digest("base64url");
-
-  // Constant-time comparison to prevent timing attacks
-  const providedBuffer = Buffer.from(providedSig, "utf8");
-  const expectedBuffer = Buffer.from(expectedSig, "utf8");
-
-  if (providedBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(providedBuffer, expectedBuffer)) {
-    return { valid: false, error: "Invalid cryptographic signature" };
-  }
-
-  try {
-    const payloadStr = Buffer.from(payloadB64, "base64url").toString("utf8");
-    const payload = JSON.parse(payloadStr) as VerificationTokenPayload;
-
-    if (!payload.userId || !payload.email || typeof payload.expiresAt !== "number") {
-      return { valid: false, error: "Invalid token payload structure" };
-    }
-
-    if (Date.now() > payload.expiresAt) {
+  const result = verifyHmacToken<{ userId: number; email: string }>(token, secret);
+  if (!result.valid) {
+    if (result.code === "expired") {
       return { valid: false, error: "Verification token has expired" };
     }
-
-    return {
-      valid: true,
-      userId: payload.userId,
-      email: payload.email,
-    };
-  } catch (err: unknown) {
-    return { valid: false, error: `Failed to decode token payload: ${(err as Error).message}` };
+    return { valid: false, error: result.error };
   }
+
+  const { payload } = result;
+  if (!payload.userId || !payload.email) {
+    return { valid: false, error: "Invalid token payload structure" };
+  }
+
+  return {
+    valid: true,
+    userId: payload.userId,
+    email: payload.email,
+  };
 }

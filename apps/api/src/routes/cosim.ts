@@ -18,7 +18,6 @@ import { applySspParameters, importSsp, wireSspCouplings } from "@modelscript/ex
 import express from "express";
 import type { LibraryDatabase } from "../database.js";
 import { optionalAuth } from "../middleware/auth-middleware.js";
-import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 import { calculateCostCredits, getComputeProfile } from "../services/hpc/compute-profiles.js";
 import { checkComputeQuota } from "../services/hpc/quota-guard.js";
 
@@ -76,7 +75,6 @@ export function cosimRouter(
   historianRecorder?: HistorianRecorder | null,
 ): express.Router {
   const router = express.Router();
-  router.use(defaultApiLimiter);
 
   const requireCosimAuthInProd: express.RequestHandler = (req, res, next) => {
     if (process.env["NODE_ENV"] === "production") {
@@ -561,7 +559,6 @@ export function cosimRouter(
  */
 export function mqttParticipantsRouter(mqttClient: CosimMqttClient | null): express.Router {
   const router = express.Router();
-  router.use(defaultApiLimiter);
 
   // GET /api/v1/mqtt/participants — List all active MQTT participants
   router.get("/", (_req, res) => {
@@ -635,7 +632,7 @@ export function mqttParticipantsRouter(mqttClient: CosimMqttClient | null): expr
   });
 
   // POST /api/v1/mqtt/participants/:id/variables — Set input variable values
-  router.post("/:id/variables", defaultApiLimiter, optionalAuth, (req, res) => {
+  router.post("/:id/variables", optionalAuth, (req, res) => {
     if (process.env["NODE_ENV"] === "production") {
       const user = (req as express.Request & { user?: { id?: number | undefined } | undefined }).user;
       if (!user?.id) {

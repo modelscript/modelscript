@@ -19,7 +19,9 @@ import os from "node:os";
 import v8 from "node:v8";
 import { createApp } from "./app.js";
 import { attachCollabWebSocket } from "./routes/collab-ws.js";
-import { attachCanvasWebSocket } from "./services/canvas-collab-service.js";
+import { defaultArchiveQueue } from "./services/archive-queue.js";
+import { attachCanvasWebSocket, defaultCanvasRoomManager } from "./services/canvas-collab-service.js";
+import { twinManager } from "./services/twin/index.js";
 
 const port = parseInt(process.env["PORT"] ?? "3000", 10);
 const mqttUrl = process.env["MQTT_BROKER_URL"];
@@ -169,8 +171,18 @@ console.log("WebSocket spatial canvas stream available at /api/v1/canvas/stream"
  * Gracefully stops background worker intervals, flushes the TimescaleDB historian recorder,
  * disconnects MQTT and PostgreSQL clients, and closes the HTTP server upon receiving `SIGINT`/`SIGTERM`.
  */
+let isShuttingDown = false;
+
 async function shutdown(signal: string): Promise<void> {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
   console.log(`\n${signal} received. Shutting down gracefully...`);
+
+  if (Array.isArray(app.locals["periodicWorkers"])) {
+    for (const worker of app.locals["periodicWorkers"] as Array<{ stop: () => void }>) {
+      worker.stop();
+    }
+  }
 
   if (app.locals["decayWorkerInterval"]) {
     clearInterval(app.locals["decayWorkerInterval"]);
@@ -214,6 +226,24 @@ async function shutdown(signal: string): Promise<void> {
       resolve();
     });
   });
+
+  try {
+    defaultCanvasRoomManager.shutdown?.();
+  } catch {
+    // Best-effort
+  }
+
+  try {
+    twinManager.evictIdleSessions(0);
+  } catch {
+    // Best-effort
+  }
+
+  try {
+    defaultArchiveQueue.cleanupExpiredArchives();
+  } catch {
+    // Best-effort
+  }
 
   if (app.locals["analyticsBuffer"]) {
     console.log("[AnalyticsBuffer] Flushing pending in-memory telemetry to SQLite...");

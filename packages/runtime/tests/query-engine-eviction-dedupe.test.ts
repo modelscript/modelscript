@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { QueryHooks, SymbolEntry, SymbolIndex } from "../src/runtime.js";
-import { WasmQueryEngine } from "../src/workspace/wasm_query_engine.js";
+import { WasmQueryEngine } from "../src/workspace/query_engine.js";
 
 function makeEntry(id: number, name: string): SymbolEntry {
   return {

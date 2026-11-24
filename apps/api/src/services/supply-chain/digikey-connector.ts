@@ -43,9 +43,6 @@ export class DigiKeyConnector {
       const token = await this.getAccessToken();
       if (!token) return this.generateMockQuotes(mpn);
 
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-
       const url = `${this.endpoint}/Search/v4/products/keyword`;
       const res = await fetch(url, {
         method: "POST",
@@ -55,9 +52,8 @@ export class DigiKeyConnector {
           "X-DIGIKEY-Client-Id": this.clientId ?? "",
         },
         body: JSON.stringify({ Keywords: mpn, Limit: 5 }),
-        signal: controller.signal,
+        signal: AbortSignal.timeout(this.timeoutMs),
       });
-      clearTimeout(timer);
 
       if (!res.ok) return this.generateMockQuotes(mpn);
 

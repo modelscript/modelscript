@@ -4,6 +4,7 @@ import { buildRobotAnimationBindings, parseObjMesh, parseStlMesh, type LoadedMes
 import { extractFbiModalDeformation, parseFbiFile } from "@modelscript/simpack";
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
+import { handleOpenInVrWebviewMessage } from "./vr-handoff.js";
 import { BaseWebviewPanel } from "./webview/base-panel.js";
 
 export interface MultibodyMeshPayload {
@@ -671,6 +672,13 @@ export class MultiBodyAnimationPanel extends BaseWebviewPanel {
       (message) => {
         switch (message.type) {
           case "ready":
+            break;
+          case "openInVr":
+            void handleOpenInVrWebviewMessage(message, {
+              artifactUri: this.sourceUri,
+              title: "3D Multi-Body Animation",
+              kind: "multibody",
+            });
             break;
         }
       },

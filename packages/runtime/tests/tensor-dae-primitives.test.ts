@@ -2,7 +2,7 @@
 
 import assert from "node:assert";
 import { collectArenaExprDeps } from "../src/analysis/wasm_blt.js";
-import { printArenaDAE } from "../src/dae/wasm_dae_printer.js";
+import { printArenaDAE } from "../src/dae/dae_printer.js";
 import {
   DAEBuilder,
   EqKind,

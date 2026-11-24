@@ -6,7 +6,7 @@ import express, { Router as createRouter, type Request, type Response, type Rout
 import { DataFactory, Writer } from "n3";
 import { createRequire } from "node:module";
 
-import { SqliteRdfSource } from "../database-rdf.js";
+import { SqliteRdfSourceCache } from "../database-rdf.js";
 import type { LibraryDatabase } from "../database.js";
 
 const require = createRequire(import.meta.url);
@@ -59,25 +59,47 @@ function getSparqlParser(): Promise<{ parse(text: string): { rootNode: GenericSy
 
 /**
  * Creates the Express router exposing W3C SPARQL 1.1 `SELECT`, `ASK`, `CONSTRUCT`, and `DESCRIBE`
- * query endpoints (`/api/v1/libraries/:name/:version/sparql` and
+ * query endpoints (`/api/v1/libraries/sparql?library=...&version=...`,
+ * `/api/v1/libraries/:name/:version/sparql`, and
  * `/api/v1/libraries/:scope/:name/:version/sparql`) backed by `SqliteRdfSource` and our native
  * `@modelscript/sparql` WebAssembly GLR parser + algebra engine.
  */
 export function sparqlRouter(database: LibraryDatabase): Router {
   const router = createRouter();
   const urlencodedParser = express.urlencoded({ extended: false });
+  const rdfSourceCache = new SqliteRdfSourceCache(database.db, {
+    maxEntries: 16,
+    ttlMs: 60_000,
+  });
 
   router.all(
-    ["/:name/:version/sparql", "/:scope/:name/:version/sparql"],
+    ["/", "/:name/:version/sparql", "/:scope/:name/:version/sparql"],
+    (req: Request, _res: Response, next) => {
+      if (req.path === "/" && !req.baseUrl.endsWith("/sparql")) {
+        next("route");
+        return;
+      }
+      next();
+    },
     urlencodedParser,
     async (req: Request, res: Response): Promise<void> => {
       const scope = req.params["scope"];
-      const rawName = req.params["name"];
+      const rawName =
+        req.params["name"] ??
+        (typeof req.query["library"] === "string" ? req.query["library"] : undefined) ??
+        (typeof req.query["name"] === "string" ? req.query["name"] : undefined) ??
+        (typeof req.body?.library === "string" ? req.body.library : undefined);
       const name = typeof scope === "string" && typeof rawName === "string" ? `${scope}/${rawName}` : rawName;
-      const version = req.params["version"];
+      const version =
+        req.params["version"] ??
+        (typeof req.query["version"] === "string" ? req.query["version"] : undefined) ??
+        (typeof req.body?.version === "string" ? req.body.version : undefined);
 
-      if (typeof name !== "string" || typeof version !== "string") {
-        res.status(400).json({ error: "Package name and version are required" });
+      if (typeof name !== "string" || !name.trim() || typeof version !== "string" || !version.trim()) {
+        res.status(400).json({
+          error:
+            "Package name and version are required (provide /:name/:version/sparql, /:scope/:name/:version/sparql, or ?library=<name>&version=<version>)",
+        });
         return;
       }
 
@@ -121,7 +143,7 @@ export function sparqlRouter(database: LibraryDatabase): Router {
         return;
       }
 
-      const source = new SqliteRdfSource(database.db, name, version);
+      const source = rdfSourceCache.get(name, version);
 
       try {
         const parser = await getSparqlParser();

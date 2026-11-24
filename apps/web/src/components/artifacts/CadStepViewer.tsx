@@ -30,9 +30,11 @@ import Spinner from "../Spinner";
 import { useToast } from "../ToastContext";
 import AutoThumbnailCapture from "./AutoThumbnailCapture";
 import { adaptSvgMarkupForTheme } from "./PolyglotArtifactViewer";
+import { registerArtifactRotundaGeometry } from "./RotundaGeometryBridge";
 import SafeOrbitControls from "./SafeOrbitControls";
 import type { SpatialPin } from "./spatial-pin";
 import ViewportCameraControls, { type CameraPreset, type ClipAxis, type RenderMode } from "./ViewportCameraControls";
+import { XrSceneBridge, XrViewportOverlay } from "./XrViewportOverlay";
 
 interface CadStepViewerProps {
   artifactId?: number | undefined;
@@ -1097,14 +1099,19 @@ const AutoSweepDriver: React.FC<{
 }> = ({ enabled, onSweepOffset }) => {
   const phaseRef = useRef(0);
   const accumRef = useRef(0);
+  const lastEmittedRef = useRef<number>(Number.NaN);
   useFrame((_, delta) => {
     if (!enabled) return;
     const dt = Math.min(delta, 0.05);
     phaseRef.current += dt * 0.72;
     accumRef.current += dt;
-    if (accumRef.current >= 0.032) {
+    if (accumRef.current >= 0.066) {
       accumRef.current = 0;
-      onSweepOffset(Math.sin(phaseRef.current) * 0.82);
+      const nextOffset = Math.sin(phaseRef.current) * 0.82;
+      if (Number.isNaN(lastEmittedRef.current) || Math.abs(nextOffset - lastEmittedRef.current) > 0.005) {
+        lastEmittedRef.current = nextOffset;
+        onSweepOffset(nextOffset);
+      }
     }
   });
   return null;
@@ -1651,10 +1658,61 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
     });
   }, [geometries, assemblyCenter, explosionFactor]);
 
+  useEffect(() => {
+    const rawViewArtifactId = viewConfig?.artifactId;
+    const bridgeKey =
+      (artifactId !== undefined && artifactId !== 0 ? artifactId : undefined) ??
+      (rawViewArtifactId !== undefined &&
+      rawViewArtifactId !== null &&
+      String(rawViewArtifactId).trim() !== "" &&
+      String(rawViewArtifactId) !== "0"
+        ? (rawViewArtifactId as string | number)
+        : undefined) ??
+      (typeof viewConfig?.url === "string" && viewConfig.url.trim().length > 0 ? viewConfig.url.trim() : undefined);
+
+    if (bridgeKey === undefined || meshItems.length === 0) return;
+
+    const parts = meshItems.map(({ geo, offset, compName, colorRgba }) => {
+      const normalizedRgba: [number, number, number, number] | undefined =
+        colorRgba && colorRgba.length >= 3
+          ? [
+              Number(colorRgba[0]),
+              Number(colorRgba[1]),
+              Number(colorRgba[2]),
+              colorRgba.length >= 4 ? Number(colorRgba[3]) : 1,
+            ]
+          : undefined;
+      return {
+        name: compName,
+        geometry: geo.clone(),
+        offset: [offset[0], offset[1], offset[2]] as [number, number, number],
+        ...(normalizedRgba ? { colorRgba: normalizedRgba } : {}),
+      };
+    });
+
+    // Retain snapshot across unmount (LRU-capped in registry) so switching to VR Rotunda renders live STEP meshes
+    registerArtifactRotundaGeometry(bridgeKey, {
+      kind: "step-meshes",
+      parts,
+    });
+  }, [artifactId, viewConfig?.artifactId, viewConfig?.url, meshItems]);
+
+  const MAX_HIGHLIGHTED_STEP_LINES = 3000;
   const codeLines = useMemo(
     () => (viewTab === "code" ? effectiveStepSource.split(/\r?\n/) : []),
     [viewTab, effectiveStepSource],
   );
+  const { highlightedCodeLines, truncatedStepLineCount } = useMemo(() => {
+    const limit = Math.min(codeLines.length, MAX_HIGHLIGHTED_STEP_LINES);
+    const items: React.ReactNode[] = new Array(limit);
+    for (let i = 0; i < limit; i++) {
+      items[i] = highlightStepLine(codeLines[i]!);
+    }
+    return {
+      highlightedCodeLines: items,
+      truncatedStepLineCount: Math.max(0, codeLines.length - limit),
+    };
+  }, [codeLines]);
 
   return (
     <Box
@@ -1890,120 +1948,123 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
                     artifactId={artifactId}
                     hasThumbnail={Boolean(viewConfig?.thumbnailUrl || viewConfig?.thumbnail_url)}
                   />
-                  <HeroStudioEnvironment dark={isDark} />
-                  <AutoSweepDriver enabled={autoSweep && clipAxis !== "none"} onSweepOffset={setClipOffset} />
-                  <Suspense fallback={<Loader />}>
-                    <group
-                      scale={[assemblyScale, assemblyScale, assemblyScale]}
-                      position={
-                        assemblyCenter
-                          ? [
-                              -assemblyCenter.x * assemblyScale,
-                              -assemblyCenter.y * assemblyScale,
-                              -assemblyCenter.z * assemblyScale,
-                            ]
-                          : [0, 0, 0]
-                      }
-                    >
-                      {meshItems.map(({ geo, idx, offset, compName, colorRgba }) => {
-                        const isDefective = boundaryDefectPins.some(
-                          (pin) =>
-                            pin.contractId === `watertight_${compName}` ||
-                            pin.label.includes(compName) ||
-                            (boundaryDefectPins.length > 0 && meshItems.length === 1),
-                        );
-                        return (
-                          <StepMeshItem
-                            key={idx}
-                            geo={geo}
-                            offset={offset}
-                            compName={compName}
-                            colorRgba={colorRgba}
-                            renderMode={renderMode}
-                            solidPlane={solidPlane}
-                            wirePlane={wirePlane}
-                            activeClippingPlanes={activeClippingPlanes}
-                            dark={isDark}
-                            isDefective={isDefective}
-                            onMeshClick={(e) => {
-                              e.stopPropagation();
-                              const invScale = assemblyScale > 1e-9 ? 1 / assemblyScale : 1;
-                              const cadPos: [number, number, number] = [
-                                e.point.x * invScale - offset[0] + (assemblyCenter?.x ?? 0),
-                                e.point.y * invScale - offset[1] + (assemblyCenter?.y ?? 0),
-                                e.point.z * invScale - offset[2] + (assemblyCenter?.z ?? 0),
-                              ];
-                              setProbedPoint({
-                                position: cadPos,
-                                worldPosition: [e.point.x, e.point.y, e.point.z],
-                                partName: compName,
-                              });
-                              if (isPinMode && onPinCreated) {
-                                onPinCreated({
-                                  worldPosition: cadPos,
-                                  cameraPosition: [e.camera.position.x, e.camera.position.y, e.camera.position.z],
-                                  cameraTarget: cadPos,
-                                  fieldName: compName,
-                                  scalarValue: idx + 1,
+                  <XrSceneBridge>
+                    <HeroStudioEnvironment dark={isDark} />
+                    <AutoSweepDriver enabled={autoSweep && clipAxis !== "none"} onSweepOffset={setClipOffset} />
+                    <Suspense fallback={<Loader />}>
+                      <group
+                        scale={[assemblyScale, assemblyScale, assemblyScale]}
+                        position={
+                          assemblyCenter
+                            ? [
+                                -assemblyCenter.x * assemblyScale,
+                                -assemblyCenter.y * assemblyScale,
+                                -assemblyCenter.z * assemblyScale,
+                              ]
+                            : [0, 0, 0]
+                        }
+                      >
+                        {meshItems.map(({ geo, idx, offset, compName, colorRgba }) => {
+                          const isDefective = boundaryDefectPins.some(
+                            (pin) =>
+                              pin.contractId === `watertight_${compName}` ||
+                              pin.label.includes(compName) ||
+                              (boundaryDefectPins.length > 0 && meshItems.length === 1),
+                          );
+                          return (
+                            <StepMeshItem
+                              key={idx}
+                              geo={geo}
+                              offset={offset}
+                              compName={compName}
+                              colorRgba={colorRgba}
+                              renderMode={renderMode}
+                              solidPlane={solidPlane}
+                              wirePlane={wirePlane}
+                              activeClippingPlanes={activeClippingPlanes}
+                              dark={isDark}
+                              isDefective={isDefective}
+                              onMeshClick={(e) => {
+                                e.stopPropagation();
+                                const invScale = assemblyScale > 1e-9 ? 1 / assemblyScale : 1;
+                                const cadPos: [number, number, number] = [
+                                  e.point.x * invScale - offset[0] + (assemblyCenter?.x ?? 0),
+                                  e.point.y * invScale - offset[1] + (assemblyCenter?.y ?? 0),
+                                  e.point.z * invScale - offset[2] + (assemblyCenter?.z ?? 0),
+                                ];
+                                setProbedPoint({
+                                  position: cadPos,
+                                  worldPosition: [e.point.x, e.point.y, e.point.z],
+                                  partName: compName,
                                 });
-                                setIsPinMode(false);
-                              }
-                            }}
-                          />
-                        );
-                      })}
-                      {showGdt && gdtOverlay && (
-                        <Gdt3dOverlay
-                          payload={gdtOverlay}
-                          lift={assemblyScale > 1e-9 ? 2.6 / assemblyScale : 2.6}
-                          dark={isDark}
-                          onSelectCallout={() => setViewTab("code")}
-                        />
-                      )}
-                      {boundaryDefectPins.map((pin) => (
-                        <group key={pin.id} position={pin.position}>
-                          <mesh>
-                            <sphereGeometry args={[0.5, 16, 16]} />
-                            <meshBasicMaterial color={pin.severity === "error" ? "#ef4444" : "#f97316"} />
-                          </mesh>
-                          <Html distanceFactor={22} center>
-                            <div
-                              style={{
-                                background: "rgba(15, 23, 42, 0.95)",
-                                border: `1px solid ${pin.severity === "error" ? "#ef4444" : "#f97316"}`,
-                                borderRadius: "6px",
-                                padding: "3px 8px",
-                                whiteSpace: "nowrap",
-                                fontSize: "11px",
-                                fontWeight: 600,
-                                color: "#f8fafc",
-                                boxShadow: "0 4px 12px rgba(0,0,0,0.6)",
-                                pointerEvents: "none",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "4px",
+                                if (isPinMode && onPinCreated) {
+                                  onPinCreated({
+                                    worldPosition: cadPos,
+                                    cameraPosition: [e.camera.position.x, e.camera.position.y, e.camera.position.z],
+                                    cameraTarget: cadPos,
+                                    fieldName: compName,
+                                    scalarValue: idx + 1,
+                                  });
+                                  setIsPinMode(false);
+                                }
                               }}
-                            >
-                              <span>⚠️</span>
-                              <span>{pin.label}</span>
-                            </div>
-                          </Html>
-                        </group>
-                      ))}
-                    </group>
-                    {renderMode === "section" && solidPlane && (
-                      <StencilSectionCapQuad plane={solidPlane} center={[0, 0, 0]} size={48} dark={isDark} />
-                    )}
-                    {probedPoint?.worldPosition && (
-                      <mesh position={probedPoint.worldPosition}>
-                        <sphereGeometry args={[0.38, 16, 16]} />
-                        <meshBasicMaterial color="#38bdf8" />
-                      </mesh>
-                    )}
-                    <CameraController controlsRef={controlsRef} presetTrigger={presetTrigger} />
-                  </Suspense>
-                  <SafeOrbitControls controlsRef={controlsRef} isFullScreen={isFullScreen} />
+                            />
+                          );
+                        })}
+                        {showGdt && gdtOverlay && (
+                          <Gdt3dOverlay
+                            payload={gdtOverlay}
+                            lift={assemblyScale > 1e-9 ? 2.6 / assemblyScale : 2.6}
+                            dark={isDark}
+                            onSelectCallout={() => setViewTab("code")}
+                          />
+                        )}
+                        {boundaryDefectPins.map((pin) => (
+                          <group key={pin.id} position={pin.position}>
+                            <mesh>
+                              <sphereGeometry args={[0.5, 16, 16]} />
+                              <meshBasicMaterial color={pin.severity === "error" ? "#ef4444" : "#f97316"} />
+                            </mesh>
+                            <Html distanceFactor={22} center>
+                              <div
+                                style={{
+                                  background: "rgba(15, 23, 42, 0.95)",
+                                  border: `1px solid ${pin.severity === "error" ? "#ef4444" : "#f97316"}`,
+                                  borderRadius: "6px",
+                                  padding: "3px 8px",
+                                  whiteSpace: "nowrap",
+                                  fontSize: "11px",
+                                  fontWeight: 600,
+                                  color: "#f8fafc",
+                                  boxShadow: "0 4px 12px rgba(0,0,0,0.6)",
+                                  pointerEvents: "none",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                }}
+                              >
+                                <span>⚠️</span>
+                                <span>{pin.label}</span>
+                              </div>
+                            </Html>
+                          </group>
+                        ))}
+                      </group>
+                      {renderMode === "section" && solidPlane && (
+                        <StencilSectionCapQuad plane={solidPlane} center={[0, 0, 0]} size={48} dark={isDark} />
+                      )}
+                      {probedPoint?.worldPosition && (
+                        <mesh position={probedPoint.worldPosition}>
+                          <sphereGeometry args={[0.38, 16, 16]} />
+                          <meshBasicMaterial color="#38bdf8" />
+                        </mesh>
+                      )}
+                      <CameraController controlsRef={controlsRef} presetTrigger={presetTrigger} />
+                    </Suspense>
+                    <SafeOrbitControls controlsRef={controlsRef} isFullScreen={isFullScreen} />
+                  </XrSceneBridge>
                 </Canvas>
+                <XrViewportOverlay position="bottom-right" />
 
                 <Box
                   position="absolute"
@@ -2162,7 +2223,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
                   lineHeight: 1.55,
                 }}
               >
-                {codeLines.map((line, idx) => (
+                {highlightedCodeLines.map((highlighted, idx) => (
                   <div key={idx} style={{ display: "flex", padding: "0 14px" }}>
                     <span
                       style={{
@@ -2177,11 +2238,23 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
                     >
                       {idx + 1}
                     </span>
-                    <span style={{ whiteSpace: "pre", color: "var(--color-fg-default, #e6edf3)" }}>
-                      {highlightStepLine(line)}
-                    </span>
+                    <span style={{ whiteSpace: "pre", color: "var(--color-fg-default, #e6edf3)" }}>{highlighted}</span>
                   </div>
                 ))}
+                {truncatedStepLineCount > 0 && (
+                  <div
+                    style={{
+                      padding: "10px 14px 14px 54px",
+                      color: "var(--color-fg-muted, #8b949e)",
+                      fontSize: "11px",
+                      fontStyle: "italic",
+                    }}
+                  >
+                    Showing first {MAX_HIGHLIGHTED_STEP_LINES.toLocaleString()} of {codeLines.length.toLocaleString()}{" "}
+                    lines ({truncatedStepLineCount.toLocaleString()} lines omitted for performance; use Copy to access
+                    the full STEP source).
+                  </div>
+                )}
               </Box>
             )}
           </Box>

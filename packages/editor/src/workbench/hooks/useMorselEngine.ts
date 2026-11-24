@@ -23,15 +23,22 @@ import { extractThreeMfCadComponents } from "@modelscript/three-mf/cad";
 import { extractUsdCadComponents } from "@modelscript/usd/cad";
 import type { editor } from "monaco-editor";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useEditorModelingPreferences as useModelingPreferences } from "../../host";
+import { useEditorModelingPreferences as useModelingPreferences, useEditorToast as useToast } from "../../host";
 import { extractParametersFromCode } from "../../internal/modelica-params";
-import { type CadComponent } from "../cad-viewer";
+import {
+  type CadComponent,
+  type CommitAssemblyJointPayload,
+  type CommitDimensionPayload,
+  type CommitFaceTagPayload,
+  type GizmoCommitPayload,
+} from "../cad-viewer";
 import { AnimationController } from "../cad-viewer/animation-controller";
 import { extractCadComponents, parseSourceCadVariables } from "../cad-viewer/parse-cad-annotations";
 import { type HistorianSession } from "../CosimPanel";
 import { type AmplSolveResultData } from "../panels/AmplOptimizationResults";
 import { type ExperimentOverrides, type ParameterInfo, type SweepState } from "../SimulationParameters";
 import {
+  applyCadEditInMorsel,
   compileStepFromSourcesInMorsel,
   executeLspAction,
   extractPrimaryModelicaClassName,
@@ -1502,6 +1509,7 @@ export function useMorselEngine({
   activeFileName,
   onUpdateProjectFile,
 }: UseMorselEngineProps) {
+  const toast = useToast();
   const { preferences: modelingPrefs } = useModelingPreferences();
   const prefStopTime = modelingPrefs.defaultStopTime ?? 10;
   const prefIntervals = modelingPrefs.defaultNumberOfIntervals ?? 500;
@@ -1877,6 +1885,102 @@ export function useMorselEngine({
     [editor],
   );
 
+  // ── 3D Direct-Manipulation CAD Edit Writeback (Gizmo / Dimension / Face Tag / Assembly Joint) ──
+  const commitCadEdit = useCallback(
+    async (kind: "gizmo" | "dimension" | "face_tag" | "assembly_joint", payload: Record<string, unknown>) => {
+      const liveSource = editor?.getValue() ?? editorValue;
+      try {
+        const res = await applyCadEditInMorsel({
+          uri: documentUri,
+          documentText: liveSource,
+          languageId: dialect,
+          kind,
+          payload,
+        });
+        if (res.locked) {
+          const msg = res.lockReason || "This CAD parameter is locked and cannot be edited directly.";
+          console.warn("[CAD Direct Edit]", msg);
+          toast.warning(msg);
+          return;
+        }
+        if (!res.applied) {
+          if (res.error) {
+            console.warn("[CAD Direct Edit]", res.error);
+            toast.warning(res.error);
+          }
+          return;
+        }
+        if (!editor) return;
+        const model = editor.getModel();
+        if (model && res.replacedRange && typeof res.newText === "string") {
+          const startPos = model.getPositionAt(res.replacedRange.startOffset);
+          const endPos = model.getPositionAt(res.replacedRange.endOffset);
+          editor.pushUndoStop();
+          editor.executeEdits("cad-direct-edit", [
+            {
+              range: {
+                startLineNumber: startPos.lineNumber,
+                startColumn: startPos.column,
+                endLineNumber: endPos.lineNumber,
+                endColumn: endPos.column,
+              },
+              text: res.newText,
+              forceMoveMarkers: true,
+            },
+          ]);
+          editor.pushUndoStop();
+        } else if (typeof res.updatedSource === "string" && res.updatedSource !== liveSource) {
+          if (model) {
+            editor.pushUndoStop();
+            editor.executeEdits("cad-direct-edit", [
+              {
+                range: model.getFullModelRange(),
+                text: res.updatedSource,
+                forceMoveMarkers: true,
+              },
+            ]);
+            editor.pushUndoStop();
+          } else {
+            editor.setValue(res.updatedSource);
+          }
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn("[CAD Direct Edit] Failed to apply edit:", msg);
+        toast.error(`CAD edit failed: ${msg}`);
+      }
+    },
+    [editor, editorValue, documentUri, dialect, toast],
+  );
+
+  const handleCommitCadGizmoDelta = useCallback(
+    (payload: GizmoCommitPayload) => {
+      void commitCadEdit("gizmo", payload as unknown as Record<string, unknown>);
+    },
+    [commitCadEdit],
+  );
+
+  const handleCommitCadDimensionDelta = useCallback(
+    (payload: CommitDimensionPayload) => {
+      void commitCadEdit("dimension", payload as unknown as Record<string, unknown>);
+    },
+    [commitCadEdit],
+  );
+
+  const handleCommitCadFaceTag = useCallback(
+    (payload: CommitFaceTagPayload) => {
+      void commitCadEdit("face_tag", payload as unknown as Record<string, unknown>);
+    },
+    [commitCadEdit],
+  );
+
+  const handleCommitCadAssemblyJoint = useCallback(
+    (payload: CommitAssemblyJointPayload) => {
+      void commitCadEdit("assembly_joint", payload as unknown as Record<string, unknown>);
+    },
+    [commitCadEdit],
+  );
+
   // ── Fetch CAD annotations or tessellate direct STEP / OpenSCAD 3D geometry ──
   useEffect(() => {
     if (!showCadView && dialect !== "step" && dialect !== "scad" && dialect !== "qif" && dialect !== "three-mf") return;
@@ -2001,6 +2105,7 @@ export function useMorselEngine({
               dynamicBindings: Array.isArray(c.dynamicBindings) ? c.dynamicBindings : [],
               defaults: c.defaults,
               shapeType: c.shapeType,
+              sourceMetadata: c.sourceMetadata as CadComponent["sourceMetadata"],
             };
           });
           setVtkBuffer(null);
@@ -2362,7 +2467,7 @@ export function useMorselEngine({
   ]);
 
   // ── Full Simulation Execution ──
-  const handleSimulate = async () => {
+  const handleSimulateImpl = async () => {
     setSimulationStatus({ status: "pending", error: null });
     setLocalSimulationData(null);
     setSimulationVariables([]);
@@ -2602,6 +2707,10 @@ export function useMorselEngine({
     }
   };
 
+  const handleSimulateImplRef = useRef(handleSimulateImpl);
+  handleSimulateImplRef.current = handleSimulateImpl;
+  const handleSimulate = useCallback(() => handleSimulateImplRef.current(), []);
+
   return {
     simulationVariables,
     setSimulationVariables,
@@ -2650,6 +2759,10 @@ export function useMorselEngine({
     handleRibbonParamReset,
     handleReplaySession,
     handleSaveCadBindings,
+    handleCommitCadGizmoDelta,
+    handleCommitCadDimensionDelta,
+    handleCommitCadFaceTag,
+    handleCommitCadAssemblyJoint,
     handleSimulate,
     amplSolveResult,
   };

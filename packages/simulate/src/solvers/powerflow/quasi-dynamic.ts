@@ -11,9 +11,107 @@
  * - Aggregate energy metrics: MWh delivered, MWh losses, voltage envelope, and peak branch loading
  */
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
+import { WasmScratchPool, type WasmMemoryHost, type WasmScratchScope } from "@modelscript/solve";
 import { wasmAcPowerflowNR } from "../../wasm/simulate-wasm.js";
 import type { GenericPowerCase } from "../opf/types.js";
 import { solveLinearSystemSparse } from "../sparse-solver-bridge.js";
+
+interface QdslWasmExports extends WasmMemoryHost {
+  qdsl_build_ybus?: (
+    nBus: number,
+    nBranches: number,
+    brIdxPtr: number,
+    brDataPtr: number,
+    nTrans: number,
+    trIdxPtr: number,
+    trDataPtr: number,
+    trTapPtr: number,
+    gBusOutPtr: number,
+    bBusOutPtr: number,
+  ) => void;
+  qdsl_ac_powerflow_nr?: (
+    nBus: number,
+    nP: number,
+    nQ: number,
+    nonSlackIdxPtr: number,
+    pqIdxPtr: number,
+    gBusPtr: number,
+    bBusPtr: number,
+    pSpecPuPtr: number,
+    qSpecPuPtr: number,
+    vmPtr: number,
+    vaPtr: number,
+    tol: number,
+    maxIter: number,
+    scratchF64Ptr: number,
+    scratchI32Ptr: number,
+  ) => number;
+  qdsl_solve_step_oltc?: (
+    nBus: number,
+    nP: number,
+    nQ: number,
+    nonSlackIdxPtr: number,
+    pqIdxPtr: number,
+    nBranches: number,
+    brIdxPtr: number,
+    brDataPtr: number,
+    nTrans: number,
+    trIdxPtr: number,
+    trDataPtr: number,
+    trTapPtr: number,
+    nTaps: number,
+    tcIdxPtr: number,
+    tcParamsPtr: number,
+    tcTapRatioPtr: number,
+    pSpecPuPtr: number,
+    qSpecPuPtr: number,
+    vmPtr: number,
+    vaPtr: number,
+    tol: number,
+    maxNrIter: number,
+    maxOltcIter: number,
+    gBusPtr: number,
+    bBusPtr: number,
+    scratchF64Ptr: number,
+    scratchI32Ptr: number,
+  ) => number;
+  qdsl_step_bess?: (
+    nBess: number,
+    nBus: number,
+    dt: number,
+    bessBusIdxPtr: number,
+    bessParamsPtr: number,
+    desiredMwPtr: number,
+    socPtr: number,
+    actualMwOutPtr: number,
+    pLoadMwPtr: number,
+  ) => void;
+  qdsl_branch_transformer_flows?: (
+    nBus: number,
+    sbase: number,
+    vmPtr: number,
+    vaPtr: number,
+    nBranches: number,
+    brIdxPtr: number,
+    brDataPtr: number,
+    nTrans: number,
+    trIdxPtr: number,
+    trDataPtr: number,
+    branchLoadingsPtr: number,
+    summaryOutPtr: number,
+  ) => void;
+}
+
+const _qdslScratchPools = new WeakMap<object, WasmScratchPool>();
+function getQdslPool(wasm: WasmMemoryHost): WasmScratchPool {
+  let pool = _qdslScratchPools.get(wasm);
+  if (!pool) {
+    pool = new WasmScratchPool(wasm, 65536);
+    _qdslScratchPools.set(wasm, pool);
+  }
+  return pool;
+}
 
 /**
  * Normalized or physical time-series profile for load or generation.
@@ -397,397 +495,682 @@ export function runQuasiDynamicSimulation(baseCase: GenericPowerCase, options: Q
     Va[i] = b?.va ? (b.va * Math.PI) / 180.0 : 0.0;
   }
 
-  // ── Main Time Stepping Loop ──
-  for (let stepIdx = 0; stepIdx < timeSteps.length; stepIdx++) {
-    const tHours = timeSteps[stepIdx]!;
+  // Prepare runtime WASM acceleration buffers once across all time steps
+  const wasm = N > 0 ? (getDefaultWasmExports() as QdslWasmExports | null) : null;
+  const useWasm = Boolean(
+    wasm &&
+    typeof wasm.__new === "function" &&
+    typeof wasm.qdsl_solve_step_oltc === "function" &&
+    typeof wasm.qdsl_step_bess === "function" &&
+    typeof wasm.qdsl_branch_transformer_flows === "function",
+  );
 
-    // 1. Update Load active & reactive powers for time t
-    const PloadMw = new Float64Array(N);
-    const QloadMvar = new Float64Array(N);
+  let wasmScope: WasmScratchScope | null = null;
+  let nonSlackIdxPtr = 0;
+  let pqIdxPtr = 0;
+  let brIdxPtr = 0;
+  let brDataPtr = 0;
+  let trIdxPtr = 0;
+  let trDataPtr = 0;
+  let trTapPtr = 0;
+  let tcIdxPtr = 0;
+  let tcParamsPtr = 0;
+  let tcTapRatioPtr = 0;
+  let bessBusIdxPtr = 0;
+  let bessParamsPtr = 0;
+  let bessDesiredPtr = 0;
+  let bessSocPtr = 0;
+  let bessActualPtr = 0;
+  let pLoadMwPtr = 0;
+  let pSpecPuPtr = 0;
+  let qSpecPuPtr = 0;
+  let vmPtr = 0;
+  let vaPtr = 0;
+  let gBusPtr = 0;
+  let bBusPtr = 0;
+  let scratchF64Ptr = 0;
+  let scratchI32Ptr = 0;
+  let branchLoadingsPtr = 0;
+  let summaryOutPtr = 0;
 
-    for (const load of baseLoads) {
-      if (load.status === 0) continue;
-      const specificProf =
-        options.loadProfiles?.get(load.busNumber) ?? options.loadProfiles?.get(String(load.busNumber));
-      const prof = specificProf ?? options.defaultLoadProfile;
-      const mult = prof ? evaluateProfile(prof, tHours) : 1.0;
+  if (useWasm && wasm) {
+    wasmScope = getQdslPool(wasm).scope();
+    const alloc8 = (bytes: number): number => wasmScope!.allocU8((Math.max(8, bytes) + 7) & ~7).ptr;
 
-      PloadMw[load.busIdx] = (PloadMw[load.busIdx] ?? 0) + load.plBaseMw * mult;
-      QloadMvar[load.busIdx] = (QloadMvar[load.busIdx] ?? 0) + load.qlBaseMvar * mult;
+    const nBranches = branches.length;
+    const nTrans = transformers.length;
+    const nTaps = tapStates.length;
+    const nBess = bessStates.length;
+
+    nonSlackIdxPtr = alloc8(nP * 4);
+    pqIdxPtr = alloc8(nQ * 4);
+    brIdxPtr = alloc8(nBranches * 3 * 4);
+    brDataPtr = alloc8(nBranches * 4 * 8);
+    trIdxPtr = alloc8(nTrans * 3 * 4);
+    trDataPtr = alloc8(nTrans * 2 * 8);
+    trTapPtr = alloc8(nTrans * 8);
+    tcIdxPtr = alloc8(nTaps * 2 * 4);
+    tcParamsPtr = alloc8(nTaps * 5 * 8);
+    tcTapRatioPtr = alloc8(nTaps * 8);
+    bessBusIdxPtr = alloc8(nBess * 4);
+    bessParamsPtr = alloc8(nBess * 7 * 8);
+    bessDesiredPtr = alloc8(nBess * 8);
+    bessSocPtr = alloc8(nBess * 8);
+    bessActualPtr = alloc8(nBess * 8);
+    pLoadMwPtr = alloc8(N * 8);
+    pSpecPuPtr = alloc8(N * 8);
+    qSpecPuPtr = alloc8(N * 8);
+    vmPtr = alloc8(N * 8);
+    vaPtr = alloc8(N * 8);
+    gBusPtr = alloc8(N * N * 8);
+    bBusPtr = alloc8(N * N * 8);
+    scratchF64Ptr = alloc8((2 * N + nVars * nVars + 3 * nVars) * 8);
+    scratchI32Ptr = alloc8(nVars * 4);
+    branchLoadingsPtr = alloc8(nBranches * 8);
+    summaryOutPtr = alloc8(4 * 8);
+
+    const buf = wasm.memory.buffer;
+    if (nP > 0) new Int32Array(buf, nonSlackIdxPtr, nP).set(nonSlackIndices);
+    if (nQ > 0) new Int32Array(buf, pqIdxPtr, nQ).set(pqIndices);
+
+    if (nBranches > 0) {
+      const brIdxView = new Int32Array(buf, brIdxPtr, nBranches * 3);
+      const brDataView = new Float64Array(buf, brDataPtr, nBranches * 4);
+      for (let k = 0; k < nBranches; k++) {
+        const br = branches[k]!;
+        const fIdx = busIdxMap.get(br.i);
+        const tIdx = busIdxMap.get(br.j);
+        brIdxView[k * 3] = fIdx !== undefined ? fIdx : -1;
+        brIdxView[k * 3 + 1] = tIdx !== undefined ? tIdx : -1;
+        brIdxView[k * 3 + 2] = (br.st ?? 1) === 0 ? 0 : 1;
+
+        const rateA = br.rateA && br.rateA > 0 ? br.rateA : br.ratea && br.ratea > 0 ? br.ratea : sbase;
+        brDataView[k * 4] = br.r;
+        brDataView[k * 4 + 1] = br.x;
+        brDataView[k * 4 + 2] = (br.b ?? 0) / 2.0;
+        brDataView[k * 4 + 3] = rateA;
+      }
     }
 
-    // 2. Update Battery dispatch and SoC
-    for (const bess of bessStates) {
-      let desiredMw = 0;
-      if (bess.config.scheduleProfile) {
-        desiredMw = evaluateProfile(bess.config.scheduleProfile, tHours);
-      }
+    if (nTrans > 0) {
+      const trIdxView = new Int32Array(buf, trIdxPtr, nTrans * 3);
+      const trDataView = new Float64Array(buf, trDataPtr, nTrans * 2);
+      const trTapView = new Float64Array(buf, trTapPtr, nTrans);
+      for (let k = 0; k < nTrans; k++) {
+        const tr = transformers[k]!;
+        const fIdx = busIdxMap.get(tr.i);
+        const tIdx = busIdxMap.get(tr.j);
+        trIdxView[k * 3] = fIdx !== undefined ? fIdx : -1;
+        trIdxView[k * 3 + 1] = tIdx !== undefined ? tIdx : -1;
+        trIdxView[k * 3 + 2] = (tr.stat ?? 1) === 0 ? 0 : 1;
 
-      const etaChg = bess.config.chargeEfficiency ?? 0.95;
-      const etaDis = bess.config.dischargeEfficiency ?? 0.95;
-      const minSoc = bess.config.minSoc ?? 0.1;
-      const maxSoc = bess.config.maxSoc ?? 0.9;
-      const capMwh = bess.config.ratedCapacityMwh;
-
-      let actualMw = 0;
-      if (desiredMw > 0) {
-        // Charging: acts as additional load
-        const maxChgLimit = Math.min(bess.config.maxChargePowerMw, desiredMw);
-        const energySpaceMwh = (maxSoc - bess.soc) * capMwh;
-        const maxPossibleMw = dt > 0 ? energySpaceMwh / (etaChg * dt) : 0;
-        actualMw = Math.max(0, Math.min(maxChgLimit, maxPossibleMw));
-        bess.soc += (actualMw * etaChg * dt) / capMwh;
-        const bIdx = busIdxMap.get(bess.config.busNumber);
-        if (bIdx !== undefined) PloadMw[bIdx] = (PloadMw[bIdx] ?? 0) + actualMw;
-      } else if (desiredMw < 0) {
-        // Discharging: reduces load
-        const reqDisMw = Math.abs(desiredMw);
-        const maxDisLimit = Math.min(bess.config.maxDischargePowerMw, reqDisMw);
-        const energyAvailableMwh = (bess.soc - minSoc) * capMwh;
-        const maxPossibleMw = dt > 0 ? (energyAvailableMwh * etaDis) / dt : 0;
-        actualMw = -Math.max(0, Math.min(maxDisLimit, maxPossibleMw));
-        bess.soc -= ((Math.abs(actualMw) / etaDis) * dt) / capMwh;
-        const bIdx = busIdxMap.get(bess.config.busNumber);
-        if (bIdx !== undefined) PloadMw[bIdx] = (PloadMw[bIdx] ?? 0) + actualMw;
-      }
-      bess.currentPowerMw = actualMw;
-      bess.soc = Math.max(0, Math.min(1.0, bess.soc));
-    }
-
-    // 3. Update Generator active powers
-    const PgenMw = new Float64Array(N);
-    const QgenMvar = new Float64Array(N);
-    for (const gen of baseGens) {
-      if (gen.stat === 0) continue;
-      const genKey = `${gen.busNumber}_${gen.id.trim()}`;
-      const prof = options.generationProfiles?.get(genKey) ?? options.generationProfiles?.get(gen.busNumber);
-      const mult = prof ? evaluateProfile(prof, tHours) : 1.0;
-
-      // Slack generator power is solved by load flow, others follow profile
-      if (gen.busIdx !== slackIdx) {
-        PgenMw[gen.busIdx] = (PgenMw[gen.busIdx] ?? 0) + gen.pgBaseMw * mult;
-        QgenMvar[gen.busIdx] = (QgenMvar[gen.busIdx] ?? 0) + gen.qgBaseMvar;
+        trDataView[k * 2] = tr.r12;
+        trDataView[k * 2 + 1] = tr.x12;
+        trTapView[k] = 1.0;
       }
     }
 
-    // 4. Power flow solve with OLTC loop
-    let converged = false;
-    let nrIter = 0;
-    const Pcalc = new Float64Array(N);
-    const Qcalc = new Float64Array(N);
-
-    for (let oltcIter = 0; oltcIter < 5; oltcIter++) {
-      const { Gbus, Bbus } = buildYbus(tapStates);
-
-      // Fast-path: execute full AC Powerflow Newton-Raphson in simulate.wasm linear memory
-      const busTypes = new Uint8Array(N);
-      busTypes.fill(3); // default slack
-      for (let r = 0; r < nP; r++) busTypes[nonSlackIndices[r]!] = 2; // PV
-      for (let r = 0; r < nQ; r++) busTypes[pqIndices[r]!] = 1; // PQ
-      const pSpecPu = new Float64Array(N);
-      const qSpecPu = new Float64Array(N);
-      for (let i = 0; i < N; i++) {
-        pSpecPu[i] = (PgenMw[i]! - PloadMw[i]!) / sbase;
-        qSpecPu[i] = (QgenMvar[i]! - QloadMvar[i]!) / sbase;
-      }
-      converged = false;
-      const wasmPf = wasmAcPowerflowNR(N, busTypes, Gbus, Bbus, pSpecPu, qSpecPu, Vm, Va, tol, maxIter);
-      if (wasmPf && wasmPf.converged) {
-        Vm.set(wasmPf.vm);
-        Va.set(wasmPf.va);
-        converged = true;
-        nrIter = wasmPf.iterations;
-      }
-
-      if (!converged)
-        for (nrIter = 0; nrIter < maxIter; nrIter++) {
-          Pcalc.fill(0);
-          Qcalc.fill(0);
-
-          for (let i = 0; i < N; i++) {
-            const vi = Vm[i]!;
-            for (let k = 0; k < N; k++) {
-              const vk = Vm[k]!;
-              const th = Va[i]! - Va[k]!;
-              const g = Gbus[i * N + k]!;
-              const b = Bbus[i * N + k]!;
-              const cosTh = Math.cos(th);
-              const sinTh = Math.sin(th);
-              Pcalc[i] = (Pcalc[i] ?? 0) + vi * vk * (g * cosTh + b * sinTh);
-              Qcalc[i] = (Qcalc[i] ?? 0) + vi * vk * (g * sinTh - b * cosTh);
-            }
-          }
-
-          // Active power mismatch dP (in per-unit) for all non-slack buses
-          const dP = new Float64Array(nP);
-          let maxMismatch = 0;
-          for (let r = 0; r < nP; r++) {
-            const i = nonSlackIndices[r]!;
-            const pNetPu = (PgenMw[i]! - PloadMw[i]!) / sbase;
-            dP[r] = pNetPu - Pcalc[i]!;
-            maxMismatch = Math.max(maxMismatch, Math.abs(dP[r]!));
-          }
-
-          // Reactive power mismatch dQ (in per-unit) for PQ buses
-          const dQ = new Float64Array(nQ);
-          for (let r = 0; r < nQ; r++) {
-            const i = pqIndices[r]!;
-            const qNetPu = (QgenMvar[i]! - QloadMvar[i]!) / sbase;
-            dQ[r] = qNetPu - Qcalc[i]!;
-            maxMismatch = Math.max(maxMismatch, Math.abs(dQ[r]!));
-          }
-
-          if (maxMismatch < tol) {
-            converged = true;
-            break;
-          }
-
-          // Build Jacobian:
-          // [ dP/dVa (nP x nP)   dP/dVm (nP x nQ) ]
-          // [ dQ/dVa (nQ x nP)   dQ/dVm (nQ x nQ) ]
-          const Jac = new Float64Array(nVars * nVars);
-          const rhs = new Float64Array(nVars);
-
-          for (let r = 0; r < nP; r++) rhs[r] = dP[r]!;
-          for (let r = 0; r < nQ; r++) rhs[nP + r] = dQ[r]!;
-
-          // 1. dP / dVa (nP x nP)
-          for (let r = 0; r < nP; r++) {
-            const i = nonSlackIndices[r]!;
-            const vi = Vm[i]!;
-            for (let c = 0; c < nP; c++) {
-              const k = nonSlackIndices[c]!;
-              if (i === k) {
-                Jac[r * nVars + c] = -Qcalc[i]! - vi * vi * Bbus[i * N + i]!;
-              } else {
-                const th = Va[i]! - Va[k]!;
-                const g = Gbus[i * N + k]!;
-                const b = Bbus[i * N + k]!;
-                Jac[r * nVars + c] = vi * Vm[k]! * (g * Math.sin(th) - b * Math.cos(th));
-              }
-            }
-          }
-
-          // 2. dP / dVm (nP x nQ)
-          for (let r = 0; r < nP; r++) {
-            const i = nonSlackIndices[r]!;
-            const vi = Vm[i]!;
-            for (let c = 0; c < nQ; c++) {
-              const k = pqIndices[c]!;
-              const col = nP + c;
-              if (i === k) {
-                Jac[r * nVars + col] = Pcalc[i]! / vi + vi * Gbus[i * N + i]!;
-              } else {
-                const th = Va[i]! - Va[k]!;
-                const g = Gbus[i * N + k]!;
-                const b = Bbus[i * N + k]!;
-                Jac[r * nVars + col] = vi * (g * Math.cos(th) + b * Math.sin(th));
-              }
-            }
-          }
-
-          // 3. dQ / dVa (nQ x nP)
-          for (let r = 0; r < nQ; r++) {
-            const i = pqIndices[r]!;
-            const row = nP + r;
-            const vi = Vm[i]!;
-            for (let c = 0; c < nP; c++) {
-              const k = nonSlackIndices[c]!;
-              if (i === k) {
-                Jac[row * nVars + c] = Pcalc[i]! - vi * vi * Gbus[i * N + i]!;
-              } else {
-                const th = Va[i]! - Va[k]!;
-                const g = Gbus[i * N + k]!;
-                const b = Bbus[i * N + k]!;
-                Jac[row * nVars + c] = -vi * Vm[k]! * (g * Math.cos(th) + b * Math.sin(th));
-              }
-            }
-          }
-
-          // 4. dQ / dVm (nQ x nQ)
-          for (let r = 0; r < nQ; r++) {
-            const i = pqIndices[r]!;
-            const row = nP + r;
-            const vi = Vm[i]!;
-            for (let c = 0; c < nQ; c++) {
-              const k = pqIndices[c]!;
-              const col = nP + c;
-              if (i === k) {
-                Jac[row * nVars + col] = Qcalc[i]! / vi - vi * Bbus[i * N + i]!;
-              } else {
-                const th = Va[i]! - Va[k]!;
-                const g = Gbus[i * N + k]!;
-                const b = Bbus[i * N + k]!;
-                Jac[row * nVars + col] = vi * (g * Math.sin(th) - b * Math.cos(th));
-              }
-            }
-          }
-
-          // Solve Jac * delta = rhs in-place
-          if (!solveLinearSystemSparse(Jac, rhs, nVars)) break;
-
-          for (let r = 0; r < nP; r++) {
-            const idx = nonSlackIndices[r]!;
-            Va[idx] = (Va[idx] ?? 0) + (rhs[r] ?? 0);
-          }
-          for (let r = 0; r < nQ; r++) {
-            const k = pqIndices[r]!;
-            const newV = (Vm[k] ?? 1.0) + (rhs[nP + r] ?? 0);
-            Vm[k] = Math.max(0.5, Math.min(1.5, newV));
-          }
-        }
-
-      // Check OLTC tap changes
-      let tapChanged = false;
-      for (const tap of tapStates) {
+    if (nTaps > 0) {
+      const tcIdxView = new Int32Array(buf, tcIdxPtr, nTaps * 2);
+      const tcParamsView = new Float64Array(buf, tcParamsPtr, nTaps * 5);
+      const tcTapView = new Float64Array(buf, tcTapRatioPtr, nTaps);
+      for (let t = 0; t < nTaps; t++) {
+        const tap = tapStates[t]!;
         const cBusIdx = busIdxMap.get(tap.config.controlledBus);
-        if (cBusIdx === undefined) continue;
-        const vAct = Vm[cBusIdx]!;
-        const vSet = tap.config.targetVoltagePu;
-        const db = tap.config.deadbandPu;
-        const step = tap.config.stepSizeRatio;
+        tcIdxView[t * 2] = tap.config.transformerIndex;
+        tcIdxView[t * 2 + 1] = cBusIdx !== undefined ? cBusIdx : -1;
 
-        if (vAct < vSet - db && tap.currentTapRatio > tap.config.minTapRatio) {
-          tap.currentTapRatio = Math.max(tap.config.minTapRatio, tap.currentTapRatio - step);
-          tapChanged = true;
-        } else if (vAct > vSet + db && tap.currentTapRatio < tap.config.maxTapRatio) {
-          tap.currentTapRatio = Math.min(tap.config.maxTapRatio, tap.currentTapRatio + step);
-          tapChanged = true;
+        tcParamsView[t * 5] = tap.config.targetVoltagePu;
+        tcParamsView[t * 5 + 1] = tap.config.deadbandPu;
+        tcParamsView[t * 5 + 2] = tap.config.stepSizeRatio;
+        tcParamsView[t * 5 + 3] = tap.config.minTapRatio;
+        tcParamsView[t * 5 + 4] = tap.config.maxTapRatio;
+        tcTapView[t] = tap.currentTapRatio;
+      }
+    }
+
+    if (nBess > 0) {
+      const bessBusView = new Int32Array(buf, bessBusIdxPtr, nBess);
+      const bessParamsView = new Float64Array(buf, bessParamsPtr, nBess * 7);
+      const bessSocView = new Float64Array(buf, bessSocPtr, nBess);
+      for (let b = 0; b < nBess; b++) {
+        const bess = bessStates[b]!;
+        const bIdx = busIdxMap.get(bess.config.busNumber);
+        bessBusView[b] = bIdx !== undefined ? bIdx : -1;
+
+        bessParamsView[b * 7] = bess.config.ratedCapacityMwh;
+        bessParamsView[b * 7 + 1] = bess.config.maxChargePowerMw;
+        bessParamsView[b * 7 + 2] = bess.config.maxDischargePowerMw;
+        bessParamsView[b * 7 + 3] = bess.config.minSoc ?? 0.1;
+        bessParamsView[b * 7 + 4] = bess.config.maxSoc ?? 0.9;
+        bessParamsView[b * 7 + 5] = bess.config.chargeEfficiency ?? 0.95;
+        bessParamsView[b * 7 + 6] = bess.config.dischargeEfficiency ?? 0.95;
+        bessSocView[b] = bess.soc;
+      }
+    }
+
+    new Float64Array(buf, vmPtr, N).set(Vm);
+    new Float64Array(buf, vaPtr, N).set(Va);
+  }
+
+  // ── Main Time Stepping Loop ──
+  try {
+    for (let stepIdx = 0; stepIdx < timeSteps.length; stepIdx++) {
+      const tHours = timeSteps[stepIdx]!;
+
+      // 1. Update Load active & reactive powers for time t
+      const PloadMw = new Float64Array(N);
+      const QloadMvar = new Float64Array(N);
+
+      for (const load of baseLoads) {
+        if (load.status === 0) continue;
+        const specificProf =
+          options.loadProfiles?.get(load.busNumber) ?? options.loadProfiles?.get(String(load.busNumber));
+        const prof = specificProf ?? options.defaultLoadProfile;
+        const mult = prof ? evaluateProfile(prof, tHours) : 1.0;
+
+        PloadMw[load.busIdx] = (PloadMw[load.busIdx] ?? 0) + load.plBaseMw * mult;
+        QloadMvar[load.busIdx] = (QloadMvar[load.busIdx] ?? 0) + load.qlBaseMvar * mult;
+      }
+
+      // 2. Update Battery dispatch and SoC
+      if (useWasm && wasm && bessStates.length > 0) {
+        const buf = wasm.memory.buffer;
+        const desiredView = new Float64Array(buf, bessDesiredPtr, bessStates.length);
+        for (let b = 0; b < bessStates.length; b++) {
+          const bess = bessStates[b]!;
+          desiredView[b] = bess.config.scheduleProfile ? evaluateProfile(bess.config.scheduleProfile, tHours) : 0.0;
+        }
+        const pLoadView = new Float64Array(buf, pLoadMwPtr, N);
+        pLoadView.set(PloadMw);
+
+        wasm.qdsl_step_bess!(
+          bessStates.length,
+          N,
+          dt,
+          bessBusIdxPtr,
+          bessParamsPtr,
+          bessDesiredPtr,
+          bessSocPtr,
+          bessActualPtr,
+          pLoadMwPtr,
+        );
+
+        const outBuf = wasm.memory.buffer;
+        PloadMw.set(new Float64Array(outBuf, pLoadMwPtr, N));
+        const socView = new Float64Array(outBuf, bessSocPtr, bessStates.length);
+        const actView = new Float64Array(outBuf, bessActualPtr, bessStates.length);
+        for (let b = 0; b < bessStates.length; b++) {
+          bessStates[b]!.soc = socView[b]!;
+          bessStates[b]!.currentPowerMw = actView[b]!;
+        }
+      } else {
+        for (const bess of bessStates) {
+          let desiredMw = 0;
+          if (bess.config.scheduleProfile) {
+            desiredMw = evaluateProfile(bess.config.scheduleProfile, tHours);
+          }
+
+          const etaChg = bess.config.chargeEfficiency ?? 0.95;
+          const etaDis = bess.config.dischargeEfficiency ?? 0.95;
+          const minSoc = bess.config.minSoc ?? 0.1;
+          const maxSoc = bess.config.maxSoc ?? 0.9;
+          const capMwh = bess.config.ratedCapacityMwh;
+
+          let actualMw = 0;
+          if (desiredMw > 0) {
+            // Charging: acts as additional load
+            const maxChgLimit = Math.min(bess.config.maxChargePowerMw, desiredMw);
+            const energySpaceMwh = (maxSoc - bess.soc) * capMwh;
+            const maxPossibleMw = dt > 0 ? energySpaceMwh / (etaChg * dt) : 0;
+            actualMw = Math.max(0, Math.min(maxChgLimit, maxPossibleMw));
+            bess.soc += (actualMw * etaChg * dt) / capMwh;
+            const bIdx = busIdxMap.get(bess.config.busNumber);
+            if (bIdx !== undefined) PloadMw[bIdx] = (PloadMw[bIdx] ?? 0) + actualMw;
+          } else if (desiredMw < 0) {
+            // Discharging: reduces load
+            const reqDisMw = Math.abs(desiredMw);
+            const maxDisLimit = Math.min(bess.config.maxDischargePowerMw, reqDisMw);
+            const energyAvailableMwh = (bess.soc - minSoc) * capMwh;
+            const maxPossibleMw = dt > 0 ? (energyAvailableMwh * etaDis) / dt : 0;
+            actualMw = -Math.max(0, Math.min(maxDisLimit, maxPossibleMw));
+            bess.soc -= ((Math.abs(actualMw) / etaDis) * dt) / capMwh;
+            const bIdx = busIdxMap.get(bess.config.busNumber);
+            if (bIdx !== undefined) PloadMw[bIdx] = (PloadMw[bIdx] ?? 0) + actualMw;
+          }
+          bess.currentPowerMw = actualMw;
+          bess.soc = Math.max(0, Math.min(1.0, bess.soc));
         }
       }
 
-      if (!tapChanged) break;
-    }
+      // 3. Update Generator active powers
+      const PgenMw = new Float64Array(N);
+      const QgenMvar = new Float64Array(N);
+      for (const gen of baseGens) {
+        if (gen.stat === 0) continue;
+        const genKey = `${gen.busNumber}_${gen.id.trim()}`;
+        const prof = options.generationProfiles?.get(genKey) ?? options.generationProfiles?.get(gen.busNumber);
+        const mult = prof ? evaluateProfile(prof, tHours) : 1.0;
 
-    // 5. Compute branch flows and losses
-    const branchLoadings: number[] = [];
-    let stepLossMw = 0.0;
-    let stepLossMvar = 0.0;
-
-    for (let brIdx = 0; brIdx < branches.length; brIdx++) {
-      const br = branches[brIdx]!;
-      const fromIdx = busIdxMap.get(br.i);
-      const toIdx = busIdxMap.get(br.j);
-      if (fromIdx === undefined || toIdx === undefined) {
-        branchLoadings.push(0);
-        continue;
+        // Slack generator power is solved by load flow, others follow profile
+        if (gen.busIdx !== slackIdx) {
+          PgenMw[gen.busIdx] = (PgenMw[gen.busIdx] ?? 0) + gen.pgBaseMw * mult;
+          QgenMvar[gen.busIdx] = (QgenMvar[gen.busIdx] ?? 0) + gen.qgBaseMvar;
+        }
       }
 
-      const vf = Vm[fromIdx]!;
-      const vt = Vm[toIdx]!;
-      const th_ft = Va[fromIdx]! - Va[toIdx]!;
-      const r = br.r;
-      const x = br.x;
-      const z2 = r * r + x * x;
-      const g = r / z2;
-      const b = -x / z2;
-      const bShunt = (br.b ?? 0) / 2.0;
+      // 4. Power flow solve with OLTC loop
+      let converged = false;
+      let nrIter = 0;
 
-      const pFrom = (vf * vf * g - vf * vt * (g * Math.cos(th_ft) + b * Math.sin(th_ft))) * sbase;
-      const qFrom = (-vf * vf * (b + bShunt) - vf * vt * (g * Math.sin(th_ft) - b * Math.cos(th_ft))) * sbase;
+      if (useWasm && wasm) {
+        const buf = wasm.memory.buffer;
+        const pSpecView = new Float64Array(buf, pSpecPuPtr, N);
+        const qSpecView = new Float64Array(buf, qSpecPuPtr, N);
+        for (let i = 0; i < N; i++) {
+          pSpecView[i] = (PgenMw[i]! - PloadMw[i]!) / sbase;
+          qSpecView[i] = (QgenMvar[i]! - QloadMvar[i]!) / sbase;
+        }
 
-      const pTo = (vt * vt * g - vt * vf * (g * Math.cos(-th_ft) + b * Math.sin(-th_ft))) * sbase;
-      const qTo = (-vt * vt * (b + bShunt) - vt * vf * (g * Math.sin(-th_ft) - b * Math.cos(-th_ft))) * sbase;
+        const nrRet = wasm.qdsl_solve_step_oltc!(
+          N,
+          nP,
+          nQ,
+          nonSlackIdxPtr,
+          pqIdxPtr,
+          branches.length,
+          brIdxPtr,
+          brDataPtr,
+          transformers.length,
+          trIdxPtr,
+          trDataPtr,
+          trTapPtr,
+          tapStates.length,
+          tcIdxPtr,
+          tcParamsPtr,
+          tcTapRatioPtr,
+          pSpecPuPtr,
+          qSpecPuPtr,
+          vmPtr,
+          vaPtr,
+          tol,
+          maxIter,
+          5,
+          gBusPtr,
+          bBusPtr,
+          scratchF64Ptr,
+          scratchI32Ptr,
+        );
 
-      const pLoss = Math.max(0, pFrom + pTo);
-      const qLoss = qFrom + qTo;
-      stepLossMw += pLoss;
-      stepLossMvar += qLoss;
+        converged = nrRet >= 0;
+        nrIter = converged ? nrRet : -nrRet - 1;
 
-      const sMva = Math.sqrt(pFrom * pFrom + qFrom * qFrom);
-      const rateA = br.rateA && br.rateA > 0 ? br.rateA : br.ratea && br.ratea > 0 ? br.ratea : sbase;
-      const loadingPct = (sMva / rateA) * 100.0;
-      branchLoadings.push(loadingPct);
+        const outBuf = wasm.memory.buffer;
+        Vm.set(new Float64Array(outBuf, vmPtr, N));
+        Va.set(new Float64Array(outBuf, vaPtr, N));
+        if (tapStates.length > 0) {
+          const tapView = new Float64Array(outBuf, tcTapRatioPtr, tapStates.length);
+          for (let t = 0; t < tapStates.length; t++) {
+            tapStates[t]!.currentTapRatio = tapView[t]!;
+          }
+        }
+      } else {
+        const Pcalc = new Float64Array(N);
+        const Qcalc = new Float64Array(N);
 
-      if (loadingPct > maxLoadingPct) {
-        maxLoadingPct = loadingPct;
-        maxLoadingBranch = brIdx;
-        maxLoadingTime = tHours;
+        for (let oltcIter = 0; oltcIter < 5; oltcIter++) {
+          const { Gbus, Bbus } = buildYbus(tapStates);
+
+          // Fast-path: execute full AC Powerflow Newton-Raphson in simulate.wasm linear memory
+          const busTypes = new Uint8Array(N);
+          busTypes.fill(3); // default slack
+          for (let r = 0; r < nP; r++) busTypes[nonSlackIndices[r]!] = 2; // PV
+          for (let r = 0; r < nQ; r++) busTypes[pqIndices[r]!] = 1; // PQ
+          const pSpecPu = new Float64Array(N);
+          const qSpecPu = new Float64Array(N);
+          for (let i = 0; i < N; i++) {
+            pSpecPu[i] = (PgenMw[i]! - PloadMw[i]!) / sbase;
+            qSpecPu[i] = (QgenMvar[i]! - QloadMvar[i]!) / sbase;
+          }
+          converged = false;
+          const wasmPf = wasmAcPowerflowNR(N, busTypes, Gbus, Bbus, pSpecPu, qSpecPu, Vm, Va, tol, maxIter);
+          if (wasmPf && wasmPf.converged) {
+            Vm.set(wasmPf.vm);
+            Va.set(wasmPf.va);
+            converged = true;
+            nrIter = wasmPf.iterations;
+          }
+
+          if (!converged)
+            for (nrIter = 0; nrIter < maxIter; nrIter++) {
+              Pcalc.fill(0);
+              Qcalc.fill(0);
+
+              for (let i = 0; i < N; i++) {
+                const vi = Vm[i]!;
+                for (let k = 0; k < N; k++) {
+                  const vk = Vm[k]!;
+                  const th = Va[i]! - Va[k]!;
+                  const g = Gbus[i * N + k]!;
+                  const b = Bbus[i * N + k]!;
+                  const cosTh = Math.cos(th);
+                  const sinTh = Math.sin(th);
+                  Pcalc[i] = (Pcalc[i] ?? 0) + vi * vk * (g * cosTh + b * sinTh);
+                  Qcalc[i] = (Qcalc[i] ?? 0) + vi * vk * (g * sinTh - b * cosTh);
+                }
+              }
+
+              // Active power mismatch dP (in per-unit) for all non-slack buses
+              const dP = new Float64Array(nP);
+              let maxMismatch = 0;
+              for (let r = 0; r < nP; r++) {
+                const i = nonSlackIndices[r]!;
+                const pNetPu = (PgenMw[i]! - PloadMw[i]!) / sbase;
+                dP[r] = pNetPu - Pcalc[i]!;
+                maxMismatch = Math.max(maxMismatch, Math.abs(dP[r]!));
+              }
+
+              // Reactive power mismatch dQ (in per-unit) for PQ buses
+              const dQ = new Float64Array(nQ);
+              for (let r = 0; r < nQ; r++) {
+                const i = pqIndices[r]!;
+                const qNetPu = (QgenMvar[i]! - QloadMvar[i]!) / sbase;
+                dQ[r] = qNetPu - Qcalc[i]!;
+                maxMismatch = Math.max(maxMismatch, Math.abs(dQ[r]!));
+              }
+
+              if (maxMismatch < tol) {
+                converged = true;
+                break;
+              }
+
+              // Build Jacobian:
+              // [ dP/dVa (nP x nP)   dP/dVm (nP x nQ) ]
+              // [ dQ/dVa (nQ x nP)   dQ/dVm (nQ x nQ) ]
+              const Jac = new Float64Array(nVars * nVars);
+              const rhs = new Float64Array(nVars);
+
+              for (let r = 0; r < nP; r++) rhs[r] = dP[r]!;
+              for (let r = 0; r < nQ; r++) rhs[nP + r] = dQ[r]!;
+
+              // 1. dP / dVa (nP x nP)
+              for (let r = 0; r < nP; r++) {
+                const i = nonSlackIndices[r]!;
+                const vi = Vm[i]!;
+                for (let c = 0; c < nP; c++) {
+                  const k = nonSlackIndices[c]!;
+                  if (i === k) {
+                    Jac[r * nVars + c] = -Qcalc[i]! - vi * vi * Bbus[i * N + i]!;
+                  } else {
+                    const th = Va[i]! - Va[k]!;
+                    const g = Gbus[i * N + k]!;
+                    const b = Bbus[i * N + k]!;
+                    Jac[r * nVars + c] = vi * Vm[k]! * (g * Math.sin(th) - b * Math.cos(th));
+                  }
+                }
+              }
+
+              // 2. dP / dVm (nP x nQ)
+              for (let r = 0; r < nP; r++) {
+                const i = nonSlackIndices[r]!;
+                const vi = Vm[i]!;
+                for (let c = 0; c < nQ; c++) {
+                  const k = pqIndices[c]!;
+                  const col = nP + c;
+                  if (i === k) {
+                    Jac[r * nVars + col] = Pcalc[i]! / vi + vi * Gbus[i * N + i]!;
+                  } else {
+                    const th = Va[i]! - Va[k]!;
+                    const g = Gbus[i * N + k]!;
+                    const b = Bbus[i * N + k]!;
+                    Jac[r * nVars + col] = vi * (g * Math.cos(th) + b * Math.sin(th));
+                  }
+                }
+              }
+
+              // 3. dQ / dVa (nQ x nP)
+              for (let r = 0; r < nQ; r++) {
+                const i = pqIndices[r]!;
+                const row = nP + r;
+                const vi = Vm[i]!;
+                for (let c = 0; c < nP; c++) {
+                  const k = nonSlackIndices[c]!;
+                  if (i === k) {
+                    Jac[row * nVars + c] = Pcalc[i]! - vi * vi * Gbus[i * N + i]!;
+                  } else {
+                    const th = Va[i]! - Va[k]!;
+                    const g = Gbus[i * N + k]!;
+                    const b = Bbus[i * N + k]!;
+                    Jac[row * nVars + c] = -vi * Vm[k]! * (g * Math.cos(th) + b * Math.sin(th));
+                  }
+                }
+              }
+
+              // 4. dQ / dVm (nQ x nQ)
+              for (let r = 0; r < nQ; r++) {
+                const i = pqIndices[r]!;
+                const row = nP + r;
+                const vi = Vm[i]!;
+                for (let c = 0; c < nQ; c++) {
+                  const k = pqIndices[c]!;
+                  const col = nP + c;
+                  if (i === k) {
+                    Jac[row * nVars + col] = Qcalc[i]! / vi - vi * Bbus[i * N + i]!;
+                  } else {
+                    const th = Va[i]! - Va[k]!;
+                    const g = Gbus[i * N + k]!;
+                    const b = Bbus[i * N + k]!;
+                    Jac[row * nVars + col] = vi * (g * Math.sin(th) - b * Math.cos(th));
+                  }
+                }
+              }
+
+              // Solve Jac * delta = rhs in-place
+              if (!solveLinearSystemSparse(Jac, rhs, nVars)) break;
+
+              for (let r = 0; r < nP; r++) {
+                const idx = nonSlackIndices[r]!;
+                Va[idx] = (Va[idx] ?? 0) + (rhs[r] ?? 0);
+              }
+              for (let r = 0; r < nQ; r++) {
+                const k = pqIndices[r]!;
+                const newV = (Vm[k] ?? 1.0) + (rhs[nP + r] ?? 0);
+                Vm[k] = Math.max(0.5, Math.min(1.5, newV));
+              }
+            }
+
+          // Check OLTC tap changes
+          let tapChanged = false;
+          for (const tap of tapStates) {
+            const cBusIdx = busIdxMap.get(tap.config.controlledBus);
+            if (cBusIdx === undefined) continue;
+            const vAct = Vm[cBusIdx]!;
+            const vSet = tap.config.targetVoltagePu;
+            const db = tap.config.deadbandPu;
+            const step = tap.config.stepSizeRatio;
+
+            if (vAct < vSet - db && tap.currentTapRatio > tap.config.minTapRatio) {
+              tap.currentTapRatio = Math.max(tap.config.minTapRatio, tap.currentTapRatio - step);
+              tapChanged = true;
+            } else if (vAct > vSet + db && tap.currentTapRatio < tap.config.maxTapRatio) {
+              tap.currentTapRatio = Math.min(tap.config.maxTapRatio, tap.currentTapRatio + step);
+              tapChanged = true;
+            }
+          }
+
+          if (!tapChanged) break;
+        }
       }
-    }
 
-    // Transformer losses
-    for (const tr of transformers) {
-      const fromIdx = busIdxMap.get(tr.i);
-      const toIdx = busIdxMap.get(tr.j);
-      if (fromIdx === undefined || toIdx === undefined) continue;
+      // 5. Compute branch flows and losses
+      const branchLoadings: number[] = [];
+      let stepLossMw = 0.0;
+      let stepLossMvar = 0.0;
 
-      const vf = Vm[fromIdx]!;
-      const vt = Vm[toIdx]!;
-      const th_ft = Va[fromIdx]! - Va[toIdx]!;
-      const r = tr.r12;
-      const x = tr.x12;
-      const z2 = r * r + x * x;
-      const g = r / z2;
-      const b = -x / z2;
+      if (useWasm && wasm) {
+        wasm.qdsl_branch_transformer_flows!(
+          N,
+          sbase,
+          vmPtr,
+          vaPtr,
+          branches.length,
+          brIdxPtr,
+          brDataPtr,
+          transformers.length,
+          trIdxPtr,
+          trDataPtr,
+          branchLoadingsPtr,
+          summaryOutPtr,
+        );
 
-      const pFrom = (vf * vf * g - vf * vt * (g * Math.cos(th_ft) + b * Math.sin(th_ft))) * sbase;
-      const qFrom = (-vf * vf * b - vf * vt * (g * Math.sin(th_ft) - b * Math.cos(th_ft))) * sbase;
-      const pTo = (vt * vt * g - vt * vf * (g * Math.cos(-th_ft) + b * Math.sin(-th_ft))) * sbase;
-      const qTo = (-vt * vt * b - vt * vf * (g * Math.sin(-th_ft) - b * Math.cos(-th_ft))) * sbase;
+        const outBuf = wasm.memory.buffer;
+        const summary = new Float64Array(outBuf, summaryOutPtr, 4);
+        stepLossMw = summary[0]!;
+        stepLossMvar = summary[1]!;
+        const stepMaxLoadPct = summary[2]!;
+        const stepMaxLoadBranch = summary[3]! | 0;
 
-      stepLossMw += Math.max(0, pFrom + pTo);
-      stepLossMvar += qFrom + qTo;
-    }
+        if (branches.length > 0) {
+          const loadView = new Float64Array(outBuf, branchLoadingsPtr, branches.length);
+          for (let brIdx = 0; brIdx < branches.length; brIdx++) {
+            branchLoadings.push(loadView[brIdx]!);
+          }
+        }
 
-    // Totals
-    let totLoadMw = 0;
-    let totLoadMvar = 0;
-    for (let i = 0; i < N; i++) {
-      totLoadMw += PloadMw[i]!;
-      totLoadMvar += QloadMvar[i]!;
-    }
-    const totGenMw = totLoadMw + stepLossMw;
-    const totGenMvar = totLoadMvar + stepLossMvar;
+        if (stepMaxLoadPct > maxLoadingPct) {
+          maxLoadingPct = stepMaxLoadPct;
+          maxLoadingBranch = stepMaxLoadBranch;
+          maxLoadingTime = tHours;
+        }
+      } else {
+        for (let brIdx = 0; brIdx < branches.length; brIdx++) {
+          const br = branches[brIdx]!;
+          const fromIdx = busIdxMap.get(br.i);
+          const toIdx = busIdxMap.get(br.j);
+          if (fromIdx === undefined || toIdx === undefined) {
+            branchLoadings.push(0);
+            continue;
+          }
 
-    totalEnergySuppliedMwh += totGenMw * dt;
-    totalEnergyLossesMwh += stepLossMw * dt;
+          const vf = Vm[fromIdx]!;
+          const vt = Vm[toIdx]!;
+          const th_ft = Va[fromIdx]! - Va[toIdx]!;
+          const r = br.r;
+          const x = br.x;
+          const z2 = r * r + x * x;
+          const g = r / z2;
+          const b = -x / z2;
+          const bShunt = (br.b ?? 0) / 2.0;
 
-    const busVMap = new Map<number, number>();
-    const busVaMap = new Map<number, number>();
-    for (let i = 0; i < N; i++) {
-      const bNum = busNumbers[i]!;
-      const v = Vm[i]!;
-      busVMap.set(bNum, v);
-      busVaMap.set(bNum, Va[i]!);
+          const pFrom = (vf * vf * g - vf * vt * (g * Math.cos(th_ft) + b * Math.sin(th_ft))) * sbase;
+          const qFrom = (-vf * vf * (b + bShunt) - vf * vt * (g * Math.sin(th_ft) - b * Math.cos(th_ft))) * sbase;
 
-      if (v < minV) {
-        minV = v;
-        minVBus = bNum;
-        minVTime = tHours;
+          const pTo = (vt * vt * g - vt * vf * (g * Math.cos(-th_ft) + b * Math.sin(-th_ft))) * sbase;
+          const qTo = (-vt * vt * (b + bShunt) - vt * vf * (g * Math.sin(-th_ft) - b * Math.cos(-th_ft))) * sbase;
+
+          const pLoss = Math.max(0, pFrom + pTo);
+          const qLoss = qFrom + qTo;
+          stepLossMw += pLoss;
+          stepLossMvar += qLoss;
+
+          const sMva = Math.sqrt(pFrom * pFrom + qFrom * qFrom);
+          const rateA = br.rateA && br.rateA > 0 ? br.rateA : br.ratea && br.ratea > 0 ? br.ratea : sbase;
+          const loadingPct = (sMva / rateA) * 100.0;
+          branchLoadings.push(loadingPct);
+
+          if (loadingPct > maxLoadingPct) {
+            maxLoadingPct = loadingPct;
+            maxLoadingBranch = brIdx;
+            maxLoadingTime = tHours;
+          }
+        }
+
+        // Transformer losses
+        for (const tr of transformers) {
+          const fromIdx = busIdxMap.get(tr.i);
+          const toIdx = busIdxMap.get(tr.j);
+          if (fromIdx === undefined || toIdx === undefined) continue;
+
+          const vf = Vm[fromIdx]!;
+          const vt = Vm[toIdx]!;
+          const th_ft = Va[fromIdx]! - Va[toIdx]!;
+          const r = tr.r12;
+          const x = tr.x12;
+          const z2 = r * r + x * x;
+          const g = r / z2;
+          const b = -x / z2;
+
+          const pFrom = (vf * vf * g - vf * vt * (g * Math.cos(th_ft) + b * Math.sin(th_ft))) * sbase;
+          const qFrom = (-vf * vf * b - vf * vt * (g * Math.sin(th_ft) - b * Math.cos(th_ft))) * sbase;
+          const pTo = (vt * vt * g - vt * vf * (g * Math.cos(-th_ft) + b * Math.sin(-th_ft))) * sbase;
+          const qTo = (-vt * vt * b - vt * vf * (g * Math.sin(-th_ft) - b * Math.cos(-th_ft))) * sbase;
+
+          stepLossMw += Math.max(0, pFrom + pTo);
+          stepLossMvar += qFrom + qTo;
+        }
       }
-      if (v > maxV) {
-        maxV = v;
-        maxVBus = bNum;
-        maxVTime = tHours;
-      }
-    }
 
-    stepResults.push({
-      stepIndex: stepIdx,
-      timeHours: tHours,
-      converged,
-      iterations: nrIter,
-      busVoltages: busVMap,
-      busAnglesRad: busVaMap,
-      branchLoadingsPercent: branchLoadings,
-      totalGenActiveMw: totGenMw,
-      totalGenReactiveMvar: totGenMvar,
-      totalLoadActiveMw: totLoadMw,
-      totalLoadReactiveMvar: totLoadMvar,
-      totalLossesActiveMw: stepLossMw,
-      totalLossesReactiveMvar: stepLossMvar,
-      bessStates: bessStates.map((b) => ({
-        busNumber: b.config.busNumber,
-        genId: b.config.genId,
-        soc: b.soc,
-        powerMw: b.currentPowerMw,
-      })),
-      tapPositions: tapStates.map((t) => ({
-        transformerIndex: t.config.transformerIndex,
-        tapRatio: t.currentTapRatio,
-      })),
-    });
+      // Totals
+      let totLoadMw = 0;
+      let totLoadMvar = 0;
+      for (let i = 0; i < N; i++) {
+        totLoadMw += PloadMw[i]!;
+        totLoadMvar += QloadMvar[i]!;
+      }
+      const totGenMw = totLoadMw + stepLossMw;
+      const totGenMvar = totLoadMvar + stepLossMvar;
+
+      totalEnergySuppliedMwh += totGenMw * dt;
+      totalEnergyLossesMwh += stepLossMw * dt;
+
+      const busVMap = new Map<number, number>();
+      const busVaMap = new Map<number, number>();
+      for (let i = 0; i < N; i++) {
+        const bNum = busNumbers[i]!;
+        const v = Vm[i]!;
+        busVMap.set(bNum, v);
+        busVaMap.set(bNum, Va[i]!);
+
+        if (v < minV) {
+          minV = v;
+          minVBus = bNum;
+          minVTime = tHours;
+        }
+        if (v > maxV) {
+          maxV = v;
+          maxVBus = bNum;
+          maxVTime = tHours;
+        }
+      }
+
+      stepResults.push({
+        stepIndex: stepIdx,
+        timeHours: tHours,
+        converged,
+        iterations: nrIter,
+        busVoltages: busVMap,
+        busAnglesRad: busVaMap,
+        branchLoadingsPercent: branchLoadings,
+        totalGenActiveMw: totGenMw,
+        totalGenReactiveMvar: totGenMvar,
+        totalLoadActiveMw: totLoadMw,
+        totalLoadReactiveMvar: totLoadMvar,
+        totalLossesActiveMw: stepLossMw,
+        totalLossesReactiveMvar: stepLossMvar,
+        bessStates: bessStates.map((b) => ({
+          busNumber: b.config.busNumber,
+          genId: b.config.genId,
+          soc: b.soc,
+          powerMw: b.currentPowerMw,
+        })),
+        tapPositions: tapStates.map((t) => ({
+          transformerIndex: t.config.transformerIndex,
+          tapRatio: t.currentTapRatio,
+        })),
+      });
+    }
+  } finally {
+    wasmScope?.dispose();
   }
 
   const lossPct = totalEnergySuppliedMwh > 0 ? (totalEnergyLossesMwh / totalEnergySuppliedMwh) * 100.0 : 0.0;

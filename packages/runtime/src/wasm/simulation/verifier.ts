@@ -192,3 +192,153 @@ export function verifier_verifyTrajectory(
     tol,
   );
 }
+
+/**
+ * Direct flat-buffer trajectory verification without requiring a DaeBuilder instance.
+ * Evaluates state[step * numStates + stateIdx] <op> limitValue across all steps.
+ * Writes stats to outStatsPtr: [isSatisfied, peakValue, limitValue, firstViolationTime, firstViolationStep].
+ */
+export function verifier_verifyTrajectoryDirect(
+  tPtr: usize,
+  yPtr: usize,
+  numSteps: u32,
+  numStates: u32,
+  stateIdx: u32,
+  op: u32,
+  limitValue: f64,
+  tol: f64,
+  outTimeSeriesPtr: usize,
+  outStatsPtr: usize,
+): u32 {
+  let allSatisfied: bool = true;
+  let peakValue: f64 = -Infinity;
+  let firstViolationTime: f64 = -1.0;
+  let firstViolationStep: f64 = -1.0;
+
+  for (let i: u32 = 0; i < numSteps; i++) {
+    const timeVal = load<f64>(tPtr + ((i as usize) << 3));
+    const val = load<f64>(yPtr + ((((i as usize) * (numStates as usize)) + (stateIdx as usize)) << 3));
+
+    if (val > peakValue) {
+      peakValue = val;
+    }
+
+    let isMet: bool = true;
+    if (op == VERIFY_OP_LTE) isMet = val <= limitValue + tol;
+    else if (op == VERIFY_OP_GTE) isMet = val >= limitValue - tol;
+    else if (op == VERIFY_OP_LT) isMet = val < limitValue;
+    else if (op == VERIFY_OP_GT) isMet = val > limitValue;
+    else if (op == VERIFY_OP_EQ) isMet = Math.abs(val - limitValue) <= tol;
+    else if (op == VERIFY_OP_NEQ) isMet = Math.abs(val - limitValue) > tol;
+
+    if (outTimeSeriesPtr != 0) {
+      store<u8>(outTimeSeriesPtr + (i as usize), isMet ? 1 : 0);
+    }
+
+    if (!isMet && allSatisfied) {
+      allSatisfied = false;
+      firstViolationTime = timeVal;
+      firstViolationStep = i as f64;
+    }
+  }
+
+  if (outStatsPtr != 0) {
+    store<f64>(outStatsPtr, allSatisfied ? 1.0 : 0.0);
+    store<f64>(outStatsPtr + 8, peakValue);
+    store<f64>(outStatsPtr + 16, limitValue);
+    store<f64>(outStatsPtr + 24, firstViolationTime);
+    store<f64>(outStatsPtr + 32, firstViolationStep);
+  }
+
+  return allSatisfied ? 1 : 0;
+}
+
+/**
+ * Computes settling time of signal x(t) within relative/absolute tolerance band.
+ */
+export function verifier_settlingTime(tPtr: usize, xPtr: usize, n: u32, band: f64): f64 {
+  if (n == 0) return 0.0;
+  const finalVal = load<f64>(xPtr + (((n - 1) as usize) << 3));
+  const absFinalBand = Math.abs(finalVal) * band;
+  const tolerance = absFinalBand > band ? absFinalBand : band;
+
+  let lastOutOfBand: i32 = -1;
+  for (let i: u32 = 0; i < n; i++) {
+    const xi = load<f64>(xPtr + ((i as usize) << 3));
+    if (Math.abs(xi - finalVal) > tolerance) {
+      lastOutOfBand = i as i32;
+    }
+  }
+
+  if (lastOutOfBand == -1) return load<f64>(tPtr);
+  if ((lastOutOfBand as u32) >= n - 1) return load<f64>(tPtr + (((n - 1) as usize) << 3));
+  return load<f64>(tPtr + (((lastOutOfBand + 1) as usize) << 3));
+}
+
+/**
+ * Computes percentage overshoot of signal x relative to targetVal (if hasTarget != 0) or x[n-1].
+ */
+export function verifier_overshoot(xPtr: usize, n: u32, hasTarget: u32, targetVal: f64): f64 {
+  if (n == 0) return 0.0;
+  const finalVal = hasTarget != 0 ? targetVal : load<f64>(xPtr + (((n - 1) as usize) << 3));
+  const x0 = load<f64>(xPtr);
+
+  let minVal = x0;
+  let maxVal = x0;
+  for (let i: u32 = 1; i < n; i++) {
+    const val = load<f64>(xPtr + ((i as usize) << 3));
+    if (val < minVal) minVal = val;
+    if (val > maxVal) maxVal = val;
+  }
+
+  if (finalVal == 0.0) {
+    const aMin = Math.abs(minVal);
+    const aMax = Math.abs(maxVal);
+    return aMin > aMax ? aMin : aMax;
+  }
+
+  const absFinal = Math.abs(finalVal);
+  if (finalVal > x0) {
+    const diff = maxVal - finalVal;
+    return diff <= 0.0 ? 0.0 : (diff / absFinal) * 100.0;
+  } else if (finalVal < x0) {
+    const diff = finalVal - minVal;
+    return diff <= 0.0 ? 0.0 : (diff / absFinal) * 100.0;
+  } else {
+    const d1 = Math.abs(maxVal - finalVal);
+    const d2 = Math.abs(finalVal - minVal);
+    const maxDev = d1 > d2 ? d1 : d2;
+    return (maxDev / absFinal) * 100.0;
+  }
+}
+
+/**
+ * Computes steady-state mean over the final windowFrac portion of signal x.
+ */
+export function verifier_steadyState(xPtr: usize, n: u32, windowFrac: f64): f64 {
+  if (n == 0) return 0.0;
+  let windowCount = Math.floor((n as f64) * windowFrac) as u32;
+  if (windowCount < 1) windowCount = 1;
+  if (windowCount > n) windowCount = n;
+  const start = n - windowCount;
+  let sum: f64 = 0.0;
+  for (let i: u32 = start; i < n; i++) {
+    sum += load<f64>(xPtr + ((i as usize) << 3));
+  }
+  return sum / (windowCount as f64);
+}
+
+/**
+ * Computes trapezoidal numerical integral of signal x(t).
+ */
+export function verifier_integral(tPtr: usize, xPtr: usize, n: u32): f64 {
+  if (n < 2) return 0.0;
+  let sum: f64 = 0.0;
+  for (let i: u32 = 0; i < n - 1; i++) {
+    const dt = load<f64>(tPtr + (((i + 1) as usize) << 3)) - load<f64>(tPtr + ((i as usize) << 3));
+    const avgX = (load<f64>(xPtr + ((i as usize) << 3)) + load<f64>(xPtr + (((i + 1) as usize) << 3))) * 0.5;
+    sum += avgX * dt;
+  }
+  return sum;
+}
+

@@ -52,6 +52,7 @@
     "assets/**"
   ],
   "scripts": {
+    "asbuild:native": "asc assembly/dyr-kernel.ts --target native",
     "bench:accc": "tsx tests/run-70k-accc.ts",
     "build": "npm run sync:schemas && node ../../scripts/build/build-language-parser.js && npm run build:wasm && tsc",
     "build:parser": "node ../../scripts/build/build-language-parser.js --force",

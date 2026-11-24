@@ -681,8 +681,7 @@ export function socialRouter(
                             name: `@${resolved.user.username}`,
                           });
                           const endpoints = resolved.actor?.["endpoints"] as
-                            | { sharedInbox?: string | undefined }
-                            | undefined;
+                            { sharedInbox?: string | undefined } | undefined;
                           const inbox =
                             endpoints?.sharedInbox ||
                             (resolved.actor?.["sharedInbox"] as string) ||
@@ -1520,7 +1519,7 @@ export function socialRouter(
   router.get("/posts/:id/replies", optionalAuth, (req: Request, res: Response) => {
     const postId = String(req.params["id"] || "");
     const currentUserId = req.user?.id;
-    const limit = Number(req.query["limit"]) || 50;
+    const limit = Math.min(200, Math.max(1, Number(req.query["limit"]) || 50));
     try {
       const posts = database.getReplies(postId, currentUserId, limit);
       res.json({
@@ -2183,8 +2182,9 @@ export function socialRouter(
               .map((t) => t.trim().toLowerCase())
               .filter(Boolean)
           : [];
-      const limit = Number(req.query["limit"] ?? 50);
-      const rows = database.listArtifactViewsByCreator(req.user!.id, types, Number.isFinite(limit) ? limit : 50);
+      const rawLimit = Number(req.query["limit"] ?? 50);
+      const limit = Number.isFinite(rawLimit) ? Math.min(200, Math.max(1, rawLimit)) : 50;
+      const rows = database.listArtifactViewsByCreator(req.user!.id, types, limit);
       res.json({ items: rows });
     } catch {
       res.status(500).json({ error: "Failed to list artifact views" });
@@ -2449,8 +2449,8 @@ export function socialRouter(
       res.json({ posts: [] });
       return;
     }
-    const limit = Number(req.query["limit"]) || 20;
-    const offset = Number(req.query["offset"]) || 0;
+    const limit = Math.min(200, Math.max(1, Number(req.query["limit"]) || 20));
+    const offset = Math.max(0, Number(req.query["offset"]) || 0);
     const artifactType = (req.query["artifactType"] as string) || undefined;
     const sort = (req.query["sort"] as string) || "recent";
 

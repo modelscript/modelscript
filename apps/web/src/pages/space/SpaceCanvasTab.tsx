@@ -17,6 +17,10 @@ import {
   type SurfacePresentationMode,
   type TileLodTier,
 } from "@modelscript/canvas";
+import {
+  getRotundaScenarioById,
+  ROTUNDA_SHOWCASE_SCENARIOS,
+} from "@modelscript/editor/workbench/vr-rotunda/showcase-catalog.js";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { renderLiveWebTileContent } from "../../components/canvas/LivePolyglotTileRenderer";
@@ -96,7 +100,19 @@ export function SpaceCanvasTab({ spaceSlug, spaceName }: SpaceCanvasTabProps): R
   const [surfaceMode, setSurfaceMode] = useState<SurfacePresentationMode>("desktop-2d");
   const [simulationTime, setSimulationTime] = useState<number>(0);
   const [highlightedRowIds, setHighlightedRowIds] = useState<string[]>([]);
+  const [previewScenarioId, setPreviewScenarioId] = useState<string | null>(null);
   const hydratedSchematicsRef = useRef<Set<string>>(new Set());
+
+  const previewScenario = useMemo(
+    () => (previewScenarioId ? getRotundaScenarioById(previewScenarioId) : undefined),
+    [previewScenarioId],
+  );
+  const previewDoc = useMemo(() => (previewScenario ? previewScenario.createDocument() : null), [previewScenario]);
+
+  const handleSelectScenarioPreview = useCallback((scenarioId: string) => {
+    const matched = getRotundaScenarioById(scenarioId);
+    setPreviewScenarioId(matched ? matched.id : null);
+  }, []);
 
   useEffect(() => {
     void cache.load(boardId).then((cached) => {
@@ -411,6 +427,50 @@ export function SpaceCanvasTab({ spaceSlug, spaceName }: SpaceCanvasTabProps): R
           >
             Export SVG
           </button>
+          <button
+            type="button"
+            data-testid="space-canvas-vr-rotunda-toggle"
+            aria-pressed={surfaceMode !== "desktop-2d"}
+            onClick={() => setSurfaceMode((prev) => (prev === "desktop-2d" ? "spatial-3d" : "desktop-2d"))}
+            title={
+              surfaceMode === "desktop-2d" ? "Enter 3D / WebXR Engineering Rotunda" : "Return to 2D Spatial Canvas"
+            }
+            style={{
+              padding: "4px 10px",
+              borderRadius: 6,
+              border: surfaceMode !== "desktop-2d" ? "1px solid #38bdf8" : "1px solid rgba(99, 102, 241, 0.7)",
+              background:
+                surfaceMode !== "desktop-2d"
+                  ? "linear-gradient(135deg, #0284c7, #6366f1)"
+                  : "linear-gradient(135deg, rgba(99, 102, 241, 0.28), rgba(6, 182, 212, 0.24))",
+              color: "#f8fafc",
+              cursor: "pointer",
+              fontSize: 11,
+              fontWeight: 600,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              boxShadow: surfaceMode !== "desktop-2d" ? "0 0 10px rgba(56, 189, 248, 0.32)" : "none",
+            }}
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="2" y="7" width="20" height="10" rx="3" />
+              <path d="M9 17l1.5-2.5a1.8 1.8 0 0 1 3 0L15 17" />
+              <circle cx="8" cy="12" r="1.5" />
+              <circle cx="16" cy="12" r="1.5" />
+            </svg>
+            <span>VR Rotunda</span>
+          </button>
           <Link
             to={`/canvas/${encodeURIComponent(boardId)}`}
             style={{
@@ -462,12 +522,22 @@ export function SpaceCanvasTab({ spaceSlug, spaceName }: SpaceCanvasTabProps): R
           </SharedScissor3DHost>
         ) : (
           <SpatialVrSurface
-            document={doc}
+            document={previewDoc ?? doc}
             mode={surfaceMode}
+            initialEnvironment={previewScenario?.recommendedEnvironment}
             simulationTime={simulationTime}
-            onExitTo2D={() => setSurfaceMode("desktop-2d")}
-            onMoveTile={handleTileMove}
-            onCreateSpatialWire={handleCreateSpatialWire}
+            onSimulationTimeChange={setSimulationTime}
+            models={previewScenario?.models}
+            scenarios={ROTUNDA_SHOWCASE_SCENARIOS}
+            activeScenarioId={previewScenario?.id}
+            onSelectScenario={handleSelectScenarioPreview}
+            title={previewScenario ? previewScenario.label : doc.name}
+            onExitTo2D={() => {
+              setPreviewScenarioId(null);
+              setSurfaceMode("desktop-2d");
+            }}
+            onMoveTile={previewDoc ? undefined : handleTileMove}
+            onCreateSpatialWire={previewDoc ? undefined : handleCreateSpatialWire}
           />
         )}
       </div>

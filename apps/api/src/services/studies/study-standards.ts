@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { escapeXml } from "../../util/escape.js";
 import type {
   CompatibleModelItem,
   StudyDefinition,
@@ -45,15 +46,6 @@ const DOMAIN_TO_SEDML_LANGUAGE: Record<string, string> = {
   scad: "urn:sedml:language:openscad",
   step: "urn:sedml:language:iso10303-step",
 };
-
-function escapeXml(raw: string): string {
-  return raw
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
 
 function unescapeXml(raw: string): string {
   return raw

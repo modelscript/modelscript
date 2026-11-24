@@ -133,6 +133,15 @@ export function isExplicitlySolvable(dae: DaeBuilder, eqIdx: u32, targetVarId: u
   return 0xffffffff;
 }
 
+@inline
+function internMathFuncName(dae: DaeBuilder, name: string, fallbackId: u32): u32 {
+  let sp = dae.stringPool;
+  if (changetype<usize>(sp) != 0) {
+    return sp.internUtf16(changetype<usize>(name), (name.length << 1) as u32);
+  }
+  return fallbackId;
+}
+
 /**
  * Strategy 2: Single-occurrence function inversion / peeling.
  * Given `F(x) = targetValExpr`, computes `x = F^{-1}(targetValExpr)`.
@@ -241,8 +250,9 @@ export function invertSingleOccurrence(
       }
       if (rightCount == 1 && leftCount == 0) {
         // u ^ p = val -> p = log(val) / log(u)
-        let logVal = dae.addCall(BuiltinMathFunc.Log, targetValExpr, 1);
-        let logBase = dae.addCall(BuiltinMathFunc.Log, left, 1);
+        let logId = internMathFuncName(dae, "log", BuiltinMathFunc.Log);
+        let logVal = dae.addCall(logId, targetValExpr, 1);
+        let logBase = dae.addCall(logId, left, 1);
         let newTarget = dae.addBinaryExpr(BinOp.Div as u16, logVal, logBase);
         return invertSingleOccurrence(dae, right, targetVarId, newTarget);
       }
@@ -261,10 +271,10 @@ export function invertSingleOccurrence(
 
       if (funcId == BuiltinMathFunc.Exp) {
         // exp(u) = val -> u = log(val)
-        invArg = dae.addCall(BuiltinMathFunc.Log, targetValExpr, 1);
+        invArg = dae.addCall(internMathFuncName(dae, "log", BuiltinMathFunc.Log), targetValExpr, 1);
       } else if (funcId == BuiltinMathFunc.Log) {
         // log(u) = val -> u = exp(val)
-        invArg = dae.addCall(BuiltinMathFunc.Exp, targetValExpr, 1);
+        invArg = dae.addCall(internMathFuncName(dae, "exp", BuiltinMathFunc.Exp), targetValExpr, 1);
       } else if (funcId == BuiltinMathFunc.Log10) {
         // log10(u) = val -> u = 10 ^ val
         let ten = dae.addRealLiteral(10.0);
@@ -275,39 +285,39 @@ export function invertSingleOccurrence(
         invArg = dae.addBinaryExpr(BinOp.Pow as u16, targetValExpr, two);
       } else if (funcId == BuiltinMathFunc.Sin) {
         // sin(u) = val -> u = asin(val)
-        invArg = dae.addCall(BuiltinMathFunc.Asin, targetValExpr, 1);
+        invArg = dae.addCall(internMathFuncName(dae, "asin", BuiltinMathFunc.Asin), targetValExpr, 1);
       } else if (funcId == BuiltinMathFunc.Cos) {
         // cos(u) = val -> u = acos(val)
-        invArg = dae.addCall(BuiltinMathFunc.Acos, targetValExpr, 1);
+        invArg = dae.addCall(internMathFuncName(dae, "acos", BuiltinMathFunc.Acos), targetValExpr, 1);
       } else if (funcId == BuiltinMathFunc.Tan) {
         // tan(u) = val -> u = atan(val)
-        invArg = dae.addCall(BuiltinMathFunc.Atan, targetValExpr, 1);
+        invArg = dae.addCall(internMathFuncName(dae, "atan", BuiltinMathFunc.Atan), targetValExpr, 1);
       } else if (funcId == BuiltinMathFunc.Asin) {
-        invArg = dae.addCall(BuiltinMathFunc.Sin, targetValExpr, 1);
+        invArg = dae.addCall(internMathFuncName(dae, "sin", BuiltinMathFunc.Sin), targetValExpr, 1);
       } else if (funcId == BuiltinMathFunc.Acos) {
-        invArg = dae.addCall(BuiltinMathFunc.Cos, targetValExpr, 1);
+        invArg = dae.addCall(internMathFuncName(dae, "cos", BuiltinMathFunc.Cos), targetValExpr, 1);
       } else if (funcId == BuiltinMathFunc.Atan) {
-        invArg = dae.addCall(BuiltinMathFunc.Tan, targetValExpr, 1);
+        invArg = dae.addCall(internMathFuncName(dae, "tan", BuiltinMathFunc.Tan), targetValExpr, 1);
       } else if (funcId == BuiltinMathFunc.Sinh) {
         // sinh(u) = val -> u = log(val + sqrt(val^2 + 1))
         let vSq = dae.addBinaryExpr(BinOp.Mul as u16, targetValExpr, targetValExpr);
         let vSqP1 = dae.addBinaryExpr(BinOp.Add as u16, vSq, dae.addRealLiteral(1.0));
-        let sqrtTerm = dae.addCall(BuiltinMathFunc.Sqrt, vSqP1, 1);
+        let sqrtTerm = dae.addCall(internMathFuncName(dae, "sqrt", BuiltinMathFunc.Sqrt), vSqP1, 1);
         let sum = dae.addBinaryExpr(BinOp.Add as u16, targetValExpr, sqrtTerm);
-        invArg = dae.addCall(BuiltinMathFunc.Log, sum, 1);
+        invArg = dae.addCall(internMathFuncName(dae, "log", BuiltinMathFunc.Log), sum, 1);
       } else if (funcId == BuiltinMathFunc.Cosh) {
         // cosh(u) = val -> u = log(val + sqrt(val^2 - 1))
         let vSq = dae.addBinaryExpr(BinOp.Mul as u16, targetValExpr, targetValExpr);
         let vSqM1 = dae.addBinaryExpr(BinOp.Sub as u16, vSq, dae.addRealLiteral(1.0));
-        let sqrtTerm = dae.addCall(BuiltinMathFunc.Sqrt, vSqM1, 1);
+        let sqrtTerm = dae.addCall(internMathFuncName(dae, "sqrt", BuiltinMathFunc.Sqrt), vSqM1, 1);
         let sum = dae.addBinaryExpr(BinOp.Add as u16, targetValExpr, sqrtTerm);
-        invArg = dae.addCall(BuiltinMathFunc.Log, sum, 1);
+        invArg = dae.addCall(internMathFuncName(dae, "log", BuiltinMathFunc.Log), sum, 1);
       } else if (funcId == BuiltinMathFunc.Tanh) {
         // tanh(u) = val -> u = 0.5 * log((1 + val) / (1 - val))
         let num = dae.addBinaryExpr(BinOp.Add as u16, dae.addRealLiteral(1.0), targetValExpr);
         let den = dae.addBinaryExpr(BinOp.Sub as u16, dae.addRealLiteral(1.0), targetValExpr);
         let ratio = dae.addBinaryExpr(BinOp.Div as u16, num, den);
-        let logTerm = dae.addCall(BuiltinMathFunc.Log, ratio, 1);
+        let logTerm = dae.addCall(internMathFuncName(dae, "log", BuiltinMathFunc.Log), ratio, 1);
         invArg = dae.addBinaryExpr(BinOp.Mul as u16, dae.addRealLiteral(0.5), logTerm);
       }
 

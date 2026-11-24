@@ -3,6 +3,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { escapeXml } from "../util/escape.js";
 
 export interface PreprocessResult {
   svg?: string;
@@ -1884,10 +1885,6 @@ export async function pregenerateServerSvgThumbnail(
   return result;
 }
 
-function escapeXml(str: string): string {
-  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
 export interface SysmlConstraintWitness {
   expr: string;
   actual: string;
@@ -2422,13 +2419,6 @@ export function buildSysmlArchitectureFromSource(content: string, fallbackTitle:
 }
 
 function buildSspArchitectureFromSource(content: string, fallbackTitle: string) {
-  const escapeXml = (s: string) =>
-    String(s ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-
   const getAttr = (tag: string, name: string): string | undefined => {
     const m = new RegExp(`\\b${name}\\s*=\\s*["']([^"']*)["']`, "i").exec(tag);
     return m ? m[1] : undefined;

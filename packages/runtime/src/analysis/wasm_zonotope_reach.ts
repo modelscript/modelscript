@@ -14,8 +14,9 @@
  *  - Safety certificate generation against linear hyperplane requirements
  */
 
+import { getDefaultWasmExports } from "../dae/wasm_loader.js";
 import type { VerificationVerdict } from "../formal/verdict.js";
-import type { DaeSystem } from "./wasm_dae_flowpipe.js";
+import type { DaeSystem } from "./dae_flowpipe.js";
 import { Interval } from "./wasm_interval.js";
 import { Zonotope } from "./wasm_zonotope.js";
 
@@ -71,13 +72,56 @@ export interface ZonotopeReachabilityResult {
   summary: string;
 }
 
-/** Matrix multiplication C = A * B */
+/** Matrix multiplication C = A * B using AssemblyScript `denseMatMulWasm`. */
 export function matrixMultiply(A: number[][], B: number[][]): number[][] {
   const rowsA = A.length;
   const colsA = A[0]!.length;
   const colsB = B[0]!.length;
-  const C: number[][] = Array.from({ length: rowsA }, () => new Array<number>(colsB).fill(0));
 
+  const w = getDefaultWasmExports();
+  if (
+    w &&
+    typeof w.denseMatMulWasm === "function" &&
+    typeof w.alloc === "function" &&
+    typeof w.free === "function" &&
+    rowsA > 0 &&
+    colsA > 0 &&
+    colsB > 0
+  ) {
+    const aPtr = w.alloc(rowsA * colsA * 8);
+    const bPtr = w.alloc(colsA * colsB * 8);
+    const cPtr = w.alloc(rowsA * colsB * 8);
+    try {
+      const aFlat = new Float64Array(w.memory.buffer, aPtr, rowsA * colsA);
+      for (let i = 0; i < rowsA; i++) {
+        const row = A[i]!;
+        const off = i * colsA;
+        for (let k = 0; k < colsA; k++) aFlat[off + k] = row[k]!;
+      }
+      const bFlat = new Float64Array(w.memory.buffer, bPtr, colsA * colsB);
+      for (let k = 0; k < colsA; k++) {
+        const row = B[k]!;
+        const off = k * colsB;
+        for (let j = 0; j < colsB; j++) bFlat[off + j] = row[j]!;
+      }
+
+      w.denseMatMulWasm(aPtr, bPtr, cPtr, rowsA, colsA, colsB);
+
+      const cFlat = new Float64Array(w.memory.buffer, cPtr, rowsA * colsB);
+      const C: number[][] = new Array(rowsA);
+      for (let i = 0; i < rowsA; i++) {
+        const off = i * colsB;
+        C[i] = Array.from(cFlat.subarray(off, off + colsB));
+      }
+      return C;
+    } finally {
+      w.free(aPtr);
+      w.free(bPtr);
+      w.free(cPtr);
+    }
+  }
+
+  const C: number[][] = Array.from({ length: rowsA }, () => new Array<number>(colsB).fill(0));
   for (let i = 0; i < rowsA; i++) {
     const rowA = A[i]!;
     for (let k = 0; k < colsA; k++) {

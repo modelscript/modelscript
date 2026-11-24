@@ -98,19 +98,24 @@ export class ReferralRepository extends BaseRepository {
   }
 
   grantReferralReward(refereeId: number): boolean {
-    const referral = this.get<UserReferralRow>(
-      `SELECT * FROM user_referrals WHERE referee_id = ? AND reward_granted = 0`,
-      refereeId,
-    );
-    if (!referral) return false;
+    return this.immediateTransaction(() => {
+      const referral = this.get<UserReferralRow>(
+        `SELECT * FROM user_referrals WHERE referee_id = ? AND reward_granted = 0`,
+        refereeId,
+      );
+      if (!referral) return false;
 
-    const reward = Number(referral.reward_amount || 50.0);
-    this.transaction(() => {
-      this.run(`UPDATE user_referrals SET reward_granted = 1 WHERE id = ?`, referral.id);
+      const updated = this.run(
+        `UPDATE user_referrals SET reward_granted = 1 WHERE id = ? AND reward_granted = 0`,
+        referral.id,
+      );
+      if (updated.changes === 0) return false;
+
+      const reward = Number(referral.reward_amount || 50.0);
       this.facade.adjustUserCreditsForAdmin(referral.referrer_id, reward, "Peer referral reward bonus");
       this.facade.adjustUserCreditsForAdmin(referral.referee_id, reward, "Welcome referral bonus");
+      return true;
     });
-    return true;
   }
 
   generateUserGoldenTicket(userId: number, note?: string, initialCredits = 100) {
@@ -245,35 +250,37 @@ export class ReferralRepository extends BaseRepository {
     submission?: WaitlistSubmissionRow | undefined;
     inviteCode?: string | undefined;
   } {
-    const sub = this.getWaitlistSubmissionById(id);
-    if (!sub) {
-      return { success: false };
-    }
-    if (sub.status === "approved" && sub.invite_code_id) {
-      const invite = this.get<{ code: string }>(`SELECT code FROM instance_invites WHERE id = ?`, sub.invite_code_id);
-      return { success: true, submission: sub, inviteCode: invite?.code };
-    }
+    return this.immediateTransaction(() => {
+      const sub = this.getWaitlistSubmissionById(id);
+      if (!sub) {
+        return { success: false };
+      }
+      if (sub.status === "approved" && sub.invite_code_id) {
+        const invite = this.get<{ code: string }>(`SELECT code FROM instance_invites WHERE id = ?`, sub.invite_code_id);
+        return { success: true, submission: sub, inviteCode: invite?.code };
+      }
 
-    const invite = this.facade.createInstanceInvite({
-      createdBy: approvedBy,
-      maxUses: 1,
-      initialCredits: 150,
-      note: `Waitlist approval for ${sub.email}`,
+      const invite = this.facade.createInstanceInvite({
+        createdBy: approvedBy,
+        maxUses: 1,
+        initialCredits: 150,
+        note: `Waitlist approval for ${sub.email}`,
+      });
+
+      this.run(
+        `UPDATE waitlist_submissions SET status = 'approved', approved_by = ?, invite_code_id = ?, reviewed_at = datetime('now') WHERE id = ?`,
+        approvedBy,
+        invite.id,
+        id,
+      );
+
+      const updated = this.getWaitlistSubmissionById(id);
+      return {
+        success: true,
+        submission: updated,
+        inviteCode: invite.code,
+      };
     });
-
-    this.run(
-      `UPDATE waitlist_submissions SET status = 'approved', approved_by = ?, invite_code_id = ?, reviewed_at = datetime('now') WHERE id = ?`,
-      approvedBy,
-      invite.id,
-      id,
-    );
-
-    const updated = this.getWaitlistSubmissionById(id);
-    return {
-      success: true,
-      submission: updated,
-      inviteCode: invite.code,
-    };
   }
 
   rejectWaitlistSubmission(id: number, approvedBy: number | null = null, reason: string | null = null): boolean {

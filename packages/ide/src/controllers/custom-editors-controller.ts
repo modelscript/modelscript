@@ -25,7 +25,50 @@ import { SSP_VIEW_SCHEME, SspContentProvider, SspEditorProvider } from "../ssp-d
 import { StepEditorProvider } from "../step-editor-provider.js";
 import { TabularPlotEditorProvider } from "../tabular-plot-editor-provider.js";
 import { TokamakEquilibriumEditorProvider } from "../tokamak-equilibrium-panel.js";
+import {
+  attachVrHandoffListener,
+  handleOpenInVrWebviewMessage,
+  openExternalVrRotunda,
+  type OpenInVrMessageDefaults,
+} from "../vr-handoff.js";
 import { WaterDiffEditorProvider } from "../water-diff-panel.js";
+
+export { attachVrHandoffListener, handleOpenInVrWebviewMessage, openExternalVrRotunda, type OpenInVrMessageDefaults };
+
+function inferTitleFromUri(uri: vscode.Uri | undefined): string | undefined {
+  if (!uri?.path) return undefined;
+  const segments = uri.path.split("/").filter(Boolean);
+  return segments[segments.length - 1];
+}
+
+/**
+ * Wraps a `vscode.CustomTextEditorProvider` so every resolved custom editor webview
+ * (STEP, CAD, FEA, CFD, GCode, Multibody, etc.) handles `"openInVr"` messages using `openExternalVrRotunda`.
+ */
+export function withVrHandoffProvider(
+  provider: vscode.CustomTextEditorProvider,
+  kind: string,
+): vscode.CustomTextEditorProvider {
+  return {
+    async resolveCustomTextEditor(
+      document: vscode.TextDocument,
+      webviewPanel: vscode.WebviewPanel,
+      token: vscode.CancellationToken,
+    ): Promise<void> {
+      const vrSub = attachVrHandoffListener(webviewPanel, {
+        artifactUri: document.uri.toString(),
+        title: inferTitleFromUri(document.uri),
+        kind,
+        fileContent: () => (typeof document.getText === "function" ? document.getText() : undefined),
+        languageId: document.languageId || kind,
+      });
+      webviewPanel.onDidDispose(() => {
+        vrSub.dispose();
+      });
+      await provider.resolveCustomTextEditor(document, webviewPanel, token);
+    },
+  };
+}
 
 export interface CustomEditorsControllerResult {
   fmuContentProvider: FmuContentProvider;
@@ -161,8 +204,15 @@ export function registerCustomEditors(
     }
   }
   for (const vt of diagramViewTypeSet) {
+    const langPrefix = vt.split(".")[0] || "cad";
+    const kind =
+      langPrefix === "fea" || langPrefix === "cfd" || langPrefix === "step" || langPrefix === "urdf"
+        ? langPrefix
+        : langPrefix === "simpack" || langPrefix === "adams" || langPrefix === "gensys"
+          ? "multibody"
+          : "cad";
     context.subscriptions.push(
-      vscode.window.registerCustomEditorProvider(vt, diagramProvider, {
+      vscode.window.registerCustomEditorProvider(vt, withVrHandoffProvider(diagramProvider, kind), {
         webviewOptions: { retainContextWhenHidden: true },
         supportsMultipleEditorsPerDocument: true,
       }),
@@ -200,16 +250,20 @@ export function registerCustomEditors(
 
   const stepEditor = new StepEditorProvider(context, client, stepCompilationService);
   context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(StepEditorProvider.viewType, stepEditor, {
+    vscode.window.registerCustomEditorProvider(StepEditorProvider.viewType, withVrHandoffProvider(stepEditor, "step"), {
       webviewOptions: { retainContextWhenHidden: true },
     }),
   );
 
   const gcodeEditor = new GCodeEditorProvider(context);
   context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(GCodeEditorProvider.viewType, gcodeEditor, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
+    vscode.window.registerCustomEditorProvider(
+      GCodeEditorProvider.viewType,
+      withVrHandoffProvider(gcodeEditor, "gcode"),
+      {
+        webviewOptions: { retainContextWhenHidden: true },
+      },
+    ),
   );
 
   const psoutEditor = new PsoutEditorProvider(context);

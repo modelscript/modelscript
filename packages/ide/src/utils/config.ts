@@ -11,6 +11,7 @@ export const LANGUAGE_MATURITY_MAP: Record<string, LanguageMaturityTier> = {
   ccsds: "beta",
   csv: "beta",
   easy5: "beta",
+  twentysim: "beta",
   epanet: "beta",
   gensys: "beta",
   lps: "beta",

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { DAEBuilder, ExprKind, UnaryOp } from "./wasm_dae.js";
+import { getDefaultWasmExports } from "./wasm_loader.js";
 
 export interface CachedTable1D {
   table: number[][];
@@ -43,8 +44,31 @@ export function extractTableArrayLiteral(arena: DAEBuilder, exprId: number): any
 export function interpolate1DTable(table: number[][], colIdx: number, u: number): number {
   if (!table || table.length === 0) return 0.0;
   const n = table.length;
-  if (n === 1) return table[0]![colIdx] ?? 0.0;
+  const nCols = table[0]?.length ?? 0;
+  if (nCols === 0 || colIdx < 0 || colIdx >= nCols) return 0.0;
 
+  const w = getDefaultWasmExports();
+  if (
+    w &&
+    typeof w.table_interpolate1D === "function" &&
+    typeof w.alloc === "function" &&
+    typeof w.free === "function"
+  ) {
+    const ptr = w.alloc(n * nCols * 8);
+    try {
+      const flat = new Float64Array(w.memory.buffer, ptr, n * nCols);
+      for (let i = 0; i < n; i++) {
+        const row = table[i]!;
+        const off = i * nCols;
+        for (let j = 0; j < nCols; j++) flat[off + j] = row[j] ?? 0.0;
+      }
+      return w.table_interpolate1D(ptr, n, nCols, colIdx, u);
+    } finally {
+      w.free(ptr);
+    }
+  }
+
+  if (n === 1) return table[0]![colIdx] ?? 0.0;
   if (u <= table[0]![0]!) return table[0]![colIdx] ?? 0.0;
   if (u >= table[n - 1]![0]!) return table[n - 1]![colIdx] ?? 0.0;
 

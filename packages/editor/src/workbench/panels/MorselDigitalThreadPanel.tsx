@@ -14,6 +14,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { detectLanguageFromFilename } from "../constants";
 import {
   getBlastRadius,
+  getDocumentSymbols,
   getThreadGraph,
   reconcileThreadSlot,
   runVerification,
@@ -122,14 +123,72 @@ export const MorselDigitalThreadPanel: React.FC<MorselDigitalThreadPanelProps> =
     }
   }, [fileNames, srcFile, dstFile]);
 
+  const [lspSymbolsByFile, setLspSymbolsByFile] = useState<Map<string, ExtractedSymbolHint[]>>(() => new Map());
+
+  useEffect(() => {
+    if (!projectFiles || !documentUri) return;
+    let cancelled = false;
+    const basePrefix = documentUri.replace(/\/[^/]+$/, "");
+    type DocSymbolLike = {
+      name?: unknown;
+      detail?: unknown;
+      selectionRange?: { start?: { line?: number } };
+      range?: { start?: { line?: number } };
+      children?: DocSymbolLike[];
+    };
+    const flattenDocSymbols = (syms: DocSymbolLike[]): ExtractedSymbolHint[] => {
+      const out: ExtractedSymbolHint[] = [];
+      const seen = new Set<string>();
+      const walk = (list: DocSymbolLike[]) => {
+        for (const s of list) {
+          if (!s || typeof s.name !== "string") continue;
+          const line = (s.selectionRange?.start?.line ?? s.range?.start?.line ?? 0) + 1;
+          if (!seen.has(s.name)) {
+            seen.add(s.name);
+            out.push({ name: s.name, value: typeof s.detail === "string" && s.detail ? s.detail : undefined, line });
+          }
+          if (Array.isArray(s.children) && s.children.length > 0) {
+            walk(s.children);
+          }
+        }
+      };
+      walk(syms);
+      return out;
+    };
+
+    void Promise.all(
+      Object.keys(projectFiles).map(async (fName) => {
+        const targetUri = fName === activeFileName ? documentUri : `${basePrefix}/${fName.replace(/^\/+/, "")}`;
+        try {
+          const syms = await getDocumentSymbols(targetUri);
+          return [fName, Array.isArray(syms) ? flattenDocSymbols(syms) : []] as const;
+        } catch {
+          return [fName, []] as const;
+        }
+      }),
+    ).then((entries) => {
+      if (cancelled) return;
+      const next = new Map<string, ExtractedSymbolHint[]>();
+      for (const [fName, hints] of entries) {
+        if (hints.length > 0) next.set(fName, hints);
+      }
+      setLspSymbolsByFile(next);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectFiles, documentUri, activeFileName]);
+
   const symbolsByFile = useMemo(() => {
     const map = new Map<string, ExtractedSymbolHint[]>();
     if (!projectFiles) return map;
     for (const [fName, content] of Object.entries(projectFiles)) {
-      map.set(fName, extractSymbolsFromContent(fName, content));
+      const fromLsp = lspSymbolsByFile.get(fName);
+      map.set(fName, fromLsp && fromLsp.length > 0 ? fromLsp : extractSymbolsFromContent(fName, content));
     }
     return map;
-  }, [projectFiles]);
+  }, [projectFiles, lspSymbolsByFile]);
 
   const srcSymbols = useMemo(() => symbolsByFile.get(srcFile) ?? [], [symbolsByFile, srcFile]);
   const dstSymbols = useMemo(() => symbolsByFile.get(dstFile) ?? [], [symbolsByFile, dstFile]);

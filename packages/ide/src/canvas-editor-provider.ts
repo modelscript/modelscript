@@ -9,6 +9,7 @@ import {
 } from "@modelscript/canvas";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
+import { openExternalVrRotunda } from "./vr-handoff.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 
 /**
@@ -108,6 +109,34 @@ export class CanvasEditorProvider extends BaseCustomEditorProvider {
               vscode.window.showWarningMessage(`Could not open artifact '${artifactUri}'.`);
             }
           }
+          break;
+        }
+        case "surfaceModeChanged": {
+          if (msg["mode"] === "webxr-vr") {
+            const board = (msg["document"] as CanvasDocument | undefined) ?? parseCurrentDocument();
+            const environment = typeof msg["environment"] === "string" ? msg["environment"] : "dark-lab";
+            await openExternalVrRotunda({
+              mode: "webxr-vr",
+              environment,
+              boardJson: serializeCanvasDocument(board),
+              title: typeof msg["title"] === "string" ? msg["title"] : board.name,
+              artifactUri: document.uri.toString(),
+            });
+          }
+          break;
+        }
+        case "openInVr": {
+          const board = (msg["document"] as CanvasDocument | undefined) ?? parseCurrentDocument();
+          const environment = typeof msg["environment"] === "string" ? msg["environment"] : "dark-lab";
+          const activeModelIndex = typeof msg["activeModelIndex"] === "number" ? msg["activeModelIndex"] : undefined;
+          await openExternalVrRotunda({
+            mode: "webxr-vr",
+            environment,
+            boardJson: serializeCanvasDocument(board),
+            title: typeof msg["title"] === "string" ? msg["title"] : board.name,
+            artifactUri: typeof msg["artifactUri"] === "string" ? msg["artifactUri"] : document.uri.toString(),
+            activeModelIndex,
+          });
           break;
         }
       }

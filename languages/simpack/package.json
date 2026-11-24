@@ -55,6 +55,7 @@
     "assets/**"
   ],
   "scripts": {
+    "asbuild:native": "asc assembly/kinematics.ts --target native",
     "build": "node ../../scripts/build/build-language-parser.js && npm run build:wasm && node scripts/build-stdlib.js && tsc",
     "build:parser": "node ../../scripts/build/build-language-parser.js --force",
     "build:stdlib": "node scripts/build-stdlib.js --force",

@@ -3,7 +3,6 @@
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { LibraryDatabase } from "../database.js";
-import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 import { MorselAiService, type MorselChatRequest } from "../services/ai/morsel-ai.js";
 import { checkComputeQuota } from "../services/hpc/quota-guard.js";
 
@@ -11,7 +10,7 @@ export function aiRouter(database: LibraryDatabase): Router {
   const router = createRouter();
   const morselAi = new MorselAiService();
 
-  router.get("/ai/providers", defaultApiLimiter, async (_req: Request, res: Response) => {
+  router.get("/ai/providers", async (_req: Request, res: Response) => {
     try {
       const info = await morselAi.getProvidersInfo();
       res.json(info);
@@ -20,7 +19,7 @@ export function aiRouter(database: LibraryDatabase): Router {
     }
   });
 
-  router.post("/ai/morsel/chat", defaultApiLimiter, async (req: Request, res: Response) => {
+  router.post("/ai/morsel/chat", async (req: Request, res: Response) => {
     const body = (req.body ?? {}) as Partial<MorselChatRequest>;
     if (!Array.isArray(body.messages) || body.messages.length === 0) {
       res.status(400).json({ error: "messages array is required" });

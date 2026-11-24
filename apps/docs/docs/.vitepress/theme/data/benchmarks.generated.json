@@ -1,8 +1,8 @@
 {
   "schemaVersion": "1.0.0",
   "provenance": {
-    "gitSha": "9f8e66c38",
-    "recordedAt": "2026-11-23T04:49:14.089Z",
+    "gitSha": "ed23181e4",
+    "recordedAt": "2026-11-24T02:48:18.508Z",
     "os": "linux 6.12.116+deb13-amd64",
     "arch": "x64",
     "cpuModel": "Intel(R) Core(TM) Ultra 9 285H",
@@ -11,13 +11,13 @@
     "flattenerBackend": "hybrid"
   },
   "aggregate": {
-    "totalLanguages": 169,
-    "betaCount": 96,
+    "totalLanguages": 170,
+    "betaCount": 97,
     "alphaCount": 72,
     "preAlphaCount": 1,
     "languagesWithAdapters": 93,
-    "totalCases": 284,
-    "passedCases": 283,
+    "totalCases": 285,
+    "passedCases": 284,
     "overallPassRate": 99.65
   },
   "catalogById": {
@@ -3329,6 +3329,118 @@
       "summary": {
         "totalCases": 3,
         "passedCases": 3,
+        "passRate": 100
+      }
+    },
+    {
+      "slug": "twentysim",
+      "name": "20-sim",
+      "pkgName": "@modelscript/twentysim",
+      "tier": "beta",
+      "reproduceCommand": "npm run bench:languages -- --lang=twentysim",
+      "catalogIds": [],
+      "scorecard": {
+        "domainKind": "simulation",
+        "hasParser": true,
+        "hasParserTests": true,
+        "hasLinter": true,
+        "hasLinterTests": true,
+        "testedErrorCodesCount": 6,
+        "hasBenchmark": true,
+        "hasToleranceCheck": true,
+        "hasDomainLowering": true,
+        "hasDomainLoweringTests": true,
+        "usesRuntimeArena": true,
+        "hasLsp": true,
+        "hasLspTests": true,
+        "testFileCount": 9,
+        "testCaseCount": 29,
+        "auditedTier": "beta",
+        "currentDeclaredTier": "beta",
+        "gaps": []
+      },
+      "stages": {
+        "parse": {
+          "status": "supported",
+          "positiveFixtures": 1,
+          "passedFixtures": 1,
+          "errorRecoveryVerified": true,
+          "cstNodeCount": 112,
+          "parserKind": "wasm-glr"
+        },
+        "lint": {
+          "status": "supported",
+          "declaredRuleCount": 8,
+          "testedRuleCount": 6,
+          "negativeCasesPassed": 6,
+          "negativeCasesTotal": 6
+        },
+        "lower": {
+          "status": "supported",
+          "targetIr": "dae-arena",
+          "zeroAllocArena": true
+        },
+        "solve": {
+          "status": "n/a",
+          "casesRun": 0,
+          "casesPassed": 0,
+          "referenceTool": "N/A",
+          "metricKind": "exact",
+          "tolerance": 0.001,
+          "measuredWorstError": null
+        },
+        "projection": {
+          "status": "supported",
+          "targets": ["Modelica"],
+          "roundtripVerified": true
+        }
+      },
+      "timings": {
+        "parse": {
+          "status": "supported",
+          "medianMs": 0.062,
+          "p95Ms": 0.153,
+          "throughputMbPerSec": 2.74,
+          "iterations": 10
+        },
+        "lint": {
+          "status": "supported",
+          "medianMs": 0.013,
+          "p95Ms": 0.052,
+          "throughputMbPerSec": 13.06,
+          "iterations": 10
+        },
+        "lower": {
+          "status": "supported",
+          "medianMs": 0.181,
+          "p95Ms": 0.472,
+          "throughputMbPerSec": 0.94,
+          "iterations": 10
+        },
+        "solve": {
+          "status": "n/a",
+          "medianMs": 0,
+          "p95Ms": 0,
+          "iterations": 0
+        }
+      },
+      "cases": [
+        {
+          "id": "twentysim-parse-canonical",
+          "name": "Canonical Fixture Parse",
+          "scale": "micro",
+          "referenceTool": "ModelScript WASM GLR",
+          "metricKind": "ast-pass-rate",
+          "threshold": 1,
+          "measuredError": 0,
+          "passed": true,
+          "durationMs": 0.062,
+          "details": "112 CST nodes"
+        }
+      ],
+      "summary": {
+        "totalCases": 1,
+        "passedCases": 1,
         "passRate": 100
       }
     },

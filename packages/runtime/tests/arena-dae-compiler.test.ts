@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { DaeFlowpipeSolver } from "../src/analysis/wasm_dae_flowpipe.js";
+import { DaeFlowpipeSolver } from "../src/analysis/dae_flowpipe.js";
 import { Interval } from "../src/analysis/wasm_interval.js";
 import { BinOp, DAEBuilder, EqKind, VarType, Variability } from "../src/dae/wasm_dae.js";
 import { compileArenaToDae, createDualDomain } from "../src/formal/dae/arena_dae_compiler.js";

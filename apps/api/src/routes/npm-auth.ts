@@ -21,6 +21,7 @@ import { JWT_SECRET, isAccountBlocked } from "../middleware/auth-middleware.js";
 import { defaultLoginLimiter } from "../middleware/login-limiter.js";
 import { defaultRegistrationLimiter } from "../middleware/registration-limiter.js";
 import { defaultMailer } from "../services/mailer.js";
+import { getClientIp } from "../util/client-ip.js";
 import { enforceExportCompliance } from "../util/compliance.js";
 import { signEmailVerificationToken } from "../util/email-verification.js";
 import { evaluateRegistrationPolicy, resolveBrandInstanceName } from "../util/registration-policy.js";
@@ -63,7 +64,7 @@ export function npmAuthRouter(database: LibraryDatabase): Router {
         return;
       }
 
-      const clientIp = (req.headers["x-forwarded-for"] as string) || req.ip || req.socket.remoteAddress || "127.0.0.1";
+      const clientIp = getClientIp(req);
 
       try {
         // Check if user exists
@@ -319,17 +320,19 @@ export function npmAuthRouter(database: LibraryDatabase): Router {
       }
       const user =
         decoded.id !== undefined ? database.getUserById(decoded.id) : database.getUserByUsername(decoded.username);
-      if (user) {
-        if (isAccountBlocked(user.status)) {
-          res.status(403).json({ error: `Account is ${user.status}. Please contact support.` });
-          return;
-        }
-        if ((decoded.tokenVersion ?? 1) !== (user.token_version ?? 1)) {
-          res.status(401).json({ error: "Session has expired or was revoked" });
-          return;
-        }
+      if (!user) {
+        res.status(401).json({ error: "User account not found" });
+        return;
       }
-      res.json({ username: decoded.username });
+      if (isAccountBlocked(user.status)) {
+        res.status(403).json({ error: `Account is ${user.status}. Please contact support.` });
+        return;
+      }
+      if ((decoded.tokenVersion ?? 1) !== (user.token_version ?? 1)) {
+        res.status(401).json({ error: "Session has expired or was revoked" });
+        return;
+      }
+      res.json({ username: user.username });
     } catch {
       res.status(401).json({ error: "Invalid or expired token" });
     }

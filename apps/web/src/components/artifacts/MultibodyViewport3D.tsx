@@ -13,8 +13,10 @@ import React, { useEffect, useMemo, useRef } from "react";
 import styled from "styled-components";
 import * as THREE from "three";
 import { resolveCssColor, useThemeTokens } from "../../theme-tokens";
+import { registerArtifactRotundaGeometry } from "./RotundaGeometryBridge";
 import SafeOrbitControls from "./SafeOrbitControls";
 import { DigitalTwinEnvironmentMesh, UrdfVisualMesh, urdfPoseToThree } from "./UrdfRobotCadMeshes";
+import { XrSceneBridge, XrViewportOverlay } from "./XrViewportOverlay";
 
 export interface MultibodyNode3D {
   id: string;
@@ -62,6 +64,7 @@ export interface MultibodyViewport3DProps {
   cameraPreset?: ViewportCameraPreset | undefined;
   cameraPresetTrigger?: number | undefined;
   height?: string | number | undefined;
+  geometryBridgeKey?: string | number | undefined;
 }
 
 const ViewportContainer = styled.div<{ $height: string | number }>`
@@ -674,38 +677,84 @@ export const MultibodyViewport3D: React.FC<MultibodyViewport3DProps> = ({
   cameraPreset,
   cameraPresetTrigger,
   height = "320px",
+  geometryBridgeKey,
 }) => {
   const isWebGLAvailable = useMemo(() => checkWebGLAvailable(), []);
+
+  useEffect(() => {
+    if (nodes.length === 0 && links.length === 0) return;
+    const key = geometryBridgeKey ?? "multibody-active";
+
+    const snapshotNodes = nodes.map((n) => {
+      const defaultColor =
+        n.type === "wheelset"
+          ? "#f59e0b"
+          : n.type === "marker"
+            ? "#a855f7"
+            : n.type === "track"
+              ? "#64748b"
+              : "#38bdf8";
+      const radius =
+        n.dimensions && n.dimensions.length === 3
+          ? Math.max(n.dimensions[0], n.dimensions[1], n.dimensions[2]) * 0.5
+          : undefined;
+      return {
+        id: n.id,
+        ...(n.name ? { label: n.name } : {}),
+        position: [n.position[0], n.position[1], n.position[2]] as [number, number, number],
+        color: n.color ?? defaultColor,
+        ...(radius !== undefined && Number.isFinite(radius) && radius > 0 ? { radius } : {}),
+      };
+    });
+
+    const snapshotLinks = links.map((l) => ({
+      from: [l.from[0], l.from[1], l.from[2]] as [number, number, number],
+      to: [l.to[0], l.to[1], l.to[2]] as [number, number, number],
+      ...(l.color ? { color: l.color } : {}),
+    }));
+
+    // Retain snapshot across unmount (LRU-capped in registry) so switching to VR Rotunda renders live multibody geometry
+    registerArtifactRotundaGeometry(key, {
+      kind: "multibody",
+      nodes: snapshotNodes,
+      links: snapshotLinks,
+    });
+  }, [geometryBridgeKey, nodes, links]);
 
   return (
     <ViewportContainer $height={height}>
       {isWebGLAvailable ? (
-        <Canvas camera={{ position: [1.28, 0.92, 1.48], fov: 42 }} style={{ width: "100%", height: "100%" }}>
-          <SceneContent
-            nodes={nodes}
-            links={links}
-            ghostNodes={ghostNodes}
-            ghostLinks={ghostLinks}
-            ghostUrdfVisuals={ghostUrdfVisuals}
-            ghostOpacity={ghostOpacity}
-            urdfVisuals={urdfVisuals}
-            urdfCollisions={urdfCollisions}
-            environment={environment}
-            toolpath={toolpath}
-            toolpaths={toolpaths}
-            clearance={clearance}
-            verificationOverlay={verificationOverlay}
-            tcpPosition={tcpPosition}
-            gripperOpeningMm={gripperOpeningMm}
-            isFullScreen={isFullScreen}
-            showPaths={showPaths}
-            showColliders={showColliders}
-            showFrames={showFrames}
-            showGrid={showGrid}
-            cameraPreset={cameraPreset}
-            cameraPresetTrigger={cameraPresetTrigger}
-          />
-        </Canvas>
+        <>
+          <Canvas camera={{ position: [1.28, 0.92, 1.48], fov: 42 }} style={{ width: "100%", height: "100%" }}>
+            <XrSceneBridge>
+              <SceneContent
+                nodes={nodes}
+                links={links}
+                ghostNodes={ghostNodes}
+                ghostLinks={ghostLinks}
+                ghostUrdfVisuals={ghostUrdfVisuals}
+                ghostOpacity={ghostOpacity}
+                urdfVisuals={urdfVisuals}
+                urdfCollisions={urdfCollisions}
+                environment={environment}
+                toolpath={toolpath}
+                toolpaths={toolpaths}
+                clearance={clearance}
+                verificationOverlay={verificationOverlay}
+                tcpPosition={tcpPosition}
+                gripperOpeningMm={gripperOpeningMm}
+                isFullScreen={isFullScreen}
+                showPaths={showPaths}
+                showColliders={showColliders}
+                showFrames={showFrames}
+                showGrid={showGrid}
+                cameraPreset={cameraPreset}
+                cameraPresetTrigger={cameraPresetTrigger}
+              />
+            </XrSceneBridge>
+          </Canvas>
+          <XrViewportOverlay position="top-right" />
+        </>
       ) : (
         <FallbackContainer>
           <span>3D WebGL Multibody Canvas</span>

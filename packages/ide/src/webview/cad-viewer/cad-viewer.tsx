@@ -43,6 +43,7 @@ import { MateConnectorTool } from "./mate-connector-tool";
 import { MateModal, type MateFrameSelection } from "./mate-modal";
 import { ReachabilityTubeOverlay } from "./reachability-tube-overlay";
 import { RequirementVerdictCard, type RequirementVerdictPayload } from "./requirement-verdict-card";
+import VrMode, { VrButton, getSharedVsCodeApi } from "./vr-mode";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -131,7 +132,7 @@ export interface CadComponent {
   shapeType?: string | undefined;
 }
 
-interface CadViewerProps {
+export interface CadViewerProps {
   /** List of components with CAD annotations to render */
   components: CadComponent[];
   /** Base URL for resolving modelica:// URIs, e.g. "/api/v1/libraries" */
@@ -164,6 +165,10 @@ interface CadViewerProps {
   qifOverlay?: QifOverlayPayload | null | undefined;
   /** Formal verification 3D overlay payload (reachability flowpipes, dynamic clearance, barrier shells) */
   verificationOverlay?: Verification3DOverlayPayload | null | undefined;
+  /** Enable WebXR `<XR>` context and VR/AR overlay controls (defaults to true). */
+  enableVr?: boolean | undefined;
+  /** Callback to launch a top-level browser WebXR VR session outside sandboxed VS Code webviews. */
+  onOpenExternalVr?: (() => void) | undefined;
 }
 
 export interface QifOverlayPayload {
@@ -1062,6 +1067,8 @@ export default function CadViewer({
   feaPayload = null,
   qifOverlay = null,
   verificationOverlay = null,
+  enableVr = true,
+  onOpenExternalVr,
 }: CadViewerProps) {
   const [error, setError] = useState<string | null>(null);
   const [contextLost, setContextLost] = useState<boolean>(false);
@@ -1069,6 +1076,20 @@ export default function CadViewer({
   const [isBindingPickerOpen, setIsBindingPickerOpen] = useState(false);
   const [showFlowpipe, setShowFlowpipe] = useState(true);
   const [showBarrier, setShowBarrier] = useState(true);
+
+  const resolvedOpenExternalVr = useMemo<(() => void) | undefined>(() => {
+    if (onOpenExternalVr) return onOpenExternalVr;
+    const api = getSharedVsCodeApi();
+    if (!api) return undefined;
+    return () => {
+      api.postMessage({
+        type: "openInVr",
+        environment: "dark-lab",
+        kind: feaPayload ? "fea" : cfdPayload ? "cfd" : "cad",
+        title: "3D CAD Viewer",
+      });
+    };
+  }, [onOpenExternalVr, feaPayload, cfdPayload]);
   const [matePair, setMatePair] = useState<{ frameA: MateFrameSelection; frameB: MateFrameSelection } | null>(null);
   const [cuttingPlane, setCuttingPlane] = useState<CuttingPlaneOptions>({
     enabled: false,
@@ -1434,29 +1455,35 @@ export default function CadViewer({
           );
         }}
       >
-        <SceneContents
-          components={components}
-          assetBaseUrl={assetBaseUrl}
-          selectedName={selectedName}
-          gizmoMode={gizmoMode}
-          onSelect={onSelect}
-          onCommitGizmoDelta={onCommitGizmoDelta}
-          onCommitDimensionDelta={onCommitDimensionDelta}
-          onCommitFaceTag={onCommitFaceTag}
-          onSelectMatePair={(frameA, frameB) => {
-            setMatePair({ frameA, frameB });
-          }}
-          cuttingPlane={cuttingPlane}
-          dark={dark}
-          animationController={animationController}
-          cfdPayload={cfdPayload}
-          feaPayload={feaPayload}
-          qifOverlay={qifOverlay}
-          verificationOverlay={verificationOverlay}
-          showFlowpipe={showFlowpipe}
-          showBarrier={showBarrier}
-        />
+        <VrMode enabled={enableVr}>
+          <SceneContents
+            components={components}
+            assetBaseUrl={assetBaseUrl}
+            selectedName={selectedName}
+            gizmoMode={gizmoMode}
+            onSelect={onSelect}
+            onCommitGizmoDelta={onCommitGizmoDelta}
+            onCommitDimensionDelta={onCommitDimensionDelta}
+            onCommitFaceTag={onCommitFaceTag}
+            onSelectMatePair={(frameA, frameB) => {
+              setMatePair({ frameA, frameB });
+            }}
+            cuttingPlane={cuttingPlane}
+            dark={dark}
+            animationController={animationController}
+            cfdPayload={cfdPayload}
+            feaPayload={feaPayload}
+            qifOverlay={qifOverlay}
+            verificationOverlay={verificationOverlay}
+            showFlowpipe={showFlowpipe}
+            showBarrier={showBarrier}
+          />
+        </VrMode>
       </Canvas>
+
+      {(enableVr || resolvedOpenExternalVr) && (
+        <VrButton onOpenExternalVr={resolvedOpenExternalVr} style={animationController ? { bottom: 72 } : undefined} />
+      )}
 
       {/* Formal Verification Verdict Card & 3D Jump Actions */}
       {primaryVerdict && (

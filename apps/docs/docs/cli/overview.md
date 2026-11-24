@@ -61,7 +61,7 @@ When `--daemon` is passed, `msx` connects to the local Unix domain socket (`~/.m
 
 ## Complete Command Reference by Category
 
-The `msx` CLI registers **146 commands** organized across **168 documented engineering formats** (95 Beta, 72 Alpha, 1 Pre-Alpha) and six functional domains. See [CLI Commands](./commands.md) for exhaustive flag tables and examples for every command.
+The `msx` CLI registers **146 commands** organized across **169 documented engineering formats** (96 Beta, 72 Alpha, 1 Pre-Alpha) and six functional domains. See [CLI Commands](./commands.md) for exhaustive flag tables and examples for every command.
 
 ### 1. Compilation, Simulation & Optimization
 

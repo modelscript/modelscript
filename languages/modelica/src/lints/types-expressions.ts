@@ -576,7 +576,13 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
           for (const anc of db.ast.getAncestors(str)) {
             if (anc == arrayArgs) break;
             const t = db.ast.getType(anc);
-            if (t == $.array_subscripts || t == $.subscript || t == $.function_call_args) {
+            if (
+              t == $.array_subscripts ||
+              t == $.subscript ||
+              t == $.function_call_args ||
+              ($.for_indices != 0 && t == $.for_indices) ||
+              ($.for_index != 0 && t == $.for_index)
+            ) {
               inSubOrCall = true;
               break;
             }
@@ -589,7 +595,13 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
           for (const anc of db.ast.getAncestors(num)) {
             if (anc == arrayArgs) break;
             const t = db.ast.getType(anc);
-            if (t == $.array_subscripts || t == $.subscript || t == $.function_call_args) {
+            if (
+              t == $.array_subscripts ||
+              t == $.subscript ||
+              t == $.function_call_args ||
+              ($.for_indices != 0 && t == $.for_indices) ||
+              ($.for_index != 0 && t == $.for_index)
+            ) {
               inSubOrCall = true;
               break;
             }
@@ -601,7 +613,13 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
           for (const anc of db.ast.getAncestors(num)) {
             if (anc == arrayArgs) break;
             const t = db.ast.getType(anc);
-            if (t == $.array_subscripts || t == $.subscript || t == $.function_call_args) {
+            if (
+              t == $.array_subscripts ||
+              t == $.subscript ||
+              t == $.function_call_args ||
+              ($.for_indices != 0 && t == $.for_indices) ||
+              ($.for_index != 0 && t == $.for_index)
+            ) {
               inSubOrCall = true;
               break;
             }
@@ -668,7 +686,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       if (lhs != 0 && rhs != 0) {
         const lhsType = inferExprType(db, lhs, $);
         const rhsType = inferExprType(db, rhs, $);
-        if (lhsType != TYPE_UNKNOWN && rhsType != TYPE_UNKNOWN && (lhsType < 0x8000 || rhsType < 0x8000)) {
+        if (lhsType != TYPE_UNKNOWN && rhsType != TYPE_UNKNOWN && lhsType < 4 && rhsType < 4) {
           const allowIntEnum = isIntEnumConversionActive(db, $);
           if (!isTypeCompatible(rhsType, lhsType, allowIntEnum) && !isTypeCompatible(lhsType, rhsType, allowIntEnum)) {
             const isOldFrontend: u32 = isOldFrontendActive(db, $) ? 1 : 0;
@@ -730,7 +748,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       if (target != 0 && value != 0) {
         const targetType = inferExprType(db, target, $);
         const valType = inferExprType(db, value, $);
-        if (targetType != TYPE_UNKNOWN && valType != TYPE_UNKNOWN) {
+        if (targetType != TYPE_UNKNOWN && valType != TYPE_UNKNOWN && targetType < 0x8000 && valType < 0x8000) {
           const allowIntEnum = isIntEnumConversionActive(db, $);
           if (!isTypeCompatible(valType, targetType, allowIntEnum)) {
             db.diagnosticAt(value, node, targetType, valType);
@@ -1152,6 +1170,11 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     },
     query: (db: CodeGraph, node: u32, $: any) => {
       if ($.array_subscripts == 0 || $.subscript == 0) return;
+      if ($.if_equation != 0) {
+        for (const anc of db.ast.getAncestors(node)) {
+          if (db.ast.getType(anc) == $.if_equation) return;
+        }
+      }
       let subsNode: u32 = 0;
       for (const s of db.ast.getDescendants(node, $.array_subscripts)) {
         subsNode = s;

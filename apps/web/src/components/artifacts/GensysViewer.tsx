@@ -375,7 +375,13 @@ const GensysViewer: React.FC<GensysViewerProps> = ({ viewConfig, isFullScreen = 
               </Text>
             </Box>
             <Box flex={1} minHeight={0} height={isFullScreen ? "100%" : "320px"}>
-              <MultibodyViewport3D nodes={nodes3D} links={links3D} isFullScreen={isFullScreen} height="100%" />
+              <MultibodyViewport3D
+                nodes={nodes3D}
+                links={links3D}
+                isFullScreen={isFullScreen}
+                height="100%"
+                geometryBridgeKey={viewConfig.artifactId || viewConfig.url}
+              />
             </Box>
           </Box>
         ) : (

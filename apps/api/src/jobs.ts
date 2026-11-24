@@ -2,6 +2,7 @@
 
 import { fork, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
+import fs from "node:fs";
 import os from "node:os";
 
 import type { HpcUsageMetrics } from "./services/hpc/hpc-types.js";
@@ -501,7 +502,11 @@ export class JobQueue extends EventEmitter {
         } else if (code === 0) {
           settle();
         } else if (isOomSignal || stderrHasOom) {
-          settle(new Error(`Child process terminated by ${signal || `exit code ${code}`} (Out of memory: heap limit exceeded)`));
+          settle(
+            new Error(
+              `Child process terminated by ${signal || `exit code ${code}`} (Out of memory: heap limit exceeded)`,
+            ),
+          );
         } else if (signal) {
           settle(new Error(`Child process killed by signal ${signal}`));
         } else {
@@ -518,13 +523,28 @@ export class JobQueue extends EventEmitter {
     });
   }
 
+  #getAvailableMemoryMb(): number {
+    if (process.platform === "linux") {
+      try {
+        const meminfo = fs.readFileSync("/proc/meminfo", "utf8");
+        const match = meminfo.match(/^MemAvailable:\s+(\d+)\s+kB$/m);
+        if (match?.[1]) {
+          return Math.round(Number(match[1]) / 1024);
+        }
+      } catch {
+        // Fall through to os.freemem()
+      }
+    }
+    return Math.round(os.freemem() / (1024 * 1024));
+  }
+
   #process(): void {
-    // Memory-aware backoff: if host free memory is critically low (< 200MB) on a low-memory host, pause briefly
-    const freeMemMb = Math.round(os.freemem() / (1024 * 1024));
+    // Memory-aware backoff: if host available memory is critically low (< 200MB), pause briefly
+    const freeMemMb = this.#getAvailableMemoryMb();
     if (freeMemMb < 200 && this.#queue.length > 0 && this.#activeCount === 0) {
       if (!this.#memoryBackoffTimer) {
         console.warn(
-          `[JobQueue] Critically low host memory (${freeMemMb}MB free). Waiting 3s before starting next job...`,
+          `[JobQueue] Critically low host memory (${freeMemMb}MB available). Waiting 3s before starting next job...`,
         );
         this.#memoryBackoffTimer = setTimeout(() => {
           this.#memoryBackoffTimer = null;

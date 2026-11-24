@@ -593,3 +593,11 @@ jobs:
           image-tag: sha-${{ github.sha }}
           prune-docker: "true"
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  native_matrix:
+    name: Native Binaries & Platform VSIX Matrix
+    if: >-
+      !startsWith(github.event.head_commit.message, 'chore(release):') &&
+      github.actor != 'nektos/act' &&
+      (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main')
+    uses: ./.github/workflows/build-native.yml

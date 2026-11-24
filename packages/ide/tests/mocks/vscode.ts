@@ -162,6 +162,16 @@ export const workspace = {
   onDidSaveTextDocument: (_listener: any) => new Disposable(),
   onDidOpenTextDocument: (_listener: any) => new Disposable(),
   onDidCloseTextDocument: (_listener: any) => new Disposable(),
+  getConfiguration: (_section?: string) => ({
+    get: <T = unknown>(_key: string, defaultValue?: T): T | undefined => defaultValue,
+    inspect: <T = unknown>(_key: string) => ({
+      globalValue: undefined as T | undefined,
+      workspaceValue: undefined as T | undefined,
+      workspaceFolderValue: undefined as T | undefined,
+    }),
+    has: (_key: string) => false,
+    update: async (_key: string, _value: unknown) => {},
+  }),
   openTextDocument: async (uriOrPath: any) => ({
     uri: typeof uriOrPath === "string" ? Uri.file(uriOrPath) : uriOrPath,
     getText: () => "",
@@ -186,6 +196,7 @@ export const window = {
   showTextDocument: async (doc: any, _options?: any) => ({ document: doc }),
   showOpenDialog: async (_options?: any) => undefined as any[] | undefined,
   onDidChangeActiveTextEditor: (_listener: any) => new Disposable(),
+  registerCustomEditorProvider: (_viewType: string, _provider: any, _options?: any) => new Disposable(),
   withProgress: async (_options: any, task: any) =>
     task({ report: () => {} }, { isCancellationRequested: false, onCancellationRequested: () => new Disposable() }),
   createWebviewPanel: (_viewType: string, _title: string, _showOptions: any, _options?: any) => ({
@@ -210,6 +221,27 @@ export const window = {
     appendLine: (_val: string) => {},
     append: (_val: string) => {},
     show: () => {},
+    dispose: () => {},
+  }),
+};
+
+export const env = {
+  openExternal: async (_target: any) => true,
+  clipboard: {
+    readText: async () => "",
+    writeText: async (_value: string) => {},
+  },
+};
+
+export const languages = {
+  createDiagnosticCollection: (_name?: string) => ({
+    name: _name ?? "",
+    set: (_uri: any, _diagnostics?: any) => {},
+    delete: (_uri: any) => {},
+    clear: () => {},
+    forEach: () => {},
+    get: () => [],
+    has: () => false,
     dispose: () => {},
   }),
 };

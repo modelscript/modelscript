@@ -9,17 +9,9 @@ export const tokenIpCidrRestrictionsMigration: Migration = {
   id: "0004_token_ip_cidr_restrictions",
   name: "0004_token_ip_cidr_restrictions",
   up(ctx: MigrationContext) {
-    const rawCols = ctx.query<{ name: string }>("PRAGMA table_info(api_tokens)");
-    const cols = Array.isArray(rawCols) ? rawCols.map((c) => c.name) : [];
-    if (!cols.includes("ip_allowlist")) {
-      ctx.execute("ALTER TABLE api_tokens ADD COLUMN ip_allowlist TEXT DEFAULT NULL;");
-    }
+    ctx.addColumnIfNotExists("api_tokens", "ip_allowlist", "TEXT DEFAULT NULL");
   },
   down(ctx: MigrationContext) {
-    const rawCols = ctx.query<{ name: string }>("PRAGMA table_info(api_tokens)");
-    const cols = Array.isArray(rawCols) ? rawCols.map((c) => c.name) : [];
-    if (cols.includes("ip_allowlist")) {
-      ctx.execute("ALTER TABLE api_tokens DROP COLUMN ip_allowlist;");
-    }
+    ctx.dropColumnIfExists("api_tokens", "ip_allowlist");
   },
 };

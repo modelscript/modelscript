@@ -4,6 +4,7 @@ import { extractStepGdtOverlay } from "@modelscript/cad";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser";
 import type { StepCompilationService, StepOverlayPayload } from "./services/step-compilation-service.js";
+import { attachVrHandoffListener } from "./vr-handoff.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 
 export interface StepEditorClient {
@@ -97,6 +98,14 @@ export class StepEditorProvider extends BaseCustomEditorProvider {
       }
     };
 
+    const vrSubscription = attachVrHandoffListener(webviewPanel, {
+      artifactUri: docUriKey,
+      title: document.uri.path.split("/").pop() || "3D STEP Model",
+      kind: "step",
+      fileContent: () => (typeof document.getText === "function" ? document.getText() : undefined),
+      languageId: document.languageId || "step",
+    });
+
     const msgSubscription = webviewPanel.webview.onDidReceiveMessage(async (message) => {
       switch (message.type || message.command) {
         case "ready":
@@ -167,6 +176,7 @@ export class StepEditorProvider extends BaseCustomEditorProvider {
 
     webviewPanel.onDidDispose(() => {
       disposed = true;
+      vrSubscription.dispose();
       msgSubscription.dispose();
       treeSubscription.dispose();
       changeSubscription.dispose();

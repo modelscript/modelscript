@@ -9,7 +9,7 @@
  * mathematically sound all-time {@link ProbabilisticVerdict}s.
  */
 
-import { RigorousKrawczyk, hasValidatedHooks } from "../../analysis/wasm_dae_flowpipe.js";
+import { RigorousKrawczyk, hasValidatedHooks } from "../../analysis/dae_flowpipe.js";
 import { Interval } from "../../analysis/wasm_interval.js";
 import {
   PBox,

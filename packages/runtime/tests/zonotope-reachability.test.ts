@@ -2,7 +2,7 @@
 
 import { expect } from "expect";
 import { describe, it } from "node:test";
-import type { DaeSystem } from "../src/analysis/wasm_dae_flowpipe.js";
+import type { DaeSystem } from "../src/analysis/dae_flowpipe.js";
 import { Interval } from "../src/analysis/wasm_interval.js";
 import { Zonotope } from "../src/analysis/wasm_zonotope.js";
 import {

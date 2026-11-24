@@ -93,7 +93,8 @@ export class ArchiveQueue {
     job.queuePosition = this.getQueuePosition(jobId);
 
     // Trigger queue drain in background
-    setTimeout(() => this.drain(database), 0);
+    const drainTimer = setTimeout(() => this.drain(database), 0);
+    drainTimer.unref?.();
 
     return job;
   }
@@ -181,11 +182,13 @@ export class ArchiveQueue {
   }
 
   /**
-   * Purges staged archive files that have exceeded their TTL.
+   * Purges staged archive files that have exceeded their TTL, including orphaned
+   * `.zip`/`.json` files on disk left behind across process restarts.
    */
   public cleanupExpiredArchives(): { removedCount: number } {
     const now = Date.now();
     let removedCount = 0;
+    const trackedFiles = new Set<string>();
 
     for (const [id, job] of this.jobs.entries()) {
       if (job.expiresAt && now > new Date(job.expiresAt).getTime()) {
@@ -196,8 +199,32 @@ export class ArchiveQueue {
         }
         this.jobs.delete(id);
         removedCount++;
+      } else if (job.filePath) {
+        trackedFiles.add(path.resolve(job.filePath));
       }
     }
+
+    // Scan staging directory on disk for orphaned archive files older than TTL
+    try {
+      if (fs.existsSync(this.storageDir)) {
+        const entries = fs.readdirSync(this.storageDir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (!entry.isFile()) continue;
+          if (!entry.name.endsWith(".zip") && !entry.name.endsWith(".json")) continue;
+
+          const fullPath = path.resolve(this.storageDir, entry.name);
+          if (trackedFiles.has(fullPath)) continue;
+
+          try {
+            const stat = fs.statSync(fullPath);
+            if (now - stat.mtimeMs > this.ttlMs) {
+              fs.unlinkSync(fullPath);
+              removedCount++;
+            }
+          } catch {}
+        }
+      }
+    } catch {}
 
     return { removedCount };
   }

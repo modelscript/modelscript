@@ -911,9 +911,11 @@ function extractBuiltinSinCosCalleeCst(externalDecl: string): "sin" | "cos" | nu
   const langNode = ext.children?.find(
     (c) => c.type === "language_specification" || c.type === "string_literal" || c.type === "STRING",
   );
-  if (!langNode || stripOuterDoubleQuotes(langNode.text?.trim() ?? "") !== "builtin") return null;
+  const langStr = langNode ? stripOuterDoubleQuotes(langNode.text?.trim() ?? "") : "";
+  if (langStr !== "builtin" && langStr !== "C") return null;
   const extCall = findFirstCstNode(ext, (n) => n.type === "external_function_call");
   if (!extCall) return null;
+  if (langStr === "C" && /\(\s*\)/.test(extCall.text ?? "")) return null;
   const leaves = collectCstLeafTexts(extCall, { skipStrings: true });
   const eqIdx = leaves.indexOf("=");
   const callee = eqIdx >= 0 ? leaves[eqIdx + 1] : leaves[0];
@@ -4510,9 +4512,8 @@ export class ModelicaFlattener {
       }
     }
 
-    let layer2EqStartIdx = dae.eqCount;
-    if (!flattenedInWasm) {
-      // Validate rootClassId itself if it is an enumeration
+    // Validate rootClassId and its inner classes if they are enumerations (EnumInvalidLiteral)
+    {
       const rootSym = this.db.symbol(rootClassId);
       const rootEnumErr = validateEnumeration(this.db.cstNode(rootClassId) as any, rootSym);
       if (rootEnumErr) {
@@ -4527,7 +4528,6 @@ export class ModelicaFlattener {
         });
         return dae;
       }
-      // Validate inner classes of rootClassId in declaration order
       const childClasses = this.db.childrenOf(rootClassId).filter((c) => c.kind === "Class");
       for (const cc of childClasses) {
         const ccEnumErr = validateEnumeration(this.db.cstNode(cc.id) as any, cc);
@@ -4544,7 +4544,10 @@ export class ModelicaFlattener {
           return dae;
         }
       }
+    }
 
+    let layer2EqStartIdx = dae.eqCount;
+    if (!flattenedInWasm) {
       this.currentRootClassId = rootClassId;
       // 1. Layer 1: Component instantiation
       const elements = this.db.query<SymbolId[]>("instantiate", rootClassId);
@@ -4879,6 +4882,48 @@ export class ModelicaFlattener {
       }
     }
 
+    // 2.4c Operator-record equation bridge: WASM does not dispatch overloaded operator record
+    // binary/unary/constructor calls yet; re-extract equations via TS when rootClassId has
+    // components of an `operator record` type so overloaded calls and functions are emitted.
+    if (flattenedInWasm) {
+      let hasOperatorRecordComp = false;
+      for (const ch of this.db.childrenOf(rootClassId)) {
+        if (ch.kind !== "Component") continue;
+        const tName = (ch.metadata?.["typeSpecifier"] as string) ?? (ch.metadata?.["typeName"] as string) ?? "";
+        if (!tName || tName === "Real" || tName === "Integer" || tName === "Boolean" || tName === "String") continue;
+        const resolveSimple = this.db.query<((n: string) => SymbolEntry | null) | null>(
+          "resolveSimpleName",
+          rootClassId,
+        );
+        const tSym =
+          resolveSimple?.(tName.split(".")[0]!) ??
+          this.db.byName(tName).find((e) => e.kind === "Class" || e.kind === "Package") ??
+          null;
+        if (tSym) {
+          const pfx = `${tSym.metadata?.["classPrefixes"] ?? ""} ${tSym.metadata?.["classKind"] ?? ""}`;
+          const tCst = this.db.cstNode(tSym.id) as { text?: string } | null;
+          if (
+            /\boperator\s+record\b/.test(pfx) ||
+            (tCst?.text && /^\s*(?:encapsulated\s+)?operator\s+record\b/.test(tCst.text.trim()))
+          ) {
+            hasOperatorRecordComp = true;
+            break;
+          }
+        }
+      }
+      if (hasOperatorRecordComp) {
+        const rootCstOp = this.db.cstNode(rootClassId) as { text?: string } | null;
+        if (rootCstOp?.text && /\bequation\b/.test(rootCstOp.text)) {
+          for (let i = 0; i < dae.eqCount; i++) {
+            dae.markEqRemoved(i);
+          }
+          dae.functions.clear();
+          this.currentRootClassId = rootClassId;
+          this.extractClassEquations(rootClassId, "", dae);
+        }
+      }
+    }
+
     // 2.5 Fold constants on initial DAE so parameters, dimensions, and expressions are resolved
     // Pad partial tuple LHS in equations calling multi-output user functions before folding
     // (e.g. `Z2 = f(...)` -> `(Z2, _) = f(...)` so constant folding extracts Z2 = {1.0, 2.0})
@@ -4915,6 +4960,132 @@ export class ModelicaFlattener {
             while (elems.length < outCount) elems.push(dae.addName(wcId));
             dae.setEqLhs(i, dae.addTupleExpr(elems));
           }
+        }
+      }
+    }
+    // Pad missing trailing default arguments on calls to user-defined DAE functions BEFORE folding
+    // (e.g. `g(1.0)` -> `g(1.0, p)` so foldArenaConstants sees non-constant `p` and does not fold `g(1.0)` to 1.0)
+    if (flattenedInWasm && dae.functions.size > 0) {
+      const exprRefsFormalParam = (src: DAEBuilder, exprId: number, formalNames: Set<string>, depth = 0): boolean => {
+        if (exprId < 0 || depth > 16) return false;
+        const k = src.getExprKind(exprId);
+        if (k === ExprKind.Name) {
+          const n = src.interner.resolve(src.getExprData1(exprId));
+          if (!n) return false;
+          const root = n.split(/[.[]/)[0]!;
+          return formalNames.has(n) || formalNames.has(root);
+        }
+        if (k === ExprKind.Unary) return exprRefsFormalParam(src, src.getExprLeft(exprId), formalNames, depth + 1);
+        if (k === ExprKind.Binary) {
+          return (
+            exprRefsFormalParam(src, src.getExprLeft(exprId), formalNames, depth + 1) ||
+            exprRefsFormalParam(src, src.getExprRight(exprId), formalNames, depth + 1)
+          );
+        }
+        if (k === ExprKind.Subscript) {
+          if (exprRefsFormalParam(src, src.getExprData1(exprId), formalNames, depth + 1)) return true;
+          const cnt = src.getExprRight(exprId);
+          for (let s = 0; s < cnt; s++) {
+            if (exprRefsFormalParam(src, src.getExprLeft(exprId + s), formalNames, depth + 1)) return true;
+          }
+        }
+        return false;
+      };
+      const copyExprFromFn = (src: DAEBuilder, exprId: number, depth = 0): number => {
+        if (exprId < 0 || depth > 16) return -1;
+        const k = src.getExprKind(exprId);
+        if (k === ExprKind.RealLiteral) return dae.addRealLiteral(src.getExprRealValue(exprId));
+        if (k === ExprKind.IntLiteral) return dae.addIntLiteral(src.getExprData1(exprId));
+        if (k === ExprKind.BoolLiteral) return dae.addBoolLiteral(src.getExprData1(exprId) !== 0);
+        if (k === ExprKind.StringLiteral) {
+          const s = src.interner.resolve(src.getExprData1(exprId));
+          return dae.addStringLiteral(s ?? "");
+        }
+        if (k === ExprKind.Name) {
+          const n = src.interner.resolve(src.getExprData1(exprId));
+          return n ? dae.addName(dae.interner.intern(n)) : -1;
+        }
+        if (k === ExprKind.Unary) {
+          const sub = copyExprFromFn(src, src.getExprLeft(exprId), depth + 1);
+          return sub >= 0 ? dae.addUnaryExpr(src.getExprData1(exprId), sub) : -1;
+        }
+        if (k === ExprKind.Binary) {
+          const l = copyExprFromFn(src, src.getExprLeft(exprId), depth + 1);
+          const r = copyExprFromFn(src, src.getExprRight(exprId), depth + 1);
+          return l >= 0 && r >= 0 ? dae.addBinaryExpr(src.getExprData1(exprId), l, r) : -1;
+        }
+        return -1;
+      };
+      const padCallDefaultArgs = (exprId: number): number => {
+        if (exprId < 0 || dae.getExprKind(exprId) !== ExprKind.Call) return exprId;
+        const fnName = dae.interner.resolve(dae.getExprData1(exprId));
+        const fnDae = fnName ? dae.functions.get(fnName) : undefined;
+        if (!fnDae) return exprId;
+        const inputVars: number[] = [];
+        const formalNames = new Set<string>();
+        for (let vi = 0; vi < fnDae.varCount; vi++) {
+          if (!fnDae.isVarRemoved(vi) && fnDae.getVarCausality(vi) === Causality.Input) {
+            inputVars.push(vi);
+            formalNames.add(fnDae.getVarName(vi));
+          }
+        }
+        const argCount = dae.getExprRight(exprId);
+        if (argCount >= inputVars.length) return exprId;
+        const args: number[] = [];
+        for (let ai = 0; ai < argCount; ai++) {
+          args.push(ai === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + ai));
+        }
+        for (let ai = argCount; ai < inputVars.length; ai++) {
+          const defExpr = fnDae.getVarExpression(inputVars[ai]!) ?? -1;
+          if (defExpr < 0) return exprId;
+          if (exprRefsFormalParam(fnDae, defExpr, formalNames)) return exprId;
+          const copied = copyExprFromFn(fnDae, defExpr);
+          if (copied < 0) return exprId;
+          args.push(copied);
+        }
+        return dae.addCallExpr(dae.getExprData1(exprId), args);
+      };
+      for (let v = 0; v < dae.varCount; v++) {
+        if (dae.isVarRemoved(v)) continue;
+        const b = dae.getVarExpression(v) ?? -1;
+        if (b >= 0 && dae.getExprKind(b) === ExprKind.Call) {
+          const padded = padCallDefaultArgs(b);
+          if (padded !== b) dae.setVarExpression(v, padded);
+          // Subscript scalarized array-element bindings calling an array-returning function (e.g. `x[1] = f(n)` -> `x[1] = f(n)[1]`)
+          const curB = padded;
+          const vName = dae.getVarName(v);
+          const lb = vName.lastIndexOf("[");
+          if (lb > 0 && vName.endsWith("]")) {
+            const fnName = dae.interner.resolve(dae.getExprData1(curB));
+            const fnDae = fnName ? dae.functions.get(fnName) : undefined;
+            if (fnDae) {
+              let outVar = -1;
+              for (let fi = 0; fi < fnDae.varCount; fi++) {
+                if (!fnDae.isVarRemoved(fi) && fnDae.getVarCausality(fi) === Causality.Output) {
+                  outVar = fi;
+                  break;
+                }
+              }
+              if (outVar >= 0 && (fnDae.getVarShape(outVar).length > 0 || fnDae.getVarShapeExprs(outVar).length > 0)) {
+                const idxParts = vName
+                  .slice(lb + 1, -1)
+                  .split(",")
+                  .map((s) => parseInt(s.trim(), 10));
+                if (idxParts.length > 0 && idxParts.every((n) => Number.isFinite(n) && n >= 1)) {
+                  const subIds = idxParts.map((n) => dae.addIntLiteral(n));
+                  dae.setVarExpression(v, dae.addSubscriptExpr(curB, subIds));
+                }
+              }
+            }
+          }
+        }
+      }
+      for (let e = 0; e < dae.eqCount; e++) {
+        if (dae.isEqRemoved(e)) continue;
+        const r = dae.getEqRhs(e);
+        if (r >= 0 && dae.getExprKind(r) === ExprKind.Call) {
+          const padded = padCallDefaultArgs(r);
+          if (padded !== r) dae.setEqRhs(e, padded);
         }
       }
     }
@@ -4978,6 +5149,79 @@ export class ModelicaFlattener {
             else if (op === BinOp.Neq) res = ls !== rs;
             if (res !== null) {
               dae.setVarAttrExpr(vi, VarAttrKind.Binding, dae.addBoolLiteral(res));
+            }
+          }
+        } else if (bk === ExprKind.Call && dae.getExprRight(b) === 1) {
+          const fnName = dae.interner.resolve(dae.getExprData1(b)) ?? "";
+          if (fnName === "min" || fnName === ".min" || fnName === "max" || fnName === ".max") {
+            const a0 = dae.getExprLeft(b);
+            let isEmptyArg = false;
+            if (a0 >= 0) {
+              const a0k = dae.getExprKind(a0);
+              if (a0k === ExprKind.ArrayCtor && dae.getExprData1(a0) === 0) {
+                isEmptyArg = true;
+              } else if (a0k === ExprKind.Name) {
+                const argName = dae.interner.resolve(dae.getExprData1(a0)) ?? "";
+                if (argName && dae.getVarIdxByName(argName) < 0) {
+                  let hasElem = false;
+                  const pfx = `${argName}[`;
+                  for (let k = 0; k < dae.varCount; k++) {
+                    if (!dae.isVarRemoved(k) && dae.getVarName(k).startsWith(pfx)) {
+                      hasElem = true;
+                      break;
+                    }
+                  }
+                  if (!hasElem) isEmptyArg = true;
+                }
+              }
+            }
+            if (isEmptyArg) {
+              const isMin = fnName === "min" || fnName === ".min";
+              const vt = dae.getVarType(vi);
+              let folded = -1;
+              if (vt === VarType.Real) {
+                folded = dae.addRealLiteral(isMin ? 8.777798510069901e304 : -8.777798510069901e304);
+              } else if (vt === VarType.Integer) {
+                folded = dae.addName(dae.interner.intern(isMin ? "4611686018427387903" : "-4611686018427387903"));
+              } else if (vt === VarType.Boolean) {
+                folded = dae.addBoolLiteral(isMin);
+              } else if (vt === VarType.Enumeration) {
+                const lits = dae.getVarEnumerationLiterals(vi);
+                if (lits && lits.length > 0) {
+                  const chosenLit = isMin ? lits[lits.length - 1]! : lits[0]!;
+                  let baseEnumName: string | undefined;
+                  for (const [eName, eLits] of this.enumTypeMap.entries()) {
+                    if (eLits.length === lits.length && eLits.every((ll, idx) => ll === lits[idx])) {
+                      baseEnumName = eName;
+                      break;
+                    }
+                  }
+                  if (!baseEnumName) {
+                    const rootSym = this.db.symbol(rootClassId);
+                    const scopeSyms = [
+                      ...(rootSym?.parentId ? this.db.childrenOf(rootSym.parentId) : []),
+                      ...this.db.childrenOf(null),
+                      ...this.db.childrenOf(rootClassId),
+                    ];
+                    for (const sym of scopeSyms) {
+                      const cText: string = (this.db.cstNode(sym.id) as { text?: string } | null)?.text ?? "";
+                      const em = cText.match(/\benumeration\s*\(([^)]+)\)/);
+                      if (!em) continue;
+                      const symLits = em[1]!.split(",").map((s) => s.trim().split(/\s+/)[0]!);
+                      if (symLits.length === lits.length && symLits.every((ll, idx) => ll === lits[idx])) {
+                        baseEnumName = sym.name;
+                        break;
+                      }
+                    }
+                  }
+                  if (baseEnumName) {
+                    folded = dae.addName(dae.interner.intern(`${baseEnumName}.${chosenLit}`));
+                  }
+                }
+              }
+              if (folded >= 0) {
+                dae.setVarAttrExpr(vi, VarAttrKind.Binding, folded);
+              }
             }
           }
         }
@@ -5215,6 +5459,121 @@ export class ModelicaFlattener {
           const qualExpr = dae.addName(dae.interner.intern(`${baseEnumName}.${litName}`));
           dae.setVarAttr(vi, "start", qualExpr);
           if (attrStart >= 0) dae.setVarAttrExpr(vi, VarAttrKind.Start, qualExpr);
+        }
+      }
+
+      // 4b. Qualify integer literal RHS on enumeration equations (ForEquationEnum1, ForEquationEnum2)
+      for (let ei = 0; ei < dae.eqCount; ei++) {
+        if (dae.isEqRemoved(ei)) continue;
+        const ek = dae.getEqKind(ei);
+        if (ek !== EqKind.Simple && ek !== EqKind.InitialSimple) continue;
+        const l = dae.getEqLhs(ei);
+        const r = dae.getEqRhs(ei);
+        if (l < 0 || r < 0) continue;
+        const rk = dae.getExprKind(r);
+        if (rk !== ExprKind.IntLiteral && rk !== ExprKind.EnumLiteral) continue;
+        const ord = dae.getExprData1(r);
+        let lhsBaseName: string | null = null;
+        const lk = dae.getExprKind(l);
+        if (lk === ExprKind.Name) {
+          lhsBaseName = dae.interner.resolve(dae.getExprData1(l));
+        } else if (lk === ExprKind.Subscript) {
+          const baseE = dae.getExprData1(l);
+          if (baseE >= 0 && dae.getExprKind(baseE) === ExprKind.Name) {
+            lhsBaseName = dae.interner.resolve(dae.getExprData1(baseE));
+          }
+        }
+        if (!lhsBaseName) continue;
+        let vi = dae.getVarIdxByName(lhsBaseName);
+        if (vi < 0) {
+          const baseRoot = lhsBaseName.includes("[") ? lhsBaseName.slice(0, lhsBaseName.indexOf("[")) : lhsBaseName;
+          for (let k = 0; k < dae.varCount; k++) {
+            if (!dae.isVarRemoved(k) && dae.getVarName(k).startsWith(`${baseRoot}[`)) {
+              vi = k;
+              break;
+            }
+          }
+        }
+        if (vi < 0 || dae.getVarType(vi) !== VarType.Enumeration) continue;
+        const lits = dae.getVarEnumerationLiterals(vi);
+        if (!lits || ord < 1 || ord > lits.length) continue;
+        const litName = lits[ord - 1]!;
+        let baseEnumName: string | undefined;
+        for (const [eName, eLits] of this.enumTypeMap.entries()) {
+          if (eLits.length === lits.length && eLits.every((ll, idx) => ll === lits[idx])) {
+            baseEnumName = eName;
+            break;
+          }
+        }
+        if (!baseEnumName) {
+          const rootSym = this.db.symbol(rootClassId);
+          const scopeSyms = [
+            ...(rootSym?.parentId ? this.db.childrenOf(rootSym.parentId) : []),
+            ...this.db.childrenOf(null),
+            ...this.db.childrenOf(rootClassId),
+          ];
+          for (const sym of scopeSyms) {
+            const cText: string = (this.db.cstNode(sym.id) as { text?: string } | null)?.text ?? "";
+            const em = cText.match(/\benumeration\s*\(([^)]+)\)/);
+            if (!em) continue;
+            const symLits = em[1]!.split(",").map((s) => s.trim().split(/\s+/)[0]!);
+            if (symLits.length === lits.length && symLits.every((ll, idx) => ll === lits[idx])) {
+              baseEnumName = sym.name;
+              break;
+            }
+          }
+        }
+        if (baseEnumName) {
+          dae.setEqRhs(ei, dae.addName(dae.interner.intern(`${baseEnumName}.${litName}`)));
+        }
+      }
+
+      // 4c. Evaluate scalarized parameter array bindings calling user functions (ArraySizeFromFunc)
+      if (isOldFrontend && dae.functions.size > 0) {
+        const evalCache = new Map<number, unknown>();
+        for (let vi = 0; vi < dae.varCount; vi++) {
+          if (dae.isVarRemoved(vi)) continue;
+          const vb = dae.getVarVariability(vi);
+          if (vb !== Variability.Parameter && vb !== Variability.Constant) continue;
+          const b = dae.getVarExpression(vi) ?? dae.getVarAttrExpr(vi, VarAttrKind.Binding);
+          if (b < 0 || dae.getExprKind(b) !== ExprKind.Subscript) continue;
+          const baseCall = dae.getExprData1(b);
+          if (baseCall < 0 || dae.getExprKind(baseCall) !== ExprKind.Call) continue;
+          const fnName = dae.interner.resolve(dae.getExprData1(baseCall));
+          if (!fnName || !dae.functions.has(fnName)) continue;
+          let callRes = evalCache.get(baseCall);
+          if (callRes === undefined) {
+            callRes = evaluateConstantArenaExpression(
+              dae,
+              baseCall,
+              new Map(),
+              new Map(),
+              0,
+              this.db,
+              rootClassId,
+              false,
+            );
+            evalCache.set(baseCall, callRes);
+          }
+          if (!Array.isArray(callRes)) continue;
+          const subCnt = dae.getExprRight(b);
+          let cur: unknown = callRes;
+          for (let si = 0; si < subCnt; si++) {
+            const subExpr = dae.getExprLeft(b + si);
+            if (subExpr < 0 || dae.getExprKind(subExpr) !== ExprKind.IntLiteral || !Array.isArray(cur)) {
+              cur = undefined;
+              break;
+            }
+            const idx = dae.getExprData1(subExpr) - 1;
+            cur = idx >= 0 && idx < cur.length ? cur[idx] : undefined;
+          }
+          if (typeof cur === "number" && Number.isFinite(cur)) {
+            const vt = dae.getVarType(vi);
+            const litId = vt === VarType.Integer ? dae.addIntLiteral(Math.trunc(cur)) : dae.addRealLiteral(cur);
+            dae.setVarExpression(vi, litId);
+            dae.setVarAttrExpr(vi, VarAttrKind.Binding, litId);
+            dae.setVarStartValue(vi, cur);
+          }
         }
       }
 
@@ -5677,104 +6036,6 @@ export class ModelicaFlattener {
         sec.count = newCount;
       }
     }
-    // Pad missing trailing default arguments on calls to user-defined DAE functions (e.g. `g(1.0)` -> `g(1.0, p)`)
-    if (flattenedInWasm && dae.functions.size > 0) {
-      const exprRefsFormalParam = (src: DAEBuilder, exprId: number, formalNames: Set<string>, depth = 0): boolean => {
-        if (exprId < 0 || depth > 16) return false;
-        const k = src.getExprKind(exprId);
-        if (k === ExprKind.Name) {
-          const n = src.interner.resolve(src.getExprData1(exprId));
-          if (!n) return false;
-          const root = n.includes(".") ? n.slice(0, n.indexOf(".")) : n;
-          return formalNames.has(n) || formalNames.has(root);
-        }
-        if (k === ExprKind.Unary) return exprRefsFormalParam(src, src.getExprLeft(exprId), formalNames, depth + 1);
-        if (k === ExprKind.Binary) {
-          return (
-            exprRefsFormalParam(src, src.getExprLeft(exprId), formalNames, depth + 1) ||
-            exprRefsFormalParam(src, src.getExprRight(exprId), formalNames, depth + 1)
-          );
-        }
-        if (k === ExprKind.Subscript) {
-          if (exprRefsFormalParam(src, src.getExprData1(exprId), formalNames, depth + 1)) return true;
-          const cnt = src.getExprRight(exprId);
-          for (let s = 0; s < cnt; s++) {
-            if (exprRefsFormalParam(src, src.getExprLeft(exprId + s), formalNames, depth + 1)) return true;
-          }
-        }
-        return false;
-      };
-      const copyExprFromFn = (src: DAEBuilder, exprId: number, depth = 0): number => {
-        if (exprId < 0 || depth > 16) return -1;
-        const k = src.getExprKind(exprId);
-        if (k === ExprKind.RealLiteral) return dae.addRealLiteral(src.getExprRealValue(exprId));
-        if (k === ExprKind.IntLiteral) return dae.addIntLiteral(src.getExprData1(exprId));
-        if (k === ExprKind.BoolLiteral) return dae.addBoolLiteral(src.getExprData1(exprId) !== 0);
-        if (k === ExprKind.StringLiteral) {
-          const s = src.interner.resolve(src.getExprData1(exprId));
-          return dae.addStringLiteral(s ?? "");
-        }
-        if (k === ExprKind.Name) {
-          const n = src.interner.resolve(src.getExprData1(exprId));
-          return n ? dae.addName(dae.interner.intern(n)) : -1;
-        }
-        if (k === ExprKind.Unary) {
-          const sub = copyExprFromFn(src, src.getExprLeft(exprId), depth + 1);
-          return sub >= 0 ? dae.addUnaryExpr(src.getExprData1(exprId), sub) : -1;
-        }
-        if (k === ExprKind.Binary) {
-          const l = copyExprFromFn(src, src.getExprLeft(exprId), depth + 1);
-          const r = copyExprFromFn(src, src.getExprRight(exprId), depth + 1);
-          return l >= 0 && r >= 0 ? dae.addBinaryExpr(src.getExprData1(exprId), l, r) : -1;
-        }
-        return -1;
-      };
-      const padCallDefaultArgs = (exprId: number): number => {
-        if (exprId < 0 || dae.getExprKind(exprId) !== ExprKind.Call) return exprId;
-        const fnName = dae.interner.resolve(dae.getExprData1(exprId));
-        const fnDae = fnName ? dae.functions.get(fnName) : undefined;
-        if (!fnDae) return exprId;
-        const inputVars: number[] = [];
-        const formalNames = new Set<string>();
-        for (let vi = 0; vi < fnDae.varCount; vi++) {
-          if (!fnDae.isVarRemoved(vi) && fnDae.getVarCausality(vi) === Causality.Input) {
-            inputVars.push(vi);
-            formalNames.add(fnDae.getVarName(vi));
-          }
-        }
-        const argCount = dae.getExprRight(exprId);
-        if (argCount >= inputVars.length) return exprId;
-        const args: number[] = [];
-        for (let ai = 0; ai < argCount; ai++) {
-          args.push(ai === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + ai));
-        }
-        for (let ai = argCount; ai < inputVars.length; ai++) {
-          const defExpr = fnDae.getVarExpression(inputVars[ai]!) ?? -1;
-          if (defExpr < 0) return exprId;
-          if (exprRefsFormalParam(fnDae, defExpr, formalNames)) return exprId;
-          const copied = copyExprFromFn(fnDae, defExpr);
-          if (copied < 0) return exprId;
-          args.push(copied);
-        }
-        return dae.addCallExpr(dae.getExprData1(exprId), args);
-      };
-      for (let v = 0; v < dae.varCount; v++) {
-        if (dae.isVarRemoved(v)) continue;
-        const b = dae.getVarExpression(v) ?? -1;
-        if (b >= 0 && dae.getExprKind(b) === ExprKind.Call) {
-          const padded = padCallDefaultArgs(b);
-          if (padded !== b) dae.setVarExpression(v, padded);
-        }
-      }
-      for (let e = 0; e < dae.eqCount; e++) {
-        if (dae.isEqRemoved(e)) continue;
-        const r = dae.getEqRhs(e);
-        if (r >= 0 && dae.getExprKind(r) === ExprKind.Call) {
-          const padded = padCallDefaultArgs(r);
-          if (padded !== r) dae.setEqRhs(e, padded);
-        }
-      }
-    }
     if (flattenedInWasm && isOldFrontend && preFoldNonArrayRhs.size > 0) {
       const isLiteralExpr = (eId: number): boolean => {
         const k = dae.getExprKind(eId);
@@ -5787,7 +6048,7 @@ export class ModelicaFlattener {
         ) {
           return true;
         }
-        if (k === ExprKind.Unary) {
+        if (k === ExprKind.Unary || k === ExprKind.Negate) {
           const inner = dae.getExprLeft(eId);
           return inner >= 0 && isLiteralExpr(inner);
         }
@@ -6240,6 +6501,25 @@ export class ModelicaFlattener {
       }
     };
 
+    if (flattenedInWasm && isOldFrontend) {
+      const smState = getFlatteningState(dae);
+      for (const ch of this.db.childrenOf(rootClassId)) {
+        if (ch.kind !== "Component") continue;
+        const stTypeId = this.db.query<SymbolId | null>("classInstance", ch.id);
+        if (!stTypeId) continue;
+        for (const sub of this.db.childrenOf(stTypeId)) {
+          if (sub.kind !== "Component") continue;
+          type CstClauseNode = { type?: string; text?: string; parent?: CstClauseNode | null };
+          const subCst = this.db.cstNode(sub.id) as CstClauseNode | null;
+          let clause = subCst;
+          while (clause && clause.type !== "component_clause" && clause.parent) clause = clause.parent;
+          const txt: string = (clause?.text ?? "").trim();
+          if (/^\s*(?:protected\s+)?output\b/.test(txt)) {
+            (smState.stateOutputVars ??= new Set()).add(`${ch.name}.${sub.name}`);
+          }
+        }
+      }
+    }
     this.extractStateMachines(dae);
     dae.groupEquationsForParity();
     this.checkBalance(dae, rootClassId);

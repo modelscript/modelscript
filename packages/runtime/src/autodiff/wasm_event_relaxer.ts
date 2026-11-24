@@ -57,22 +57,40 @@ export class DAEEventRelaxer {
     };
   }
 
+  private getWasmFlags(): number {
+    return (
+      (this.options.relaxIfElse ? 1 : 0) |
+      (this.options.relaxAbs ? 2 : 0) |
+      (this.options.relaxSign ? 4 : 0) |
+      (this.options.relaxMaxMin ? 8 : 0)
+    );
+  }
+
   /**
-   * Rewrites all equations in the DAEBuilder in-place to use differentiable smooth relaxations.
+   * Rewrites all equations in the DAEBuilder in-place to use differentiable smooth relaxations
+   * using AssemblyScript `dae_relaxAllEquations` and `dae_relaxExpression` in WASM linear memory.
    */
   public relaxAllEquations(): void {
-    const numEqs = this.arena.eqCount;
-    for (let eqIdx = 0; eqIdx < numEqs; eqIdx++) {
-      const kind = this.arena.getEqKind(eqIdx);
-      if (kind === EqKind.Simple || kind === EqKind.InitialSimple) {
-        const lhs = this.arena.getEqLhs(eqIdx);
-        const rhs = this.arena.getEqRhs(eqIdx);
+    const w = this.arena.exports;
+    const daePtr = this.arena.ptr;
+    const flags = this.getWasmFlags();
 
-        const newLhs = this.relaxExpression(lhs);
-        const newRhs = this.relaxExpression(rhs);
+    if (w && daePtr && typeof w.dae_relaxAllEquations === "function") {
+      w.dae_relaxAllEquations(daePtr, this.k, flags);
+    } else {
+      const numEqs = this.arena.eqCount;
+      for (let eqIdx = 0; eqIdx < numEqs; eqIdx++) {
+        const kind = this.arena.getEqKind(eqIdx);
+        if (kind === EqKind.Simple || kind === EqKind.InitialSimple) {
+          const lhs = this.arena.getEqLhs(eqIdx);
+          const rhs = this.arena.getEqRhs(eqIdx);
 
-        if (newLhs !== lhs) this.arena.setEqLhs(eqIdx, newLhs);
-        if (newRhs !== rhs) this.arena.setEqRhs(eqIdx, newRhs);
+          const newLhs = this.relaxExpression(lhs);
+          const newRhs = this.relaxExpression(rhs);
+
+          if (newLhs !== lhs) this.arena.setEqLhs(eqIdx, newLhs);
+          if (newRhs !== rhs) this.arena.setEqRhs(eqIdx, newRhs);
+        }
       }
     }
 
@@ -98,6 +116,16 @@ export class DAEEventRelaxer {
 
     if (this.cache.has(exprId)) {
       return this.cache.get(exprId)!;
+    }
+
+    const w = this.arena.exports;
+    const daePtr = this.arena.ptr;
+    if (w && daePtr && typeof w.dae_relaxExpression === "function") {
+      const resId = w.dae_relaxExpression(daePtr, exprId >>> 0, this.k, this.getWasmFlags()) >>> 0;
+      if (resId !== 0xffffffff) {
+        this.cache.set(exprId, resId);
+        return resId;
+      }
     }
 
     const kind = this.arena.getExprKind(exprId);

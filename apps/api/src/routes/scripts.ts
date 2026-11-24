@@ -4,7 +4,12 @@ import express, { type Router } from "express";
 import fs from "node:fs";
 import path from "node:path";
 import { LibraryDatabase } from "../database.js";
-import { optionalAuth, requireAuth, type AuthUser } from "../middleware/auth-middleware.js";
+import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
+import {
+  assertComputeJobAccess,
+  isComputeJobAuthorized,
+  resolveComputeActor,
+} from "../services/compute-job-lifecycle.js";
 import { checkComputeQuota } from "../services/hpc/quota-guard.js";
 import { BUILTIN_STUDY_DEFINITIONS, CURATED_COMPATIBLE_MODELS } from "../services/studies/study-catalog.js";
 import {
@@ -80,11 +85,11 @@ export function scriptsRouter(db: LibraryDatabase): Router {
   // ── 2. Author / Publish / Fork a Custom Study Template (.sedml, .ssv, .dakota) ──
   router.post("/templates", optionalAuth, express.json(), (req, res) => {
     try {
-      const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
+      const reqUser = req.user;
+      const { isAdmin } = resolveComputeActor(req);
       if (process.env["NODE_ENV"] === "production" && !reqUser) {
         return res.status(401).json({ error: "Authentication required to publish study templates." });
       }
-      const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
       const body = (req.body || {}) as Record<string, unknown>;
 
       // Optional raw standard document (.sedml, .ssv, .dakota) import
@@ -210,14 +215,15 @@ export function scriptsRouter(db: LibraryDatabase): Router {
       const targetModel = typeof req.query["model"] === "string" ? req.query["model"] : undefined;
       const domain = typeof req.query["domain"] === "string" ? req.query["domain"] : undefined;
 
+      const actor = resolveComputeActor(req);
       const linked = getLinkedPackageStudies(db, {
         packageName,
         packageVersion,
         targetArtifact,
         targetModel,
         domain,
-        userId: req.user?.id ?? null,
-        isAdmin: req.user?.role === "admin" || req.user?.accountType === "admin",
+        userId: actor.userId,
+        isAdmin: actor.isAdmin,
       });
 
       return res.json(linked);
@@ -234,7 +240,7 @@ export function scriptsRouter(db: LibraryDatabase): Router {
         templateSlug: typeof req.query["templateSlug"] === "string" ? req.query["templateSlug"] : undefined,
         domain: typeof req.query["domain"] === "string" ? req.query["domain"] : undefined,
         q: typeof req.query["q"] === "string" ? req.query["q"] : undefined,
-        limit: req.query["limit"] ? parseInt(String(req.query["limit"]), 10) : 30,
+        limit: req.query["limit"] ? Math.min(200, Math.max(1, parseInt(String(req.query["limit"]), 10) || 30)) : 30,
       });
       res.json({ models });
     } catch (error) {
@@ -374,8 +380,7 @@ export function scriptsRouter(db: LibraryDatabase): Router {
         return res.status(404).json({ error: "Template not found" });
       }
 
-      const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
-      const userId = reqUser?.id ?? null;
+      const { userId } = resolveComputeActor(req);
       if (process.env["NODE_ENV"] === "production" && !userId) {
         return res.status(401).json({ error: "Authentication required" });
       }
@@ -461,12 +466,11 @@ export function scriptsRouter(db: LibraryDatabase): Router {
     try {
       const limit = Math.min(Math.max(1, parseInt(req.query["limit"] as string) || 50), 200);
       const offset = Math.max(0, parseInt(req.query["offset"] as string) || 0);
-      const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
-      const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
-      if (!isAdmin && !reqUser?.id) {
+      const { userId: reqUserId, isAdmin } = resolveComputeActor(req);
+      if (!isAdmin && !reqUserId) {
         return res.json({ jobs: [] });
       }
-      const userId = isAdmin ? null : (reqUser?.id ?? null);
+      const userId = isAdmin ? null : reqUserId;
       let jobs = db.getJobs(limit, offset, userId);
       // Also include public/seeded example study runs (where user_id IS NULL) if user has few jobs
       if (userId !== null && jobs.length < 5) {
@@ -489,12 +493,16 @@ export function scriptsRouter(db: LibraryDatabase): Router {
     try {
       const paramId = req.params["id"] as string;
       const job = db.getJob(paramId);
-      const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
-      const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
 
       if (job) {
-        if (!isAdmin && job.user_id && job.user_id !== reqUser?.id) {
-          return res.status(403).json({ error: "Not authorized to cancel this job" });
+        if (
+          !assertComputeJobAccess(req, res, undefined, {
+            allowInTest: false,
+            ownerId: job.user_id,
+            allowWhenUnowned: true,
+          })
+        ) {
+          return;
         }
         db.updateJobStatus(job.id, "CANCELLED");
         if (job.user_id) {
@@ -519,8 +527,14 @@ export function scriptsRouter(db: LibraryDatabase): Router {
 
       const cloudJob = getActiveCloudJob(paramId);
       if (cloudJob) {
-        if (!isAdmin && cloudJob.userId && cloudJob.userId !== reqUser?.id) {
-          return res.status(403).json({ error: "Not authorized to cancel this job" });
+        if (
+          !assertComputeJobAccess(req, res, undefined, {
+            allowInTest: false,
+            ownerId: cloudJob.userId,
+            allowWhenUnowned: true,
+          })
+        ) {
+          return;
         }
         cloudJob.status = "cancelled";
         cloudJob.logs.push("[Cloud] Job cancelled via job manager.");
@@ -543,19 +557,24 @@ export function scriptsRouter(db: LibraryDatabase): Router {
   router.post("/:id/retry", optionalAuth, (req, res) => {
     try {
       const paramId = req.params["id"] as string;
-      const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
-      if (process.env["NODE_ENV"] === "production" && !reqUser?.id) {
+      const { userId: reqUserId } = resolveComputeActor(req);
+      if (process.env["NODE_ENV"] === "production" && !reqUserId) {
         return res.status(401).json({ error: "Authentication required" });
       }
-      const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
       const job = db.getJob(paramId);
 
       if (job) {
-        if (!isAdmin && job.user_id && job.user_id !== reqUser?.id) {
-          return res.status(403).json({ error: "Not authorized to retry this job" });
+        if (
+          !assertComputeJobAccess(req, res, undefined, {
+            allowInTest: false,
+            ownerId: job.user_id,
+            allowWhenUnowned: true,
+          })
+        ) {
+          return;
         }
         const meta = job.metadata ? JSON.parse(job.metadata) : {};
-        const effectiveUserId = job.user_id ?? reqUser?.id ?? null;
+        const effectiveUserId = job.user_id ?? reqUserId ?? null;
         const profileId = (meta.profile as string | undefined) || job.compute_profile || "standard";
 
         if (effectiveUserId) {
@@ -610,10 +629,16 @@ export function scriptsRouter(db: LibraryDatabase): Router {
 
       const cloudJob = getActiveCloudJob(paramId);
       if (cloudJob) {
-        if (!isAdmin && cloudJob.userId && cloudJob.userId !== reqUser?.id) {
-          return res.status(403).json({ error: "Not authorized to retry this job" });
+        if (
+          !assertComputeJobAccess(req, res, undefined, {
+            allowInTest: false,
+            ownerId: cloudJob.userId,
+            allowWhenUnowned: true,
+          })
+        ) {
+          return;
         }
-        const effectiveUserId = cloudJob.userId ?? reqUser?.id ?? null;
+        const effectiveUserId = cloudJob.userId ?? reqUserId ?? null;
         if (effectiveUserId) {
           const quota = checkComputeQuota(effectiveUserId, cloudJob.profile || "standard", db, 0.05);
           if (!quota.allowed) {
@@ -673,17 +698,22 @@ export function scriptsRouter(db: LibraryDatabase): Router {
     (req, res) => {
       try {
         const paramId = req.params["id"] as string;
-        const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
-        if (process.env["NODE_ENV"] === "production" && !reqUser) {
+        const { userId: reqUserId } = resolveComputeActor(req);
+        if (process.env["NODE_ENV"] === "production" && !reqUserId) {
           return res.status(401).json({ error: "Authentication required" });
         }
-        const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
         const job = db.getJob(paramId);
         if (!job) {
           return res.status(404).json({ error: "Job not found" });
         }
-        if (!isAdmin && job.user_id && job.user_id !== reqUser?.id) {
-          return res.status(403).json({ error: "Forbidden: Not authorized to re-run this job" });
+        if (
+          !assertComputeJobAccess(req, res, undefined, {
+            allowInTest: false,
+            ownerId: job.user_id,
+            allowWhenUnowned: true,
+          })
+        ) {
+          return;
         }
         const meta = job.metadata ? (JSON.parse(job.metadata) as Record<string, unknown>) : {};
         const storedInstance = meta["studyInstance"] as Record<string, unknown> | undefined;
@@ -702,7 +732,7 @@ export function scriptsRouter(db: LibraryDatabase): Router {
           "local-wasm") as StudyExecutionTarget;
         const computeProfile =
           req.body?.computeProfile || job.compute_profile || (meta["computeProfile"] as string) || "standard";
-        const billingUserId = reqUser?.id ?? (process.env["NODE_ENV"] === "test" ? (job.user_id ?? null) : null);
+        const billingUserId = reqUserId ?? (process.env["NODE_ENV"] === "test" ? (job.user_id ?? null) : null);
 
         if (billingUserId && (executionTarget === "hpc-cluster" || (executionTarget as string) === "hpc-slurm")) {
           const user = db.getUserById(billingUserId);
@@ -770,17 +800,22 @@ export function scriptsRouter(db: LibraryDatabase): Router {
   router.post("/:id/save-as-template", optionalAuth, express.json(), (req, res) => {
     try {
       const paramId = req.params["id"] as string;
-      const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
+      const reqUser = req.user;
       if (process.env["NODE_ENV"] === "production" && !reqUser) {
         return res.status(401).json({ error: "Authentication required" });
       }
-      const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
       const job = db.getJob(paramId);
       if (!job) {
         return res.status(404).json({ error: "Job not found" });
       }
-      if (!isAdmin && job.user_id && job.user_id !== reqUser?.id) {
-        return res.status(403).json({ error: "Forbidden: Not authorized to access this job" });
+      if (
+        !assertComputeJobAccess(req, res, undefined, {
+          allowInTest: false,
+          ownerId: job.user_id,
+          allowWhenUnowned: true,
+        })
+      ) {
+        return;
       }
       const meta = job.metadata ? (JSON.parse(job.metadata) as Record<string, unknown>) : {};
       const storedInstance = meta["studyInstance"] as Record<string, unknown> | undefined;
@@ -873,13 +908,15 @@ export function scriptsRouter(db: LibraryDatabase): Router {
   router.get("/:id/study-instance", optionalAuth, (req, res) => {
     try {
       const paramId = req.params["id"] as string;
-      const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
-      const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
       const job = db.getJob(paramId);
-      if (!job) {
-        return res.status(404).json({ error: "Job not found" });
-      }
-      if (!isAdmin && job.user_id && job.user_id !== reqUser?.id) {
+      if (
+        !job ||
+        !isComputeJobAuthorized(req, undefined, {
+          allowInTest: false,
+          ownerId: job.user_id,
+          allowWhenUnowned: true,
+        })
+      ) {
         return res.status(404).json({ error: "Job not found" });
       }
       const meta = job.metadata ? (JSON.parse(job.metadata) as Record<string, unknown>) : {};
@@ -920,11 +957,15 @@ export function scriptsRouter(db: LibraryDatabase): Router {
   router.get("/:id", optionalAuth, (req, res) => {
     try {
       const paramId = req.params["id"] as string;
-      const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
-      const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
       const job = db.getJob(paramId);
       if (job) {
-        if (!isAdmin && job.user_id && job.user_id !== reqUser?.id) {
+        if (
+          !isComputeJobAuthorized(req, undefined, {
+            allowInTest: false,
+            ownerId: job.user_id,
+            allowWhenUnowned: true,
+          })
+        ) {
           return res.status(404).json({ error: "Job not found" });
         }
         let steps = db.getJobSteps(job.id);
@@ -1005,7 +1046,13 @@ export function scriptsRouter(db: LibraryDatabase): Router {
 
       const cloudJob = getActiveCloudJob(paramId);
       if (cloudJob) {
-        if (!isAdmin && cloudJob.userId && cloudJob.userId !== reqUser?.id) {
+        if (
+          !isComputeJobAuthorized(req, undefined, {
+            allowInTest: false,
+            ownerId: cloudJob.userId,
+            allowWhenUnowned: true,
+          })
+        ) {
           return res.status(404).json({ error: "Job not found" });
         }
         const studyDef =
@@ -1055,14 +1102,18 @@ export function scriptsRouter(db: LibraryDatabase): Router {
   router.get("/:id/logs", requireAuth, (req, res) => {
     try {
       const paramId = req.params["id"] as string;
-      const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
-      const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
       const job = db.getJob(paramId);
 
       const cloudJob = getActiveCloudJob(paramId);
       if (cloudJob) {
-        if (!isAdmin && cloudJob.userId && cloudJob.userId !== reqUser?.id) {
-          return res.status(403).json({ error: "Not authorized to view logs for this job" });
+        if (
+          !assertComputeJobAccess(req, res, undefined, {
+            allowInTest: false,
+            ownerId: cloudJob.userId,
+            allowWhenUnowned: true,
+          })
+        ) {
+          return;
         }
         if (cloudJob.logs?.length) {
           return res.send(cloudJob.logs.join("\n"));
@@ -1070,8 +1121,14 @@ export function scriptsRouter(db: LibraryDatabase): Router {
       }
 
       if (!job) return res.status(404).json({ error: "Logs not found" });
-      if (!isAdmin && job.user_id && job.user_id !== reqUser?.id) {
-        return res.status(403).json({ error: "Not authorized to view logs for this job" });
+      if (
+        !assertComputeJobAccess(req, res, undefined, {
+          allowInTest: false,
+          ownerId: job.user_id,
+          allowWhenUnowned: true,
+        })
+      ) {
+        return;
       }
 
       if (job.metadata) {
@@ -1114,18 +1171,30 @@ export function scriptsRouter(db: LibraryDatabase): Router {
   router.get("/:id/stream", requireAuth, (req, res) => {
     try {
       const paramId = req.params["id"] as string;
-      const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
-      const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
       const job = db.getJob(paramId);
       const cloudJob = !job ? getActiveCloudJob(paramId) : undefined;
 
       if (!job && !cloudJob) {
         return res.status(404).end();
       }
-      if (job && !isAdmin && job.user_id && job.user_id !== reqUser?.id) {
+      if (
+        job &&
+        !isComputeJobAuthorized(req, undefined, {
+          allowInTest: false,
+          ownerId: job.user_id,
+          allowWhenUnowned: true,
+        })
+      ) {
         return res.status(403).end();
       }
-      if (cloudJob && !isAdmin && cloudJob.userId && cloudJob.userId !== reqUser?.id) {
+      if (
+        cloudJob &&
+        !isComputeJobAuthorized(req, undefined, {
+          allowInTest: false,
+          ownerId: cloudJob.userId,
+          allowWhenUnowned: true,
+        })
+      ) {
         return res.status(403).end();
       }
 
@@ -1215,7 +1284,9 @@ export function scriptsRouter(db: LibraryDatabase): Router {
           isReadingLog = true;
           const stream = fs.createReadStream(logPath, { start: bytesRead, end: targetEnd - 1 });
           stream.on("data", (chunk) => {
-            res.write(`event: log\ndata: ${JSON.stringify(chunk.toString())}\n\n`);
+            if (!res.writableEnded && !res.destroyed) {
+              res.write(`event: log\ndata: ${JSON.stringify(chunk.toString())}\n\n`);
+            }
           });
           stream.on("end", () => {
             bytesRead = targetEnd;
@@ -1230,6 +1301,10 @@ export function scriptsRouter(db: LibraryDatabase): Router {
       sendNewLogs();
 
       const intervalId = setInterval(() => {
+        if (res.writableEnded || res.destroyed) {
+          clearInterval(intervalId);
+          return;
+        }
         sendNewLogs();
         sendStatusUpdate();
 
@@ -1239,17 +1314,24 @@ export function scriptsRouter(db: LibraryDatabase): Router {
           (currentJob.status === "SUCCESS" || currentJob.status === "FAILED" || currentJob.status === "CANCELLED")
         ) {
           clearInterval(intervalId);
-          res.write(`event: complete\ndata: ${currentJob.status}\n\n`);
-          res.end();
+          if (!res.writableEnded && !res.destroyed) {
+            res.write(`event: complete\ndata: ${currentJob.status}\n\n`);
+            res.end();
+          }
         }
       }, 1000);
+      intervalId.unref?.();
 
-      req.on("close", () => {
+      res.on("close", () => {
         clearInterval(intervalId);
       });
     } catch (error) {
       console.error("Error in stream:", error);
-      res.status(500).end();
+      if (!res.headersSent) {
+        res.status(500).end();
+      } else if (!res.writableEnded) {
+        res.end();
+      }
     }
     return;
   });
@@ -1257,22 +1339,28 @@ export function scriptsRouter(db: LibraryDatabase): Router {
   router.get("/:id/result", optionalAuth, (req, res) => {
     try {
       const paramId = req.params["id"] as string;
-      const reqUser = (req as express.Request & { user?: AuthUser | undefined }).user;
-      const isAdmin = reqUser?.role === "admin" || reqUser?.accountType === "admin";
       const job = db.getJob(paramId);
-      if (process.env["NODE_ENV"] !== "test" && job && !isAdmin && job.user_id && job.user_id !== reqUser?.id) {
-        return res.status(403).json({ error: "Not authorized to download results for this job" });
+      if (
+        job &&
+        !assertComputeJobAccess(req, res, undefined, {
+          allowInTest: true,
+          ownerId: job.user_id,
+          allowWhenUnowned: true,
+        })
+      ) {
+        return;
       }
 
       const cloudJob = getActiveCloudJob(paramId);
       if (
-        process.env["NODE_ENV"] !== "test" &&
         cloudJob &&
-        !isAdmin &&
-        cloudJob.userId &&
-        cloudJob.userId !== reqUser?.id
+        !assertComputeJobAccess(req, res, undefined, {
+          allowInTest: true,
+          ownerId: cloudJob.userId,
+          allowWhenUnowned: true,
+        })
       ) {
-        return res.status(403).json({ error: "Not authorized to download results for this job" });
+        return;
       }
       if (cloudJob?.resultPath && fs.existsSync(cloudJob.resultPath)) {
         const ext = path.extname(cloudJob.resultPath).toLowerCase();

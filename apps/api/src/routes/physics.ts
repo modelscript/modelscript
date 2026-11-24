@@ -16,12 +16,19 @@ import path from "node:path";
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
 import { optionalAuth } from "../middleware/auth-middleware.js";
-import { getComputeProfile } from "../services/hpc/compute-profiles.js";
+import {
+  assertComputeJobAccess,
+  completeComputeJob,
+  failComputeJob,
+  formatComputeJobStatus,
+  holdComputeEscrow,
+  lookupComputeJobStatus,
+  runComputePreflight,
+  sendComputeJobResultFile,
+} from "../services/compute-job-lifecycle.js";
 import { HpcEngine } from "../services/hpc/hpc-engine.js";
 import type { HpcJobSpec } from "../services/hpc/hpc-types.js";
-import { checkComputeQuota, resolveRequestUserId } from "../services/hpc/quota-guard.js";
 import { enforceExportCompliance } from "../util/compliance.js";
-import { checkComputeSandboxing } from "../util/compute-sandboxing.js";
 
 const PHYSICS_CACHE_DIR = path.join(process.cwd(), "data", "physics-cache");
 const PHYSICS_UPLOAD_DIR = path.join(PHYSICS_CACHE_DIR, "uploads");
@@ -274,36 +281,12 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
       }
 
       // Pre-flight sandboxing & quota check
-      const profile = getComputeProfile(config["profile"] as string | undefined);
-      const userId = resolveRequestUserId(req, database);
-      if (process.env["NODE_ENV"] === "production" && !userId) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
-      if (userId) {
-        const user = database.getUserById(userId);
-        const sandbox = checkComputeSandboxing(user);
-        if (sandbox.sandboxed) {
-          return res.status(403).json({
-            error: sandbox.error,
-            code: sandbox.code,
-            fallbackAvailable: sandbox.fallbackAvailable,
-          });
-        }
-      }
-      let estimatedCost = 0;
-      if (userId) {
-        const quota = checkComputeQuota(userId, profile.id, database);
-        if (!quota.allowed) {
-          return res.status(402).json({
-            error: "Payment Required: Insufficient Compute Credits",
-            message: quota.reason,
-            balance: quota.userBalance,
-            required: quota.estimatedCost,
-            profile: quota.profileId,
-          });
-        }
-        estimatedCost = quota.estimatedCost;
-      }
+      const preflight = runComputePreflight(req, res, database, {
+        profileId: config["profile"] as string | undefined,
+        allowAnonymous: process.env["NODE_ENV"] !== "production",
+      });
+      if (!preflight.allowed) return;
+      const { userId, profile, estimatedCost } = preflight;
 
       // Create job in the database
       const dbJobId = database.createJob(`Physics ${simType}`, "RUNNING", "ADHOC", "ide", null, { resultDir }, userId);
@@ -320,23 +303,18 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
         });
       }
 
-      if (userId && estimatedCost > 0) {
-        const holdRes = database.holdUserCredits(
+      if (
+        !holdComputeEscrow({
+          database,
+          res,
           userId,
-          estimatedCost,
           dbJobId,
-          `HPC Escrow Hold: Physics ${simType}`,
-          { profile: profile.id, simType },
-        );
-        if (!holdRes.success) {
-          database.updateJobStatus(dbJobId, "FAILED");
-          return res.status(402).json({
-            error: "Payment Required: Escrow Hold Failed",
-            message: holdRes.reason,
-            balance: holdRes.newBalance,
-            required: estimatedCost,
-          });
-        }
+          estimatedCost,
+          description: `HPC Escrow Hold: Physics ${simType}`,
+          metadata: { profile: profile.id, simType },
+        })
+      ) {
+        return;
       }
 
       jobQueue.enqueue(`physics-${dbJobId}`, async () => {
@@ -365,7 +343,6 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
 
           // Execute the solver via HPC engine
           currentStepId = database.createJobStep(dbJobId, "Run Solver", "RUNNING");
-          const profile = getComputeProfile(config["profile"] as string | undefined);
           const hpcSpec: HpcJobSpec = {
             jobId: `physics-${dbJobId}`,
             name: `Physics-${simType}-${dbJobId}`,
@@ -414,43 +391,38 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
           };
           fs.writeFileSync(cachedScalars, JSON.stringify(scalars, null, 2), "utf8");
 
-          database.updateJobAccounting(dbJobId, {
-            computeProfile: profile.id,
-            cpuSeconds: usage.cpuCoreSeconds,
-            peakMemoryMb: usage.peakMemoryMb,
-            gpuSeconds: usage.gpuSeconds,
-            costCredits: usage.costCredits,
-          });
-
-          if (userId) {
-            database.settleUserEscrow(
-              userId,
-              dbJobId,
-              Math.max(0, usage.costCredits || 0),
-              `Physics ${simType} Simulation`,
-              {
-                profile: profile.id,
-                ...usage,
-              },
-            );
-          }
-
           database.updateJobStepStatus(currentStepId, "SUCCESS");
-          database.updateJobStatus(dbJobId, "SUCCESS");
+          completeComputeJob({
+            database,
+            dbJobId,
+            userId,
+            costCredits: Math.max(0, usage.costCredits || 0),
+            description: `Physics ${simType} Simulation`,
+            metadata: {
+              profile: profile.id,
+              ...usage,
+            },
+            accounting: {
+              computeProfile: profile.id,
+              cpuSeconds: usage.cpuCoreSeconds,
+              peakMemoryMb: usage.peakMemoryMb,
+              gpuSeconds: usage.gpuSeconds,
+              costCredits: usage.costCredits,
+            },
+          });
 
           const status = jobQueue.getStatus(`physics-${dbJobId}`);
           if (status) status.resultPath = cachedResult;
         } catch (err) {
           logStream.write(`\nERROR: ${err instanceof Error ? err.message : String(err)}\n`);
           if (currentStepId) database.updateJobStepStatus(currentStepId, "FAILED");
-          database.updateJobStatus(dbJobId, "FAILED");
-          if (userId) {
-            database.releaseUserEscrow(
-              userId,
-              dbJobId,
-              err instanceof Error ? err.message : "Physics simulation failed",
-            );
-          }
+          failComputeJob({
+            database,
+            dbJobId,
+            userId,
+            error: err,
+            fallbackMessage: "Physics simulation failed",
+          });
         } finally {
           logStream.end();
           if (tmpDir && fs.existsSync(tmpDir)) {
@@ -480,34 +452,12 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
         return res.status(400).json({ error: "Missing geometryHash or config." });
       }
 
-      const userId = resolveRequestUserId(req, database);
-      if (process.env["NODE_ENV"] === "production" && !userId) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
-      const camProfile = getComputeProfile(config["profile"] as string | undefined);
-      let estimatedCost = 0;
-      if (userId) {
-        const user = database.getUserById(userId);
-        const sandbox = checkComputeSandboxing(user);
-        if (sandbox.sandboxed) {
-          return res.status(403).json({
-            error: sandbox.error,
-            code: sandbox.code,
-            fallbackAvailable: sandbox.fallbackAvailable,
-          });
-        }
-        const quota = checkComputeQuota(userId, camProfile.id, database);
-        if (!quota.allowed) {
-          return res.status(402).json({
-            error: "Payment Required: Insufficient Compute Credits",
-            message: quota.reason,
-            balance: quota.userBalance,
-            required: quota.estimatedCost,
-            profile: quota.profileId,
-          });
-        }
-        estimatedCost = quota.estimatedCost;
-      }
+      const preflight = runComputePreflight(req, res, database, {
+        profileId: config["profile"] as string | undefined,
+        allowAnonymous: process.env["NODE_ENV"] !== "production",
+      });
+      if (!preflight.allowed) return;
+      const { userId, profile: camProfile, estimatedCost } = preflight;
 
       let safeGeometryHash: string;
       try {
@@ -542,19 +492,18 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
         });
       }
 
-      if (userId && estimatedCost > 0) {
-        const holdRes = database.holdUserCredits(userId, estimatedCost, dbJobId, "HPC Escrow Hold: CAM Generation", {
-          profile: camProfile.id,
-        });
-        if (!holdRes.success) {
-          database.updateJobStatus(dbJobId, "FAILED");
-          return res.status(402).json({
-            error: "Payment Required: Escrow Hold Failed",
-            message: holdRes.reason,
-            balance: holdRes.newBalance,
-            required: estimatedCost,
-          });
-        }
+      if (
+        !holdComputeEscrow({
+          database,
+          res,
+          userId,
+          dbJobId,
+          estimatedCost,
+          description: "HPC Escrow Hold: CAM Generation",
+          metadata: { profile: camProfile.id },
+        })
+      ) {
+        return;
       }
 
       fs.mkdirSync(resultDir, { recursive: true });
@@ -566,18 +515,23 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
 
       const onCamStatus = (evt: { status: string; error?: string | undefined }) => {
         if (evt.status === "completed") {
-          database.updateJobStatus(dbJobId, "SUCCESS");
-          if (userId) {
-            database.settleUserEscrow(userId, dbJobId, estimatedCost, "CAM Generation", {
-              profile: camProfile.id,
-            });
-          }
+          completeComputeJob({
+            database,
+            dbJobId,
+            userId,
+            costCredits: estimatedCost,
+            description: "CAM Generation",
+            metadata: { profile: camProfile.id },
+          });
           jobQueue.off(`status:cam-${dbJobId}`, onCamStatus);
         } else if (evt.status === "failed") {
-          database.updateJobStatus(dbJobId, "FAILED");
-          if (userId) {
-            database.releaseUserEscrow(userId, dbJobId, evt.error || "CAM generation failed");
-          }
+          failComputeJob({
+            database,
+            dbJobId,
+            userId,
+            error: evt.error,
+            fallbackMessage: "CAM generation failed",
+          });
           jobQueue.off(`status:cam-${dbJobId}`, onCamStatus);
         }
       };
@@ -601,32 +555,32 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
 
   // ── Poll job status ──
 
-  const isAuthorizedForPhysicsJob = (req: express.Request, rawId: string): boolean => {
+  const checkPhysicsJobAccess = (req: express.Request, res: express.Response, rawId: string): boolean => {
     if (process.env["NODE_ENV"] === "test") return true;
     const numericId = Number(String(rawId).replace(/^(physics|cam)-/, ""));
     const dbJob = Number.isNaN(numericId) ? database.getJob?.(String(rawId)) : database.getJob?.(numericId);
-    if (!dbJob) return false;
-    if (!dbJob.user_id) return true;
-    const reqAny = req as {
-      user?: { id?: number | undefined; role?: string | undefined; accountType?: string | undefined } | undefined;
-    };
-    if (reqAny.user?.role === "admin" || reqAny.user?.accountType === "admin") return true;
-    const reqUserId = resolveRequestUserId(req, database);
-    return reqUserId === dbJob.user_id;
+    if (!dbJob) {
+      res.status(403).json({ error: "Forbidden" });
+      return false;
+    }
+    return assertComputeJobAccess(req, res, database, {
+      allowInTest: true,
+      ownerId: dbJob.user_id ?? null,
+      allowWhenUnowned: true,
+    });
   };
 
-  const lookupPhysicsStatus = (rawId: string) =>
-    jobQueue.getStatus(rawId) ?? jobQueue.getStatus(`physics-${rawId}`) ?? jobQueue.getStatus(`cam-${rawId}`);
+  const lookupPhysicsStatus = (rawId: string) => lookupComputeJobStatus(jobQueue, rawId, ["physics", "cam"]);
 
   router.get("/physics/:jobId", (req, res) => {
     const status = lookupPhysicsStatus(req.params.jobId);
     if (!status) {
       return res.status(404).json({ error: "Job not found." });
     }
-    if (!isAuthorizedForPhysicsJob(req, req.params.jobId)) {
-      return res.status(403).json({ error: "Forbidden" });
+    if (!checkPhysicsJobAccess(req, res, req.params.jobId)) {
+      return;
     }
-    res.json(status);
+    res.json(formatComputeJobStatus(status));
     return;
   });
 
@@ -635,16 +589,10 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
   router.get("/physics/:jobId/result", (req, res) => {
     const status = lookupPhysicsStatus(req.params.jobId);
     if (!status) return res.status(404).json({ error: "Job not found." });
-    if (!isAuthorizedForPhysicsJob(req, req.params.jobId)) {
-      return res.status(403).json({ error: "Forbidden" });
+    if (!checkPhysicsJobAccess(req, res, req.params.jobId)) {
+      return;
     }
-    if (status.status !== "completed" || !status.resultPath) {
-      return res.status(400).json({ error: "Job not completed yet." });
-    }
-    if (!fs.existsSync(status.resultPath)) {
-      return res.status(500).json({ error: "Result file missing." });
-    }
-    res.sendFile(status.resultPath);
+    sendComputeJobResultFile(res, status);
     return;
   });
 
@@ -652,8 +600,8 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
 
   router.get("/physics/cam/:jobId/gcode", (req, res) => {
     const rawId = req.params.jobId;
-    if (!isAuthorizedForPhysicsJob(req, rawId)) {
-      return res.status(403).json({ error: "Forbidden" });
+    if (!checkPhysicsJobAccess(req, res, rawId)) {
+      return;
     }
     const status = jobQueue.getStatus(`cam-${rawId}`) || jobQueue.getStatus(rawId);
     let gcodePath = status?.resultPath;
@@ -691,8 +639,8 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
   router.get("/physics/:jobId/result/scalar", (req, res) => {
     const status = lookupPhysicsStatus(req.params.jobId);
     if (!status) return res.status(404).json({ error: "Job not found." });
-    if (!isAuthorizedForPhysicsJob(req, req.params.jobId)) {
-      return res.status(403).json({ error: "Forbidden" });
+    if (!checkPhysicsJobAccess(req, res, req.params.jobId)) {
+      return;
     }
     if (status.status !== "completed" || !status.resultPath) {
       return res.status(400).json({ error: "Job not completed yet." });

@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import {
+  extractModelsFromCanvasDocument,
+  type RotundaModelEntry,
+} from "@modelscript/editor/workbench/vr-rotunda/types.js";
 import { BaseStyles, ThemeProvider } from "@primer/react";
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -10,6 +14,15 @@ import {
   ViewerDispatcher,
   resolveThumbnailUrls,
 } from "../components/artifacts/card";
+import {
+  buildArtifactRotundaDocument,
+  parseRotundaEnvironmentId,
+  parseSurfacePresentationMode,
+} from "../components/artifacts/rotunda-board-adapter";
+import {
+  buildLiveArtifactRotundaRenderer,
+  useArtifactRotundaGeometry,
+} from "../components/artifacts/rotunda-geometry-bridge";
 import Box from "../components/Box";
 import Spinner from "../components/Spinner";
 import { useFeatureFlag } from "../FeatureFlagContext";
@@ -22,6 +35,9 @@ import { usePageTitle } from "../util/title";
 
 const ArtifactDiffModal = React.lazy(() => import("../components/artifacts/ArtifactDiffModal"));
 const CloudSimulationModal = React.lazy(() => import("../components/cloud-sim/CloudSimulationModal"));
+const EngineeringRotundaLazy = React.lazy(
+  () => import("@modelscript/editor/workbench/vr-rotunda/EngineeringRotunda.js"),
+);
 
 export default function RenderArtifactPage() {
   const { id } = useParams<{ id: string }>();
@@ -33,6 +49,11 @@ export default function RenderArtifactPage() {
   const [isStudioSidebarOpen, setIsStudioSidebarOpen] = useState<boolean>(
     () => searchParams.get("inspector") === "1" || searchParams.get("sidebar") === "1",
   );
+  const [isVrRotundaMode, setIsVrRotundaMode] = useState<boolean>(() => {
+    const vr = (searchParams.get("vr") || "").toLowerCase();
+    const mode = (searchParams.get("mode") || "").toLowerCase();
+    return vr === "1" || vr === "true" || mode === "webxr-vr" || mode === "spatial-3d";
+  });
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
   const [isDiffOpen, setIsDiffOpen] = useState<boolean>(false);
   const [isHpcModalOpen, setIsHpcModalOpen] = useState<boolean>(false);
@@ -56,14 +77,77 @@ export default function RenderArtifactPage() {
   usePageTitle(artifact ? `Artifact: ${artifact.title || artifact.view_type}` : "Render Artifact");
 
   const parsedArtifactId = Number(artifact?.id || id || 0);
-  const viewConfig = useMemo(
+  const viewConfig = useMemo<Record<string, any>>(
     () => ({
-      ...(artifact?.thumbnail_url ? { thumbnail_url: artifact.thumbnail_url } : {}),
+      ...((artifact as unknown as { thumbnail_url?: string } | null)?.thumbnail_url
+        ? { thumbnail_url: (artifact as unknown as { thumbnail_url?: string }).thumbnail_url }
+        : {}),
       ...safeJsonParse<Record<string, any>>(artifact?.view_config, {}),
       artifactId: parsedArtifactId,
     }),
     [artifact, parsedArtifactId],
   );
+
+  const urlWantsVrRotunda = useMemo(() => {
+    const vr = (searchParams.get("vr") || "").toLowerCase();
+    const mode = (searchParams.get("mode") || "").toLowerCase();
+    return vr === "1" || vr === "true" || mode === "webxr-vr" || mode === "spatial-3d";
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (urlWantsVrRotunda) {
+      setIsVrRotundaMode(true);
+    }
+  }, [urlWantsVrRotunda]);
+
+  const rotundaSurfaceMode = useMemo(() => {
+    const rawMode = (searchParams.get("mode") || "").toLowerCase();
+    if (rawMode === "webxr-vr") return "webxr-vr" as const;
+    if (rawMode === "spatial-3d") return "spatial-3d" as const;
+    const vr = (searchParams.get("vr") || "").toLowerCase();
+    if (vr === "1" || vr === "true") return "webxr-vr" as const;
+    const parsed = parseSurfacePresentationMode(viewConfig["surfaceMode"], "spatial-3d");
+    return parsed === "desktop-2d" ? "spatial-3d" : parsed;
+  }, [searchParams, viewConfig]);
+
+  const rotundaEnvironment = useMemo(
+    () =>
+      parseRotundaEnvironmentId(searchParams.get("env") ?? viewConfig["environment"] ?? viewConfig["env"], "dark-lab"),
+    [searchParams, viewConfig],
+  );
+
+  const rotundaDocument = useMemo(() => {
+    if (!isVrRotundaMode || !artifact) return null;
+    return buildArtifactRotundaDocument({
+      title: artifact.title || (artifact as unknown as { name?: string }).name || viewConfig["title"],
+      viewType: artifact.view_type,
+      viewConfig,
+      artifactId: parsedArtifactId,
+    });
+  }, [isVrRotundaMode, artifact, viewConfig, parsedArtifactId]);
+
+  const geometryBridgeKey = useMemo<string | number | null>(() => {
+    if (parsedArtifactId > 0) return parsedArtifactId;
+    if (id && id.trim() !== "" && id.trim() !== "0") return id.trim();
+    if (typeof viewConfig["url"] === "string" && viewConfig["url"].trim()) return viewConfig["url"].trim();
+    return null;
+  }, [parsedArtifactId, id, viewConfig]);
+
+  const liveRotundaGeometry = useArtifactRotundaGeometry(isVrRotundaMode ? geometryBridgeKey : null);
+
+  const rotundaModels = useMemo<readonly RotundaModelEntry[] | undefined>(() => {
+    if (!rotundaDocument) return undefined;
+    const baseModels = extractModelsFromCanvasDocument(rotundaDocument);
+    if (!liveRotundaGeometry || baseModels.length === 0) return baseModels;
+    const primary = baseModels[0]!;
+    return [
+      {
+        ...primary,
+        renderCustomContent: buildLiveArtifactRotundaRenderer(liveRotundaGeometry),
+      },
+      ...baseModels.slice(1),
+    ];
+  }, [rotundaDocument, liveRotundaGeometry]);
 
   const handleCopyLink = useCallback(() => {
     const permalink = `${window.location.origin}/render-artifact/${parsedArtifactId || id}`;
@@ -131,11 +215,11 @@ export default function RenderArtifactPage() {
         "cfd-animation",
         "3d-model",
       ];
-      if (!heavyAsyncTypes.includes(artifact.view_type)) {
+      if (isVrRotundaMode || !heavyAsyncTypes.includes(artifact.view_type)) {
         (window as unknown as { __ARTIFACT_READY: boolean }).__ARTIFACT_READY = true;
       }
     }
-  }, [artifact]);
+  }, [artifact, isVrRotundaMode]);
 
   const resolvedForkedFromId = useMemo<number | string | null>(() => {
     if (viewConfig.forkedFromArtifactId) return viewConfig.forkedFromArtifactId;
@@ -235,7 +319,7 @@ export default function RenderArtifactPage() {
       if (e.key === "i" || e.key === "I") {
         e.preventDefault();
         setIsStudioSidebarOpen((prev) => !prev);
-      } else if (e.key === "r" || e.key === "R") {
+      } else if (!isVrRotundaMode && (e.key === "r" || e.key === "R")) {
         e.preventDefault();
         navigate(
           buildEditorUrlForArtifact({
@@ -252,7 +336,16 @@ export default function RenderArtifactPage() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isChromeless, artifact, parsedArtifactId, viewConfig, navigate, handleCopyLink, handleExitFullScreen]);
+  }, [
+    isChromeless,
+    isVrRotundaMode,
+    artifact,
+    parsedArtifactId,
+    viewConfig,
+    navigate,
+    handleCopyLink,
+    handleExitFullScreen,
+  ]);
 
   if (loading) {
     return (
@@ -393,12 +486,39 @@ export default function RenderArtifactPage() {
     </Suspense>
   );
 
+  const rotundaElement =
+    isVrRotundaMode && rotundaDocument ? (
+      <Suspense
+        fallback={
+          <Box display="flex" alignItems="center" justifyContent="center" width="100%" height="100%" bg="#060b16">
+            <Spinner size="large" />
+          </Box>
+        }
+      >
+        <EngineeringRotundaLazy
+          document={rotundaDocument}
+          models={rotundaModels}
+          mode={rotundaSurfaceMode}
+          initialEnvironment={rotundaEnvironment}
+          onExitTo2D={() => setIsVrRotundaMode(false)}
+          title={String(
+            artifact.title ||
+              (artifact as unknown as { name?: string }).name ||
+              viewConfig["title"] ||
+              `Artifact #${parsedArtifactId}`,
+          )}
+        />
+      </Suspense>
+    ) : null;
+
+  const activeViewportElement = rotundaElement ?? dispatcherElement;
+
   if (isChromeless) {
     return (
       <ThemeProvider colorMode="auto">
         <BaseStyles style={{ width: "100vw", height: "100vh", overflow: "hidden", margin: 0, padding: 0 }}>
           <Box width="100%" height="100%" bg="var(--color-canvas-default)">
-            {dispatcherElement}
+            {activeViewportElement}
           </Box>
         </BaseStyles>
       </ThemeProvider>
@@ -426,6 +546,8 @@ export default function RenderArtifactPage() {
             paramDeltaCount={paramDeltaCount}
             copiedLink={copiedLink}
             isStudioSidebarOpen={isStudioSidebarOpen}
+            isVrRotundaMode={isVrRotundaMode}
+            onToggleVrRotunda={() => setIsVrRotundaMode((prev) => !prev)}
             onExitFullScreen={handleExitFullScreen}
             onCopyLink={handleCopyLink}
             onOpenDiff={() => setIsDiffOpen(true)}
@@ -435,7 +557,7 @@ export default function RenderArtifactPage() {
 
           <Box flex={1} display="flex" overflow="hidden" position="relative">
             <Box flex={1} height="100%" bg="black" overflow="auto" position="relative">
-              {dispatcherElement}
+              {activeViewportElement}
             </Box>
 
             <StudioInspectorSidebar

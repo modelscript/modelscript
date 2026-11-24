@@ -39,12 +39,33 @@ export function setAuthDatabase(database: LibraryDatabase) {
   sharedAuthDatabase = database;
 }
 
-export function getAuthDatabase(): LibraryDatabase | null {
-  return sharedAuthDatabase;
+export function getAuthDatabase(req?: Request): LibraryDatabase | null {
+  const appDb = req?.app?.locals?.["database"] as LibraryDatabase | undefined;
+  return appDb ?? sharedAuthDatabase;
+}
+
+function extractTrustedClientIp(req: Request): string {
+  const remoteAddr = req.socket?.remoteAddress || req.ip || "";
+  if (isIpTrustedProxy(remoteAddr) && typeof req.headers["x-forwarded-for"] === "string") {
+    const parts = req.headers["x-forwarded-for"]
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => net.isIP(s) !== 0);
+    if (parts.length > 0) {
+      for (let i = parts.length - 1; i >= 0; i--) {
+        if (!isIpTrustedProxy(parts[i]!)) {
+          return parts[i]!;
+        }
+      }
+      return parts[0]!;
+    }
+  }
+  return req.ip || remoteAddr || "127.0.0.1";
 }
 
 export function trackUserLocationFromRequest(req: Request, userId: number): void {
-  if (!sharedAuthDatabase || !userId || locationService.isBotUserAgent(req.headers["user-agent"])) {
+  const authDb = getAuthDatabase(req);
+  if (!authDb || !userId || locationService.isBotUserAgent(req.headers["user-agent"])) {
     return;
   }
   try {
@@ -52,12 +73,12 @@ export function trackUserLocationFromRequest(req: Request, userId: number): void
     if (geo?.countryCode) {
       if (process.env["NODE_ENV"] !== "test") {
         const key = `loc:${userId}:${geo.countryCode}:${geo.regionCode || ""}`;
-        if (shouldThrottleDbTouch(sharedAuthDatabase, key)) {
+        if (shouldThrottleDbTouch(authDb, key)) {
           return;
         }
       }
       const thresholdN = Number(process.env["ACCOUNT_LOCATION_THRESHOLD_N"]) || 5;
-      sharedAuthDatabase.recordUserLocationRequest(userId, geo.countryCode, geo.regionCode, thresholdN);
+      authDb.recordUserLocationRequest(userId, geo.countryCode, geo.regionCode, thresholdN);
     }
   } catch {
     // Ignore location tracking errors
@@ -471,18 +492,11 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       return;
     }
 
-    const remoteAddr = req.socket?.remoteAddress || req.ip || "";
-    const tokenClientIp =
-      isIpTrustedProxy(remoteAddr) && typeof req.headers["x-forwarded-for"] === "string"
-        ? req.headers["x-forwarded-for"].split(",")[0]?.trim() || req.ip
-        : req.ip;
+    const tokenClientIp = extractTrustedClientIp(req);
 
-    if (
-      tokenRecord.ip_allowlist &&
-      !isIpInAllowlist(tokenClientIp || remoteAddr || "127.0.0.1", tokenRecord.ip_allowlist)
-    ) {
+    if (tokenRecord.ip_allowlist && !isIpInAllowlist(tokenClientIp, tokenRecord.ip_allowlist)) {
       res.status(403).json({
-        error: `Access denied: client IP address (${tokenClientIp || remoteAddr}) is not permitted by API token IP allowlist`,
+        error: `Access denied: client IP address (${tokenClientIp}) is not permitted by API token IP allowlist`,
       });
       return;
     }
@@ -693,14 +707,8 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
       }
       if (!expired) {
         const user = sharedAuthDatabase.getUserById(tokenRecord.user_id);
-        const remoteAddr = req.socket?.remoteAddress || req.ip || "";
-        const tokenClientIp =
-          isIpTrustedProxy(remoteAddr) && typeof req.headers["x-forwarded-for"] === "string"
-            ? req.headers["x-forwarded-for"].split(",")[0]?.trim() || req.ip
-            : req.ip;
-        const ipAllowed =
-          !tokenRecord.ip_allowlist ||
-          isIpInAllowlist(tokenClientIp || remoteAddr || "127.0.0.1", tokenRecord.ip_allowlist);
+        const tokenClientIp = extractTrustedClientIp(req);
+        const ipAllowed = !tokenRecord.ip_allowlist || isIpInAllowlist(tokenClientIp, tokenRecord.ip_allowlist);
 
         if (user && !isAccountBlocked(user.status) && ipAllowed) {
           req.user = {

@@ -9,7 +9,9 @@ import type { LibraryDatabase } from "../database.js";
 import { JWT_SECRET, isAccountBlocked, optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
 
 import { defaultLoginLimiter } from "../middleware/login-limiter.js";
+import { authRateLimiter } from "../middleware/rate-limiter.js";
 import { defaultRegistrationLimiter } from "../middleware/registration-limiter.js";
+import { registerOpenApiOperation, validateBody, type ObjectSchema } from "../middleware/validate.js";
 import { defaultMailer } from "../services/mailer.js";
 import { defaultOidcService } from "../services/oidc.js";
 import { verifyCaptchaToken } from "../util/captcha.js";
@@ -76,6 +78,123 @@ function isHubModelscriptUrl(urlStr: string): boolean {
     return false;
   }
 }
+
+const OAUTH_EXCHANGE_CODE_TTL_MS = 60 * 1000;
+const MAX_OAUTH_EXCHANGE_CODES = 5000;
+
+interface OAuthExchangePayload {
+  token: string;
+  requires2FA?: boolean;
+  expiresAt: number;
+}
+
+const oauthExchangeCodes = new Map<string, OAuthExchangePayload>();
+
+function issueOAuthExchangeCode(payload: { token: string; requires2FA?: boolean }): string {
+  const now = Date.now();
+  if (oauthExchangeCodes.size >= MAX_OAUTH_EXCHANGE_CODES) {
+    for (const [key, entry] of oauthExchangeCodes) {
+      if (entry.expiresAt <= now) {
+        oauthExchangeCodes.delete(key);
+      }
+    }
+    while (oauthExchangeCodes.size >= MAX_OAUTH_EXCHANGE_CODES) {
+      const oldestKey = oauthExchangeCodes.keys().next().value;
+      if (oldestKey === undefined) break;
+      oauthExchangeCodes.delete(oldestKey);
+    }
+  }
+
+  const code = crypto.randomBytes(32).toString("base64url");
+  oauthExchangeCodes.set(code, {
+    token: payload.token,
+    ...(payload.requires2FA ? { requires2FA: true } : {}),
+    expiresAt: now + OAUTH_EXCHANGE_CODE_TTL_MS,
+  });
+  return code;
+}
+
+const OAUTH_EXCHANGE_SCHEMA: ObjectSchema = {
+  type: "object",
+  description: "Single-use OAuth/OIDC code exchange payload.",
+  required: ["code"],
+  properties: {
+    code: {
+      type: "string",
+      required: true,
+      minLength: 1,
+      description: "Short-lived opaque single-use OAuth/OIDC exchange code.",
+    },
+  },
+};
+
+const FORGOT_PASSWORD_SCHEMA: ObjectSchema = {
+  type: "object",
+  description: "Self-service password reset request payload.",
+  required: ["email"],
+  properties: {
+    email: {
+      type: "string",
+      required: true,
+      minLength: 1,
+      description: "Account email address to send a password reset link to.",
+    },
+  },
+};
+
+const RESET_PASSWORD_SCHEMA: ObjectSchema = {
+  type: "object",
+  description: "Password reset confirmation payload.",
+  required: ["token", "newPassword"],
+  properties: {
+    token: {
+      type: "string",
+      required: true,
+      minLength: 1,
+      description: "Signed single-use password reset token.",
+    },
+    newPassword: {
+      type: "string",
+      required: true,
+      minLength: 8,
+      maxLength: 72,
+      description: "New account password (8 to 72 bytes UTF-8).",
+    },
+  },
+};
+
+registerOpenApiOperation("post", "/api/v1/auth/oauth/exchange", {
+  summary: "Exchange a single-use OAuth/OIDC code for a session token",
+  tags: ["auth"],
+  requestBody: OAUTH_EXCHANGE_SCHEMA,
+  responses: {
+    "200": { description: "OAuth code exchanged for session or 2FA challenge token." },
+    "400": { description: "Missing, invalid, or expired exchange code." },
+  },
+});
+
+registerOpenApiOperation("post", "/api/v1/auth/forgot-password", {
+  summary: "Request a self-service password reset link",
+  tags: ["auth"],
+  requestBody: FORGOT_PASSWORD_SCHEMA,
+  responses: {
+    "200": { description: "Generic confirmation returned regardless of whether the email exists." },
+    "400": { description: "Email address is missing or invalid." },
+    "429": { description: "Rate limit exceeded." },
+  },
+});
+
+registerOpenApiOperation("post", "/api/v1/auth/reset-password", {
+  summary: "Complete a password reset using a signed recovery token",
+  tags: ["auth"],
+  requestBody: RESET_PASSWORD_SCHEMA,
+  responses: {
+    "200": { description: "Password updated and existing sessions revoked." },
+    "400": { description: "Invalid or expired reset token, or invalid new password." },
+    "403": { description: "Account is suspended or blocked." },
+    "429": { description: "Rate limit exceeded." },
+  },
+});
 
 export function authRouter(database: LibraryDatabase): Router {
   const router = createRouter();
@@ -356,7 +475,7 @@ export function authRouter(database: LibraryDatabase): Router {
    *
    * Resends email verification link to unverified accounts.
    */
-  router.post("/resend-verification", express.json(), async (req: Request, res: Response) => {
+  router.post("/resend-verification", authRateLimiter, async (req: Request, res: Response) => {
     const { email } = req.body || {};
     if (!email || typeof email !== "string") {
       res.status(400).json({ error: "Email address is required" });
@@ -1262,51 +1381,58 @@ export function authRouter(database: LibraryDatabase): Router {
    * Initiates self-service password reset.
    * Returns generic 200 message to prevent user enumeration.
    */
-  router.post("/forgot-password", express.json(), async (req: Request, res: Response): Promise<void> => {
-    const { email } = req.body || {};
-    if (!email || typeof email !== "string") {
-      res.status(400).json({ error: "Email address is required" });
-      return;
-    }
-
-    const cleanEmail = email.toLowerCase().trim();
-
-    try {
-      const user = database.getUserByEmail(cleanEmail);
-      let resetToken: string | undefined;
-
-      if (user && !isAccountBlocked(user.status)) {
-        resetToken = signPasswordResetToken(user.id, user.email, user.token_version ?? 1, user.password_hash);
-
-        database.logAudit({
-          actorId: user.id,
-          action: "auth_password_reset_requested",
-          resourceType: "auth",
-          resourceId: String(user.id),
-          ipAddress: getClientIp(req),
-          details: { email: user.email },
-        });
-
-        const instanceName = resolveBrandInstanceName(database);
-        void defaultMailer
-          .sendPasswordResetEmail(user.email, user.username, resetToken, { instanceName })
-          .catch((err) => {
-            console.error("[Auth] Failed to dispatch password reset email:", err);
-          });
+  router.post(
+    "/forgot-password",
+    authRateLimiter,
+    validateBody(FORGOT_PASSWORD_SCHEMA),
+    async (req: Request, res: Response): Promise<void> => {
+      const { email } = req.body || {};
+      if (!email || typeof email !== "string") {
+        res.status(400).json({ error: "Email address is required" });
+        return;
       }
 
-      const isTest = process.env["NODE_ENV"] === "test";
-      const tokenPayload = isTest ? resetToken : undefined;
+      const cleanEmail = email.toLowerCase().trim();
 
-      res.status(200).json({
-        success: true,
-        message: "If an account exists with this email address, a password reset link has been sent.",
-        ...(tokenPayload ? { resetToken: tokenPayload } : {}),
-      });
-    } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to process password reset request" });
-    }
-  });
+      try {
+        const user = database.getUserByEmail(cleanEmail);
+        let resetToken: string | undefined;
+
+        if (user && !isAccountBlocked(user.status)) {
+          resetToken = signPasswordResetToken(user.id, user.email, user.token_version ?? 1, user.password_hash);
+
+          database.logAudit({
+            actorId: user.id,
+            action: "auth_password_reset_requested",
+            resourceType: "auth",
+            resourceId: String(user.id),
+            ipAddress: getClientIp(req),
+            details: { email: user.email },
+          });
+
+          const instanceName = resolveBrandInstanceName(database);
+          void defaultMailer
+            .sendPasswordResetEmail(user.email, user.username, resetToken, { instanceName })
+            .catch((err) => {
+              console.error("[Auth] Failed to dispatch password reset email:", err);
+            });
+        }
+
+        const isTest = process.env["NODE_ENV"] === "test";
+        const tokenPayload = isTest ? resetToken : undefined;
+
+        res.status(200).json({
+          success: true,
+          message: "If an account exists with this email address, a password reset link has been sent.",
+          ...(tokenPayload ? { resetToken: tokenPayload } : {}),
+        });
+      } catch (err: unknown) {
+        res
+          .status(500)
+          .json({ error: err instanceof Error ? err.message : "Failed to process password reset request" });
+      }
+    },
+  );
 
   /**
    * POST /api/v1/auth/reset-password
@@ -1314,76 +1440,81 @@ export function authRouter(database: LibraryDatabase): Router {
    * Validates signed reset token and updates the user's password.
    * Automatically increments token_version to invalidate existing sessions.
    */
-  router.post("/reset-password", express.json(), async (req: Request, res: Response): Promise<void> => {
-    const { token, newPassword } = req.body || {};
+  router.post(
+    "/reset-password",
+    authRateLimiter,
+    validateBody(RESET_PASSWORD_SCHEMA),
+    async (req: Request, res: Response): Promise<void> => {
+      const { token, newPassword } = req.body || {};
 
-    if (!token || typeof token !== "string") {
-      res.status(400).json({ error: "Reset token is required" });
-      return;
-    }
-
-    if (!newPassword || typeof newPassword !== "string" || newPassword.length < 8) {
-      res.status(400).json({ error: "New password must be at least 8 characters" });
-      return;
-    }
-    if (Buffer.byteLength(newPassword, "utf8") > 72) {
-      res.status(400).json({ error: "New password must not exceed 72 bytes" });
-      return;
-    }
-
-    const payload = parsePasswordResetTokenPayload(token);
-    if (!payload || !payload.userId) {
-      res.status(400).json({ error: "Invalid or malformed password reset link" });
-      return;
-    }
-
-    try {
-      const user = database.getUserById(payload.userId);
-      if (!user || user.email.toLowerCase() !== payload.email.toLowerCase()) {
-        res.status(400).json({ error: "Invalid or expired password reset link" });
+      if (!token || typeof token !== "string") {
+        res.status(400).json({ error: "Reset token is required" });
         return;
       }
 
-      if (isAccountBlocked(user.status)) {
-        res.status(403).json({ error: `Account is ${user.status}. Please contact support.` });
+      if (!newPassword || typeof newPassword !== "string" || newPassword.length < 8) {
+        res.status(400).json({ error: "New password must be at least 8 characters" });
+        return;
+      }
+      if (Buffer.byteLength(newPassword, "utf8") > 72) {
+        res.status(400).json({ error: "New password must not exceed 72 bytes" });
         return;
       }
 
-      const fullUser = database.getUserByEmail(user.email);
-      const verification = verifyPasswordResetToken(token, fullUser || user);
-      if (!verification.valid) {
-        res.status(400).json({ error: verification.error || "Invalid or expired password reset link" });
+      const payload = parsePasswordResetTokenPayload(token);
+      if (!payload || !payload.userId) {
+        res.status(400).json({ error: "Invalid or malformed password reset link" });
         return;
       }
 
-      const newHash = await bcrypt.hash(newPassword, 10);
-      database.updatePassword(user.id, newHash);
-      database.incrementTokenVersion(user.id);
+      try {
+        const user = database.getUserById(payload.userId);
+        if (!user || user.email.toLowerCase() !== payload.email.toLowerCase()) {
+          res.status(400).json({ error: "Invalid or expired password reset link" });
+          return;
+        }
 
-      database.logAudit({
-        actorId: user.id,
-        action: "auth_password_reset_completed",
-        resourceType: "auth",
-        resourceId: String(user.id),
-        ipAddress: getClientIp(req),
-        details: { email: user.email },
-      });
+        if (isAccountBlocked(user.status)) {
+          res.status(403).json({ error: `Account is ${user.status}. Please contact support.` });
+          return;
+        }
 
-      database.createNotification(user.id, user.id, "security_alert", null, {
-        title: "Account Password Reset",
-        description:
-          "Your account password was reset using a recovery link and all other active sessions were revoked.",
-        skipEmail: true,
-      });
+        const fullUser = database.getUserByEmail(user.email);
+        const verification = verifyPasswordResetToken(token, fullUser || user);
+        if (!verification.valid) {
+          res.status(400).json({ error: verification.error || "Invalid or expired password reset link" });
+          return;
+        }
 
-      res.status(200).json({
-        success: true,
-        message: "Your password has been reset successfully. Please sign in with your new password.",
-      });
-    } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to reset password" });
-    }
-  });
+        const newHash = await bcrypt.hash(newPassword, 10);
+        database.updatePassword(user.id, newHash);
+        database.incrementTokenVersion(user.id);
+
+        database.logAudit({
+          actorId: user.id,
+          action: "auth_password_reset_completed",
+          resourceType: "auth",
+          resourceId: String(user.id),
+          ipAddress: getClientIp(req),
+          details: { email: user.email },
+        });
+
+        database.createNotification(user.id, user.id, "security_alert", null, {
+          title: "Account Password Reset",
+          description:
+            "Your account password was reset using a recovery link and all other active sessions were revoked.",
+          skipEmail: true,
+        });
+
+        res.status(200).json({
+          success: true,
+          message: "Your password has been reset successfully. Please sign in with your new password.",
+        });
+      } catch (err: unknown) {
+        res.status(500).json({ error: err instanceof Error ? err.message : "Failed to reset password" });
+      }
+    },
+  );
 
   const resolvePublicBaseUrl = (req: Request): string => {
     const envPublicUrl = (process.env["PUBLIC_URL"] || "").trim().replace(/\/$/, "");
@@ -1988,7 +2119,7 @@ export function authRouter(database: LibraryDatabase): Router {
       } else if (provider === "gitlab") {
         const publicBase = resolvePublicBaseUrl(req);
         const gitlabBase = (oauthCreds.baseUrl || "https://gitlab.com").replace(/\/$/, "");
-        const tokenRes = await fetch(`${gitlabBase}/oauth/token`, {
+        const tokenRes = await safePublicFetch(`${gitlabBase}/oauth/token`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -2006,7 +2137,7 @@ export function authRouter(database: LibraryDatabase): Router {
         if (tokenData.access_token) {
           accessToken = tokenData.access_token;
           if (tokenData.refresh_token) refreshToken = tokenData.refresh_token;
-          const userRes = await fetch(`${gitlabBase}/api/v4/user`, {
+          const userRes = await safePublicFetch(`${gitlabBase}/api/v4/user`, {
             headers: { Authorization: `Bearer ${accessToken}` },
           });
           const userData = (await userRes.json()) as {
@@ -2151,7 +2282,8 @@ export function authRouter(database: LibraryDatabase): Router {
             expiresIn: "5m",
           },
         );
-        res.redirect(`${frontendUrl}/oauth/callback?requires2FA=true&tempToken=${encodeURIComponent(tempToken)}`);
+        const exchangeCode = issueOAuthExchangeCode({ token: tempToken, requires2FA: true });
+        res.redirect(`${frontendUrl}/oauth/callback?code=${encodeURIComponent(exchangeCode)}&requires2FA=true`);
         return;
       }
 
@@ -2179,13 +2311,57 @@ export function authRouter(database: LibraryDatabase): Router {
         details: { method: "oauth", provider },
       });
 
-      // Redirect back to the frontend SPA
-      res.redirect(`${frontendUrl}/oauth/callback?token=${token}`);
+      const exchangeCode = issueOAuthExchangeCode({ token });
+      // Redirect back to the frontend SPA with a short-lived one-time code
+      res.redirect(`${frontendUrl}/oauth/callback?code=${encodeURIComponent(exchangeCode)}`);
     } catch (err) {
       console.error("OAuth callback error:", err);
       res.redirect(`${frontendUrl}/login?error=OAuthFailed`);
     }
   });
+
+  /**
+   * POST /api/v1/auth/oauth/exchange
+   *
+   * Single-use exchange of a short-lived opaque OAuth/OIDC code for a session
+   * token (or 2FA challenge token). Prevents long-lived JWTs from appearing in
+   * browser URLs, history, or Referer headers.
+   */
+  router.post(
+    "/oauth/exchange",
+    express.json(),
+    validateBody(OAUTH_EXCHANGE_SCHEMA),
+    (req: Request, res: Response): void => {
+      const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
+      if (!code) {
+        res.status(400).json({ error: "Exchange code is required" });
+        return;
+      }
+
+      const entry = oauthExchangeCodes.get(code);
+      if (!entry) {
+        res.status(400).json({ error: "Invalid or expired exchange code" });
+        return;
+      }
+
+      // Delete atomically on first read (single-use)
+      oauthExchangeCodes.delete(code);
+
+      if (entry.expiresAt <= Date.now()) {
+        res.status(400).json({ error: "Invalid or expired exchange code" });
+        return;
+      }
+
+      if (!entry.requires2FA) {
+        setSessionCookie(res, entry.token);
+      }
+
+      res.json({
+        token: entry.token,
+        requires2FA: Boolean(entry.requires2FA),
+      });
+    },
+  );
 
   // ── Enterprise OpenID Connect (OIDC / SSO) ──
   router.get("/oidc/config", (_req: Request, res: Response) => {
@@ -2258,28 +2434,31 @@ export function authRouter(database: LibraryDatabase): Router {
       } else {
         try {
           claims = await defaultOidcService.verifyIdToken(tokenData.idToken);
-        } catch {
+        } catch (verifyErr) {
+          if (process.env["NODE_ENV"] === "production") {
+            res.status(401).json({
+              error: `OIDC ID token verification failed: ${verifyErr instanceof Error ? verifyErr.message : String(verifyErr)}`,
+            });
+            return;
+          }
           claims = defaultOidcService.extractClaims(tokenData.idToken);
         }
       }
-      if (
-        cookieNonce &&
-        claims &&
-        (claims as { nonce?: string }).nonce &&
-        (claims as { nonce?: string }).nonce !== cookieNonce
-      ) {
-        res.status(400).json({ error: "Invalid OIDC nonce in idToken" });
+      if (cookieNonce && (!claims || (claims as { nonce?: string }).nonce !== cookieNonce)) {
+        res.status(400).json({ error: "Invalid or missing OIDC nonce in idToken" });
         return;
       }
       const result = await defaultOidcService.handleOidcLogin(database, claims, tokenData);
 
       const frontendUrl = process.env["PUBLIC_URL"] || "http://localhost:3000";
       if (result.requires2FA) {
-        res.redirect(`${frontendUrl}/oauth/callback?requires2FA=true&tempToken=${encodeURIComponent(result.token)}`);
+        const exchangeCode = issueOAuthExchangeCode({ token: result.token, requires2FA: true });
+        res.redirect(`${frontendUrl}/oauth/callback?code=${encodeURIComponent(exchangeCode)}&requires2FA=true`);
         return;
       }
       setSessionCookie(res, result.token);
-      res.redirect(`${frontendUrl}/oauth/callback?token=${result.token}`);
+      const exchangeCode = issueOAuthExchangeCode({ token: result.token });
+      res.redirect(`${frontendUrl}/oauth/callback?code=${encodeURIComponent(exchangeCode)}`);
     } catch (err: unknown) {
       const status = (err as { status?: number | undefined })?.status;
       if (status === 403) {
@@ -2431,9 +2610,33 @@ export function authRouter(database: LibraryDatabase): Router {
             res.status(401).json({ error: "Two-factor authentication code is required" });
             return;
           }
-          if (!verifyTotpCode(state2FA.totp_secret, totpCode.trim())) {
+          const clientIp = getClientIp(req);
+          const userEmail = req.user!.email;
+          const bypassRateLimit =
+            process.env["NODE_ENV"] === "test" && req.headers["x-test-bypass-rate-limit"] === "true";
+          if (!bypassRateLimit) {
+            const rateCheck = defaultLoginLimiter.check(clientIp, userEmail);
+            if (!rateCheck.allowed) {
+              res.status(429).json({
+                error: "Too many failed 2FA attempts. Please try again in 15 minutes.",
+                retryAfterSeconds: Math.ceil(rateCheck.resetInMs / 1000),
+              });
+              return;
+            }
+          }
+          if (
+            !verifyTotpCode(state2FA.totp_secret, totpCode.trim(), {
+              preventReplay: process.env["NODE_ENV"] === "production",
+            })
+          ) {
+            if (!bypassRateLimit) {
+              defaultLoginLimiter.recordFailure(clientIp, userEmail);
+            }
             res.status(401).json({ error: "Invalid two-factor authentication code" });
             return;
+          }
+          if (!bypassRateLimit) {
+            defaultLoginLimiter.recordSuccess(clientIp, userEmail);
           }
         }
       }

@@ -41,7 +41,8 @@ export interface AlignedDomainElement {
   uri?: string | undefined;
   line?: number | undefined;
   column?: number | undefined;
-  properties?: Record<string, any> | undefined;
+  length?: number | undefined;
+  properties?: Record<string, unknown> | undefined;
   status?: "synced" | "stale" | "conflict" | "unverified" | undefined;
 }
 
@@ -116,7 +117,7 @@ export class ThreadDiagnosticsProvider {
               uri: e.uri!,
               range: {
                 start: { line: line0, character: col0 },
-                end: { line: line0, character: col0 + Math.max(1, e.name.length) },
+                end: { line: line0, character: col0 + Math.max(1, e.length ?? e.name.length) },
               },
             },
             message: `[${e.domain}] Aligned element '${e.name}' in digital thread #${threadId}`,

@@ -7,6 +7,7 @@ import type { LibraryDatabase } from "../database.js";
 import { checkPrivateVisibilityEntitlement } from "../ee-loader.js";
 import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
 import { RepoBotReviewer } from "../services/ai/repo-bot-reviewer.js";
+import { sanitizeGitRef } from "../services/local-git-vault.js";
 
 export function reposRouter(database: LibraryDatabase): Router {
   const router = createRouter();
@@ -107,7 +108,7 @@ export function reposRouter(database: LibraryDatabase): Router {
         provider,
         external_repo_id,
         repo_full_name,
-        default_branch || "main",
+        sanitizeGitRef(default_branch, "main"),
         description,
         avatar_url,
       );
@@ -159,13 +160,14 @@ export function reposRouter(database: LibraryDatabase): Router {
     }
 
     const resolvedPreviewUrl = social_preview_url !== undefined ? social_preview_url : socialPreviewUrl;
+    const sanitizedDefaultBranch = default_branch !== undefined ? sanitizeGitRef(default_branch, "main") : undefined;
 
     try {
       const updated = database.updateLinkedRepo(userId, rawId, {
         name,
         repo_full_name,
         visibility,
-        default_branch,
+        default_branch: sanitizedDefaultBranch,
         social_preview_url: resolvedPreviewUrl,
         description,
       });
@@ -176,7 +178,7 @@ export function reposRouter(database: LibraryDatabase): Router {
           name: name ?? rawId,
           repo_full_name: repo_full_name ?? (name ? `${req.user!.username || "user"}/${name}` : rawId),
           visibility: visibility || "public",
-          default_branch: default_branch || "main",
+          default_branch: sanitizedDefaultBranch || "main",
           social_preview_url: resolvedPreviewUrl ?? null,
         },
       });

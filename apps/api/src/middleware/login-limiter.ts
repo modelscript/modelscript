@@ -1,22 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-interface LoginAttemptRecord {
-  failures: number;
-  resetAt: number;
-}
+import { DistributedCounterBridge } from "./redis-store.js";
 
 /**
  * Sliding-window brute force protection for login attempts.
  * Limits failed login attempts to 5 per 15 minutes per IP and email.
+ * Replicates increments/resets to Redis when REDIS_URL is configured.
  */
 export class LoginRateLimiter {
-  private readonly attempts = new Map<string, LoginAttemptRecord>();
+  private readonly counter: DistributedCounterBridge;
   private readonly maxFailures: number;
   private readonly windowMs: number;
 
   constructor(maxFailures = 5, windowMs = 15 * 60 * 1000) {
     this.maxFailures = maxFailures;
     this.windowMs = windowMs;
+    this.counter = new DistributedCounterBridge({
+      prefix: "rl:login:",
+      windowMs,
+    });
   }
 
   private buildKey(ip: string, email?: string): string {
@@ -32,109 +34,79 @@ export class LoginRateLimiter {
     const key = this.buildKey(ip, email);
     const ipKey = this.buildKey(ip);
 
-    const record = this.attempts.get(key);
-    const ipRecord = this.attempts.get(ipKey);
+    const record = this.counter.get(key, now);
+    const ipRecord = this.counter.get(ipKey, now);
 
     // Check account-specific lockout for this IP
-    if (record && now < record.resetAt && record.failures >= this.maxFailures) {
+    if (record && record.count >= this.maxFailures) {
       return { allowed: false, remaining: 0, resetInMs: record.resetAt - now };
     }
 
     // Check aggregate account lockout across rotating IPs (3x max failures)
     if (email) {
-      const emailRecord = this.attempts.get(`email:${email.toLowerCase().trim()}`);
-      if (emailRecord && now < emailRecord.resetAt && emailRecord.failures >= this.maxFailures * 3) {
+      const emailRecord = this.counter.get(`email:${email.toLowerCase().trim()}`, now);
+      if (emailRecord && emailRecord.count >= this.maxFailures * 3) {
         return { allowed: false, remaining: 0, resetInMs: emailRecord.resetAt - now };
       }
     }
 
     // Check aggregate IP lockout (e.g. distributed credential stuffing from single IP, allow double max)
-    if (ipRecord && now < ipRecord.resetAt && ipRecord.failures >= this.maxFailures * 2) {
+    if (ipRecord && ipRecord.count >= this.maxFailures * 2) {
       return { allowed: false, remaining: 0, resetInMs: ipRecord.resetAt - now };
     }
 
-    const currentFailures = record && now < record.resetAt ? record.failures : 0;
+    const currentFailures = record ? record.count : 0;
     const remaining = Math.max(0, this.maxFailures - currentFailures);
-    const resetInMs = record && now < record.resetAt ? record.resetAt - now : this.windowMs;
+    const resetInMs = record ? record.resetAt - now : this.windowMs;
 
     return { allowed: true, remaining, resetInMs };
   }
 
-  private static readonly MAX_RECORDS = 10_000;
-
-  private pruneExpired(now: number): void {
-    if (this.attempts.size < LoginRateLimiter.MAX_RECORDS) return;
-    for (const [k, v] of this.attempts) {
-      if (now >= v.resetAt) {
-        this.attempts.delete(k);
-      }
-    }
-    if (this.attempts.size >= LoginRateLimiter.MAX_RECORDS) {
-      const oldestKey = this.attempts.keys().next().value;
-      if (oldestKey !== undefined) {
-        this.attempts.delete(oldestKey);
-      }
-    }
-  }
-
   public recordFailure(ip: string, email?: string): void {
     const now = Date.now();
-    this.pruneExpired(now);
     const key = this.buildKey(ip, email);
     const ipKey = this.buildKey(ip);
 
     // Update specific key
-    const record = this.attempts.get(key);
-    if (!record || now >= record.resetAt) {
-      this.attempts.set(key, { failures: 1, resetAt: now + this.windowMs });
-    } else {
-      record.failures += 1;
-    }
+    this.counter.increment(key, now);
 
     // Update aggregate account across IPs
     if (email) {
-      const emailKey = `email:${email.toLowerCase().trim()}`;
-      const emailRecord = this.attempts.get(emailKey);
-      if (!emailRecord || now >= emailRecord.resetAt) {
-        this.attempts.set(emailKey, { failures: 1, resetAt: now + this.windowMs });
-      } else {
-        emailRecord.failures += 1;
-      }
+      this.counter.increment(`email:${email.toLowerCase().trim()}`, now);
     }
 
     // Update aggregate IP
     if (key !== ipKey) {
-      const ipRecord = this.attempts.get(ipKey);
-      if (!ipRecord || now >= ipRecord.resetAt) {
-        this.attempts.set(ipKey, { failures: 1, resetAt: now + this.windowMs });
-      } else {
-        ipRecord.failures += 1;
-      }
+      this.counter.increment(ipKey, now);
     }
   }
 
   public recordSuccess(ip: string, email?: string): void {
     const key = this.buildKey(ip, email);
-    this.attempts.delete(key);
+    this.counter.delete(key);
     if (email) {
-      this.attempts.delete(`email:${email.toLowerCase().trim()}`);
+      this.counter.delete(`email:${email.toLowerCase().trim()}`);
     }
   }
 
   public reset(ip?: string, email?: string): void {
     if (ip || email) {
       if (ip && email) {
-        this.attempts.delete(this.buildKey(ip, email));
+        this.counter.delete(this.buildKey(ip, email));
       }
       if (ip) {
-        this.attempts.delete(this.buildKey(ip));
+        this.counter.delete(this.buildKey(ip));
       }
       if (email) {
-        this.attempts.delete(`email:${email.toLowerCase().trim()}`);
+        this.counter.delete(`email:${email.toLowerCase().trim()}`);
       }
     } else {
-      this.attempts.clear();
+      this.counter.clear();
     }
+  }
+
+  public shutdown(): void {
+    this.counter.shutdown();
   }
 }
 

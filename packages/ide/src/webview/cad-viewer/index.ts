@@ -9,17 +9,25 @@ export type {
   ComponentTransform,
 } from "./animation-controller";
 export { AnimationTimeline } from "./animation-timeline";
+export { BarrierShellOverlay, type BarrierShellOverlayProps } from "./barrier-shell-overlay";
 export { default as CadViewer } from "./cad-viewer";
-export type { CadAnnotation, CadComponent, CadPortAnnotation } from "./cad-viewer";
+export type { CadAnnotation, CadComponent, CadPortAnnotation, CadViewerProps } from "./cad-viewer";
 export { CaeTelemetryPanel } from "./cae-telemetry-panel";
+export { DynamicClearanceVector, type DynamicClearanceVectorProps } from "./dynamic-clearance-vector";
 export { InstancedCadAssembly, type InstancedCadAssemblyProps } from "./instanced-cad-assembly";
 export { extractCadComponents, parseCadAnnotationString } from "./parse-cad-annotations";
-export { VrButton, default as VrMode } from "./vr-mode";
 export { ReachabilityTubeOverlay, type ReachabilityTubeOverlayProps } from "./reachability-tube-overlay";
-export { DynamicClearanceVector, type DynamicClearanceVectorProps } from "./dynamic-clearance-vector";
-export { BarrierShellOverlay, type BarrierShellOverlayProps } from "./barrier-shell-overlay";
 export {
   RequirementVerdictCard,
   type RequirementVerdictCardProps,
   type RequirementVerdictPayload,
 } from "./requirement-verdict-card";
+export {
+  VrButton,
+  default as VrMode,
+  detectSandboxedIframe,
+  getSharedVsCodeApi,
+  registerSharedVsCodeApi,
+  type VrButtonProps,
+  type VrModeProps,
+} from "./vr-mode";

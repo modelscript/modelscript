@@ -5,18 +5,14 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import tls from "node:tls";
+import { escapeHtml } from "../util/escape.js";
 
 export type MailerDriver = "console" | "smtp" | "sendgrid" | "resend";
 export type MailerDriverPreference = "auto" | MailerDriver;
 export type SmtpTlsMode = "starttls" | "implicit" | "none";
 
 export type EmailTemplateId =
-  | "verification"
-  | "password_reset"
-  | "invite"
-  | "security_alert"
-  | "social_notification"
-  | "digest";
+  "verification" | "password_reset" | "invite" | "security_alert" | "social_notification" | "digest";
 
 export interface EmailTemplateDefinition {
   id: EmailTemplateId;
@@ -136,15 +132,6 @@ export interface DigestEmailOptions {
   frequency: "daily" | "weekly";
   items: DigestNotificationItem[];
   instanceName?: string | undefined;
-}
-
-function escapeHtml(raw: string): string {
-  return raw
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }
 
 function interpolateVariables(

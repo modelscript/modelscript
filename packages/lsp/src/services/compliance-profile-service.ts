@@ -1,11 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { globalLibraryRegistry, type LoadedLibraryPackage, type SysmlRequirement } from "@modelscript/runtime";
+import {
+  globalLibraryRegistry,
+  type LoadedLibraryPackage,
+  type SymbolIndex,
+  type SysmlRequirement,
+} from "@modelscript/runtime";
+import type { CstNodeLike, CstTreeLike } from "../utils/ast-utils.js";
 import { mountedLibraryMetadata, normalizeLibraryName } from "../utils/hierarchy-utils.js";
 
 export interface SysmlDocSource {
   uri: string;
   text: string;
+  rootNode?: CstNodeLike | null | undefined;
+  tree?: CstTreeLike | null | undefined;
+  symbolIndex?: SymbolIndex | null | undefined;
 }
 
 export interface TaggedSysmlRequirement {
@@ -23,10 +32,302 @@ export interface ActiveComplianceResolution {
   declaredProjectStandards: Set<string>;
 }
 
+const PROFILE_ANNOTATION_RE = /@(?:ComplianceProfile|Standard)\s*\(\s*["']([^"']+)["']/g;
+const IMPORT_STMT_RE = /\bimport\s+([a-zA-Z0-9_.:*]+)/g;
+const SYSML_REF_RE = /(?:\b(?:satisfy|verify)\s+|:\s*|::)([a-zA-Z0-9_.:]+)/g;
+const TWIN_ATTR_RE = /\b(?:twin|counterpart|implements)\s*=\s*["']([^"']+)["']/g;
+
+function unwrapCstRoot(
+  nodeOrTree: CstNodeLike | CstTreeLike | { tree?: CstTreeLike | null } | null | undefined,
+): CstNodeLike | undefined {
+  if (!nodeOrTree || typeof nodeOrTree !== "object") return undefined;
+  if ("rootNode" in nodeOrTree && nodeOrTree.rootNode) {
+    return nodeOrTree.rootNode;
+  }
+  if ("tree" in nodeOrTree && nodeOrTree.tree?.rootNode) {
+    return nodeOrTree.tree.rootNode;
+  }
+  if ("type" in nodeOrTree && typeof nodeOrTree.type === "string") {
+    return nodeOrTree as CstNodeLike;
+  }
+  return undefined;
+}
+
+function isCommentNodeType(type: string): boolean {
+  const lower = type.toLowerCase();
+  return (
+    lower === "line_comment" ||
+    lower === "block_comment" ||
+    lower === "doc_comment" ||
+    lower === "regular_comment" ||
+    lower === "single_line_note" ||
+    lower === "multiline_note" ||
+    lower === "comment" ||
+    lower === "documentation" ||
+    lower.endsWith("_comment")
+  );
+}
+
+function isStringNodeType(type: string): boolean {
+  const lower = type.toLowerCase();
+  return (
+    lower === "string" ||
+    lower === "string_literal" ||
+    lower === "string_value" ||
+    lower === "literal_string" ||
+    lower === "description_string"
+  );
+}
+
+function getCstNodeSpanText(node: CstNodeLike, src: string): string {
+  if (
+    typeof node.startIndex === "number" &&
+    typeof node.endIndex === "number" &&
+    node.startIndex >= 0 &&
+    node.endIndex > node.startIndex &&
+    node.endIndex <= src.length
+  ) {
+    return src.slice(node.startIndex, node.endIndex);
+  }
+  return node.text ?? "";
+}
+
+function addStandardValue(out: Set<string>, value: string): void {
+  const trimmed = value.trim();
+  if (!trimmed) return;
+  out.add(normalizeLibraryName(trimmed));
+  out.add(trimmed.toLowerCase());
+}
+
+function addImportedNamespaceTarget(importedNamespaces: Set<string>, target: string): void {
+  const rootNs = target.split("::")[0]?.split(".")[0]?.trim();
+  if (rootNs) {
+    importedNamespaces.add(rootNs);
+    importedNamespaces.add(rootNs.toLowerCase());
+  }
+}
+
+function addReferencedTokenSegments(referencedTokens: Set<string>, raw: string): void {
+  for (const seg of raw.split(/::|\./)) {
+    const trimmed = seg.trim();
+    if (trimmed) referencedTokens.add(trimmed.toLowerCase());
+  }
+}
+
+function scanProfileAnnotationsText(src: string, out: Set<string>): void {
+  PROFILE_ANNOTATION_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = PROFILE_ANNOTATION_RE.exec(src)) !== null) {
+    if (m[1]) {
+      addStandardValue(out, m[1]);
+    }
+  }
+}
+
+function extractProfileAnnotationsFromSymbolIndex(symbolIndex: SymbolIndex, src: string, out: Set<string>): void {
+  for (const entry of symbolIndex.symbols.values()) {
+    const meta = entry.metadata;
+    if (meta) {
+      const complianceProfile = meta["complianceProfile"];
+      const standard = meta["standard"];
+      const profile = meta["profile"];
+      if (typeof complianceProfile === "string") addStandardValue(out, complianceProfile);
+      if (typeof standard === "string") addStandardValue(out, standard);
+      if (typeof profile === "string") addStandardValue(out, profile);
+    }
+
+    const ruleLower = entry.ruleName.toLowerCase();
+    const isAnnOrMeta =
+      entry.kind === "Annotation" ||
+      ruleLower.includes("metadata") ||
+      ruleLower.includes("annotation") ||
+      entry.name === "ComplianceProfile" ||
+      entry.name === "Standard";
+
+    if (isAnnOrMeta && entry.startOffset >= 0 && entry.endOffset > entry.startOffset && entry.endOffset <= src.length) {
+      scanProfileAnnotationsText(src.slice(entry.startOffset, entry.endOffset), out);
+    }
+  }
+}
+
+function extractProfileAnnotationsFromCst(rootNode: CstNodeLike, src: string, out: Set<string>): void {
+  const stack: CstNodeLike[] = [rootNode];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!node || isCommentNodeType(node.type) || isStringNodeType(node.type)) continue;
+
+    const lower = node.type.toLowerCase();
+    if (lower.includes("metadata") || lower.includes("annotation") || node.type === "ERROR") {
+      scanProfileAnnotationsText(getCstNodeSpanText(node, src), out);
+      if (lower.includes("metadata") || lower.includes("annotation")) {
+        continue;
+      }
+    }
+
+    const children = node.children;
+    if (children) {
+      for (let i = children.length - 1; i >= 0; i--) {
+        const ch = children[i];
+        if (ch) stack.push(ch);
+      }
+    }
+  }
+}
+
+function extractImportsAndRefsFromSymbolIndex(
+  symbolIndex: SymbolIndex,
+  src: string,
+  isSysml: boolean,
+  importedNamespaces: Set<string>,
+  referencedTokens: Set<string>,
+): void {
+  for (const entry of symbolIndex.symbols.values()) {
+    const ruleLower = entry.ruleName.toLowerCase();
+    const hasSpan = entry.startOffset >= 0 && entry.endOffset > entry.startOffset && entry.endOffset <= src.length;
+    const spanText = hasSpan ? src.slice(entry.startOffset, entry.endOffset) : "";
+    const meta = entry.metadata;
+
+    if (entry.kind === "Import" || ruleLower === "import_clause" || ruleLower.includes("import")) {
+      const importedNs = meta?.["importedNamespace"];
+      const importTarget = meta?.["target"];
+      if (entry.name) {
+        addImportedNamespaceTarget(importedNamespaces, entry.name);
+      } else if (typeof importedNs === "string") {
+        addImportedNamespaceTarget(importedNamespaces, importedNs);
+      } else if (typeof importTarget === "string") {
+        addImportedNamespaceTarget(importedNamespaces, importTarget);
+      } else if (spanText) {
+        IMPORT_STMT_RE.lastIndex = 0;
+        let m: RegExpExecArray | null;
+        while ((m = IMPORT_STMT_RE.exec(spanText)) !== null) {
+          if (m[1]) addImportedNamespaceTarget(importedNamespaces, m[1]);
+        }
+      }
+    }
+
+    if (isSysml) {
+      const isSysmlRefSymbol =
+        entry.ruleName === "SatisfyRequirementUsage" ||
+        entry.ruleName === "VerifyRequirementUsage" ||
+        entry.ruleName === "OwnedFeatureTyping" ||
+        entry.ruleName === "FeatureTyping" ||
+        entry.ruleName === "Subclassification" ||
+        entry.ruleName === "OwnedSubsetting" ||
+        entry.ruleName === "OwnedRedefinition" ||
+        ruleLower.includes("satisfy") ||
+        ruleLower.includes("verify") ||
+        ruleLower.includes("typing") ||
+        ruleLower.includes("subclassification");
+
+      if (isSysmlRefSymbol) {
+        if (entry.name) addReferencedTokenSegments(referencedTokens, entry.name);
+        const refType = meta?.["type"];
+        const refTarget = meta?.["target"];
+        const refReq = meta?.["requirement"];
+        if (typeof refType === "string") addReferencedTokenSegments(referencedTokens, refType);
+        if (typeof refTarget === "string") addReferencedTokenSegments(referencedTokens, refTarget);
+        if (typeof refReq === "string") addReferencedTokenSegments(referencedTokens, refReq);
+        if (spanText) {
+          SYSML_REF_RE.lastIndex = 0;
+          let rm: RegExpExecArray | null;
+          while ((rm = SYSML_REF_RE.exec(spanText)) !== null) {
+            if (rm[1]) addReferencedTokenSegments(referencedTokens, rm[1]);
+          }
+        }
+      }
+    }
+
+    if (meta) {
+      const twin = meta["twin"];
+      const counterpart = meta["counterpart"];
+      const impl = meta["implements"];
+      if (typeof twin === "string") addReferencedTokenSegments(referencedTokens, twin);
+      if (typeof counterpart === "string") addReferencedTokenSegments(referencedTokens, counterpart);
+      if (typeof impl === "string") addReferencedTokenSegments(referencedTokens, impl);
+    }
+
+    if (hasSpan && (ruleLower.includes("annotation") || ruleLower.includes("metadata"))) {
+      TWIN_ATTR_RE.lastIndex = 0;
+      let tm: RegExpExecArray | null;
+      while ((tm = TWIN_ATTR_RE.exec(spanText)) !== null) {
+        if (tm[1]) addReferencedTokenSegments(referencedTokens, tm[1]);
+      }
+    }
+  }
+}
+
+function extractImportsAndRefsFromCst(
+  rootNode: CstNodeLike,
+  src: string,
+  isSysml: boolean,
+  importedNamespaces: Set<string>,
+  referencedTokens: Set<string>,
+): void {
+  const stack: CstNodeLike[] = [rootNode];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!node || isCommentNodeType(node.type) || isStringNodeType(node.type)) continue;
+
+    const lower = node.type.toLowerCase();
+
+    if (node.type === "import_clause" || node.type === "Import" || lower.includes("import")) {
+      const spanText = getCstNodeSpanText(node, src);
+      IMPORT_STMT_RE.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = IMPORT_STMT_RE.exec(spanText)) !== null) {
+        if (m[1]) addImportedNamespaceTarget(importedNamespaces, m[1]);
+      }
+      continue;
+    }
+
+    if (
+      isSysml &&
+      (node.type === "SatisfyRequirementUsage" ||
+        node.type === "VerifyRequirementUsage" ||
+        node.type === "OwnedFeatureTyping" ||
+        node.type === "FeatureTyping" ||
+        node.type === "Subclassification" ||
+        node.type === "OwnedSubsetting" ||
+        node.type === "OwnedRedefinition" ||
+        lower.includes("satisfy") ||
+        lower.includes("verify") ||
+        lower.includes("typing") ||
+        lower.includes("subclassification"))
+    ) {
+      const spanText = getCstNodeSpanText(node, src);
+      SYSML_REF_RE.lastIndex = 0;
+      let rm: RegExpExecArray | null;
+      while ((rm = SYSML_REF_RE.exec(spanText)) !== null) {
+        if (rm[1]) addReferencedTokenSegments(referencedTokens, rm[1]);
+      }
+    }
+
+    if (lower.includes("annotation") || lower.includes("metadata")) {
+      const spanText = getCstNodeSpanText(node, src);
+      TWIN_ATTR_RE.lastIndex = 0;
+      let tm: RegExpExecArray | null;
+      while ((tm = TWIN_ATTR_RE.exec(spanText)) !== null) {
+        if (tm[1]) addReferencedTokenSegments(referencedTokens, tm[1]);
+      }
+      continue;
+    }
+
+    const children = node.children;
+    if (children) {
+      for (let i = children.length - 1; i >= 0; i--) {
+        const ch = children[i];
+        if (ch) stack.push(ch);
+      }
+    }
+  }
+}
+
 function collectDeclaredProjectStandards(
   packageJsonTexts: readonly string[],
   modelText: string,
   allSysmlDocs: readonly SysmlDocSource[],
+  modelRootNode?: CstNodeLike | CstTreeLike | null,
+  modelSymbolIndex?: SymbolIndex | null,
 ): Set<string> {
   const out = new Set<string>();
 
@@ -37,8 +338,7 @@ function collectDeclaredProjectStandards(
       if (Array.isArray(stds)) {
         for (const s of stds) {
           if (typeof s === "string" && s.trim()) {
-            out.add(normalizeLibraryName(s.trim()));
-            out.add(s.trim().toLowerCase());
+            addStandardValue(out, s);
           }
         }
       }
@@ -56,26 +356,32 @@ function collectDeclaredProjectStandards(
     if (Array.isArray(stds)) {
       for (const s of stds) {
         if (typeof s === "string" && s.trim()) {
-          out.add(normalizeLibraryName(s.trim()));
-          out.add(s.trim().toLowerCase());
+          addStandardValue(out, s);
         }
       }
     }
   }
 
-  const scanProfileAnnotations = (src: string): void => {
-    const profileRe = /@(?:ComplianceProfile|Standard)\s*\(\s*["']([^"']+)["']/g;
-    let m: RegExpExecArray | null;
-    while ((m = profileRe.exec(src)) !== null) {
-      if (m[1]) {
-        out.add(normalizeLibraryName(m[1]));
-        out.add(m[1].toLowerCase());
-      }
+  const collectFromSource = (
+    src: string,
+    rootNodeOrTree?: CstNodeLike | CstTreeLike | null,
+    symbolIndex?: SymbolIndex | null,
+  ): void => {
+    const cstRoot = unwrapCstRoot(rootNodeOrTree);
+    if (symbolIndex) {
+      extractProfileAnnotationsFromSymbolIndex(symbolIndex, src, out);
+    }
+    if (cstRoot) {
+      extractProfileAnnotationsFromCst(cstRoot, src, out);
+    }
+    if (!cstRoot && !symbolIndex) {
+      scanProfileAnnotationsText(src, out);
     }
   };
-  scanProfileAnnotations(modelText);
+
+  collectFromSource(modelText, modelRootNode, modelSymbolIndex);
   for (const doc of allSysmlDocs) {
-    scanProfileAnnotations(doc.text);
+    collectFromSource(doc.text, doc.rootNode ?? doc.tree, doc.symbolIndex);
   }
 
   return out;
@@ -85,55 +391,63 @@ function collectImportsAndReferences(
   modelText: string,
   allSysmlDocs: readonly SysmlDocSource[],
   twinAnnotations?: ReadonlyMap<string, string>,
+  modelRootNode?: CstNodeLike | CstTreeLike | null,
+  modelSymbolIndex?: SymbolIndex | null,
 ): { importedNamespaces: Set<string>; referencedTokens: Set<string> } {
   const importedNamespaces = new Set<string>();
   const referencedTokens = new Set<string>();
 
-  const scanText = (text: string, isSysml: boolean): void => {
-    const importRe = /\bimport\s+([a-zA-Z0-9_.:*]+)/g;
+  const scanTextFallback = (text: string, isSysml: boolean): void => {
+    IMPORT_STMT_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
-    while ((m = importRe.exec(text)) !== null) {
-      const target = m[1]!;
-      const rootNs = target.split("::")[0]?.split(".")[0]?.trim();
-      if (rootNs) {
-        importedNamespaces.add(rootNs);
-        importedNamespaces.add(rootNs.toLowerCase());
-      }
+    while ((m = IMPORT_STMT_RE.exec(text)) !== null) {
+      if (m[1]) addImportedNamespaceTarget(importedNamespaces, m[1]);
     }
 
     if (isSysml) {
-      const sysmlRefRe = /(?:\b(?:satisfy|verify)\s+|:\s*|::)([a-zA-Z0-9_.:]+)/g;
+      SYSML_REF_RE.lastIndex = 0;
       let rm: RegExpExecArray | null;
-      while ((rm = sysmlRefRe.exec(text)) !== null) {
-        const tok = rm[1]!;
-        for (const seg of tok.split(/::|\./)) {
-          if (seg) referencedTokens.add(seg.toLowerCase());
-        }
+      while ((rm = SYSML_REF_RE.exec(text)) !== null) {
+        if (rm[1]) addReferencedTokenSegments(referencedTokens, rm[1]);
       }
     }
 
-    const twinRe = /\b(?:twin|counterpart|implements)\s*=\s*["']([^"']+)["']/g;
+    TWIN_ATTR_RE.lastIndex = 0;
     let tm: RegExpExecArray | null;
-    while ((tm = twinRe.exec(text)) !== null) {
-      for (const seg of tm[1]!.split(/::|\./)) {
-        if (seg) referencedTokens.add(seg.toLowerCase());
-      }
+    while ((tm = TWIN_ATTR_RE.exec(text)) !== null) {
+      if (tm[1]) addReferencedTokenSegments(referencedTokens, tm[1]);
     }
   };
 
-  scanText(modelText, false);
+  const collectFromSource = (
+    text: string,
+    isSysml: boolean,
+    rootNodeOrTree?: CstNodeLike | CstTreeLike | null,
+    symbolIndex?: SymbolIndex | null,
+  ): void => {
+    const cstRoot = unwrapCstRoot(rootNodeOrTree);
+    if (symbolIndex) {
+      extractImportsAndRefsFromSymbolIndex(symbolIndex, text, isSysml, importedNamespaces, referencedTokens);
+    }
+    if (cstRoot) {
+      extractImportsAndRefsFromCst(cstRoot, text, isSysml, importedNamespaces, referencedTokens);
+    }
+    if (!cstRoot && !symbolIndex) {
+      scanTextFallback(text, isSysml);
+    }
+  };
+
+  collectFromSource(modelText, false, modelRootNode, modelSymbolIndex);
   for (const doc of allSysmlDocs) {
     // Only scan user workspace SysML files (not stdlib/standard-pack internal files) as consumer references
     if (!doc.uri.includes("modelscript-stdlib://") && !doc.uri.includes("modelscript-stdpack://")) {
-      scanText(doc.text, true);
+      collectFromSource(doc.text, true, doc.rootNode ?? doc.tree, doc.symbolIndex);
     }
   }
 
   if (twinAnnotations) {
     for (const target of twinAnnotations.values()) {
-      for (const seg of target.split(/::|\./)) {
-        if (seg) referencedTokens.add(seg.toLowerCase());
-      }
+      addReferencedTokenSegments(referencedTokens, target);
     }
   }
 
@@ -171,6 +485,8 @@ export function resolveActiveComplianceProfiles(params: {
   packageJsonTexts?: readonly string[] | undefined;
   twinAnnotations?: ReadonlyMap<string, string> | undefined;
   activeStandardOverrides?: ReadonlyMap<string, boolean> | undefined;
+  modelRootNode?: CstNodeLike | CstTreeLike | null | undefined;
+  modelSymbolIndex?: SymbolIndex | null | undefined;
 }): ActiveComplianceResolution {
   const activePackages = new Set<string>();
   const explicitDisabledPackages = new Set<string>();
@@ -181,11 +497,15 @@ export function resolveActiveComplianceProfiles(params: {
     params.packageJsonTexts ?? [],
     params.modelText,
     params.allSysmlDocs,
+    params.modelRootNode,
+    params.modelSymbolIndex,
   );
   const { importedNamespaces, referencedTokens } = collectImportsAndReferences(
     params.modelText,
     params.allSysmlDocs,
     params.twinAnnotations,
+    params.modelRootNode,
+    params.modelSymbolIndex,
   );
 
   for (const pack of globalLibraryRegistry.getStandardPacks()) {

@@ -8,6 +8,15 @@
       "shrinkLevel": 0,
       "converge": false,
       "noAssert": true
+    },
+    "native": {
+      "outFile": "build/kinematics-native.wasm",
+      "sourceMap": false,
+      "optimizeLevel": 3,
+      "shrinkLevel": 0,
+      "converge": false,
+      "noAssert": true,
+      "enable": ["simd"]
     }
   },
   "options": {

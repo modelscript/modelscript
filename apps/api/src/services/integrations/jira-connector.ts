@@ -121,12 +121,19 @@ function parseAdfNode(node: AdfNode): string {
     case "heading": {
       const level = Number(node.attrs?.["level"]);
       const prefix =
-        level === 1 ? "#" :
-        level === 2 ? "##" :
-        level === 3 ? "###" :
-        level === 4 ? "####" :
-        level === 5 ? "#####" :
-        level === 6 ? "######" : "#";
+        level === 1
+          ? "#"
+          : level === 2
+            ? "##"
+            : level === 3
+              ? "###"
+              : level === 4
+                ? "####"
+                : level === 5
+                  ? "#####"
+                  : level === 6
+                    ? "######"
+                    : "#";
       return `${prefix} ${children.join("")}`;
     }
     case "bulletList":
@@ -277,22 +284,16 @@ export class JiraConnector {
   }
 
   async #fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.#timeoutMs);
-    try {
-      return await fetch(url, {
-        ...init,
-        signal: controller.signal,
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          Authorization: this.#getAuthHeader(),
-          ...(init?.headers || {}),
-        },
-      });
-    } finally {
-      clearTimeout(timer);
-    }
+    return await fetch(url, {
+      ...init,
+      signal: AbortSignal.timeout(this.#timeoutMs),
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: this.#getAuthHeader(),
+        ...(init?.headers || {}),
+      },
+    });
   }
 
   /**

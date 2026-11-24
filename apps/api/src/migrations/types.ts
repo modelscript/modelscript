@@ -25,8 +25,11 @@ export interface MigrationContext {
   dialect: DatabaseDialect;
   execute(sql: string, params?: unknown[]): void | Promise<void>;
   query<T = unknown>(sql: string, params?: unknown[]): T[] | Promise<T[]>;
+  getTableColumns(table: string): string[] | Promise<string[]>;
+  addColumnIfNotExists(table: string, column: string, definition: string): void | Promise<void>;
+  dropColumnIfExists(table: string, column: string): void | Promise<void>;
   recreateTable(options: RecreateTableOptions): void;
-  archiveTable(options: string | ArchiveTableOptions): ArchiveTableResult;
+  archiveTable(options: string | ArchiveTableOptions): ArchiveTableResult | Promise<ArchiveTableResult>;
 }
 
 export interface Migration {

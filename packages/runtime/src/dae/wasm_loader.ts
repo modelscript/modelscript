@@ -45,6 +45,20 @@ export function getDefaultWasmExports(): any {
       }
       if (!fsModule || !pathModule) return null;
 
+      // Prefer platform-native wasm2c addon in Node.js unless MODELSCRIPT_BACKEND=wasm
+      const backendPref = process.env["MODELSCRIPT_BACKEND"] ?? "auto";
+      if (backendPref !== "wasm") {
+        try {
+          const nativeAddon = (globalThis as Record<string, unknown>)["__modelscript_native_addon__"] as
+            { runtime?: unknown } | undefined;
+          if (nativeAddon?.runtime) {
+            cachedWasmExports = nativeAddon.runtime;
+            (globalThis as Record<string, unknown>)["__modelscript_wasm_exports__"] = cachedWasmExports;
+            return cachedWasmExports;
+          }
+        } catch {}
+      }
+
       const dir = typeof import.meta.dirname === "string" ? import.meta.dirname : "";
       const candidates = [
         dir ? pathModule.join(dir, "..", "build", "release.wasm") : null,

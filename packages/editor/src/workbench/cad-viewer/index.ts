@@ -11,7 +11,18 @@ export type {
 export { AnimationTimeline } from "./AnimationTimeline";
 export { CadBindingPickerModal } from "./CadBindingPickerModal";
 export { default as CadViewer } from "./CadViewer";
-export type { CadAnnotation, CadComponent, CadPortAnnotation, ProceduralMeshData } from "./CadViewer";
+export type {
+  CadAnnotation,
+  CadComponent,
+  CadPortAnnotation,
+  CadSourceMetadata,
+  CommitAssemblyJointPayload,
+  CommitDimensionPayload,
+  CommitFaceTagPayload,
+  GizmoCommitPayload,
+  GizmoMode,
+  ProceduralMeshData,
+} from "./CadViewer";
 export {
   CaePostProcessDrawer,
   CaeSimulationTree,

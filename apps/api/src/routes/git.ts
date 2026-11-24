@@ -3,7 +3,6 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import type { LibraryDatabase } from "../database.js";
 import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
-import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 import { getGitProvider } from "../util/git-factory.js";
 import { GitLabProvider, GitlabError, gitlabRequest } from "../util/gitlab.js";
 
@@ -17,7 +16,6 @@ function requireGitWriteAuth(req: Request, res: Response, next: NextFunction): v
 
 export function gitRouter(database?: LibraryDatabase): Router {
   const router = Router();
-  router.use(defaultApiLimiter);
   router.use(requireGitWriteAuth);
 
   router.use("/projects/:id", (req: Request, res: Response, next: NextFunction) => {
@@ -154,7 +152,6 @@ export function gitRouter(database?: LibraryDatabase): Router {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
-
 
   /**
    * Get commits

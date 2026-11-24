@@ -394,4 +394,50 @@ echo "[HPC] Execution finished at $(date)."
     }
     this.jobStatus = finalStatus;
   }
+
+  /**
+   * Generates a Slurm `sbatch` script invoking the standalone native `msx-hpc-worker`
+   * binary (wasm2c CPU + Dawn Vulkan / CUDA-HIP FP64) with zero Node.js dependency.
+   */
+  public static generateNativeWorkerSbatch(opts: {
+    jobName: string;
+    partition: string;
+    nodes?: number;
+    ntasks?: number;
+    gpus?: number;
+    gpuVendor?: "nvidia" | "amd" | "vulkan";
+    walltime?: string;
+    workerPath?: string;
+    apptainerImage?: string;
+    extraArgs?: string[];
+  }): string {
+    const nodes = opts.nodes ?? 1;
+    const ntasks = opts.ntasks ?? 1;
+    const gpus = opts.gpus ?? 0;
+    const walltime = opts.walltime ?? "01:00:00";
+    const workerBin = opts.workerPath ?? "msx-hpc-worker";
+    const extra = (opts.extraArgs ?? ["--info", "--selftest"]).join(" ");
+
+    const lines = [
+      "#!/bin/bash",
+      `#SBATCH --job-name=${opts.jobName}`,
+      `#SBATCH --partition=${opts.partition}`,
+      `#SBATCH --nodes=${nodes}`,
+      `#SBATCH --ntasks=${ntasks}`,
+      `#SBATCH --time=${walltime}`,
+    ];
+    if (gpus > 0) {
+      lines.push(`#SBATCH --gpus=${gpus}`);
+    }
+    lines.push("", "set -euo pipefail");
+
+    if (opts.apptainerImage) {
+      const gpuFlag = opts.gpuVendor === "nvidia" ? "--nv" : opts.gpuVendor === "amd" ? "--rocm" : "";
+      lines.push(`srun apptainer exec ${gpuFlag} "${opts.apptainerImage}" ${workerBin} ${extra}`.replace(/\s+/g, " "));
+    } else {
+      lines.push(`srun ${workerBin} ${extra}`);
+    }
+    lines.push("");
+    return lines.join("\n");
+  }
 }

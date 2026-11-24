@@ -2,30 +2,31 @@
 
 import type { NextFunction, Request, Response } from "express";
 import { getClientIp } from "../util/client-ip.js";
-
-interface RegistrationRecord {
-  count: number;
-  resetAt: number;
-}
+import { DistributedCounterBridge } from "./redis-store.js";
 
 /**
- * Sliding-window in-memory IP velocity limiter for registration to block automated bot floods.
+ * Sliding-window IP velocity limiter for registration to block automated bot floods.
+ * Replicates increments/resets to Redis when REDIS_URL is configured.
  */
 export class RegistrationRateLimiter {
-  private readonly attempts = new Map<string, RegistrationRecord>();
+  private readonly counter: DistributedCounterBridge;
   private readonly maxPerHour: number;
   private readonly windowMs: number;
 
   constructor(maxPerHour = 5, windowMs = 60 * 60 * 1000) {
     this.maxPerHour = maxPerHour;
     this.windowMs = windowMs;
+    this.counter = new DistributedCounterBridge({
+      prefix: "rl:register:",
+      windowMs,
+    });
   }
 
   public check(ip: string): { allowed: boolean; remaining: number; resetInMs: number } {
     const now = Date.now();
-    const record = this.attempts.get(ip);
+    const record = this.counter.get(ip, now);
 
-    if (!record || now >= record.resetAt) {
+    if (!record) {
       return { allowed: true, remaining: this.maxPerHour - 1, resetInMs: this.windowMs };
     }
 
@@ -36,34 +37,20 @@ export class RegistrationRateLimiter {
     return { allowed: true, remaining: this.maxPerHour - record.count, resetInMs: record.resetAt - now };
   }
 
-  private static readonly MAX_RECORDS = 10_000;
-
   public record(ip: string): void {
-    const now = Date.now();
-    if (this.attempts.size >= RegistrationRateLimiter.MAX_RECORDS) {
-      for (const [k, v] of this.attempts) {
-        if (now >= v.resetAt) this.attempts.delete(k);
-      }
-      if (this.attempts.size >= RegistrationRateLimiter.MAX_RECORDS) {
-        const oldestKey = this.attempts.keys().next().value;
-        if (oldestKey !== undefined) this.attempts.delete(oldestKey);
-      }
-    }
-    const record = this.attempts.get(ip);
-
-    if (!record || now >= record.resetAt) {
-      this.attempts.set(ip, { count: 1, resetAt: now + this.windowMs });
-    } else {
-      record.count += 1;
-    }
+    this.counter.increment(ip);
   }
 
   public reset(ip?: string): void {
     if (ip) {
-      this.attempts.delete(ip);
+      this.counter.delete(ip);
     } else {
-      this.attempts.clear();
+      this.counter.clear();
     }
+  }
+
+  public shutdown(): void {
+    this.counter.shutdown();
   }
 
   public middleware() {

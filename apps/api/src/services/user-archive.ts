@@ -2,6 +2,7 @@
 
 import AdmZip from "adm-zip";
 import type { LibraryDatabase } from "../database.js";
+import { escapeHtml } from "../util/escape.js";
 
 export interface UserArchiveBundle {
   exportedAt: string;
@@ -128,29 +129,20 @@ export function gatherUserDataBundle(database: LibraryDatabase, userId: number):
   };
 }
 
-function escapeHtmlServer(str: unknown): string {
-  return String(str ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
 /**
  * Builds a Twitter-style offline HTML viewer page.
  * Self-contained: 0 external CDN scripts or stylesheets. Runs completely offline.
  */
 export function buildOfflineViewerHtml(bundle: UserArchiveBundle, instanceName = "Ansatz"): string {
   const jsonPayload = JSON.stringify(bundle).replace(/</g, "\\u003c");
-  const safeBrand = escapeHtmlServer(instanceName || "Ansatz");
+  const safeBrand = escapeHtml(instanceName || "Ansatz");
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${safeBrand} Archive — @${escapeHtmlServer(bundle.user.username)}</title>
+  <title>${safeBrand} Archive — @${escapeHtml(bundle.user.username)}</title>
   <style>
     :root {
       --bg: #0d1117;
@@ -423,10 +415,10 @@ export function buildOfflineViewerHtml(bundle: UserArchiveBundle, instanceName =
     </div>
 
     <div class="user-summary">
-      <div class="user-avatar" id="avatarBox">${bundle.user.avatar_url ? `<img src="${escapeHtmlServer(bundle.user.avatar_url)}" class="user-avatar" alt="" />` : escapeHtmlServer(bundle.user.username.charAt(0).toUpperCase())}</div>
+      <div class="user-avatar" id="avatarBox">${bundle.user.avatar_url ? `<img src="${escapeHtml(bundle.user.avatar_url)}" class="user-avatar" alt="" />` : escapeHtml(bundle.user.username.charAt(0).toUpperCase())}</div>
       <div class="user-names">
-        <div class="display-name">${escapeHtmlServer(bundle.user.display_name || bundle.user.username)}</div>
-        <div class="username">@${escapeHtmlServer(bundle.user.username)}</div>
+        <div class="display-name">${escapeHtml(bundle.user.display_name || bundle.user.username)}</div>
+        <div class="username">@${escapeHtml(bundle.user.username)}</div>
       </div>
     </div>
 

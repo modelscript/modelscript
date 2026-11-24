@@ -51,6 +51,7 @@ export function setCachedPublicKey(
   });
 }
 
+const SIGNATURE_REPLAY_CACHE_MAX_SIZE = 10_000;
 const signatureReplayCache = new Map<string, number>();
 
 export function clearReplayCache(): void {
@@ -62,19 +63,81 @@ function checkAndRecordReplay(sigKey: string, ttlMs = 300_000): boolean {
     return false;
   }
   const now = Date.now();
-  if (signatureReplayCache.size > 10_000) {
-    for (const [k, ts] of signatureReplayCache.entries()) {
-      if (now - ts > ttlMs) {
-        signatureReplayCache.delete(k);
-      }
-    }
-  }
   const prev = signatureReplayCache.get(sigKey);
   if (prev !== undefined && now - prev < ttlMs) {
     return true; // Replay detected
   }
+  if (prev !== undefined) {
+    signatureReplayCache.delete(sigKey);
+  }
+  if (signatureReplayCache.size >= SIGNATURE_REPLAY_CACHE_MAX_SIZE) {
+    for (const [k, ts] of signatureReplayCache.entries()) {
+      if (now - ts >= ttlMs) {
+        signatureReplayCache.delete(k);
+      }
+    }
+    while (signatureReplayCache.size >= SIGNATURE_REPLAY_CACHE_MAX_SIZE) {
+      const oldestKey = signatureReplayCache.keys().next().value;
+      if (oldestKey === undefined) break;
+      signatureReplayCache.delete(oldestKey);
+    }
+  }
   signatureReplayCache.set(sigKey, now);
   return false;
+}
+
+function verifyActorKeyOwnership(
+  keyId: string,
+  actorUrl: URL,
+  actorPayload: Record<string, unknown> | undefined,
+  req: Request,
+): string | null {
+  const keyIdOwner = keyId.split("#")[0] || `${actorUrl.origin}${actorUrl.pathname}`;
+  const payloadId = typeof actorPayload?.["id"] === "string" ? actorPayload["id"] : undefined;
+  const pkObj = actorPayload?.["publicKey"] as { owner?: unknown } | undefined;
+  const pkOwner = typeof pkObj?.owner === "string" ? pkObj.owner : undefined;
+
+  if (payloadId) {
+    try {
+      const parsedId = new URL(payloadId);
+      if (parsedId.origin !== actorUrl.origin) {
+        return "Fetched actor 'id' origin does not match keyId origin";
+      }
+    } catch {
+      return "Fetched actor 'id' is not a valid URL";
+    }
+  }
+
+  if (pkOwner) {
+    try {
+      const parsedOwner = new URL(pkOwner);
+      if (parsedOwner.origin !== actorUrl.origin) {
+        return "Fetched publicKey 'owner' origin does not match keyId origin";
+      }
+    } catch {
+      return "Fetched publicKey 'owner' is not a valid URL";
+    }
+    if (payloadId && pkOwner !== payloadId) {
+      return "Fetched publicKey 'owner' does not match actor 'id'";
+    }
+  }
+
+  const rawBodyActor = req.body?.actor;
+  const bodyActorId =
+    typeof rawBodyActor === "string"
+      ? rawBodyActor
+      : typeof rawBodyActor?.id === "string"
+        ? rawBodyActor.id
+        : undefined;
+
+  if (bodyActorId) {
+    const resolvedOwner = pkOwner || payloadId || keyIdOwner;
+    if (bodyActorId !== resolvedOwner && bodyActorId !== keyIdOwner) {
+      return "Activity 'actor' does not match verified signing key owner";
+    }
+  }
+
+  return null;
 }
 
 export function verifyDigestHeader(headerValue: string | undefined, rawBody: string | Buffer): boolean {
@@ -320,6 +383,10 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
           return;
         }
 
+        if (process.env["NODE_ENV"] === "production" && !params["created"]) {
+          res.status(401).json({ error: "Production RFC 9421 signatures require 'created' timestamp parameter" });
+          return;
+        }
         if (params["created"]) {
           const createdSec = Number(params["created"]);
           const nowSec = Math.floor(Date.now() / 1000);
@@ -455,6 +522,12 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
 
           setCachedPublicKey(actorUrl.href, publicKeyPem, actorPayload);
           setCachedPublicKey(actorBaseUrl, publicKeyPem, actorPayload);
+        }
+
+        const ownershipError = verifyActorKeyOwnership(keyId, actorUrl, actorPayload, req);
+        if (ownershipError) {
+          res.status(401).json({ error: ownershipError });
+          return;
         }
 
         // Build RFC 9421 signature base
@@ -631,8 +704,23 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
         setCachedPublicKey(actorBaseUrl, publicKeyPem, actor);
       }
 
+      const ownershipError = verifyActorKeyOwnership(parts["keyId"], actorUrl, actor, req);
+      if (ownershipError) {
+        res.status(401).json({ error: ownershipError });
+        return;
+      }
+
       // Reconstruct the string to sign
       const headersList = parts["headers"].split(" ");
+
+      if (process.env["NODE_ENV"] === "production") {
+        if (!headersList.includes("(request-target)") || !headersList.includes("host")) {
+          res.status(401).json({
+            error: "Production HTTP signatures require '(request-target)' and 'host' in signed headers",
+          });
+          return;
+        }
+      }
 
       if (req.method === "POST" && process.env["NODE_ENV"] === "production" && !headersList.includes("digest")) {
         res.status(401).json({ error: "POST requests require digest in signed headers" });

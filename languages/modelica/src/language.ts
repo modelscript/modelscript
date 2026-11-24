@@ -1017,7 +1017,7 @@ export const modelicaLanguage = language({
         $["description"]!,
       ),
 
-    base_prefix: () => optional(choice("input", "output", "flow", "stream")),
+    base_prefix: ($) => optional($["type_prefix"]!),
 
     enum_list: ($) => seq($["enumeration_literal"]!, repeat(seq(",", $["enumeration_literal"]!))),
 

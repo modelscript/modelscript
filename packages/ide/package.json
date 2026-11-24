@@ -39,6 +39,7 @@
     "@modelscript/csv": "workspace:*",
     "@modelscript/diagram": "workspace:*",
     "@modelscript/dsl": "workspace:*",
+    "@modelscript/editor": "workspace:*",
     "@modelscript/exchange": "workspace:*",
     "@modelscript/fea": "workspace:*",
     "@modelscript/las": "workspace:*",
@@ -53,10 +54,14 @@
     "@modelscript/simpack": "workspace:*",
     "@modelscript/simulate": "workspace:*",
     "@modelscript/sysml2": "workspace:*",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
+    "@react-three/xr": "^6.6.29",
     "@vscode/debugadapter": "^1.68.0",
     "@vscode/debugprotocol": "^1.68.0",
     "fflate": "^0.8.3",
     "pako": "^2.1.0",
+    "three": "^0.184.0",
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {

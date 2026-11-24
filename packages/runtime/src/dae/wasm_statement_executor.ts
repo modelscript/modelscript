@@ -231,8 +231,31 @@ function lookupFunctionArenaRuntime(arena: DAEBuilder, funcNameId: number, funcN
   return fn;
 }
 
+function isPureScalarWasmExpr(arena: DAEBuilder, exprId: number, depth = 0): boolean {
+  if (exprId < 0 || depth > 32) return false;
+  const kind = arena.getExprKind(exprId);
+  if (kind === ExprKind.RealLiteral || kind === ExprKind.IntLiteral || kind === ExprKind.BoolLiteral) {
+    return true;
+  }
+  if (kind === ExprKind.Name) {
+    const nameStr = arena.interner.resolve(arena.getExprData1(exprId));
+    return Boolean(nameStr && arena.getVarIdxByName(nameStr) >= 0);
+  }
+  if (kind === ExprKind.Negate || kind === ExprKind.Unary) {
+    return isPureScalarWasmExpr(arena, arena.getExprLeft(exprId), depth + 1);
+  }
+  if (kind === ExprKind.Binary) {
+    return (
+      isPureScalarWasmExpr(arena, arena.getExprLeft(exprId), depth + 1) &&
+      isPureScalarWasmExpr(arena, arena.getExprRight(exprId), depth + 1)
+    );
+  }
+  return false;
+}
+
 /**
  * Execute a range of statements from the DAEBuilder.
+ * Uses the compiled AssemblyScript `dae_executeStatements` fast path for pure scalar assignment blocks.
  */
 export function executeArenaStatements(
   arena: DAEBuilder,
@@ -241,6 +264,59 @@ export function executeArenaStatements(
   valuesByStringId: Float64Array,
   functionLookup?: (nameId: number, args: number[]) => number | null,
 ): void {
+  const varCount = arena.varCount;
+  if (!functionLookup && stmtCount > 0 && varCount > 0 && valuesByStringId.length > 0) {
+    const w = arena.exports;
+    const daePtr = arena.ptr;
+    if (
+      w &&
+      daePtr &&
+      typeof w.dae_executeStatements === "function" &&
+      typeof w.alloc === "function" &&
+      typeof w.free === "function"
+    ) {
+      let allPureScalarAssigns = true;
+      for (let s = startStmtIdx; s < startStmtIdx + stmtCount; s++) {
+        if (arena.getStmtKind(s) !== StmtKind.Assignment) {
+          allPureScalarAssigns = false;
+          break;
+        }
+        const targetExprId = arena.getStmtData1(s);
+        const sourceExprId = arena.getStmtLeft(s);
+        if (
+          targetExprId < 0 ||
+          arena.getExprKind(targetExprId) !== ExprKind.Name ||
+          !isPureScalarWasmExpr(arena, targetExprId) ||
+          !isPureScalarWasmExpr(arena, sourceExprId)
+        ) {
+          allPureScalarAssigns = false;
+          break;
+        }
+      }
+      if (allPureScalarAssigns) {
+        const valPtr = w.alloc(varCount * 8);
+        try {
+          const denseView = new Float64Array(w.memory.buffer, valPtr, varCount);
+          for (let v = 0; v < varCount; v++) {
+            const nid = arena.getVarNameId(v);
+            denseView[v] = nid >= 0 && nid < valuesByStringId.length ? valuesByStringId[nid]! : 0;
+          }
+          w.dae_executeStatements(daePtr, startStmtIdx >>> 0, stmtCount >>> 0, valPtr);
+          const outView = new Float64Array(w.memory.buffer, valPtr, varCount);
+          for (let v = 0; v < varCount; v++) {
+            const nid = arena.getVarNameId(v);
+            if (nid >= 0 && nid < valuesByStringId.length) {
+              valuesByStringId[nid] = outView[v]!;
+            }
+          }
+          return;
+        } finally {
+          w.free(valPtr);
+        }
+      }
+    }
+  }
+
   let i = startStmtIdx;
   const endIdx = startStmtIdx + stmtCount;
 

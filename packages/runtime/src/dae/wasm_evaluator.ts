@@ -2793,6 +2793,276 @@ export function evalRawSubscriptIndex(
   return undefined;
 }
 
+const WASM_SCALAR_UNARY_MATH = new Set([
+  "sin",
+  "cos",
+  "tan",
+  "asin",
+  "acos",
+  "atan",
+  "sinh",
+  "cosh",
+  "tanh",
+  "exp",
+  "log",
+  "log10",
+  "sqrt",
+  "abs",
+  "sign",
+  "floor",
+  "ceil",
+]);
+const WASM_SCALAR_UNARY_EXACT = new Set(["noEvent"]);
+const WASM_SCALAR_BINARY_MATH = new Set(["atan2"]);
+const WASM_SCALAR_BINARY_EXACT = new Set(["min", "max", "smooth"]);
+
+function isWasmNumericBinOp(op: BinOp): boolean {
+  return (
+    op === BinOp.Add ||
+    op === BinOp.ElemAdd ||
+    op === BinOp.Sub ||
+    op === BinOp.ElemSub ||
+    op === BinOp.Mul ||
+    op === BinOp.ElemMul ||
+    op === BinOp.Div ||
+    op === BinOp.ElemDiv ||
+    op === BinOp.Pow ||
+    op === BinOp.ElemPow
+  );
+}
+
+function isWasmComparisonBinOp(op: BinOp): boolean {
+  return (
+    op === BinOp.Eq || op === BinOp.Neq || op === BinOp.Lt || op === BinOp.Lte || op === BinOp.Gt || op === BinOp.Gte
+  );
+}
+
+/**
+ * Attempts to evaluate a pure scalar numeric arena expression directly in WASM linear memory
+ * via the compiled `dae_evalExpr` export. Returns `null` if the expression requires the full
+ * TypeScript evaluator (e.g. arrays, strings, booleans, records, `time`, custom functions, or
+ * non-WASM arenas).
+ */
+function tryEvaluateArenaExpressionWasm(
+  dae: DAEBuilder,
+  exprId: number,
+  parameters: Map<string, ArenaValue>,
+  db: QueryDB | undefined,
+  scopeId: SymbolId | undefined,
+  visitedVars: Set<number>,
+  onlyConstants: boolean,
+  functionLookup: ((funcNameId: number, args: ArenaValue[]) => ArenaValue | null) | undefined,
+  callerDae: DAEBuilder | undefined,
+  instancePrefix: string | undefined,
+): number | null {
+  if (typeof process !== "undefined" && process.env?.["MSX_WASM_EVAL"] === "ts") return null;
+  if (exprId < 0 || exprId >= dae.exprCount || dae.ptr === 0) return null;
+  const exp = dae.exports as any;
+  if (
+    !exp ||
+    typeof exp.dae_evalExpr !== "function" ||
+    typeof exp.alloc !== "function" ||
+    typeof exp.free !== "function" ||
+    !exp.memory
+  ) {
+    return null;
+  }
+
+  const slotValues = new Map<number, number>();
+  let maxSlot = -1;
+  const varCount = dae.varCount;
+
+  const validateNumeric = (id: number, depth: number): boolean => {
+    if (id < 0 || id >= dae.exprCount || depth > 128) return false;
+    const k = dae.getExprKind(id);
+
+    if (k === ExprKind.RealLiteral || k === ExprKind.IntLiteral || k === ExprKind.EnumLiteral) {
+      return true;
+    }
+
+    if (k === ExprKind.Name) {
+      const rawId = dae.getExprData1(id);
+      if (rawId < 0 || rawId === 0xffffffff) return false;
+      const name = dae.interner.resolve(rawId);
+      if (!name || name === "time" || name === ":" || name.startsWith("size(") || name.includes("[")) {
+        return false;
+      }
+
+      // Match WASM `DaeBuilder.resolveExprVarId(rawId)` indexing convention:
+      // - `rawId < varCount` indexes `varValues[rawId]` directly.
+      // - `rawId >= varCount` resolves via `lookupVariableByName(rawId)` -> `varIdx`.
+      const vIdx = dae.getVarIdxByName(name);
+      let slot: number;
+      if (rawId < varCount) {
+        slot = rawId;
+      } else {
+        if (vIdx < 0 || dae.getVarNameId(vIdx) !== rawId) return false;
+        slot = vIdx;
+      }
+
+      let val: number;
+      const paramVal = parameters.get(name);
+      if (paramVal !== undefined) {
+        if (typeof paramVal !== "number") return false;
+        val = paramVal;
+      } else {
+        const dotIdx = name.indexOf(".");
+        if (dotIdx > 0) {
+          const root = name.substring(0, dotIdx);
+          if (parameters.has(root) || dae.getVarIdxByName(root) >= 0) {
+            return false;
+          }
+        }
+        if (vIdx < 0) return false;
+        const variability = dae.getVarVariability(vIdx);
+        if (variability === Variability.Constant || (!onlyConstants && variability === Variability.Parameter)) {
+          const bindingExprId = dae.getVarExpression(vIdx);
+          if (typeof bindingExprId === "number" && bindingExprId >= 0) {
+            if (visitedVars.has(vIdx)) return false;
+            visitedVars.add(vIdx);
+            let evalRes: ArenaValue | null;
+            try {
+              evalRes = evaluateArenaExpression(
+                dae,
+                bindingExprId,
+                parameters,
+                db,
+                scopeId,
+                visitedVars,
+                onlyConstants,
+                functionLookup,
+                callerDae,
+                instancePrefix,
+              );
+            } finally {
+              visitedVars.delete(vIdx);
+            }
+            if (evalRes !== null) {
+              if (typeof evalRes !== "number") return false;
+              val = evalRes;
+            } else {
+              val = dae.getVarStartValue(vIdx);
+            }
+          } else {
+            val = dae.getVarStartValue(vIdx);
+          }
+        } else if (dae.isVarFixed(vIdx)) {
+          val = dae.getVarStartValue(vIdx);
+        } else {
+          return false;
+        }
+      }
+
+      const existing = slotValues.get(slot);
+      if (existing !== undefined && !Object.is(existing, val)) return false;
+      slotValues.set(slot, val);
+      if (slot > maxSlot) maxSlot = slot;
+      return true;
+    }
+
+    if (k === ExprKind.Negate) {
+      return validateNumeric(dae.getExprLeft(id), depth + 1);
+    }
+
+    if (k === ExprKind.Unary) {
+      const op = dae.getExprData1(id) as UnaryOp;
+      if (op !== UnaryOp.Negate) return false;
+      return validateNumeric(dae.getExprLeft(id), depth + 1);
+    }
+
+    if (k === ExprKind.Binary) {
+      const op = dae.getExprData1(id) as BinOp;
+      if (!isWasmNumericBinOp(op)) return false;
+      return validateNumeric(dae.getExprLeft(id), depth + 1) && validateNumeric(dae.getExprRight(id), depth + 1);
+    }
+
+    if (k === ExprKind.IfElse) {
+      const condId = dae.getExprData1(id);
+      if (!validateBoolean(condId, depth + 1) && !validateNumeric(condId, depth + 1)) return false;
+      return validateNumeric(dae.getExprLeft(id), depth + 1) && validateNumeric(dae.getExprRight(id), depth + 1);
+    }
+
+    if (k === ExprKind.Call) {
+      if (functionLookup) return false;
+      const funcNameId = dae.getExprData1(id);
+      if (funcNameId < 11) return false;
+      if (dae.functions?.has(funcNameId)) return false;
+      const rawFuncName = dae.interner.resolve(funcNameId);
+      if (!rawFuncName) return false;
+      const argCount = dae.getExprRight(id);
+      const firstArgId = dae.getExprLeft(id);
+
+      if (argCount === 1) {
+        const cleanName = rawFuncName.replace(/^(Modelica\.)?Math\./, "");
+        const supported =
+          WASM_SCALAR_UNARY_MATH.has(cleanName) ||
+          (cleanName === rawFuncName && WASM_SCALAR_UNARY_EXACT.has(rawFuncName));
+        if (!supported) return false;
+        return validateNumeric(firstArgId, depth + 1);
+      }
+
+      if (argCount === 2) {
+        const cleanName = rawFuncName.replace(/^(Modelica\.)?Math\./, "");
+        const supported =
+          WASM_SCALAR_BINARY_MATH.has(cleanName) ||
+          (cleanName === rawFuncName && WASM_SCALAR_BINARY_EXACT.has(rawFuncName));
+        if (!supported) return false;
+        if (id + 1 >= dae.exprCount || dae.getExprKind(id + 1) !== ExprKind.Tuple) return false;
+        const secondArgId = dae.getExprLeft(id + 1);
+        return validateNumeric(firstArgId, depth + 1) && validateNumeric(secondArgId, depth + 1);
+      }
+
+      return false;
+    }
+
+    return false;
+  };
+
+  const validateBoolean = (id: number, depth: number): boolean => {
+    if (id < 0 || id >= dae.exprCount || depth > 128) return false;
+    const k = dae.getExprKind(id);
+    if (k === ExprKind.BoolLiteral) return true;
+    if (k === ExprKind.Unary && (dae.getExprData1(id) as UnaryOp) === UnaryOp.Not) {
+      const child = dae.getExprLeft(id);
+      return validateBoolean(child, depth + 1) || validateNumeric(child, depth + 1);
+    }
+    if (k === ExprKind.Binary) {
+      const op = dae.getExprData1(id) as BinOp;
+      if (isWasmComparisonBinOp(op)) {
+        return validateNumeric(dae.getExprLeft(id), depth + 1) && validateNumeric(dae.getExprRight(id), depth + 1);
+      }
+      if (op === BinOp.And || op === BinOp.Or) {
+        const l = dae.getExprLeft(id);
+        const r = dae.getExprRight(id);
+        return (
+          (validateBoolean(l, depth + 1) || validateNumeric(l, depth + 1)) &&
+          (validateBoolean(r, depth + 1) || validateNumeric(r, depth + 1))
+        );
+      }
+    }
+    return false;
+  };
+
+  if (!validateNumeric(exprId, 0)) return null;
+
+  const bufLen = maxSlot + 1;
+  if (bufLen <= 0) {
+    return exp.dae_evalExpr(dae.ptr, exprId, 0);
+  }
+
+  const valPtr = exp.alloc(bufLen * 8);
+  try {
+    const view = new Float64Array(exp.memory.buffer, valPtr, bufLen);
+    view.fill(0);
+    for (const [slot, val] of slotValues) {
+      view[slot] = val;
+    }
+    return exp.dae_evalExpr(dae.ptr, exprId, valPtr);
+  } finally {
+    exp.free(valPtr);
+  }
+}
+
 /**
  * Recursively evaluates an expression tree stored in a {@link DAEBuilder} into a concrete {@link ArenaValue}.
  *
@@ -2829,6 +3099,20 @@ export function evaluateArenaExpression(
   instancePrefix?: string,
 ): ArenaValue | null {
   if (exprId < 0) return null;
+
+  const wasmVal = tryEvaluateArenaExpressionWasm(
+    dae,
+    exprId,
+    parameters,
+    db,
+    scopeId,
+    visitedVars,
+    onlyConstants,
+    functionLookup,
+    callerDae,
+    instancePrefix,
+  );
+  if (wasmVal !== null) return wasmVal;
 
   const kind = dae.getExprKind(exprId);
 

@@ -1281,4 +1281,127 @@ export function registerMiscEndpoints(context: LspContext) {
       return generateGensysMultibodyReport({ ...params, modelName });
     },
   );
+
+  // ── MQTT Co-Simulation Participant Registry ──────────────────────────
+  interface MqttParticipantVariable {
+    name: string;
+    causality: "input" | "output" | "parameter" | "local";
+    type: string;
+    unit?: string | undefined;
+    start?: number | undefined;
+    description?: string | undefined;
+  }
+
+  interface MqttParticipantRecord {
+    participantId: string;
+    modelName: string;
+    type: string;
+    classKind: string;
+    description?: string | undefined;
+    variables: MqttParticipantVariable[];
+    iconSvg?: string | undefined;
+    timestamp: string;
+    uri?: string | undefined;
+    sessionId?: string | undefined;
+  }
+
+  const mqttParticipants = new Map<string, MqttParticipantRecord>();
+
+  context.connection.onRequest(
+    "modelscript/getMqttParticipants",
+    (params?: { sessionId?: string | undefined }): { participants: MqttParticipantRecord[] } => {
+      const all = Array.from(mqttParticipants.values());
+      const participants = params?.sessionId ? all.filter((p) => p.sessionId === params.sessionId) : all;
+      return { participants };
+    },
+  );
+
+  context.connection.onRequest(
+    "modelscript/publishParticipant",
+    (params: {
+      uri?: string | undefined;
+      sessionId?: string | undefined;
+      participantId?: string | undefined;
+      modelName?: string | undefined;
+      type?: string | undefined;
+      classKind?: string | undefined;
+      description?: string | undefined;
+      variables?: MqttParticipantVariable[] | undefined;
+      iconSvg?: string | undefined;
+    }): { ok: boolean; participantId?: string | undefined; error?: string | undefined } => {
+      if (!params?.uri && !params?.participantId) {
+        return { ok: false, error: "Missing uri or participantId." };
+      }
+
+      const uri = params.uri;
+      let modelName = params.modelName;
+      let classKind = params.classKind ?? "model";
+      const variables: MqttParticipantVariable[] = Array.isArray(params.variables) ? [...params.variables] : [];
+
+      if (uri) {
+        try {
+          const db = context.workspaceManager.unifiedWorkspace.getIndex();
+          for (const entry of db.symbols.values()) {
+            if (entry.resourceId !== uri || !entry.name) continue;
+            const rule = entry.ruleName ?? "";
+            if (
+              !modelName &&
+              (rule === "ClassDefinition" ||
+                rule === "class_definition" ||
+                rule === "PartDefinition" ||
+                rule === "Package")
+            ) {
+              modelName = entry.name;
+              if (typeof entry.metadata?.["classKind"] === "string") {
+                classKind = entry.metadata["classKind"];
+              }
+            }
+            if (
+              variables.length < 256 &&
+              !Array.isArray(params.variables) &&
+              (rule === "ComponentDeclaration" ||
+                rule === "component_declaration" ||
+                rule === "AttributeUsage" ||
+                rule === "PortUsage")
+            ) {
+              const rawCausality = String(entry.metadata?.["causality"] ?? entry.metadata?.["variability"] ?? "local");
+              const causality: MqttParticipantVariable["causality"] =
+                rawCausality === "input" || rawCausality === "output" || rawCausality === "parameter"
+                  ? rawCausality
+                  : "local";
+              variables.push({
+                name: entry.name,
+                causality,
+                type: String(entry.metadata?.["typeName"] ?? entry.metadata?.["type"] ?? "Real"),
+              });
+            }
+          }
+        } catch {
+          // Fallback to URI-derived metadata if workspace index is unavailable
+        }
+      }
+
+      if (!modelName) {
+        modelName = uri ? path.basename(uri, path.extname(uri)) || "Model" : (params.participantId ?? "Model");
+      }
+
+      const participantId = params.participantId ?? (params.sessionId ? `${params.sessionId}:${modelName}` : modelName);
+      const key = uri ?? participantId;
+
+      mqttParticipants.set(key, {
+        participantId,
+        modelName,
+        type: params.type ?? "js-simulator",
+        classKind,
+        description: params.description,
+        variables,
+        iconSvg: params.iconSvg,
+        timestamp: new Date().toISOString(),
+        uri,
+        sessionId: params.sessionId,
+      });
+
+      return { ok: true, participantId };
+    },
+  );
 }

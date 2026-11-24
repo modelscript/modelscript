@@ -11,6 +11,8 @@
  *   - Total Variation Diminishing Runge-Kutta (TVD-RK3) time stepping.
  */
 
+import { getDefaultWasmExports } from "../dae/wasm_loader.js";
+
 export interface HjiProblem {
   /** 1D or 2D grid bounds [xMin, xMax] for each axis */
   bounds: [number, number][];
@@ -64,7 +66,8 @@ export class HjiLevelSetSolver {
   }
 
   /**
-   * Computes spatial derivatives using 5th-order WENO upwind discretization.
+   * Computes spatial derivatives using 5th-order WENO upwind discretization
+   * via `hji_weno5Derivatives` in WASM linear memory.
    */
   public static weno5Derivatives(
     v: Float64Array,
@@ -73,7 +76,27 @@ export class HjiLevelSetSolver {
     dx: number,
     numPts: number,
   ): { derivMinus: number; derivPlus: number } {
-    // Coordinate along this axis (clamped within [0, numPts - 1] so rows/columns never wrap)
+    const w = getDefaultWasmExports();
+    if (
+      w &&
+      typeof w.hji_weno5Derivatives === "function" &&
+      typeof w.alloc === "function" &&
+      typeof w.free === "function" &&
+      v.length > 0
+    ) {
+      const vPtr = w.alloc(v.byteLength);
+      const outPtr = w.alloc(16);
+      try {
+        new Float64Array(w.memory.buffer, vPtr, v.length).set(v);
+        w.hji_weno5Derivatives(vPtr, v.length, idx, stride, dx, numPts, outPtr);
+        const out = new Float64Array(w.memory.buffer, outPtr, 2);
+        return { derivMinus: out[0]!, derivPlus: out[1]! };
+      } finally {
+        w.free(vPtr);
+        w.free(outPtr);
+      }
+    }
+
     const coord = numPts > 0 && stride > 0 ? Math.floor(idx / stride) % numPts : 0;
     const getVal = (offset: number) => {
       const clampedCoord = Math.max(0, Math.min(numPts - 1, coord + offset));
@@ -91,7 +114,6 @@ export class HjiLevelSetSolver {
     const v_p2 = getVal(2);
     const v_p3 = getVal(3);
 
-    // One-sided finite differences
     const dm2 = (v_m2 - v_m3) / dx;
     const dm1 = (v_m1 - v_m2) / dx;
     const d0 = (v_0 - v_m1) / dx;
@@ -99,13 +121,9 @@ export class HjiLevelSetSolver {
     const dp2 = (v_p2 - v_p1) / dx;
     const dp3 = (v_p3 - v_p2) / dx;
 
-    // 5th-order WENO reconstructions
-    const dMinusWeno = HjiLevelSetSolver.weno5Combine(dm2, dm1, d0, dp1, dp2);
-    const dPlusWeno = HjiLevelSetSolver.weno5Combine(dp3, dp2, dp1, d0, dm1);
-
     return {
-      derivMinus: dMinusWeno,
-      derivPlus: dPlusWeno,
+      derivMinus: HjiLevelSetSolver.weno5Combine(dm2, dm1, d0, dp1, dp2),
+      derivPlus: HjiLevelSetSolver.weno5Combine(dp3, dp2, dp1, d0, dm1),
     };
   }
 
@@ -147,85 +165,167 @@ export class HjiLevelSetSolver {
     const uCandidates = [controlBounds[0], controlBounds[1]];
     const wCandidates = [disturbanceBounds[0], disturbanceBounds[1]];
 
-    const eulerForwardOperator = (stageV: Float64Array, stepDt: number): Float64Array => {
-      const outV = new Float64Array(totalPts);
-      const pt = new Array<number>(dims);
-      const pAvg = new Float64Array(dims);
-      const dMinus = new Float64Array(dims);
-      const dPlus = new Float64Array(dims);
+    const w = getDefaultWasmExports();
+    const useWasm = Boolean(
+      w &&
+      typeof w.hji_weno5SweepAll === "function" &&
+      typeof w.hji_tvdRk3Combine === "function" &&
+      typeof w.alloc === "function" &&
+      typeof w.free === "function" &&
+      totalPts > 0 &&
+      dims > 0,
+    );
 
-      for (let idx = 0; idx < totalPts; idx++) {
-        getPoint(idx, pt);
+    // Pre-allocate persistent WASM linear-memory scratch buffers for the entire solve
+    let vPtr = 0;
+    let v0Ptr = 0;
+    let ePtr = 0;
+    let outPtr = 0;
+    let stridesPtr = 0;
+    let dxPtr = 0;
+    let countsPtr = 0;
+    let dMinusAllPtr = 0;
+    let dPlusAllPtr = 0;
 
-        for (let d = 0; d < dims; d++) {
-          const weno = HjiLevelSetSolver.weno5Derivatives(stageV, idx, strides[d]!, dx[d]!, gridCounts[d]!);
-          pAvg[d] = 0.5 * (weno.derivMinus + weno.derivPlus);
-          dMinus[d] = weno.derivMinus;
-          dPlus[d] = weno.derivPlus;
+    if (useWasm) {
+      vPtr = w.alloc(totalPts * 8);
+      v0Ptr = w.alloc(totalPts * 8);
+      ePtr = w.alloc(totalPts * 8);
+      outPtr = w.alloc(totalPts * 8);
+      stridesPtr = w.alloc(dims * 4);
+      dxPtr = w.alloc(dims * 8);
+      countsPtr = w.alloc(dims * 4);
+      dMinusAllPtr = w.alloc(totalPts * dims * 8);
+      dPlusAllPtr = w.alloc(totalPts * dims * 8);
+
+      new Float64Array(w.memory.buffer, v0Ptr, totalPts).set(V0);
+      new Int32Array(w.memory.buffer, stridesPtr, dims).set(strides);
+      new Float64Array(w.memory.buffer, dxPtr, dims).set(dx);
+      new Int32Array(w.memory.buffer, countsPtr, dims).set(gridCounts);
+    }
+
+    try {
+      const eulerForwardOperator = (stageV: Float64Array, stepDt: number): Float64Array => {
+        const outV = new Float64Array(totalPts);
+        const pt = new Array<number>(dims);
+        const pAvg = new Float64Array(dims);
+        const dMinus = new Float64Array(dims);
+        const dPlus = new Float64Array(dims);
+
+        let dMinusGrid: Float64Array | null = null;
+        let dPlusGrid: Float64Array | null = null;
+        if (useWasm) {
+          new Float64Array(w.memory.buffer, vPtr, totalPts).set(stageV);
+          w.hji_weno5SweepAll(vPtr, totalPts, dims, stridesPtr, dxPtr, countsPtr, dMinusAllPtr, dPlusAllPtr);
+          dMinusGrid = new Float64Array(w.memory.buffer, dMinusAllPtr, totalPts * dims);
+          dPlusGrid = new Float64Array(w.memory.buffer, dPlusAllPtr, totalPts * dims);
         }
 
-        // Optimal Hamiltonian: min_{u} max_{w} (p^T f(x, u, w))
-        let minMaxHamiltonian = Infinity;
-        const alpha = new Float64Array(dims);
+        for (let idx = 0; idx < totalPts; idx++) {
+          getPoint(idx, pt);
 
-        for (const u of uCandidates) {
-          let maxOverW = -Infinity;
-          for (const w of wCandidates) {
-            const fVec = f(pt, u, w);
-            let term = 0;
+          if (dMinusGrid && dPlusGrid) {
+            const base = idx * dims;
             for (let d = 0; d < dims; d++) {
-              const fd = fVec[d] ?? 0;
-              const absFd = Math.abs(fd);
-              if (absFd > alpha[d]!) alpha[d] = absFd;
-              term += pAvg[d]! * fd;
+              const dm = dMinusGrid[base + d]!;
+              const dp = dPlusGrid[base + d]!;
+              pAvg[d] = 0.5 * (dm + dp);
+              dMinus[d] = dm;
+              dPlus[d] = dp;
             }
-            if (term > maxOverW) maxOverW = term;
+          } else {
+            for (let d = 0; d < dims; d++) {
+              const weno = HjiLevelSetSolver.weno5Derivatives(stageV, idx, strides[d]!, dx[d]!, gridCounts[d]!);
+              pAvg[d] = 0.5 * (weno.derivMinus + weno.derivPlus);
+              dMinus[d] = weno.derivMinus;
+              dPlus[d] = weno.derivPlus;
+            }
           }
-          if (maxOverW < minMaxHamiltonian) {
-            minMaxHamiltonian = maxOverW;
+
+          // Optimal Hamiltonian: min_{u} max_{w} (p^T f(x, u, w))
+          let minMaxHamiltonian = Infinity;
+          const alpha = new Float64Array(dims);
+
+          for (const u of uCandidates) {
+            let maxOverW = -Infinity;
+            for (const wCand of wCandidates) {
+              const fVec = f(pt, u, wCand);
+              let term = 0;
+              for (let d = 0; d < dims; d++) {
+                const fd = fVec[d] ?? 0;
+                const absFd = Math.abs(fd);
+                if (absFd > alpha[d]!) alpha[d] = absFd;
+                term += pAvg[d]! * fd;
+              }
+              if (term > maxOverW) maxOverW = term;
+            }
+            if (maxOverW < minMaxHamiltonian) {
+              minMaxHamiltonian = maxOverW;
+            }
+          }
+
+          // Lax-Friedrichs dissipative numerical flux
+          let dissipation = 0.0;
+          for (let d = 0; d < dims; d++) {
+            dissipation += 0.5 * alpha[d]! * (dPlus[d]! - dMinus[d]!);
+          }
+          const dVdt = -(minMaxHamiltonian - dissipation);
+
+          outV[idx] = stageV[idx]! - stepDt * dVdt;
+        }
+        return outV;
+      };
+
+      const combineStage = (baseV: Float64Array, eulerV: Float64Array, stage: 1 | 2 | 3): Float64Array<ArrayBuffer> => {
+        if (useWasm) {
+          new Float64Array(w.memory.buffer, vPtr, totalPts).set(baseV);
+          new Float64Array(w.memory.buffer, ePtr, totalPts).set(eulerV);
+          w.hji_tvdRk3Combine(vPtr, v0Ptr, ePtr, outPtr, totalPts, stage);
+          const out = new Float64Array(totalPts);
+          out.set(new Float64Array(w.memory.buffer, outPtr, totalPts));
+          return out;
+        }
+        const res = new Float64Array(totalPts);
+        if (stage === 1) {
+          for (let k = 0; k < totalPts; k++) res[k] = Math.min(baseV[k]!, eulerV[k]!);
+        } else if (stage === 2) {
+          for (let k = 0; k < totalPts; k++) res[k] = Math.min(baseV[k]!, 0.75 * baseV[k]! + 0.25 * eulerV[k]!);
+        } else {
+          for (let k = 0; k < totalPts; k++) {
+            res[k] = Math.min(baseV[k]!, V0[k]!, (1.0 / 3.0) * baseV[k]! + (2.0 / 3.0) * eulerV[k]!);
           }
         }
+        return res;
+      };
 
-        // Lax-Friedrichs dissipative numerical flux
-        let dissipation = 0.0;
-        for (let d = 0; d < dims; d++) {
-          dissipation += 0.5 * alpha[d]! * (dPlus[d]! - dMinus[d]!);
-        }
-        const dVdt = -(minMaxHamiltonian - dissipation);
+      let t = 0;
+      while (t < tEnd - 1e-10) {
+        const currentDt = Math.min(dt, tEnd - t);
 
-        outV[idx] = stageV[idx]! - stepDt * dVdt;
+        // 3-stage Shu-Osher TVD-RK3 time stepping with BRT min-with-target enforcement
+        const e1 = eulerForwardOperator(V, currentDt);
+        const v1 = combineStage(V, e1, 1);
+
+        const e2 = eulerForwardOperator(v1, currentDt);
+        const v2 = combineStage(V, e2, 2);
+
+        const e3 = eulerForwardOperator(v2, currentDt);
+        V = combineStage(V, e3, 3);
+
+        t += currentDt;
       }
-      return outV;
-    };
-
-    let t = 0;
-    while (t < tEnd - 1e-10) {
-      const currentDt = Math.min(dt, tEnd - t);
-
-      // 3-stage Shu-Osher TVD-RK3 time stepping with BRT min-with-target enforcement:
-      // Stage 1: V^(1) = min(V, E(V, dt))
-      const e1 = eulerForwardOperator(V, currentDt);
-      const v1 = new Float64Array(totalPts);
-      for (let k = 0; k < totalPts; k++) {
-        v1[k] = Math.min(V[k]!, e1[k]!);
+    } finally {
+      if (useWasm) {
+        w.free(vPtr);
+        w.free(v0Ptr);
+        w.free(ePtr);
+        w.free(outPtr);
+        w.free(stridesPtr);
+        w.free(dxPtr);
+        w.free(countsPtr);
+        w.free(dMinusAllPtr);
+        w.free(dPlusAllPtr);
       }
-
-      // Stage 2: V^(2) = min(V, 3/4 * V + 1/4 * E(V^(1), dt))
-      const e2 = eulerForwardOperator(v1, currentDt);
-      const v2 = new Float64Array(totalPts);
-      for (let k = 0; k < totalPts; k++) {
-        v2[k] = Math.min(V[k]!, 0.75 * V[k]! + 0.25 * e2[k]!);
-      }
-
-      // Stage 3: V^(n+1) = min(V, 1/3 * V + 2/3 * E(V^(2), dt))
-      const e3 = eulerForwardOperator(v2, currentDt);
-      const nextV = new Float64Array(totalPts);
-      for (let k = 0; k < totalPts; k++) {
-        nextV[k] = Math.min(V[k]!, V0[k]!, (1.0 / 3.0) * V[k]! + (2.0 / 3.0) * e3[k]!);
-      }
-
-      V = nextV;
-      t += currentDt;
     }
 
     let unsafePts = 0;

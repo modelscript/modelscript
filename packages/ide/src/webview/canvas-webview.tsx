@@ -18,8 +18,116 @@ import {
   type SurfacePresentationMode,
   type TileLodTier,
 } from "@modelscript/canvas";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import type { EngineeringRotundaProps, RotundaEnvironmentId } from "@modelscript/editor/workbench/vr-rotunda/types.js";
+import React, { Component, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+
+const LazyEngineeringRotunda = React.lazy(async () => {
+  const mod = (await import("@modelscript/editor/workbench/vr-rotunda/EngineeringRotunda.js")) as {
+    default?: React.ComponentType<EngineeringRotundaProps>;
+    EngineeringRotunda?: React.ComponentType<EngineeringRotundaProps>;
+  };
+  const LoadedComponent = mod.EngineeringRotunda ?? mod.default;
+  if (!LoadedComponent) {
+    throw new Error("EngineeringRotunda export not found.");
+  }
+  return { default: LoadedComponent };
+});
+
+interface RotundaErrorBoundaryProps {
+  children: React.ReactNode;
+  onExitTo2D: () => void;
+  onOpenExternalVr: () => void;
+}
+
+interface RotundaErrorBoundaryState {
+  hasError: boolean;
+  message?: string;
+}
+
+class RotundaErrorBoundary extends Component<RotundaErrorBoundaryProps, RotundaErrorBoundaryState> {
+  constructor(props: RotundaErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: unknown): RotundaErrorBoundaryState {
+    return {
+      hasError: true,
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  override componentDidCatch(error: Error, info: React.ErrorInfo): void {
+    console.error("[CanvasWebview] 3D Engineering Rotunda failed to render:", error, info);
+  }
+
+  override render(): React.ReactNode {
+    if (this.state.hasError) {
+      return (
+        <div
+          style={{
+            width: "100vw",
+            height: "100vh",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 14,
+            background: "#050914",
+            color: "#e2e8f0",
+            fontFamily: "system-ui, -apple-system, sans-serif",
+            padding: 24,
+            textAlign: "center",
+          }}
+        >
+          <div style={{ fontSize: 16, fontWeight: 700, color: "#f8fafc" }}>3D Engineering Rotunda Unavailable</div>
+          <div style={{ fontSize: 13, color: "#94a3b8", maxWidth: 460 }}>
+            {this.state.message ?? "WebGL or the 3D spatial workspace could not initialize inside this webview."}
+          </div>
+          <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+            <button
+              type="button"
+              onClick={this.props.onOpenExternalVr}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 8,
+                border: "none",
+                background: "linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%)",
+                color: "#fff",
+                fontWeight: 600,
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              🥽 Open in VR Headset ↗
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                this.setState({ hasError: false });
+                this.props.onExitTo2D();
+              }}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 8,
+                border: "1px solid #334155",
+                background: "#1e293b",
+                color: "#f8fafc",
+                fontWeight: 600,
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              ← Return to 2D Canvas
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 interface VsCodeApi {
   postMessage(message: unknown): void;
@@ -210,11 +318,14 @@ function CanvasWebviewApp(): React.ReactElement {
   const [bus, setBus] = useState<CanvasCommandBus>(() => new CanvasCommandBus(createCanonicalPolyglotDemoBoard()));
   const [doc, setDoc] = useState<CanvasDocument>(() => bus.getDocument());
   const [surfaceMode, setSurfaceMode] = useState<SurfacePresentationMode>("desktop-2d");
+  const [vrEnvironment, setVrEnvironment] = useState<RotundaEnvironmentId>("dark-lab");
   const [simulationTime, setSimulationTime] = useState<number>(0);
   const [viewport, setViewport] = useState(() => ({
     width: window.innerWidth || 1200,
     height: window.innerHeight || 800,
   }));
+  const docRef = useRef<CanvasDocument>(doc);
+  docRef.current = doc;
 
   useEffect(() => {
     const onResize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
@@ -240,6 +351,19 @@ function CanvasWebviewApp(): React.ReactElement {
       window.removeEventListener("message", onMessage);
     };
   }, []);
+
+  // VS Code webviews run in double-nested sandboxed iframes that block WebXR.
+  // Automatically hand off `webxr-vr` to a top-level browser tab while keeping inline 3D Rotunda active.
+  useEffect(() => {
+    if (surfaceMode === "webxr-vr") {
+      vscodeApi.postMessage({
+        type: "openInVr",
+        environment: "dark-lab",
+        title: docRef.current.name,
+        document: docRef.current,
+      });
+    }
+  }, [surfaceMode]);
 
   const persist = useCallback((nextDoc: CanvasDocument) => {
     setDoc(nextDoc);
@@ -284,6 +408,36 @@ function CanvasWebviewApp(): React.ReactElement {
     [bus, persist],
   );
 
+  const handleCreateSpatialWire = useCallback(
+    (sourceTileId: string, targetTileId: string, sourceAnchor = "CADPort") => {
+      const currentDoc = bus.getDocument();
+      const sourceTile = currentDoc.tiles[sourceTileId];
+      const targetTile = currentDoc.tiles[targetTileId];
+      if (!sourceTile || !targetTile) return;
+      const targetAnchor =
+        targetTile.pinnedAnchors?.find((a) => a.kind === "fmi-input" || a.kind === "parameter") ??
+        targetTile.pinnedAnchors?.[0];
+      const kind: CanvasWire["kind"] =
+        targetTile.archetype === "table" || targetAnchor?.kind === "requirement"
+          ? "requirement-trace"
+          : targetAnchor?.kind === "fmi-input" || targetAnchor?.kind === "fmi-output" || targetTile.archetype === "fmu"
+            ? "fmi-signal"
+            : "shared-parameter";
+      const wire: CanvasWire = {
+        id: `wire_spatial_${sourceTileId}_${targetTileId}_${Date.now()}`,
+        kind,
+        source: { tileId: sourceTileId, anchorPath: sourceAnchor },
+        target: { tileId: targetTileId, anchorPath: targetAnchor?.path ?? "in" },
+        origin: "user-authored",
+        status: "synced",
+        liveValue: sourceTile.pinnedAnchors?.[0]?.currentValue ?? "3D CADPort",
+      };
+      const next = bus.execute({ type: "upsertWire", wire });
+      persist(next);
+    },
+    [bus, persist],
+  );
+
   const handleParameterEdit = useCallback(
     (tileId: string, anchorPath: string, numericValue: number) => {
       const result = propagateParameterEdit(bus.getDocument(), {
@@ -315,6 +469,26 @@ function CanvasWebviewApp(): React.ReactElement {
     vscodeApi.postMessage({ type: "exportSsp" });
   }, []);
 
+  const handleExitTo2D = useCallback(() => {
+    setSurfaceMode("desktop-2d");
+    vscodeApi.postMessage({ type: "surfaceModeChanged", mode: "desktop-2d" });
+  }, []);
+
+  const handleOpenExternalVr = useCallback(
+    (opts?: { environment?: RotundaEnvironmentId; activeModelIndex?: number }) => {
+      const env = opts?.environment ?? vrEnvironment;
+      setVrEnvironment(env);
+      vscodeApi.postMessage({
+        type: "openInVr",
+        environment: env,
+        activeModelIndex: opts?.activeModelIndex,
+        title: docRef.current.name,
+        document: docRef.current,
+      });
+    },
+    [vrEnvironment],
+  );
+
   const renderIdeTileContent = useCallback(
     (tile: CanvasTile, lod: TileLodTier, isWebGlLive: boolean): React.ReactNode => {
       if ((tile.archetype === "schematic" || tile.archetype === "fmu") && (lod === "interactive" || lod === "focus")) {
@@ -331,6 +505,135 @@ function CanvasWebviewApp(): React.ReactElement {
     [simulationTime],
   );
 
+  if (surfaceMode === "spatial-3d" || surfaceMode === "webxr-vr") {
+    return (
+      <div
+        style={{
+          position: "relative",
+          width: "100vw",
+          height: "100vh",
+          overflow: "hidden",
+          background: "#050914",
+        }}
+      >
+        {surfaceMode === "webxr-vr" && (
+          <div
+            role="status"
+            style={{
+              position: "absolute",
+              top: 14,
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 60,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "8px 14px",
+              borderRadius: 10,
+              background: "rgba(15, 23, 42, 0.92)",
+              border: "1px solid rgba(56, 189, 248, 0.45)",
+              color: "#e2e8f0",
+              fontFamily: "system-ui, -apple-system, sans-serif",
+              fontSize: 12,
+              boxShadow: "0 8px 24px rgba(0, 0, 0, 0.45)",
+              backdropFilter: "blur(10px)",
+              maxWidth: "92vw",
+              flexWrap: "wrap",
+            }}
+          >
+            <span>🥽 WebXR VR session handed off to external browser tab (sandboxed VS Code webview).</span>
+            <button
+              type="button"
+              onClick={() => handleOpenExternalVr({ environment: vrEnvironment })}
+              style={{
+                padding: "5px 11px",
+                borderRadius: 6,
+                border: "none",
+                background: "linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%)",
+                color: "#fff",
+                fontWeight: 600,
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              Re-open in VR Headset ↗
+            </button>
+            <button
+              type="button"
+              onClick={() => setSurfaceMode("spatial-3d")}
+              style={{
+                padding: "5px 10px",
+                borderRadius: 6,
+                border: "1px solid #334155",
+                background: "#1e293b",
+                color: "#cbd5e1",
+                fontWeight: 500,
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        <RotundaErrorBoundary
+          onExitTo2D={handleExitTo2D}
+          onOpenExternalVr={() => handleOpenExternalVr({ environment: vrEnvironment })}
+        >
+          <Suspense
+            fallback={
+              <div
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 12,
+                  color: "#cbd5e1",
+                  fontFamily: "system-ui, -apple-system, sans-serif",
+                  fontSize: 14,
+                }}
+              >
+                <div>Loading 3D Engineering Rotunda…</div>
+                <button
+                  type="button"
+                  onClick={handleExitTo2D}
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: 6,
+                    border: "1px solid #334155",
+                    background: "#1e293b",
+                    color: "#f8fafc",
+                    fontSize: 12,
+                    cursor: "pointer",
+                  }}
+                >
+                  ← Back to 2D Canvas
+                </button>
+              </div>
+            }
+          >
+            <LazyEngineeringRotunda
+              document={doc}
+              mode="spatial-3d"
+              initialEnvironment={vrEnvironment}
+              simulationTime={simulationTime}
+              onSimulationTimeChange={setSimulationTime}
+              onMoveTile={handleTileMove}
+              onCreateSpatialWire={handleCreateSpatialWire}
+              onExitTo2D={handleExitTo2D}
+              onOpenExternalVr={handleOpenExternalVr}
+              title={doc.name}
+            />
+          </Suspense>
+        </RotundaErrorBoundary>
+      </div>
+    );
+  }
+
   return (
     <SpatialCanvas
       document={doc}
@@ -339,7 +642,9 @@ function CanvasWebviewApp(): React.ReactElement {
       surfaceMode={surfaceMode}
       onSurfaceModeChange={(mode) => {
         setSurfaceMode(mode);
-        vscodeApi.postMessage({ type: "surfaceModeChanged", mode });
+        if (mode !== "webxr-vr") {
+          vscodeApi.postMessage({ type: "surfaceModeChanged", mode });
+        }
       }}
       simulationTime={simulationTime}
       simulationEndTime={10}

@@ -20,6 +20,150 @@
  *    where alpha_m = exp(a_m * Delta t), beta_m = (c_m / a_m) * (exp(a_m * Delta t) - 1)
  */
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
+import { WasmScratchPool, type WasmMemoryHost, type WasmScratchScope } from "@modelscript/solve";
+
+interface FdLineWasmExports extends WasmMemoryHost {
+  fd_line_compute_gc?: (y0: number, yPolesPtr: number, yResPtr: number, nY: number, dt: number) => number;
+  fd_line_pole_conv?: (
+    polesPtr: number,
+    resPtr: number,
+    statesFromPtr: number,
+    statesToPtr: number,
+    nPoles: number,
+    inFrom: number,
+    inTo: number,
+    dt: number,
+    outSumsPtr: number,
+  ) => void;
+  fd_line_delay_interp?: (bufPtr: number, bufLen: number, writeIdx: number, delaySteps: number, frac: number) => number;
+  fd_line_step?: (
+    yPolesPtr: number,
+    yResPtr: number,
+    nY: number,
+    hPolesPtr: number,
+    hResPtr: number,
+    nH: number,
+    statesYFromPtr: number,
+    statesYToPtr: number,
+    statesHFromPtr: number,
+    statesHToPtr: number,
+    bufferFromPtr: number,
+    bufferToPtr: number,
+    bufLen: number,
+    bufferIdx: number,
+    delaySteps: number,
+    delayFrac: number,
+    gc: number,
+    vFrom: number,
+    vTo: number,
+    dt: number,
+    outIHistPtr: number,
+  ) => number;
+  fd_line_clarke_fwd?: (
+    vfa: number,
+    vfb: number,
+    vfc: number,
+    vta: number,
+    vtb: number,
+    vtc: number,
+    outModalVPtr: number,
+  ) => void;
+  fd_line_clarke_inv?: (
+    if0: number,
+    ifAlpha: number,
+    ifBeta: number,
+    it0: number,
+    itAlpha: number,
+    itBeta: number,
+    outFromPhasePtr: number,
+    outToPhasePtr: number,
+  ) => void;
+  fd_line_overhead_constants?: (
+    freqHz: number,
+    conductorHeightM: number,
+    conductorRadiusM: number,
+    gmrM: number,
+    rDcOhmPerKm: number,
+    soilResistivityOhmM: number,
+    outPtr: number,
+  ) => void;
+  fd_line_modal_overhead_constants?: (
+    freqHz: number,
+    conductorHeightM: number,
+    conductorRadiusM: number,
+    gmrM: number,
+    phaseSpacingM: number,
+    rDcOhmPerKm: number,
+    soilResistivityOhmM: number,
+    outPtr: number,
+  ) => void;
+  fd_line_synthesize_poles?: (
+    numPoles: number,
+    deltaY: number,
+    dcGain: number,
+    pMin: number,
+    pMax: number,
+    outPolesPtr: number,
+    outYResPtr: number,
+    outHResPtr: number,
+  ) => void;
+  fd_line_vector_fit_ls?: (
+    nFreq: number,
+    omegasPtr: number,
+    targetRePtr: number,
+    targetImPtr: number,
+    nPoles: number,
+    polesPtr: number,
+    d0: number,
+    outResPtr: number,
+    scratchPtr: number,
+  ) => number;
+}
+
+const _fdLineScratchPools = new WeakMap<object, WasmScratchPool>();
+function getFdLinePool(wasm: WasmMemoryHost): WasmScratchPool {
+  let pool = _fdLineScratchPools.get(wasm);
+  if (!pool) {
+    pool = new WasmScratchPool(wasm, 65536);
+    _fdLineScratchPools.set(wasm, pool);
+  }
+  return pool;
+}
+
+interface PackedFdPoles {
+  yPoles: Float64Array;
+  yRes: Float64Array;
+  hPoles: Float64Array;
+  hRes: Float64Array;
+}
+
+const _packedFdPoles = new WeakMap<FrequencyDependentLineConfig, PackedFdPoles>();
+function getPackedFdPoles(config: FrequencyDependentLineConfig): PackedFdPoles {
+  let packed = _packedFdPoles.get(config);
+  if (!packed || packed.yPoles.length !== config.yPoles.length || packed.hPoles.length !== config.hPoles.length) {
+    const nY = config.yPoles.length;
+    const nH = config.hPoles.length;
+    const yPoles = new Float64Array(nY);
+    const yRes = new Float64Array(nY);
+    for (let m = 0; m < nY; m++) {
+      const p = config.yPoles[m]!;
+      yPoles[m] = p.pole;
+      yRes[m] = p.residue;
+    }
+    const hPoles = new Float64Array(nH);
+    const hRes = new Float64Array(nH);
+    for (let k = 0; k < nH; k++) {
+      const p = config.hPoles[k]!;
+      hPoles[k] = p.pole;
+      hRes[k] = p.residue;
+    }
+    packed = { yPoles, yRes, hPoles, hRes };
+    _packedFdPoles.set(config, packed);
+  }
+  return packed;
+}
+
 export interface RationalPoleResidue {
   pole: number; // Real or negative real part of pole a_m
   residue: number; // Residue c_m
@@ -62,15 +206,36 @@ export function createFdLineState(config: FrequencyDependentLineConfig, dt: numb
 
   // Compute instantaneous companion conductance G_c:
   // G_c = Y_0 + sum_{m=1}^M [ beta_0_m ] where beta_0_m is the trapezoidal or exact impulse response
-  let gc = config.y0;
-  for (const pr of config.yPoles) {
-    if (Math.abs(pr.pole) > 1e-12) {
-      // Integration of c / (s - a):
-      const alpha = Math.exp(pr.pole * dt);
-      const beta0 = (pr.residue / pr.pole) * (alpha - 1.0);
-      gc += Math.abs(beta0);
-    } else {
-      gc += pr.residue * dt * 0.5;
+  let gc: number | undefined;
+  const nY = config.yPoles.length;
+  const wasm = getDefaultWasmExports() as FdLineWasmExports | null;
+  if (wasm?.fd_line_compute_gc && wasm.memory && nY > 0) {
+    let scope: WasmScratchScope | null = null;
+    try {
+      const packed = getPackedFdPoles(config);
+      scope = getFdLinePool(wasm).scope();
+      const yPolesBuf = scope.allocF64(nY);
+      const yResBuf = scope.allocF64(nY);
+      const mem = wasm.memory.buffer;
+      new Float64Array(mem, yPolesBuf.ptr, nY).set(packed.yPoles);
+      new Float64Array(mem, yResBuf.ptr, nY).set(packed.yRes);
+      gc = wasm.fd_line_compute_gc(config.y0, yPolesBuf.ptr, yResBuf.ptr, nY, dt);
+    } finally {
+      scope?.dispose();
+    }
+  }
+
+  if (gc === undefined) {
+    gc = config.y0;
+    for (const pr of config.yPoles) {
+      if (Math.abs(pr.pole) > 1e-12) {
+        // Integration of c / (s - a):
+        const alpha = Math.exp(pr.pole * dt);
+        const beta0 = (pr.residue / pr.pole) * (alpha - 1.0);
+        gc += Math.abs(beta0);
+      } else {
+        gc += pr.residue * dt * 0.5;
+      }
     }
   }
 
@@ -102,7 +267,92 @@ export function updateFdLine(state: FdLineState, vFrom: number, vTo: number, dt:
   const { config, delaySteps } = state;
   const nY = config.yPoles.length;
   const nH = config.hPoles.length;
+  const bufLen = state.bufferFrom.length;
 
+  const wasm = getDefaultWasmExports() as FdLineWasmExports | null;
+  if (wasm?.fd_line_step && wasm.memory) {
+    let scope: WasmScratchScope | null = null;
+    try {
+      const packed = getPackedFdPoles(config);
+      scope = getFdLinePool(wasm).scope();
+      const yPolesBuf = scope.allocF64(Math.max(1, nY));
+      const yResBuf = scope.allocF64(Math.max(1, nY));
+      const hPolesBuf = scope.allocF64(Math.max(1, nH));
+      const hResBuf = scope.allocF64(Math.max(1, nH));
+      const stYFromBuf = scope.allocF64(Math.max(1, nY));
+      const stYToBuf = scope.allocF64(Math.max(1, nY));
+      const stHFromBuf = scope.allocF64(Math.max(1, nH));
+      const stHToBuf = scope.allocF64(Math.max(1, nH));
+      const bufFromBuf = scope.allocF64(Math.max(1, bufLen));
+      const bufToBuf = scope.allocF64(Math.max(1, bufLen));
+      const outIHistBuf = scope.allocF64(2);
+
+      const memIn = wasm.memory.buffer;
+      if (nY > 0) {
+        new Float64Array(memIn, yPolesBuf.ptr, nY).set(packed.yPoles);
+        new Float64Array(memIn, yResBuf.ptr, nY).set(packed.yRes);
+        new Float64Array(memIn, stYFromBuf.ptr, nY).set(state.statesYFrom);
+        new Float64Array(memIn, stYToBuf.ptr, nY).set(state.statesYTo);
+      }
+      if (nH > 0) {
+        new Float64Array(memIn, hPolesBuf.ptr, nH).set(packed.hPoles);
+        new Float64Array(memIn, hResBuf.ptr, nH).set(packed.hRes);
+        new Float64Array(memIn, stHFromBuf.ptr, nH).set(state.statesHFrom);
+        new Float64Array(memIn, stHToBuf.ptr, nH).set(state.statesHTo);
+      }
+      if (bufLen > 0) {
+        new Float64Array(memIn, bufFromBuf.ptr, bufLen).set(state.bufferFrom);
+        new Float64Array(memIn, bufToBuf.ptr, bufLen).set(state.bufferTo);
+      }
+
+      const nextIdx = wasm.fd_line_step(
+        yPolesBuf.ptr,
+        yResBuf.ptr,
+        nY,
+        hPolesBuf.ptr,
+        hResBuf.ptr,
+        nH,
+        stYFromBuf.ptr,
+        stYToBuf.ptr,
+        stHFromBuf.ptr,
+        stHToBuf.ptr,
+        bufFromBuf.ptr,
+        bufToBuf.ptr,
+        bufLen,
+        state.bufferIdx,
+        delaySteps,
+        0.0,
+        state.gc,
+        vFrom,
+        vTo,
+        dt,
+        outIHistBuf.ptr,
+      );
+
+      const memOut = wasm.memory.buffer;
+      if (nY > 0) {
+        state.statesYFrom.set(new Float64Array(memOut, stYFromBuf.ptr, nY));
+        state.statesYTo.set(new Float64Array(memOut, stYToBuf.ptr, nY));
+      }
+      if (nH > 0) {
+        state.statesHFrom.set(new Float64Array(memOut, stHFromBuf.ptr, nH));
+        state.statesHTo.set(new Float64Array(memOut, stHToBuf.ptr, nH));
+      }
+      if (bufLen > 0) {
+        state.bufferFrom.set(new Float64Array(memOut, bufFromBuf.ptr, bufLen));
+        state.bufferTo.set(new Float64Array(memOut, bufToBuf.ptr, bufLen));
+      }
+      const iHistView = new Float64Array(memOut, outIHistBuf.ptr, 2);
+      state.iHistFrom = iHistView[0]!;
+      state.iHistTo = iHistView[1]!;
+      state.bufferIdx = nextIdx;
+      return;
+    } finally {
+      scope?.dispose();
+    }
+  }
+
+  // TypeScript fallback path
   // 1. Update Characteristic Admittance Y_c recursive convolution
   let iYFrom = 0;
   let iYTo = 0;
@@ -206,13 +456,36 @@ export function computeOverheadLineConstants(
   phaseVelocityKmPerSec: number;
   attenuationNeperPerKm: number;
 } {
-  const mu0 = 4 * Math.PI * 1e-7; // H/m
-  const eps0 = 8.854187817e-12; // F/m
-  const omega = 2 * Math.PI * Math.max(1e-3, freqHz);
   const rho = geom.soilResistivityOhmM ?? 100.0;
   const h = Math.max(1.0, geom.conductorHeightM);
   const r = Math.max(1e-4, geom.conductorRadiusM);
   const gmr = geom.gmrM ?? 0.7788 * r;
+
+  const wasm = getDefaultWasmExports() as FdLineWasmExports | null;
+  if (wasm?.fd_line_overhead_constants && wasm.memory) {
+    let scope: WasmScratchScope | null = null;
+    try {
+      scope = getFdLinePool(wasm).scope();
+      const outBuf = scope.allocF64(6);
+      wasm.fd_line_overhead_constants(freqHz, h, r, gmr, geom.rDcOhmPerKm, rho, outBuf.ptr);
+      const out = new Float64Array(wasm.memory.buffer, outBuf.ptr, 6);
+      return {
+        rOhmPerKm: out[0]!,
+        lHPerKm: out[1]!,
+        cFPerKm: out[2]!,
+        zcMagOhm: out[3]!,
+        phaseVelocityKmPerSec: out[4]!,
+        attenuationNeperPerKm: out[5]!,
+      };
+    } finally {
+      scope?.dispose();
+    }
+  }
+
+  // TypeScript fallback path
+  const mu0 = 4 * Math.PI * 1e-7; // H/m
+  const eps0 = 8.854187817e-12; // F/m
+  const omega = 2 * Math.PI * Math.max(1e-3, freqHz);
 
   // 1. Conductor skin effect: delta_c = sqrt(rho_c / (pi * f * mu_0))
   // High-frequency AC resistance rises as sqrt(f) above ~60 Hz
@@ -274,14 +547,49 @@ export function computeOverheadLineConstants(
  * separating the Positive/Aerial mode (Z_1 = Z_s - Z_m, C_1) from the Zero/Ground mode (Z_0 = Z_s + 2*Z_m, C_0).
  */
 export function computeModalOverheadLineConstants(geom: TowerGeometryConfig, freqHz: number): ModalLineConstantsResult {
-  const mu0 = 4 * Math.PI * 1e-7;
-  const eps0 = 8.854187817e-12;
-  const omega = 2 * Math.PI * Math.max(1e-3, freqHz);
   const rho = geom.soilResistivityOhmM ?? 100.0;
   const h = Math.max(1.0, geom.conductorHeightM);
   const r = Math.max(1e-4, geom.conductorRadiusM);
   const gmr = geom.gmrM ?? 0.7788 * r;
   const dEq = Math.max(2.5 * r, geom.phaseSpacingM ?? 8.0);
+
+  const wasm = getDefaultWasmExports() as FdLineWasmExports | null;
+  if (wasm?.fd_line_modal_overhead_constants && wasm.memory) {
+    let scope: WasmScratchScope | null = null;
+    try {
+      scope = getFdLinePool(wasm).scope();
+      const outBuf = scope.allocF64(16);
+      wasm.fd_line_modal_overhead_constants(freqHz, h, r, gmr, dEq, geom.rDcOhmPerKm, rho, outBuf.ptr);
+      const out = new Float64Array(wasm.memory.buffer, outBuf.ptr, 16);
+      return {
+        positiveMode: {
+          rOhmPerKm: out[0]!,
+          lHPerKm: out[1]!,
+          cFPerKm: out[2]!,
+          zcMagOhm: out[3]!,
+          phaseVelocityKmPerSec: out[4]!,
+          attenuationNeperPerKm: out[5]!,
+        },
+        zeroMode: {
+          rOhmPerKm: out[6]!,
+          lHPerKm: out[7]!,
+          cFPerKm: out[8]!,
+          zcMagOhm: out[9]!,
+          phaseVelocityKmPerSec: out[10]!,
+          attenuationNeperPerKm: out[11]!,
+        },
+        zSelfOhmPerKm: { re: out[12]!, im: out[13]! },
+        zMutualOhmPerKm: { re: out[14]!, im: out[15]! },
+      };
+    } finally {
+      scope?.dispose();
+    }
+  }
+
+  // TypeScript fallback path
+  const mu0 = 4 * Math.PI * 1e-7;
+  const eps0 = 8.854187817e-12;
+  const omega = 2 * Math.PI * Math.max(1e-3, freqHz);
 
   const skinRatio = Math.sqrt(1.0 + Math.pow(freqHz / 120.0, 1.0));
   const rCondPerKm = geom.rDcOhmPerKm * skinRatio;
@@ -357,6 +665,71 @@ export function computeModalOverheadLineConstants(geom: TowerGeometryConfig, fre
   };
 }
 
+function synthesizeLogPolesPair(
+  numPoles: number,
+  deltaY: number,
+  dcGain: number,
+  pMin: number,
+  pMax: number,
+): { yPoles: RationalPoleResidue[]; hPoles: RationalPoleResidue[] } {
+  const yPoles: RationalPoleResidue[] = [];
+  const hPoles: RationalPoleResidue[] = [];
+  if (numPoles <= 0) {
+    return { yPoles, hPoles };
+  }
+
+  const wasm = getDefaultWasmExports() as FdLineWasmExports | null;
+  if (wasm?.fd_line_synthesize_poles && wasm.memory) {
+    let scope: WasmScratchScope | null = null;
+    try {
+      scope = getFdLinePool(wasm).scope();
+      const polesBuf = scope.allocF64(numPoles);
+      const yResBuf = scope.allocF64(numPoles);
+      const hResBuf = scope.allocF64(numPoles);
+      wasm.fd_line_synthesize_poles(numPoles, deltaY, dcGain, pMin, pMax, polesBuf.ptr, yResBuf.ptr, hResBuf.ptr);
+      const mem = wasm.memory.buffer;
+      const polesView = new Float64Array(mem, polesBuf.ptr, numPoles);
+      const yResView = new Float64Array(mem, yResBuf.ptr, numPoles);
+      const hResView = new Float64Array(mem, hResBuf.ptr, numPoles);
+      for (let m = 0; m < numPoles; m++) {
+        const pole = polesView[m]!;
+        yPoles.push({ pole, residue: yResView[m]! });
+        hPoles.push({ pole, residue: hResView[m]! });
+      }
+      return { yPoles, hPoles };
+    } finally {
+      scope?.dispose();
+    }
+  }
+
+  // TypeScript fallback path
+  let weightSum = 0;
+  const poles: number[] = [];
+  for (let m = 0; m < numPoles; m++) {
+    const frac = numPoles > 1 ? m / (numPoles - 1) : 0.5;
+    const pole = -pMin * Math.pow(pMax / pMin, frac);
+    poles.push(pole);
+    weightSum += 1.0 / (m + 1);
+  }
+
+  for (let m = 0; m < numPoles; m++) {
+    const pole = poles[m]!;
+    const w = 1.0 / (m + 1) / weightSum;
+    // For Y_c(s) = y0 + sum( c_m / (s - p_m) ), at s = 0: sum( -c_m / p_m ) = deltaY -> c_m = -deltaY * w * p_m
+    yPoles.push({
+      pole,
+      residue: -deltaY * w * pole,
+    });
+    // For H(s) = sum( r_k / (s - p_k) ), at s = 0: sum( -r_k / p_k ) = dcGain -> r_k = -dcGain * w * p_k > 0
+    hPoles.push({
+      pole,
+      residue: -dcGain * w * pole,
+    });
+  }
+
+  return { yPoles, hPoles };
+}
+
 /**
  * Synthesizes a passive, frequency-dependent rational pole/residue model (`FrequencyDependentLineConfig`)
  * directly from physical overhead tower geometry using logarithmic multi-frequency sampling (50 Hz to 50 kHz)
@@ -378,37 +751,12 @@ export function synthesizeFdLineFromTower(
   const yLow = 1.0 / Math.max(1.0, lf.zcMagOhm);
 
   // Distribute stable real poles logarithmically from 100 rad/s to 2e5 rad/s
-  const yPoles: RationalPoleResidue[] = [];
-  const hPoles: RationalPoleResidue[] = [];
   const pMin = 2 * Math.PI * 30;
   const pMax = 2 * Math.PI * 25000;
 
   const deltaY = yLow - y0;
   const dcTransmissionGain = Math.exp(-lf.attenuationNeperPerKm * geom.lengthKm);
-
-  let weightSum = 0;
-  const poles: number[] = [];
-  for (let m = 0; m < numPoles; m++) {
-    const frac = numPoles > 1 ? m / (numPoles - 1) : 0.5;
-    const pole = -pMin * Math.pow(pMax / pMin, frac);
-    poles.push(pole);
-    weightSum += 1.0 / (m + 1);
-  }
-
-  for (let m = 0; m < numPoles; m++) {
-    const pole = poles[m]!;
-    const w = 1.0 / (m + 1) / weightSum;
-    // For Y_c(s) = y0 + sum( c_m / (s - p_m) ), at s = 0: sum( -c_m / p_m ) = deltaY -> c_m = -deltaY * w * p_m
-    yPoles.push({
-      pole,
-      residue: -deltaY * w * pole,
-    });
-    // For H(s) = sum( r_k / (s - p_k) ), at s = 0: sum( -r_k / p_k ) = dcTransmissionGain -> r_k = -dcTransmissionGain * w * p_k > 0
-    hPoles.push({
-      pole,
-      residue: -dcTransmissionGain * w * pole,
-    });
-  }
+  const { yPoles, hPoles } = synthesizeLogPolesPair(numPoles, deltaY, dcTransmissionGain, pMin, pMax);
 
   return {
     id,
@@ -474,22 +822,7 @@ export function synthesizeModalThreePhaseFdLine(
 
     const pMin = 2 * Math.PI * 30;
     const pMax = 2 * Math.PI * 25000;
-    const yPoles: RationalPoleResidue[] = [];
-    const hPoles: RationalPoleResidue[] = [];
-    let weightSum = 0;
-    const poles: number[] = [];
-    for (let m = 0; m < numPoles; m++) {
-      const frac = numPoles > 1 ? m / (numPoles - 1) : 0.5;
-      const pole = -pMin * Math.pow(pMax / pMin, frac);
-      poles.push(pole);
-      weightSum += 1.0 / (m + 1);
-    }
-    for (let m = 0; m < numPoles; m++) {
-      const pole = poles[m]!;
-      const w = 1.0 / (m + 1) / weightSum;
-      yPoles.push({ pole, residue: -deltaY * w * pole });
-      hPoles.push({ pole, residue: -dcGain * w * pole });
-    }
+    const { yPoles, hPoles } = synthesizeLogPolesPair(numPoles, deltaY, dcGain, pMin, pMax);
     return {
       id: modeId,
       fromNode: -1,
@@ -561,6 +894,53 @@ export function updateModalFdLine(state: ModalThreePhaseFdLineState, vVec: Float
   const vtb = ntb >= 0 ? vVec[ntb]! : 0;
   const vtc = ntc >= 0 ? vVec[ntc]! : 0;
 
+  const wasm = getDefaultWasmExports() as FdLineWasmExports | null;
+  if (wasm?.fd_line_clarke_fwd && wasm.fd_line_clarke_inv && wasm.memory) {
+    let scope: WasmScratchScope | null = null;
+    try {
+      scope = getFdLinePool(wasm).scope();
+      const modalVBuf = scope.allocF64(6);
+
+      wasm.fd_line_clarke_fwd(vfa, vfb, vfc, vta, vtb, vtc, modalVBuf.ptr);
+      const mv = new Float64Array(wasm.memory.buffer, modalVBuf.ptr, 6);
+      const vf0 = mv[0]!;
+      const vfAlpha = mv[1]!;
+      const vfBeta = mv[2]!;
+      const vt0 = mv[3]!;
+      const vtAlpha = mv[4]!;
+      const vtBeta = mv[5]!;
+
+      // Release scratch scope before calling updateFdLine (which acquires its own scope)
+      scope.dispose();
+      scope = null;
+
+      updateFdLine(state.mode0, vf0, vt0, dt);
+      updateFdLine(state.modeAlpha, vfAlpha, vtAlpha, dt);
+      updateFdLine(state.modeBeta, vfBeta, vtBeta, dt);
+
+      scope = getFdLinePool(wasm).scope();
+      const invFromBuf = scope.allocF64(3);
+      const invToBuf = scope.allocF64(3);
+      wasm.fd_line_clarke_inv(
+        state.mode0.iHistFrom,
+        state.modeAlpha.iHistFrom,
+        state.modeBeta.iHistFrom,
+        state.mode0.iHistTo,
+        state.modeAlpha.iHistTo,
+        state.modeBeta.iHistTo,
+        invFromBuf.ptr,
+        invToBuf.ptr,
+      );
+      const memOut = wasm.memory.buffer;
+      state.iHistFromPhase.set(new Float64Array(memOut, invFromBuf.ptr, 3));
+      state.iHistToPhase.set(new Float64Array(memOut, invToBuf.ptr, 3));
+      return;
+    } finally {
+      scope?.dispose();
+    }
+  }
+
+  // TypeScript fallback path
   const invSqrt3 = 1.0 / Math.sqrt(3.0);
   const sqrt2Over3 = Math.sqrt(2.0 / 3.0);
   const invSqrt2 = 1.0 / Math.sqrt(2.0);

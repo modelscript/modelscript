@@ -14,6 +14,7 @@ import type { CfdMeshPayload } from "./cad-viewer/cfd-mesh-renderer";
 import type { CommitDimensionPayload } from "./cad-viewer/dimension-handles";
 import type { FeaMeshPayload } from "./cad-viewer/fea-mesh-renderer";
 import { extractCadComponents } from "./cad-viewer/parse-cad-annotations";
+import { registerSharedVsCodeApi } from "./cad-viewer/vr-mode";
 
 const vscode = (
   window as unknown as {
@@ -24,6 +25,8 @@ const vscode = (
     };
   }
 ).acquireVsCodeApi?.();
+
+registerSharedVsCodeApi(vscode);
 
 function App() {
   const [components, setComponents] = useState<CadComponent[]>([]);
@@ -286,6 +289,15 @@ function App() {
         feaPayload={feaPayload}
         qifOverlay={qifOverlay}
         verificationOverlay={verificationOverlay}
+        enableVr={true}
+        onOpenExternalVr={() => {
+          vscode?.postMessage({
+            type: "openInVr",
+            environment: "dark-lab",
+            kind: feaPayload ? "fea" : cfdPayload ? "cfd" : "cad",
+            title: "3D CAD Viewer",
+          });
+        }}
       />
     </div>
   );

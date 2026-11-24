@@ -91,26 +91,48 @@ export class SdpSolver {
   }
 
   /**
-   * Cholesky decomposition A = L * L^T.
+   * Cholesky decomposition A = L * L^T via AssemblyScript `sdp_cholesky`.
    * Returns L matrix or null if A is not positive definite.
    */
   public static cholesky(A: number[][]): number[][] | null {
     const n = A.length;
-    const L: number[][] = [];
-    for (let i = 0; i < n; i++) {
-      L.push(new Array<number>(n).fill(0));
+    if (n === 0) return [];
+
+    const wasm = getDefaultWasmExports();
+    if (wasm && typeof wasm.sdp_cholesky === "function" && typeof wasm.__new === "function") {
+      const scope = getSdpPool(wasm).scope();
+      try {
+        const aSlice = scope.allocF64(n * n);
+        const lSlice = scope.allocF64(n * n);
+        const aView = aSlice.view();
+        for (let i = 0; i < n; i++) {
+          const row = A[i];
+          const off = i * n;
+          for (let j = 0; j < n; j++) aView[off + j] = row?.[j] ?? 0;
+        }
+        const ok: number = wasm.sdp_cholesky(n, aSlice.ptr, lSlice.ptr);
+        if (ok !== 1) return null;
+        const lView = lSlice.view();
+        const L: number[][] = new Array(n);
+        for (let i = 0; i < n; i++) {
+          const off = i * n;
+          L[i] = Array.from(lView.subarray(off, off + n));
+        }
+        return L;
+      } finally {
+        scope.dispose();
+      }
     }
 
+    const L: number[][] = [];
+    for (let i = 0; i < n; i++) L.push(new Array<number>(n).fill(0));
     for (let i = 0; i < n; i++) {
       for (let j = 0; j <= i; j++) {
         let sum = 0;
-        for (let k = 0; k < j; k++) {
-          sum += (L[i]![k] ?? 0) * (L[j]![k] ?? 0);
-        }
-
+        for (let k = 0; k < j; k++) sum += (L[i]![k] ?? 0) * (L[j]![k] ?? 0);
         if (i === j) {
           const val = (A[i]![i] ?? 0) - sum;
-          if (val <= 1e-12) return null; // Not positive definite
+          if (val <= 1e-12) return null;
           L[i]![j] = Math.sqrt(val);
         } else {
           const l_jj = L[j]![j] ?? 1.0;
@@ -127,7 +149,7 @@ export class SdpSolver {
    */
   public static projectPsdCone(X: number[][], eps = 1e-8): number[][] {
     const n = X.length;
-    const wasm: any = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports();
     if (wasm && typeof wasm.sdp_project_psd_cone === "function" && typeof wasm.__new === "function" && n > 0) {
       const scope = getSdpPool(wasm).scope();
       try {
@@ -399,6 +421,82 @@ export class SdpSolver {
         dualS: [],
         dualityGap: 0,
       };
+    }
+
+    const wasm = getDefaultWasmExports();
+    if (wasm && typeof wasm.sdp_solveAdmmWasm === "function" && typeof wasm.__new === "function") {
+      const scope = getSdpPool(wasm).scope();
+      try {
+        const nn = n * n;
+        const cSlice = scope.allocF64(nn);
+        const aSlice = scope.allocF64(Math.max(1, m * nn));
+        const bSlice = scope.allocF64(Math.max(1, m));
+        const xOutSlice = scope.allocF64(nn);
+        const yOutSlice = scope.allocF64(Math.max(1, m));
+        const sOutSlice = scope.allocF64(nn);
+        const statsOutSlice = scope.allocF64(4);
+
+        const cView = cSlice.view();
+        for (let i = 0; i < n; i++) {
+          const row = C[i];
+          const off = i * n;
+          for (let j = 0; j < n; j++) cView[off + j] = row?.[j] ?? 0;
+        }
+        const aView = aSlice.view();
+        for (let k = 0; k < m; k++) {
+          const Ak = A[k];
+          const kOff = k * nn;
+          for (let i = 0; i < n; i++) {
+            const row = Ak?.[i];
+            const off = kOff + i * n;
+            for (let j = 0; j < n; j++) aView[off + j] = row?.[j] ?? 0;
+          }
+        }
+        const bView = bSlice.view();
+        for (let i = 0; i < m; i++) bView[i] = b[i] ?? 0;
+
+        const statusCode: number = wasm.sdp_solveAdmmWasm(
+          n,
+          m,
+          cSlice.ptr,
+          aSlice.ptr,
+          bSlice.ptr,
+          maxIter,
+          tol,
+          xOutSlice.ptr,
+          yOutSlice.ptr,
+          sOutSlice.ptr,
+          statsOutSlice.ptr,
+        );
+
+        const xView = xOutSlice.view();
+        const yView = yOutSlice.view();
+        const sView = sOutSlice.view();
+        const statsView = statsOutSlice.view();
+
+        const X: number[][] = new Array(n);
+        const S: number[][] = new Array(n);
+        for (let i = 0; i < n; i++) {
+          const off = i * n;
+          X[i] = Array.from(xView.subarray(off, off + n));
+          S[i] = Array.from(sView.subarray(off, off + n));
+        }
+        const dualY: number[] = m > 0 ? Array.from(yView.subarray(0, m)) : [];
+        const status: SdpResult["status"] = statusCode === 2 ? "OPTIMAL" : statusCode === 1 ? "FEASIBLE" : "INFEASIBLE";
+
+        return {
+          status,
+          X,
+          primalObj: statsView[0]!,
+          iterations: statsView[1]!,
+          residual: statsView[2]!,
+          dualY,
+          dualS: S,
+          dualityGap: statsView[3]!,
+        };
+      } finally {
+        scope.dispose();
+      }
     }
 
     const Csym: number[][] = Array.from({ length: n }, (_, i) =>

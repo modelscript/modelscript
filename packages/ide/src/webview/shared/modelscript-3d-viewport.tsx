@@ -2,8 +2,9 @@
 
 import { ContactShadows, Environment, GizmoHelper, GizmoViewport, Grid, OrbitControls } from "@react-three/drei";
 import { Canvas, useThree } from "@react-three/fiber";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type * as THREE from "three";
+import VrMode, { VrButton, getSharedVsCodeApi } from "../cad-viewer/vr-mode.js";
 
 export interface CameraState {
   position: [number, number, number];
@@ -19,6 +20,10 @@ export interface ModelScript3DViewportProps {
   showGrid?: boolean | undefined;
   showGizmo?: boolean | undefined;
   showShadows?: boolean | undefined;
+  enableVr?: boolean | undefined;
+  onOpenExternalVr?: (() => void) | undefined;
+  vrTitle?: string | undefined;
+  vrKind?: string | undefined;
   fallbackTitle?: string | undefined;
   fallbackDetails?: string | undefined;
   style?: React.CSSProperties | undefined;
@@ -96,6 +101,10 @@ export const ModelScript3DViewport: React.FC<ModelScript3DViewportProps> = ({
   showGrid = true,
   showGizmo = true,
   showShadows = true,
+  enableVr = true,
+  onOpenExternalVr,
+  vrTitle,
+  vrKind,
   fallbackTitle = "3D Viewport (WebGL Suspended)",
   fallbackDetails = "The WebGL graphics context is temporarily suspended or unsupported in this browser environment.",
   style,
@@ -104,6 +113,20 @@ export const ModelScript3DViewport: React.FC<ModelScript3DViewportProps> = ({
   const [contextLost, setContextLost] = useState<boolean>(false);
   const [webglSupported] = useState<boolean>(() => isWebGLAvailable());
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const resolvedOpenExternalVr = useMemo<(() => void) | undefined>(() => {
+    if (onOpenExternalVr) return onOpenExternalVr;
+    const api = getSharedVsCodeApi();
+    if (!api) return undefined;
+    return () => {
+      api.postMessage({
+        type: "openInVr",
+        environment: "dark-lab",
+        title: vrTitle,
+        kind: vrKind,
+      });
+    };
+  }, [onOpenExternalVr, vrTitle, vrKind]);
 
   const handleContextLost = useCallback((event: Event) => {
     event.preventDefault();
@@ -214,40 +237,44 @@ export const ModelScript3DViewport: React.FC<ModelScript3DViewportProps> = ({
           domElement.addEventListener("webglcontextrestored", handleContextRestored, false);
         }}
       >
-        <ambientLight intensity={dark ? 0.65 : 0.85} />
-        <directionalLight position={[60, 80, 50]} intensity={1.2} castShadow />
-        <directionalLight position={[-40, -20, -30]} intensity={0.4} />
+        <VrMode enabled={enableVr}>
+          <ambientLight intensity={dark ? 0.65 : 0.85} />
+          <directionalLight position={[60, 80, 50]} intensity={1.2} castShadow />
+          <directionalLight position={[-40, -20, -30]} intensity={0.4} />
 
-        {showGrid && (
-          <Grid
-            infiniteGrid
-            cellSize={2}
-            cellThickness={0.6}
-            cellColor={dark ? "#333338" : "#d4d4d8"}
-            sectionSize={10}
-            sectionThickness={1.2}
-            sectionColor={dark ? "#52525b" : "#a1a1aa"}
-            fadeDistance={250}
-            fadeStrength={1.5}
-          />
-        )}
+          {showGrid && (
+            <Grid
+              infiniteGrid
+              cellSize={2}
+              cellThickness={0.6}
+              cellColor={dark ? "#333338" : "#d4d4d8"}
+              sectionSize={10}
+              sectionThickness={1.2}
+              sectionColor={dark ? "#52525b" : "#a1a1aa"}
+              fadeDistance={250}
+              fadeStrength={1.5}
+            />
+          )}
 
-        {showShadows && (
-          <ContactShadows position={[0, -0.05, 0]} opacity={dark ? 0.45 : 0.25} scale={120} blur={2} far={10} />
-        )}
+          {showShadows && (
+            <ContactShadows position={[0, -0.05, 0]} opacity={dark ? 0.45 : 0.25} scale={120} blur={2} far={10} />
+          )}
 
-        <CameraPersistenceController initialCameraState={cameraState} onCameraChange={onCameraChange} />
+          <CameraPersistenceController initialCameraState={cameraState} onCameraChange={onCameraChange} />
 
-        {showGizmo && (
-          <GizmoHelper alignment="bottom-right" margin={[70, 70]}>
-            <GizmoViewport axisColors={["#ef4444", "#22c55e", "#3b82f6"]} labelColor="#ffffff" />
-          </GizmoHelper>
-        )}
+          {showGizmo && (
+            <GizmoHelper alignment="bottom-right" margin={[70, 70]}>
+              <GizmoViewport axisColors={["#ef4444", "#22c55e", "#3b82f6"]} labelColor="#ffffff" />
+            </GizmoHelper>
+          )}
 
-        <Environment preset="city" />
+          <Environment preset="city" />
 
-        {children}
+          {children}
+        </VrMode>
       </Canvas>
+
+      {(enableVr || resolvedOpenExternalVr) && <VrButton onOpenExternalVr={resolvedOpenExternalVr} />}
     </div>
   );
 };

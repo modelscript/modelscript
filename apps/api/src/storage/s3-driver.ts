@@ -91,33 +91,53 @@ export class S3StorageDriver implements StorageDriver {
 
   async list(prefix = ""): Promise<string[]> {
     const fullPrefix = this.#fullKey(prefix);
-    const query = new URLSearchParams({ "list-type": "2", prefix: fullPrefix });
-    query.sort();
-    const baseUrl =
-      this.#config.forcePathStyle !== false ||
-      this.#endpoint.includes("localhost") ||
-      this.#endpoint.includes("127.0.0.1")
-        ? `${this.#endpoint}/${this.#bucket}`
-        : (() => {
-            const urlObj = new URL(this.#endpoint);
-            return `${urlObj.protocol}//${this.#bucket}.${urlObj.host}/`;
-          })();
-    const url = `${baseUrl}?${query.toString()}`;
-    const headers = this.#sign("GET", url, Buffer.alloc(0));
+    const baseUrl = this.#isPathStyle()
+      ? `${this.#endpoint}/${this.#bucket}`
+      : (() => {
+          const urlObj = new URL(this.#endpoint);
+          return `${urlObj.protocol}//${this.#bucket}.${urlObj.host}/`;
+        })();
 
-    const res = await fetch(url, { method: "GET", headers });
-    if (!res.ok) return [];
-
-    const xml = await res.text();
-    const keyMatches = xml.matchAll(/<Key>(.*?)<\/Key>/g);
     const keys: string[] = [];
+    let continuationToken: string | undefined;
+    const decodeXml = (s: string) =>
+      s
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'");
 
-    for (const match of keyMatches) {
-      let key = match[1]!;
-      if (this.#keyPrefix && key.startsWith(this.#keyPrefix)) {
-        key = key.slice(this.#keyPrefix.length);
+    for (let page = 0; page < 1000; page++) {
+      const params: Record<string, string> = { "list-type": "2", prefix: fullPrefix };
+      if (continuationToken) {
+        params["continuation-token"] = continuationToken;
       }
-      keys.push(key);
+      const query = new URLSearchParams(params);
+      query.sort();
+
+      const url = `${baseUrl}?${query.toString()}`;
+      const headers = this.#sign("GET", url, Buffer.alloc(0));
+
+      const res = await fetch(url, { method: "GET", headers });
+      if (!res.ok) break;
+
+      const xml = await res.text();
+      const keyMatches = xml.matchAll(/<Key>(.*?)<\/Key>/g);
+      for (const match of keyMatches) {
+        let key = decodeXml(match[1]!);
+        if (this.#keyPrefix && key.startsWith(this.#keyPrefix)) {
+          key = key.slice(this.#keyPrefix.length);
+        }
+        keys.push(key);
+      }
+
+      const isTruncated = /<IsTruncated>\s*true\s*<\/IsTruncated>/i.test(xml);
+      const nextTokenMatch = xml.match(/<NextContinuationToken>(.*?)<\/NextContinuationToken>/);
+      if (!isTruncated || !nextTokenMatch?.[1]) {
+        break;
+      }
+      continuationToken = decodeXml(nextTokenMatch[1]);
     }
 
     return keys.sort();
@@ -146,14 +166,25 @@ export class S3StorageDriver implements StorageDriver {
       if (!res.ok) return null;
 
       const size = parseInt(res.headers.get("content-length") || "0", 10);
+      const sha256Meta = res.headers.get("x-amz-meta-sha256")?.trim();
       const etag = res.headers.get("etag")?.replace(/['"]/g, "") || "";
       const contentType = res.headers.get("content-type") || undefined;
       const lastModifiedStr = res.headers.get("last-modified");
       const lastModified = lastModifiedStr ? new Date(lastModifiedStr) : undefined;
 
+      const contentHash = sha256Meta
+        ? sha256Meta.startsWith("sha256:")
+          ? sha256Meta
+          : `sha256:${sha256Meta}`
+        : etag.startsWith("sha256:")
+          ? etag
+          : etag
+            ? `etag:${etag}`
+            : "";
+
       return {
         size,
-        contentHash: etag.startsWith("sha256:") ? etag : `sha256:${etag}`,
+        contentHash,
         contentType,
         lastModified,
       };
@@ -167,9 +198,15 @@ export class S3StorageDriver implements StorageDriver {
     return `${this.#keyPrefix}${clean}`;
   }
 
+  #isPathStyle(): boolean {
+    return Boolean(
+      this.#config.forcePathStyle || this.#endpoint.includes("localhost") || this.#endpoint.includes("127.0.0.1"),
+    );
+  }
+
   #buildUrl(key: string): string {
     const full = this.#fullKey(key);
-    if (this.#config.forcePathStyle || this.#endpoint.includes("localhost") || this.#endpoint.includes("127.0.0.1")) {
+    if (this.#isPathStyle()) {
       return `${this.#endpoint}/${this.#bucket}/${encodeURIComponent(full).replace(/%2F/g, "/")}`;
     }
     // Virtual hosted style: https://bucket.s3.region.amazonaws.com/key

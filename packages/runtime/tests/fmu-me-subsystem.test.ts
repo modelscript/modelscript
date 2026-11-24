@@ -5,7 +5,7 @@ import {
   FmuSubsystemRegistry,
   ModelExchangeFmuSubsystem,
   createCoSimFromModelExchange,
-} from "../src/simulation/wasm_fmu_subsystem.js";
+} from "../src/simulation/fmu_subsystem.js";
 
 console.log("=== Running Model Exchange Subsystem & Co-Simulation Adapter Tests ===");
 

@@ -28,20 +28,21 @@ interface CmaEsWasmExports {
   memory: WebAssembly.Memory;
   __new(bytes: number, id: number): number;
   __pin?(ptr: number): void;
-  cmaEsUpdateCovarianceWasm(
+  cmaEsUpdateCovarianceWasm?(
     n: number,
     mu: number,
     cPtr: number,
+    bPtr: number,
+    dPtr: number,
+    eigValsPtr: number,
     pCPtr: number,
     yMuPtr: number,
     weightsPtr: number,
     cOldFactor: number,
     c1: number,
     cMu: number,
-    bPtr: number,
-    dPtr: number,
-    eigValsPtr: number,
-  ): number;
+  ): void;
+  jacobiEigendecompositionWasm?(aInPtr: number, n: number, vPtr: number, dPtr: number, maxSweeps: number): void;
 }
 
 interface CmaEsWasmScratch {
@@ -184,6 +185,22 @@ function jacobiEigendecomposition(
   d: Float64Array,
   maxSweeps = 50,
 ): void {
+  if (n >= 8) {
+    const wasm = getDefaultWasmExports() as CmaEsWasmExports | null;
+    if (wasm && typeof wasm.jacobiEigendecompositionWasm === "function") {
+      const s = ensureCmaEsScratch(wasm, n, 1);
+      if (s) {
+        const nn = n * n;
+        new Float64Array(wasm.memory.buffer, s.cPtr, nn).set(A_in.subarray(0, nn));
+        wasm.jacobiEigendecompositionWasm(s.cPtr, n, s.bPtr, s.eigValsPtr, maxSweeps);
+        const outBuf = wasm.memory.buffer;
+        V.set(new Float64Array(outBuf, s.bPtr, nn));
+        d.set(new Float64Array(outBuf, s.eigValsPtr, n));
+        return;
+      }
+    }
+  }
+
   // Copy A_in into working matrix A
   const A = new Float64Array(A_in);
 

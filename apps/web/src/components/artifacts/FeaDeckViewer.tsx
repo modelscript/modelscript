@@ -23,9 +23,11 @@ import { DraftingTriangleIcon } from "../icons";
 import Spinner from "../Spinner";
 import AutoThumbnailCapture from "./AutoThumbnailCapture";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
+import { registerArtifactRotundaGeometry } from "./RotundaGeometryBridge";
 import SafeOrbitControls from "./SafeOrbitControls";
 import { CameraController } from "./simulation-result";
 import ViewportCameraControls, { type CameraPreset, type ClipAxis, type RenderMode } from "./ViewportCameraControls";
+import { XrSceneBridge, XrViewportOverlay } from "./XrViewportOverlay";
 
 export interface FeaDeckViewerProps {
   artifactId?: number | undefined;
@@ -1347,6 +1349,34 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
     [parsedDeck, colorBy, selectedSetKey, deformed],
   );
 
+  useEffect(() => {
+    const bridgeKey =
+      (artifactId !== undefined && artifactId !== 0 ? artifactId : undefined) ??
+      (viewConfig.artifactId !== undefined &&
+      String(viewConfig.artifactId).trim() !== "" &&
+      String(viewConfig.artifactId) !== "0"
+        ? viewConfig.artifactId
+        : undefined) ??
+      (typeof viewConfig.url === "string" && viewConfig.url.trim().length > 0 ? viewConfig.url.trim() : undefined);
+
+    if (!scene3D || bridgeKey === undefined) return;
+    const posAttr = scene3D.solidGeometry.getAttribute("position");
+    if (!posAttr || posAttr.count === 0) return;
+
+    const edgeAttr = scene3D.edgeGeometry.getAttribute("position");
+    const wireframePositions =
+      edgeAttr && edgeAttr.array instanceof Float32Array && edgeAttr.array.length >= 6
+        ? new Float32Array(edgeAttr.array)
+        : undefined;
+
+    // Retain snapshot across unmount (LRU-capped in registry) so switching to VR Rotunda renders the live FEA mesh
+    registerArtifactRotundaGeometry(bridgeKey, {
+      kind: "fea-mesh",
+      geometry: scene3D.solidGeometry.clone(),
+      ...(wireframePositions ? { wireframePositions } : {}),
+    });
+  }, [artifactId, viewConfig.artifactId, viewConfig.url, scene3D]);
+
   const effectiveViewMode: FeaViewMode =
     viewMode === "3d" && scene3D
       ? "3d"
@@ -1763,159 +1793,162 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
                 artifactId={artifactId}
                 hasThumbnail={Boolean(viewConfig.thumbnailUrl || viewConfig.thumbnail_url)}
               />
-              <ambientLight intensity={0.65} />
-              <directionalLight position={[30, 45, 35]} intensity={1.15} />
-              <directionalLight position={[-25, -20, -30]} intensity={0.45} />
+              <XrSceneBridge>
+                <ambientLight intensity={0.65} />
+                <directionalLight position={[30, 45, 35]} intensity={1.15} />
+                <directionalLight position={[-25, -20, -30]} intensity={0.45} />
 
-              <group>
-                {/* Solid / X-Ray / Wireframe Finite Element Mesh */}
-                <mesh
-                  geometry={scene3D.solidGeometry}
-                  onPointerMove={handlePointerMove3D}
-                  onPointerOut={() => setHoverProbe(null)}
-                >
-                  <meshStandardMaterial
-                    vertexColors
-                    roughness={0.38}
-                    metalness={0.18}
-                    wireframe={renderMode === "wireframe"}
-                    transparent={renderMode === "xray" || Boolean(selectedSetKey)}
-                    opacity={renderMode === "xray" ? 0.38 : selectedSetKey ? 0.88 : 0.96}
-                    side={THREE.DoubleSide}
-                    clippingPlanes={clippingPlanes}
-                    polygonOffset
-                    polygonOffsetFactor={1}
-                    polygonOffsetUnits={1}
-                  />
-                </mesh>
-
-                {/* Crisp True Hex/Tet Element Perimeter Wireframe Edges */}
-                {showMeshEdges && renderMode !== "wireframe" && (
-                  <lineSegments geometry={scene3D.edgeGeometry}>
-                    <lineBasicMaterial
-                      color={colorBy === "stress" || colorBy === "quality" ? "#0f172a" : "#bae6fd"}
-                      transparent
-                      opacity={colorBy === "stress" || colorBy === "quality" ? 0.68 : 0.78}
+                <group>
+                  {/* Solid / X-Ray / Wireframe Finite Element Mesh */}
+                  <mesh
+                    geometry={scene3D.solidGeometry}
+                    onPointerMove={handlePointerMove3D}
+                    onPointerOut={() => setHoverProbe(null)}
+                  >
+                    <meshStandardMaterial
+                      vertexColors
+                      roughness={0.38}
+                      metalness={0.18}
+                      wireframe={renderMode === "wireframe"}
+                      transparent={renderMode === "xray" || Boolean(selectedSetKey)}
+                      opacity={renderMode === "xray" ? 0.38 : selectedSetKey ? 0.88 : 0.96}
+                      side={THREE.DoubleSide}
                       clippingPlanes={clippingPlanes}
+                      polygonOffset
+                      polygonOffsetFactor={1}
+                      polygonOffsetUnits={1}
                     />
-                  </lineSegments>
-                )}
+                  </mesh>
 
-                {/* Undeformed Ghost Wireframe Overlay when Deformed Mode is Active */}
-                {deformed && scene3D.ghostEdgeGeometry && (
-                  <lineSegments geometry={scene3D.ghostEdgeGeometry}>
-                    <lineBasicMaterial color="#64748b" transparent opacity={0.45} clippingPlanes={clippingPlanes} />
-                  </lineSegments>
-                )}
+                  {/* Crisp True Hex/Tet Element Perimeter Wireframe Edges */}
+                  {showMeshEdges && renderMode !== "wireframe" && (
+                    <lineSegments geometry={scene3D.edgeGeometry}>
+                      <lineBasicMaterial
+                        color={colorBy === "stress" || colorBy === "quality" ? "#0f172a" : "#bae6fd"}
+                        transparent
+                        opacity={colorBy === "stress" || colorBy === "quality" ? 0.68 : 0.78}
+                        clippingPlanes={clippingPlanes}
+                      />
+                    </lineSegments>
+                  )}
 
-                {/* 1D Beam / Truss Elements */}
-                {scene3D.beamGeometry && (
-                  <lineSegments geometry={scene3D.beamGeometry}>
-                    <lineBasicMaterial color="#38bdf8" clippingPlanes={clippingPlanes} />
-                  </lineSegments>
-                )}
+                  {/* Undeformed Ghost Wireframe Overlay when Deformed Mode is Active */}
+                  {deformed && scene3D.ghostEdgeGeometry && (
+                    <lineSegments geometry={scene3D.ghostEdgeGeometry}>
+                      <lineBasicMaterial color="#64748b" transparent opacity={0.45} clippingPlanes={clippingPlanes} />
+                    </lineSegments>
+                  )}
 
-                {/* 3D Nodal Vertices */}
-                {showNodeDots &&
-                  parsedDeck.nodes.slice(0, 500).map((n) => {
-                    const pos = scene3D.normalizedNodePositions.get(n.id);
-                    if (!pos) return null;
-                    const isFixed = parsedDeck.fixedNodes.has(n.id);
-                    const isLoaded = parsedDeck.nodalLoads.has(n.id);
-                    const inSelectedNset =
-                      selectedSetKey?.startsWith("NSET:") &&
-                      parsedDeck.nodeSets.get(selectedSetKey.slice(5))?.ids.has(n.id);
-                    return (
-                      <mesh key={`node-${n.id}`} position={pos}>
-                        <sphereGeometry args={[inSelectedNset ? 0.55 : isFixed || isLoaded ? 0.42 : 0.28, 10, 10]} />
-                        <meshBasicMaterial
-                          color={inSelectedNset ? "#fde047" : isLoaded ? "#f43f5e" : isFixed ? "#06b6d4" : "#e2e8f0"}
-                        />
-                      </mesh>
-                    );
-                  })}
+                  {/* 1D Beam / Truss Elements */}
+                  {scene3D.beamGeometry && (
+                    <lineSegments geometry={scene3D.beamGeometry}>
+                      <lineBasicMaterial color="#38bdf8" clippingPlanes={clippingPlanes} />
+                    </lineSegments>
+                  )}
 
-                {/* 3D Fixed Boundary Support Cones & Force Vector Arrows */}
-                {showBcLoads && (
-                  <group>
-                    {Array.from(parsedDeck.fixedNodes.entries()).map(([nid]) => {
-                      const pos = scene3D.normalizedNodePositions.get(nid);
+                  {/* 3D Nodal Vertices */}
+                  {showNodeDots &&
+                    parsedDeck.nodes.slice(0, 500).map((n) => {
+                      const pos = scene3D.normalizedNodePositions.get(n.id);
                       if (!pos) return null;
+                      const isFixed = parsedDeck.fixedNodes.has(n.id);
+                      const isLoaded = parsedDeck.nodalLoads.has(n.id);
+                      const inSelectedNset =
+                        selectedSetKey?.startsWith("NSET:") &&
+                        parsedDeck.nodeSets.get(selectedSetKey.slice(5))?.ids.has(n.id);
                       return (
-                        <mesh key={`bc-${nid}`} position={[pos[0], pos[1] - 0.75, pos[2]]}>
-                          <coneGeometry args={[0.72, 1.35, 4]} />
-                          <meshStandardMaterial color="#06b6d4" emissive="#0891b2" emissiveIntensity={0.35} />
+                        <mesh key={`node-${n.id}`} position={pos}>
+                          <sphereGeometry args={[inSelectedNset ? 0.55 : isFixed || isLoaded ? 0.42 : 0.28, 10, 10]} />
+                          <meshBasicMaterial
+                            color={inSelectedNset ? "#fde047" : isLoaded ? "#f43f5e" : isFixed ? "#06b6d4" : "#e2e8f0"}
+                          />
                         </mesh>
                       );
                     })}
 
-                    {Array.from(parsedDeck.nodalLoads.entries()).map(([nid, fVec]) => {
-                      const pos = scene3D.normalizedNodePositions.get(nid);
-                      if (!pos) return null;
-                      const dir = new THREE.Vector3(fVec[0], fVec[1], fVec[2]);
-                      if (dir.lengthSq() <= 1e-9) return null;
-                      dir.normalize();
-                      const arrowLen = 4.6;
-                      const origin = new THREE.Vector3(
-                        pos[0] - dir.x * arrowLen,
-                        pos[1] - dir.y * arrowLen,
-                        pos[2] - dir.z * arrowLen,
-                      );
-                      return <arrowHelper key={`load-${nid}`} args={[dir, origin, arrowLen, 0xf43f5e, 1.35, 0.85]} />;
-                    })}
-                  </group>
-                )}
+                  {/* 3D Fixed Boundary Support Cones & Force Vector Arrows */}
+                  {showBcLoads && (
+                    <group>
+                      {Array.from(parsedDeck.fixedNodes.entries()).map(([nid]) => {
+                        const pos = scene3D.normalizedNodePositions.get(nid);
+                        if (!pos) return null;
+                        return (
+                          <mesh key={`bc-${nid}`} position={[pos[0], pos[1] - 0.75, pos[2]]}>
+                            <coneGeometry args={[0.72, 1.35, 4]} />
+                            <meshStandardMaterial color="#06b6d4" emissive="#0891b2" emissiveIntensity={0.35} />
+                          </mesh>
+                        );
+                      })}
 
-                {/* Hover Numerical & Topological Probe Tooltip */}
-                {hoverProbe && (
-                  <Html
-                    position={hoverProbe.worldPoint}
-                    style={{ pointerEvents: "none", transform: "translate3d(-50%, -120%, 0)" }}
-                  >
-                    <div
-                      style={{
-                        background: "rgba(13, 17, 23, 0.94)",
-                        backdropFilter: "blur(8px)",
-                        color: "#f8fafc",
-                        border: "1px solid rgba(56, 189, 248, 0.55)",
-                        padding: "6px 10px",
-                        borderRadius: "8px",
-                        fontSize: "10.5px",
-                        fontFamily: "var(--font-mono, monospace)",
-                        whiteSpace: "nowrap",
-                        boxShadow: "0 8px 24px rgba(0, 0, 0, 0.55)",
-                        lineHeight: 1.45,
-                      }}
+                      {Array.from(parsedDeck.nodalLoads.entries()).map(([nid, fVec]) => {
+                        const pos = scene3D.normalizedNodePositions.get(nid);
+                        if (!pos) return null;
+                        const dir = new THREE.Vector3(fVec[0], fVec[1], fVec[2]);
+                        if (dir.lengthSq() <= 1e-9) return null;
+                        dir.normalize();
+                        const arrowLen = 4.6;
+                        const origin = new THREE.Vector3(
+                          pos[0] - dir.x * arrowLen,
+                          pos[1] - dir.y * arrowLen,
+                          pos[2] - dir.z * arrowLen,
+                        );
+                        return <arrowHelper key={`load-${nid}`} args={[dir, origin, arrowLen, 0xf43f5e, 1.35, 0.85]} />;
+                      })}
+                    </group>
+                  )}
+
+                  {/* Hover Numerical & Topological Probe Tooltip */}
+                  {hoverProbe && (
+                    <Html
+                      position={hoverProbe.worldPoint}
+                      style={{ pointerEvents: "none", transform: "translate3d(-50%, -120%, 0)" }}
                     >
-                      <div style={{ color: "#38bdf8", fontWeight: 700 }}>
-                        Elem #{hoverProbe.elementId} ({hoverProbe.elementType}) • {hoverProbe.elset}
-                      </div>
-                      <div style={{ color: "#cbd5e1" }}>
-                        Mat: {hoverProbe.materialName} • Est. σ_vM: {hoverProbe.estimatedStressMpa} MPa • AR:{" "}
-                        {hoverProbe.aspectRatio}
-                      </div>
-                      <div style={{ color: "#94a3b8" }}>
-                        Node #{hoverProbe.nearestNode.id} ({hoverProbe.nearestNode.x}, {hoverProbe.nearestNode.y},{" "}
-                        {hoverProbe.nearestNode.z})
-                      </div>
-                      {hoverProbe.fixedDofs && (
-                        <div style={{ color: "#22d3ee", fontWeight: 600 }}>
-                          Fixed BC: DOF [{hoverProbe.fixedDofs.join(",")}]
+                      <div
+                        style={{
+                          background: "rgba(13, 17, 23, 0.94)",
+                          backdropFilter: "blur(8px)",
+                          color: "#f8fafc",
+                          border: "1px solid rgba(56, 189, 248, 0.55)",
+                          padding: "6px 10px",
+                          borderRadius: "8px",
+                          fontSize: "10.5px",
+                          fontFamily: "var(--font-mono, monospace)",
+                          whiteSpace: "nowrap",
+                          boxShadow: "0 8px 24px rgba(0, 0, 0, 0.55)",
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        <div style={{ color: "#38bdf8", fontWeight: 700 }}>
+                          Elem #{hoverProbe.elementId} ({hoverProbe.elementType}) • {hoverProbe.elset}
                         </div>
-                      )}
-                      {hoverProbe.loadVec && (
-                        <div style={{ color: "#fb7185", fontWeight: 600 }}>
-                          Load: [{hoverProbe.loadVec.join(", ")}] N
+                        <div style={{ color: "#cbd5e1" }}>
+                          Mat: {hoverProbe.materialName} • Est. σ_vM: {hoverProbe.estimatedStressMpa} MPa • AR:{" "}
+                          {hoverProbe.aspectRatio}
                         </div>
-                      )}
-                    </div>
-                  </Html>
-                )}
-              </group>
+                        <div style={{ color: "#94a3b8" }}>
+                          Node #{hoverProbe.nearestNode.id} ({hoverProbe.nearestNode.x}, {hoverProbe.nearestNode.y},{" "}
+                          {hoverProbe.nearestNode.z})
+                        </div>
+                        {hoverProbe.fixedDofs && (
+                          <div style={{ color: "#22d3ee", fontWeight: 600 }}>
+                            Fixed BC: DOF [{hoverProbe.fixedDofs.join(",")}]
+                          </div>
+                        )}
+                        {hoverProbe.loadVec && (
+                          <div style={{ color: "#fb7185", fontWeight: 600 }}>
+                            Load: [{hoverProbe.loadVec.join(", ")}] N
+                          </div>
+                        )}
+                      </div>
+                    </Html>
+                  )}
+                </group>
 
-              <CameraController orbitControlsRef={orbitControlsRef} presetTrigger={presetTrigger} />
-              <SafeOrbitControls controlsRef={orbitControlsRef} isFullScreen={isFullScreen} />
+                <CameraController orbitControlsRef={orbitControlsRef} presetTrigger={presetTrigger} />
+                <SafeOrbitControls controlsRef={orbitControlsRef} isFullScreen={isFullScreen} />
+              </XrSceneBridge>
             </Canvas>
+            <XrViewportOverlay position="top-right" />
 
             {/* Bottom Set, Material & Step Explorer HUD */}
             <BottomSetBar onClick={(e) => e.stopPropagation()}>

@@ -239,6 +239,7 @@ export const DEFAULT_LANGUAGE_MATURITY: Record<string, "stable" | "beta" | "expe
   topas: "beta",
   touchstone: "beta",
   tough: "beta",
+  twentysim: "beta",
   urdf: "beta",
   usd: "beta",
   "verilog-a": "beta",

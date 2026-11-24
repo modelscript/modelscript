@@ -3,7 +3,13 @@
 import { CheckCircleFillIcon, PlayIcon, UploadIcon, XCircleFillIcon } from "@primer/octicons-react";
 import { Button } from "@primer/react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { calibrate, type CalibrateResult } from "../util/lsp-bridge";
+import {
+  applyLspTextEditsToString,
+  calibrate,
+  computeWritebackEdit,
+  getModelParameters,
+  type CalibrateResult,
+} from "../util/lsp-bridge";
 
 export interface MorselCalibrationPanelProps {
   projectFiles?: Record<string, string> | undefined;
@@ -18,37 +24,6 @@ export interface MorselCalibrationPanelProps {
 interface ParsedParam {
   name: string;
   value: number;
-}
-
-function extractModelicaParameters(source: string): ParsedParam[] {
-  const results: ParsedParam[] = [];
-  const seen = new Set<string>();
-  const re = /\bparameter\s+Real\s+([A-Za-z_]\w*)(?:\([^)]*\))?\s*=\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)/g;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(source)) !== null) {
-    const name = match[1]!;
-    const value = Number.parseFloat(match[2]!);
-    if (!seen.has(name) && Number.isFinite(value)) {
-      seen.add(name);
-      results.push({ name, value });
-    }
-  }
-  return results;
-}
-
-function extractModelicaVariables(source: string): string[] {
-  const results: string[] = [];
-  const seen = new Set<string>();
-  const re = /^\s*(?!parameter\b|constant\b)(?:output\s+|input\s+)?Real\s+([A-Za-z_]\w*)/gm;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(source)) !== null) {
-    const name = match[1]!;
-    if (!seen.has(name)) {
-      seen.add(name);
-      results.push(name);
-    }
-  }
-  return results;
 }
 
 function extractDatasetChannels(fileName: string, content: string): { isComtrade: boolean; channels: string[] } {
@@ -78,20 +53,6 @@ function extractDatasetChannels(fileName: string, content: string): { isComtrade
     .map((c) => c.trim().replace(/^["']|["']$/g, ""))
     .filter((c) => c.length > 0 && !/^(t|time|time_s|time_sec)$/i.test(c));
   return { isComtrade: false, channels: cols };
-}
-
-function applyCalibratedParamsToModelica(source: string, calibrated: Record<string, number>): string {
-  let updated = source;
-  for (const [name, val] of Object.entries(calibrated)) {
-    if (!Number.isFinite(val)) continue;
-    const formatted = Number(val.toPrecision(6)).toString();
-    const re = new RegExp(
-      `(\\bparameter\\s+Real\\s+${name}(?:\\([^)]*\\))?\\s*=\\s*)([-+]?\\d*\\.?\\d+(?:[eE][-+]?\\d+)?)`,
-      "g",
-    );
-    updated = updated.replace(re, `$1${formatted}`);
-  }
-  return updated;
 }
 
 const OverlaySvgChart: React.FC<{
@@ -245,8 +206,41 @@ export const MorselCalibrationPanel: React.FC<MorselCalibrationPanelProps> = ({
     return activeCode ?? "";
   }, [selectedModelFile, projectFiles, activeCode]);
 
-  const parsedParams = useMemo(() => extractModelicaParameters(modelSource), [modelSource]);
-  const modelVars = useMemo(() => extractModelicaVariables(modelSource), [modelSource]);
+  const [parsedParams, setParsedParams] = useState<ParsedParam[]>([]);
+  const [modelVars, setModelVars] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!documentUri) return;
+    let cancelled = false;
+    const basePrefix = documentUri.replace(/\/[^/]+$/, "");
+    const targetUri =
+      !selectedModelFile || selectedModelFile === activeFileName
+        ? documentUri
+        : `${basePrefix}/${selectedModelFile.replace(/^\/+/, "")}`;
+
+    void getModelParameters(targetUri)
+      .then((res) => {
+        if (cancelled) return;
+        const vals = res.parameterValues ?? {};
+        setParsedParams(
+          (res.parameters ?? []).map((name) => ({
+            name,
+            value: typeof vals[name] === "number" && Number.isFinite(vals[name]) ? vals[name]! : 0,
+          })),
+        );
+        setModelVars(res.variables ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setParsedParams([]);
+          setModelVars([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [documentUri, selectedModelFile, activeFileName, modelSource]);
 
   const datasetContent = useMemo(() => {
     if (uploadedDataset) return uploadedDataset.content;
@@ -384,16 +378,44 @@ export const MorselCalibrationPanel: React.FC<MorselCalibrationPanelProps> = ({
     maxIterations,
   ]);
 
-  const handleApplyParameters = useCallback(() => {
-    if (!result?.parameters || Object.keys(result.parameters).length === 0) return;
-    const updated = applyCalibratedParamsToModelica(modelSource, result.parameters);
-    if (selectedModelFile && onUpdateProjectFile) {
-      onUpdateProjectFile(selectedModelFile, updated);
-    } else if (onCodeChange) {
-      onCodeChange(updated);
+  const handleApplyParameters = useCallback(async () => {
+    if (!result?.parameters || Object.keys(result.parameters).length === 0 || !documentUri) return;
+    const basePrefix = documentUri.replace(/\/[^/]+$/, "");
+    const targetUri =
+      !selectedModelFile || selectedModelFile === activeFileName
+        ? documentUri
+        : `${basePrefix}/${selectedModelFile.replace(/^\/+/, "")}`;
+
+    const collectedEdits: Array<{
+      range: { start: { line: number; character: number }; end: { line: number; character: number } };
+      newText: string;
+    }> = [];
+    for (const [name, val] of Object.entries(result.parameters)) {
+      if (!Number.isFinite(val)) continue;
+      const formatted = Number(val.toPrecision(6)).toString();
+      try {
+        const res = await computeWritebackEdit({ documentUri: targetUri, target: name, newValue: formatted });
+        const changes = res.workspaceEdit?.changes;
+        if (res.success && changes) {
+          for (const edits of Object.values(changes)) {
+            collectedEdits.push(...edits);
+          }
+        }
+      } catch {
+        // Ignore individual writeback failure
+      }
     }
-    setAppliedBanner(true);
-  }, [result, modelSource, selectedModelFile, onUpdateProjectFile, onCodeChange]);
+
+    if (collectedEdits.length > 0) {
+      const updated = applyLspTextEditsToString(modelSource, collectedEdits);
+      if (selectedModelFile && onUpdateProjectFile) {
+        onUpdateProjectFile(selectedModelFile, updated);
+      } else if (onCodeChange) {
+        onCodeChange(updated);
+      }
+      setAppliedBanner(true);
+    }
+  }, [result, documentUri, selectedModelFile, activeFileName, modelSource, onUpdateProjectFile, onCodeChange]);
 
   const borderCol = isDark ? "rgba(255,255,255,0.1)" : "rgba(15,23,42,0.1)";
   const mutedText = isDark ? "#8b949e" : "#57606a";

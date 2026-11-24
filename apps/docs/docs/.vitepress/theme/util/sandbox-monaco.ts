@@ -848,7 +848,7 @@ async function ensureMonacoLoaded(): Promise<typeof import("monaco-editor")> {
     sandboxMonacoPromise = (async () => {
       const [workerMod, monaco] = await Promise.all([
         import("monaco-editor/esm/vs/editor/editor.worker?worker").catch(() => null),
-        import("monaco-editor"),
+        import("monaco-editor/esm/vs/editor/edcore.main"),
       ]);
       const g = globalThis as unknown as { MonacoEnvironment?: { getWorker: () => Worker } };
       if (!g.MonacoEnvironment) {

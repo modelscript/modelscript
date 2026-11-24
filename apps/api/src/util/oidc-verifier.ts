@@ -2,6 +2,7 @@
 
 import crypto from "node:crypto";
 import type { LibraryDatabase } from "../database.js";
+import { safePublicFetch } from "./ssrf.js";
 
 export interface OidcAttestation {
   issuer: string;
@@ -33,13 +34,17 @@ export interface OidcVerifyOptions {
   allowUnsignedInTest?: boolean | undefined;
 }
 
-const DEFAULT_ALLOWED_ISSUERS = [
+const PROD_ALLOWED_ISSUERS = [
   "https://token.actions.githubusercontent.com",
   "https://gitlab.com",
   "https://oidc.circleci.com",
-  "test-oidc-issuer",
-  "https://oidc.test.modelscript.io",
 ];
+
+const TEST_ONLY_ISSUERS = ["test-oidc-issuer", "https://oidc.test.modelscript.io"];
+
+function getDefaultAllowedIssuers(): string[] {
+  return process.env["NODE_ENV"] === "test" ? [...PROD_ALLOWED_ISSUERS, ...TEST_ONLY_ISSUERS] : PROD_ALLOWED_ISSUERS;
+}
 
 // In-memory test key registry for deterministic offline unit/integration testing
 const testPublicKeyRegistry = new Map<string, crypto.KeyObject | string>();
@@ -112,16 +117,25 @@ export function createTestOidcToken(
   return `${signingInput}.${signatureB64}`;
 }
 
-// In-memory cache for remote JWKS sets
+// Bounded in-memory cache for remote JWKS sets
 interface JwksCacheEntry {
   keys: Array<{ kid?: string; kty: string; [key: string]: unknown }>;
   cachedAt: number;
 }
 const jwksCache = new Map<string, JwksCacheEntry>();
 const JWKS_TTL_MS = 60 * 60 * 1000; // 1 hour
+const JWKS_MAX_ENTRIES = 100;
+
+function isTrustedGitLabHost(hostname: string): boolean {
+  return hostname === "gitlab.com" || hostname.endsWith(".gitlab.com");
+}
+
+function isTrustedGitHubHost(hostname: string): boolean {
+  return hostname === "token.actions.githubusercontent.com";
+}
 
 /**
- * Fetches and caches JWKS from an OIDC provider.
+ * Fetches and caches JWKS from an OIDC provider using SSRF-safe public fetch.
  */
 async function fetchJwks(issuerUrl: string): Promise<JwksCacheEntry["keys"]> {
   const cached = jwksCache.get(issuerUrl);
@@ -129,26 +143,26 @@ async function fetchJwks(issuerUrl: string): Promise<JwksCacheEntry["keys"]> {
     return cached.keys;
   }
 
-  const normalizedIssuer = issuerUrl.replace(/\/+$/, "");
-  let jwksUrl = `${normalizedIssuer}/.well-known/jwks.json`;
-  let isGitLab = false;
-  try {
-    const parsed = new URL(issuerUrl);
-    isGitLab = parsed.hostname === "gitlab.com" || parsed.hostname.endsWith(".gitlab.com");
-  } catch {
-    // If not a valid absolute URL, ignore
-  }
-  if (isGitLab) {
-    jwksUrl = `${normalizedIssuer}/-/jwks`;
+  const parsed = new URL(issuerUrl);
+  if (parsed.protocol !== "https:") {
+    throw new Error(`OIDC issuer '${issuerUrl}' must use HTTPS`);
   }
 
-  const res = await fetch(jwksUrl, { signal: AbortSignal.timeout(3000) });
+  const normalizedIssuer = issuerUrl.replace(/\/+$/, "");
+  const isGitLab = isTrustedGitLabHost(parsed.hostname);
+  const jwksUrl = isGitLab ? `${normalizedIssuer}/-/jwks` : `${normalizedIssuer}/.well-known/jwks.json`;
+
+  const res = await safePublicFetch(jwksUrl, { signal: AbortSignal.timeout(3000) });
   if (!res.ok) {
     throw new Error(`Failed to fetch JWKS from ${jwksUrl}: ${res.statusText}`);
   }
 
   const json = (await res.json()) as { keys?: Array<{ kid?: string; kty: string; [key: string]: unknown }> };
   const keys = json.keys || [];
+  if (jwksCache.size >= JWKS_MAX_ENTRIES) {
+    const oldestKey = jwksCache.keys().next().value;
+    if (oldestKey) jwksCache.delete(oldestKey);
+  }
   jwksCache.set(issuerUrl, { keys, cachedAt: Date.now() });
   return keys;
 }
@@ -195,12 +209,26 @@ export async function verifyOidcToken(token: string, options?: OidcVerifyOptions
     return { valid: false, error: "OIDC token missing 'iss' claim" };
   }
 
-  const allowedIssuers = options?.allowedIssuers ?? DEFAULT_ALLOWED_ISSUERS;
+  const isTestEnv = process.env["NODE_ENV"] === "test";
+  const isProdEnv = process.env["NODE_ENV"] === "production";
+  const allowedIssuers = options?.allowedIssuers ?? getDefaultAllowedIssuers();
+
+  let parsedIssuerUrl: URL | null = null;
+  try {
+    parsedIssuerUrl = new URL(issuer);
+  } catch {
+    parsedIssuerUrl = null;
+  }
+
   const isAllowedIssuer = allowedIssuers.some(
-    (allowed) => allowed === issuer || (issuer.startsWith("https://gitlab.") && allowed.includes("gitlab")),
+    (allowed) =>
+      allowed === issuer ||
+      (parsedIssuerUrl?.protocol === "https:" &&
+        isTrustedGitLabHost(parsedIssuerUrl.hostname) &&
+        allowed === "https://gitlab.com"),
   );
 
-  if (!isAllowedIssuer && process.env["NODE_ENV"] === "production") {
+  if (!isAllowedIssuer && (isProdEnv || !isTestEnv)) {
     return { valid: false, error: `OIDC token issuer '${issuer}' is not in the trusted issuer registry` };
   }
 
@@ -225,8 +253,8 @@ export async function verifyOidcToken(token: string, options?: OidcVerifyOptions
 
   let signatureVerified = false;
 
-  // Check in-memory registered test keys first
-  if (kid && testPublicKeyRegistry.has(kid)) {
+  // Check in-memory registered test keys strictly in non-production environments
+  if (!isProdEnv && kid && testPublicKeyRegistry.has(kid)) {
     const testKey = testPublicKeyRegistry.get(kid)!;
     try {
       const verifier = crypto.createVerify("RSA-SHA256");
@@ -235,7 +263,7 @@ export async function verifyOidcToken(token: string, options?: OidcVerifyOptions
     } catch {
       signatureVerified = false;
     }
-  } else if (testPublicKeyRegistry.has(issuer)) {
+  } else if (!isProdEnv && testPublicKeyRegistry.has(issuer)) {
     const testKey = testPublicKeyRegistry.get(issuer)!;
     try {
       const verifier = crypto.createVerify("RSA-SHA256");
@@ -246,19 +274,26 @@ export async function verifyOidcToken(token: string, options?: OidcVerifyOptions
     }
   }
 
-  // If in test mode and deterministic HMAC was used, verify HMAC
-  if (!signatureVerified && (process.env["NODE_ENV"] !== "production" || issuer === "test-oidc-issuer")) {
+  // Deterministic HMAC fallback is strictly limited to NODE_ENV === 'test'
+  if (!signatureVerified && isTestEnv) {
     const hmacExpected = crypto
       .createHmac("sha256", "test-secret-signing-key")
       .update(signingInput)
       .digest("base64url");
-    if (hmacExpected === signatureB64) {
+    if (
+      hmacExpected.length === signatureB64!.length &&
+      crypto.timingSafeEqual(Buffer.from(hmacExpected), Buffer.from(signatureB64!))
+    ) {
       signatureVerified = true;
     }
   }
 
-  // Attempt live JWKS fetch for GitHub / GitLab if not yet verified
-  if (!signatureVerified && (issuer.includes("github") || issuer.includes("gitlab"))) {
+  // Attempt live JWKS fetch for trusted GitHub / GitLab / explicit HTTPS issuers
+  const canFetchJwks =
+    parsedIssuerUrl?.protocol === "https:" &&
+    (isTrustedGitHubHost(parsedIssuerUrl.hostname) || isTrustedGitLabHost(parsedIssuerUrl.hostname) || isAllowedIssuer);
+
+  if (!signatureVerified && canFetchJwks) {
     try {
       const jwks = await fetchJwks(issuer);
       const matchingKey = kid ? jwks.find((k) => k.kid === kid) : jwks[0];
@@ -272,8 +307,8 @@ export async function verifyOidcToken(token: string, options?: OidcVerifyOptions
         signatureVerified = verifier.verify(pubKey, signatureBytes);
       }
     } catch (jwksErr) {
-      // In non-production or test environment, fallback gracefully if network is unavailable
-      if (process.env["NODE_ENV"] !== "production" || options?.allowUnsignedInTest) {
+      // Only allow offline fallback when explicitly running under NODE_ENV === 'test'
+      if (isTestEnv && options?.allowUnsignedInTest) {
         signatureVerified = true;
       } else {
         return {
@@ -284,7 +319,7 @@ export async function verifyOidcToken(token: string, options?: OidcVerifyOptions
     }
   }
 
-  if (!signatureVerified && process.env["NODE_ENV"] === "production" && !options?.allowUnsignedInTest) {
+  if (!signatureVerified && !(isTestEnv && options?.allowUnsignedInTest)) {
     return { valid: false, error: "Cryptographic OIDC token signature verification failed (M3012)" };
   }
 
@@ -369,17 +404,7 @@ export function verifyOidcPackageAuthorization(
   const repoOwner = (attestation.repositoryOwner || repoParts[0] || "").toLowerCase();
   const repoName = (repoParts[1] || "").toLowerCase();
 
-  // 1. Direct match: `@scope/name` matches `scope/name` repository exactly
-  if (isScoped && repoOwner === scope.toLowerCase()) {
-    return { authorized: true };
-  }
-
-  // 2. Base name match in organization: repository named after package
-  if (repoName === baseName.toLowerCase()) {
-    return { authorized: true };
-  }
-
-  // 3. Database linked repo verification
+  // 1. Database linked repo or registered owner/collaborator verification (authoritative)
   if (database) {
     const linked = database.getLinkedRepoById(attestation.repository);
     if (linked) {
@@ -389,7 +414,7 @@ export function verifyOidcPackageAuthorization(
       }
     }
 
-    // Check if user with repoOwner username is collaborator
+    // Check if user with repoOwner username is collaborator/owner
     const ownerUser = database.getUserByUsername(repoOwner);
     if (ownerUser) {
       const allowed = database.canUserPublishPackage(packageName, ownerUser.id);
@@ -399,9 +424,18 @@ export function verifyOidcPackageAuthorization(
     }
   }
 
-  // 4. Test mode / non-production permissive fallback
+  // 2. Scoped exact-namespace bootstrap: `@scope/name` matches `scope/name` repository only if
+  // the package has not yet been registered in the database (existing packages require DB ACL check above)
+  if (isScoped && repoOwner === scope.toLowerCase() && repoName === baseName.toLowerCase()) {
+    const existingPkg = database?.getPackage(packageName);
+    if (!existingPkg) {
+      return { authorized: true };
+    }
+  }
+
+  // 3. Test-only permissive fallback (strictly NODE_ENV === 'test')
   if (
-    process.env["NODE_ENV"] !== "production" &&
+    process.env["NODE_ENV"] === "test" &&
     (attestation.issuer.includes("test") || repo === "modelscript-org/stdlib")
   ) {
     return { authorized: true };

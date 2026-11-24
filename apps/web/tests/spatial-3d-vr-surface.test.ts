@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { createCanonicalPolyglotDemoBoard, type CanvasTile } from "@modelscript/canvas";
+import { createCanonicalPolyglotDemoBoard, serializeCanvasDocument, type CanvasTile } from "@modelscript/canvas";
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 import React from "react";
@@ -16,6 +16,7 @@ import {
 } from "../src/components/canvas/LivePolyglotTileRenderer.js";
 import { Scissor3DViewport, SharedScissor3DHost } from "../src/components/canvas/SharedScissor3DHost.js";
 import { SpatialVrSurface } from "../src/components/canvas/SpatialVrSurface.js";
+import SpatialCanvasPage from "../src/pages/SpatialCanvasPage.js";
 import { SpaceCanvasTab } from "../src/pages/space/SpaceCanvasTab.js";
 
 describe("Shared Single-Context Scissor 3D Host, Live CanvasPlot Tile & 3D/VR Surface", () => {
@@ -835,6 +836,293 @@ describe("Shared Single-Context Scissor 3D Host, Live CanvasPlot Tile & 3D/VR Su
       Object.defineProperty(globalThis, "window", { value: prevWindow, configurable: true });
       Object.defineProperty(globalThis, "document", { value: prevDocument, configurable: true });
       Object.defineProperty(globalThis, "HTMLElement", { value: prevHTMLElement, configurable: true });
+      dom.window.close();
+    }
+  });
+
+  test("SpatialVrSurface delegates initialEnvironment, models, title, and onSimulationTimeChange to EngineeringRotunda", () => {
+    const board = createCanonicalPolyglotDemoBoard();
+    const html = renderToStaticMarkup(
+      React.createElement(SpatialVrSurface, {
+        document: board,
+        mode: "spatial-3d",
+        initialEnvironment: "warehouse",
+        title: "Turbofan Rotunda Review",
+        models: [
+          {
+            id: "custom-rotor",
+            title: "Turbofan Ducted Rotor",
+            subtitle: "CFD Velocity Streamlines",
+            kind: "cfd",
+          },
+        ],
+        simulationTime: 1.5,
+        onSimulationTimeChange: () => undefined,
+        onExitTo2D: () => undefined,
+      }),
+    );
+
+    assert.ok(html.includes('data-testid="spatial-vr-surface"'));
+    assert.ok(html.includes('data-rotunda="engineering-rotunda"'));
+    assert.ok(html.includes('data-rotunda-env="warehouse"'));
+    assert.ok(html.includes('data-active-model="custom-rotor"'));
+    assert.ok(html.includes("Turbofan Ducted Rotor"));
+    assert.ok(html.includes("Return to 2D Canvas"));
+  });
+
+  test("SpatialCanvasPage honors ?mode=, ?env=, #vrBoard= UTF-8 base64url handoff, and exposes VR Rotunda toggle", () => {
+    const handoffBoard = createCanonicalPolyglotDemoBoard();
+    handoffBoard.id = "vscode-handoff-rotunda";
+    handoffBoard.name = "Rotor Assembly — 45° Pitch Ω";
+    const jsonBytes = new TextEncoder().encode(serializeCanvasDocument(handoffBoard));
+    let binary = "";
+    for (let i = 0; i < jsonBytes.length; i++) {
+      binary += String.fromCharCode(jsonBytes[i]!);
+    }
+    const encodedBoard = btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+
+    const vrHtml = renderToStaticMarkup(
+      React.createElement(
+        MemoryRouter,
+        { initialEntries: [`/canvas?mode=webxr-vr&env=warehouse#vrBoard=${encodedBoard}`] },
+        React.createElement(SpatialCanvasPage),
+      ),
+    );
+
+    assert.ok(vrHtml.includes('data-testid="spatial-vr-surface"'));
+    assert.ok(vrHtml.includes('data-surface-mode="webxr-vr"'));
+    assert.ok(vrHtml.includes('data-rotunda-env="warehouse"'));
+    assert.ok(vrHtml.includes('data-testid="canvas-vr-rotunda-toggle"'));
+    assert.ok(vrHtml.includes("VR Rotunda"));
+    assert.ok(vrHtml.includes("Rotor Assembly — 45° Pitch Ω"));
+    assert.ok(vrHtml.includes("VR Handoff · Local Mode"));
+
+    // Invalid #vrBoard hash must fall back gracefully without throwing
+    const fallbackHtml = renderToStaticMarkup(
+      React.createElement(
+        MemoryRouter,
+        { initialEntries: ["/canvas?mode=spatial-3d&env=outdoors#vrBoard=%%%invalid%%%"] },
+        React.createElement(SpatialCanvasPage),
+      ),
+    );
+    assert.ok(fallbackHtml.includes('data-surface-mode="spatial-3d"'));
+    assert.ok(fallbackHtml.includes('data-rotunda-env="outdoors"'));
+    assert.ok(fallbackHtml.includes("Offline-First Local Mode"));
+  });
+
+  test("SpaceCanvasTab renders VR Rotunda toggle button in header bar", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(
+        MemoryRouter,
+        null,
+        React.createElement(SpaceCanvasTab, { spaceSlug: "vr-lab", spaceName: "VR Lab" }),
+      ),
+    );
+    assert.ok(html.includes('data-testid="space-canvas-vr-rotunda-toggle"'));
+    assert.ok(html.includes("VR Rotunda"));
+  });
+
+  test("SpatialVrSurface accepts peers and animationController pass-through props cleanly", () => {
+    const board = createCanonicalPolyglotDemoBoard();
+    const html = renderToStaticMarkup(
+      React.createElement(SpatialVrSurface, {
+        document: board,
+        mode: "spatial-3d",
+        initialEnvironment: "dark-lab",
+        peers: [
+          {
+            peerId: "peer-vr-1",
+            name: "Ada Lovelace",
+            color: "#38bdf8",
+            cursorX: 220,
+            cursorY: 180,
+            lastSeen: Date.now(),
+          },
+        ],
+        animationController: {
+          hasData: true,
+          getTransform: () => ({ position: [0, 0.1, 0], rotation: [0, 0.25, 0], scale: [1, 1, 1] }),
+        },
+        onExitTo2D: () => undefined,
+      }),
+    );
+
+    assert.ok(html.includes('data-testid="spatial-vr-surface"'));
+    assert.ok(html.includes('data-surface-mode="spatial-3d"'));
+  });
+
+  test("SpatialCanvasPage ?handoffId= opens BroadcastChannel('modelscript-vr-handoff'), requests payload, and hydrates local file & .mscanvas into Rotunda", async () => {
+    const { JSDOM } = await import("jsdom");
+    const { createRoot } = await import("react-dom/client");
+    const dom = new JSDOM("<!DOCTYPE html><html><body><div id='root'></div></body></html>");
+
+    const prevWindow = globalThis.window;
+    const prevDocument = globalThis.document;
+    const prevHTMLElement = globalThis.HTMLElement;
+    const prevPath2D = (globalThis as { Path2D?: unknown }).Path2D;
+    const prevBroadcastChannel = (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel;
+    const prevResizeObserver = (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+    const prevScreen = (globalThis as { screen?: unknown }).screen;
+    const prevActEnv = (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
+
+    const postedMessages: Array<{ channel: string; message: unknown }> = [];
+    const activeChannels: MockBroadcastChannel[] = [];
+
+    class MockResizeObserver {
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    }
+
+    class MockBroadcastChannel {
+      public readonly name: string;
+      public onmessage: ((ev: MessageEvent<unknown>) => void) | null = null;
+      public closed = false;
+
+      constructor(name: string) {
+        this.name = name;
+        activeChannels.push(this);
+      }
+
+      postMessage(message: unknown): void {
+        postedMessages.push({ channel: this.name, message });
+      }
+
+      dispatchIncoming(data: unknown): void {
+        this.onmessage?.({ data } as MessageEvent<unknown>);
+      }
+
+      close(): void {
+        this.closed = true;
+      }
+    }
+
+    class MockPath2D {
+      public readonly path: string;
+      constructor(d?: string) {
+        this.path = d ?? "";
+      }
+    }
+
+    const mockCtx = {
+      fillStyle: "#000",
+      strokeStyle: "#000",
+      lineWidth: 1,
+      globalAlpha: 1,
+      font: "12px sans-serif",
+      textAlign: "left",
+      textBaseline: "middle",
+      save: () => undefined,
+      restore: () => undefined,
+      setTransform: () => undefined,
+      clearRect: () => undefined,
+      fillRect: () => undefined,
+      strokeRect: () => undefined,
+      translate: () => undefined,
+      rotate: () => undefined,
+      scale: () => undefined,
+      clip: () => undefined,
+      beginPath: () => undefined,
+      closePath: () => undefined,
+      moveTo: () => undefined,
+      lineTo: () => undefined,
+      rect: () => undefined,
+      roundRect: () => undefined,
+      arc: () => undefined,
+      ellipse: () => undefined,
+      fill: () => undefined,
+      stroke: () => undefined,
+      fillText: () => undefined,
+      setLineDash: () => undefined,
+    };
+
+    try {
+      (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+      Object.defineProperty(dom.window.HTMLCanvasElement.prototype, "getContext", {
+        value: (contextId: string) => (contextId === "2d" ? mockCtx : null),
+        configurable: true,
+      });
+      Object.defineProperty(dom.window, "ResizeObserver", { value: MockResizeObserver, configurable: true });
+      Object.defineProperty(globalThis, "window", { value: dom.window, configurable: true });
+      Object.defineProperty(globalThis, "document", { value: dom.window.document, configurable: true });
+      Object.defineProperty(globalThis, "HTMLElement", { value: dom.window.HTMLElement, configurable: true });
+      (globalThis as { Path2D?: unknown }).Path2D = MockPath2D;
+      (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel = MockBroadcastChannel;
+      (globalThis as { ResizeObserver?: unknown }).ResizeObserver = MockResizeObserver;
+      (globalThis as { screen?: unknown }).screen = dom.window.screen;
+
+      const container = dom.window.document.getElementById("root");
+      assert.ok(container);
+      const root = createRoot(container);
+
+      await React.act(async () => {
+        root.render(
+          React.createElement(
+            MemoryRouter,
+            { initialEntries: ["/canvas?handoffId=local-handoff-99"] },
+            React.createElement(SpatialCanvasPage),
+          ),
+        );
+      });
+
+      assert.equal(activeChannels.length, 1);
+      const ch = activeChannels[0]!;
+      assert.equal(ch.name, "modelscript-vr-handoff");
+      assert.deepEqual(postedMessages[0], {
+        channel: "modelscript-vr-handoff",
+        message: { type: "vr-handoff-request", handoffId: "local-handoff-99" },
+      });
+
+      // 1. Hydrate local Modelica file payload -> synthesizes board & enters Rotunda cleanly
+      await React.act(async () => {
+        ch.dispatchIncoming({
+          type: "vr-handoff-payload",
+          handoffId: "local-handoff-99",
+          fileContent: "model ThermalPlant\n  parameter Real R = 4.2;\nend ThermalPlant;",
+          languageId: "modelica",
+          artifactUri: "ThermalPlant.mo",
+          title: "Thermal Plant Local",
+          environment: "office",
+        });
+      });
+
+      const surfaceAfterSynth = container.querySelector('[data-testid="spatial-vr-surface"]');
+      assert.ok(surfaceAfterSynth, "Expected SpatialCanvasPage to enter VR Rotunda upon local-file handoff");
+      assert.equal(surfaceAfterSynth.getAttribute("data-rotunda-env"), "office");
+      assert.ok(container.textContent?.includes("Thermal Plant Local"));
+      assert.ok(container.textContent?.includes("VR Handoff · Local Mode"));
+
+      // 2. Hydrate explicit .mscanvas boardJson payload on the same channel
+      const customBoard = createCanonicalPolyglotDemoBoard();
+      customBoard.id = "relay-board-42";
+      customBoard.name = "Relayed .mscanvas Board";
+      await React.act(async () => {
+        ch.dispatchIncoming({
+          type: "vr-handoff-payload",
+          handoffId: "local-handoff-99",
+          boardJson: serializeCanvasDocument(customBoard),
+          environment: "warehouse",
+        });
+      });
+
+      const surfaceAfterBoard = container.querySelector('[data-testid="spatial-vr-surface"]');
+      assert.ok(surfaceAfterBoard);
+      assert.equal(surfaceAfterBoard.getAttribute("data-rotunda-env"), "warehouse");
+      assert.ok(container.textContent?.includes("Relayed .mscanvas Board"));
+
+      await React.act(async () => {
+        root.unmount();
+      });
+      assert.equal(ch.closed, true, "Expected BroadcastChannel to close cleanly on unmount");
+    } finally {
+      (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = prevActEnv;
+      Object.defineProperty(globalThis, "window", { value: prevWindow, configurable: true });
+      Object.defineProperty(globalThis, "document", { value: prevDocument, configurable: true });
+      Object.defineProperty(globalThis, "HTMLElement", { value: prevHTMLElement, configurable: true });
+      (globalThis as { Path2D?: unknown }).Path2D = prevPath2D;
+      (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel = prevBroadcastChannel;
+      (globalThis as { ResizeObserver?: unknown }).ResizeObserver = prevResizeObserver;
+      (globalThis as { screen?: unknown }).screen = prevScreen;
       dom.window.close();
     }
   });

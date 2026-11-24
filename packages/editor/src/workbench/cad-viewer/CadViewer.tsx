@@ -9,11 +9,23 @@
  */
 
 import type { DynamicBindingConfig, GdtOverlayPayload, Verification3DOverlayPayload } from "@modelscript/cad";
-import { ContactShadows, GizmoHelper, GizmoViewport, Grid, Html, OrbitControls, useGLTF } from "@react-three/drei";
+import {
+  ContactShadows,
+  GizmoHelper,
+  GizmoViewport,
+  Grid,
+  Html,
+  OrbitControls,
+  TransformControls,
+  useGLTF,
+} from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { useXR, XR } from "@react-three/xr";
+import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { generateLocalTetMeshAsync, runLocalCfdStudyAsync, runLocalFeaStudyAsync } from "../util/cae-local-runner";
+import { getSharedXrStore, useXrCapabilities } from "../vr-rotunda/xr-session";
 import type { AnimationController } from "./animation-controller";
 import { AnimationTimeline } from "./AnimationTimeline";
 import { CadBindingPickerModal } from "./CadBindingPickerModal";
@@ -38,6 +50,72 @@ import { InstancedCadAssembly } from "./InstancedCadAssembly";
 import { sampleVtkCutLine, VtkRenderer } from "./VtkRenderer";
 
 // ── Types ────────────────────────────────────────────────────────────────────
+
+export type GizmoMode = "select" | "translate" | "rotate" | "scale" | "tag_face" | "mate";
+
+export interface CommitAssemblyJointPayload {
+  jointName: string;
+  jointType: "Revolute" | "Prismatic" | "Cylindrical" | "Spherical" | "Fixed";
+  partA: string;
+  partB: string;
+  axis?: [number, number, number] | undefined;
+}
+
+export interface CadSourceMetadata {
+  uri?: string | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
+  primitiveStartOffset?: number | undefined;
+  primitiveEndOffset?: number | undefined;
+  parameterName?: string | undefined;
+  transformMethod?: string | undefined;
+  argIndex?: number | undefined;
+  translateRange?: { startOffset: number; endOffset: number } | undefined;
+  rotateRange?: { startOffset: number; endOffset: number } | undefined;
+  scaleRange?: { startOffset: number; endOffset: number } | undefined;
+  dimensions?: [number, number, number] | undefined;
+  dimensionParams?: [string | undefined, string | undefined, string | undefined] | undefined;
+  position?: [number, number, number] | undefined;
+  translation?: [number, number, number] | undefined;
+  rotation?: [number, number, number] | undefined;
+  scale?: [number, number, number] | undefined;
+  primitiveType?: string | undefined;
+  color?: [number, number, number, number] | undefined;
+}
+
+export interface GizmoCommitPayload {
+  componentName: string;
+  mode?: GizmoMode | undefined;
+  delta: [number, number, number];
+  newPosition: [number, number, number];
+  newRotation?: [number, number, number] | undefined;
+  newScale?: [number, number, number] | undefined;
+  sourceMetadata?: CadSourceMetadata | undefined;
+}
+
+export interface CommitDimensionPayload {
+  componentName: string;
+  dimensionIndex: number;
+  newValue: number;
+  primitiveType?: string | undefined;
+  sourceMetadata?: CadSourceMetadata | undefined;
+}
+
+export interface CommitFaceTagPayload {
+  componentName: string;
+  portName: string;
+  portType: string;
+  normal?: [number, number, number] | undefined;
+  worldPos: [number, number, number];
+  sourceMetadata?: CadSourceMetadata | undefined;
+}
+
+interface FaceTagHit {
+  componentName: string;
+  normal?: [number, number, number] | undefined;
+  worldPos: [number, number, number];
+  sourceMetadata?: CadSourceMetadata | undefined;
+}
 
 export interface CadAnnotation {
   uri: string;
@@ -70,6 +148,8 @@ export interface CadComponent {
   ports?: { name: string; port: CadPortAnnotation }[] | undefined;
   /** Dynamic animation bindings (from DynamicSelect in CAD annotations) */
   dynamicBindings?: { property: string; index: number; variable: string }[] | undefined;
+  /** Source code metadata linking to AST parameters and CST byte ranges */
+  sourceMetadata?: CadSourceMetadata | undefined;
   /** Procedural triangle mesh for inline CSG/OpenSCAD or MSL Visualizer solids */
   proceduralMesh?: ProceduralMeshData | undefined;
   /** Baseline transform defaults for MSL Visualizers and CAD components */
@@ -97,6 +177,14 @@ interface CadViewerProps {
   onSelect?: ((name: string | null) => void) | undefined;
   /** Callback when user performs a snap/connect action */
   onConnect?: ((sourceName: string, sourcePort: string, targetName: string, targetPort: string) => void) | undefined;
+  /** Callback when user drags and releases a 3D direct-manipulation transform gizmo */
+  onCommitGizmoDelta?: ((payload: GizmoCommitPayload) => void) | undefined;
+  /** Callback when user commits a parametric dimension edit */
+  onCommitDimensionDelta?: ((payload: CommitDimensionPayload) => void) | undefined;
+  /** Callback when user tags a 3D face as a physical port or boundary condition */
+  onCommitFaceTag?: ((payload: CommitFaceTagPayload) => void) | undefined;
+  /** Callback when user mates two 3D parts with an assembly joint */
+  onCommitAssemblyJoint?: ((payload: CommitAssemblyJointPayload) => void) | undefined;
   /** Dark mode toggle */
   dark?: boolean | undefined;
   /** Animation controller for simulation-driven animation */
@@ -115,12 +203,16 @@ interface CadViewerProps {
   gdtOverlay?: GdtOverlayPayload | null | undefined;
   /** Insets (top/right/bottom/left in px) for floating panels/sidebars so the 3D model centers in the visible area */
   fitInsets?: { top: number; right: number; bottom: number; left: number } | undefined;
+  /** Optional live source code (used to map byte offsets to line numbers for Go to Source) */
+  sourceCode?: string | undefined;
   /** Optional CAE deck / CFD config source for SimScale-style simulation tree */
   caeSourceCode?: string | undefined;
-  /** Reveal a line in the code editor when a CAE tree item is clicked */
+  /** Reveal a line in the code editor when a CAE tree item or CAD source link is clicked */
   onRevealLine?: ((line: number, identifier?: string) => void) | undefined;
   /** Insert a CAE keyword snippet into the live code editor */
   onInsertCaeSnippet?: ((snippet: string) => void) | undefined;
+  /** Launch the full Engineering VR Rotunda workstation from the 3D CAD viewer */
+  onOpenVrRotunda?: (() => void) | undefined;
 }
 
 function computeSceneBounds(components: CadComponent[]): {
@@ -403,7 +495,11 @@ function CadModel({
   component,
   assetBaseUrl,
   selected,
+  gizmoMode = "select",
   onSelect,
+  onDraggingGizmoChange,
+  onCommitGizmoDelta,
+  onFaceTagClick,
   animationController,
   dark = false,
   solidPlane = null,
@@ -415,7 +511,11 @@ function CadModel({
   component: CadComponent;
   assetBaseUrl: string;
   selected: boolean;
+  gizmoMode?: GizmoMode | undefined;
   onSelect?: ((name: string | null) => void) | undefined;
+  onDraggingGizmoChange?: ((dragging: boolean) => void) | undefined;
+  onCommitGizmoDelta?: ((payload: GizmoCommitPayload) => void) | undefined;
+  onFaceTagClick?: ((hit: FaceTagHit) => void) | undefined;
   animationController?: AnimationController | null | undefined;
   dark?: boolean | undefined;
   solidPlane?: THREE.Plane | null | undefined;
@@ -431,6 +531,133 @@ function CadModel({
     { variable: string; property: string; index: number; value: number | null }[]
   >([]);
   const lastInspectorUpdateRef = useRef<number>(0);
+
+  const isBakedCsgMesh = Boolean(
+    component.proceduralMesh && !component.defaults && !component.cad.uri?.startsWith("procedural://msl"),
+  );
+  const pos: [number, number, number] = component.cad.position ?? [0, 0, 0];
+  const rot: [number, number, number] = isBakedCsgMesh ? [0, 0, 0] : (component.cad.rotation ?? [0, 0, 0]);
+  const scl: [number, number, number] = isBakedCsgMesh ? [1, 1, 1] : (component.cad.scale ?? [1, 1, 1]);
+
+  // Gizmo dragging & delta state
+  const [isDraggingGizmo, setIsDraggingGizmo] = useState(false);
+  const [gizmoDelta, setGizmoDelta] = useState<[number, number, number]>([0, 0, 0]);
+  const initialGizmoPosRef = useRef<[number, number, number]>(pos);
+  const initialGizmoRotRef = useRef<[number, number, number]>(rot);
+  const initialGizmoSclRef = useRef<[number, number, number]>(scl);
+
+  useEffect(() => {
+    initialGizmoPosRef.current = component.cad.position ?? [0, 0, 0];
+    initialGizmoRotRef.current = isBakedCsgMesh ? [0, 0, 0] : (component.cad.rotation ?? [0, 0, 0]);
+    initialGizmoSclRef.current = isBakedCsgMesh ? [1, 1, 1] : (component.cad.scale ?? [1, 1, 1]);
+    setGizmoDelta([0, 0, 0]);
+  }, [component.cad.position, component.cad.rotation, component.cad.scale, isBakedCsgMesh]);
+
+  useEffect(() => {
+    if (!selected && isDraggingGizmo) {
+      setIsDraggingGizmo(false);
+      onDraggingGizmoChange?.(false);
+    }
+  }, [selected, isDraggingGizmo, onDraggingGizmoChange]);
+
+  useEffect(() => {
+    return () => {
+      onDraggingGizmoChange?.(false);
+    };
+  }, [onDraggingGizmoChange]);
+
+  const handleGizmoMouseDown = useCallback(() => {
+    setIsDraggingGizmo(true);
+    onDraggingGizmoChange?.(true);
+  }, [onDraggingGizmoChange]);
+
+  const handleGizmoChange = useCallback(() => {
+    if (!groupRef.current) return;
+    if (gizmoMode === "translate") {
+      const cur = groupRef.current.position;
+      const init = initialGizmoPosRef.current;
+      setGizmoDelta([cur.x - init[0], cur.y - init[1], cur.z - init[2]]);
+    } else if (gizmoMode === "rotate") {
+      const cur = groupRef.current.rotation;
+      const init = initialGizmoRotRef.current;
+      const rxDeg = (cur.x * 180) / Math.PI;
+      const ryDeg = (cur.y * 180) / Math.PI;
+      const rzDeg = (cur.z * 180) / Math.PI;
+      setGizmoDelta([rxDeg - init[0], ryDeg - init[1], rzDeg - init[2]]);
+    } else if (gizmoMode === "scale") {
+      const cur = groupRef.current.scale;
+      const init = initialGizmoSclRef.current;
+      setGizmoDelta([cur.x / (init[0] || 1), cur.y / (init[1] || 1), cur.z / (init[2] || 1)]);
+    }
+    setIsDraggingGizmo(true);
+    onDraggingGizmoChange?.(true);
+  }, [gizmoMode, onDraggingGizmoChange]);
+
+  const handleGizmoMouseUp = useCallback(() => {
+    setIsDraggingGizmo(false);
+    onDraggingGizmoChange?.(false);
+    if (!groupRef.current) return;
+    const curPos = groupRef.current.position;
+    const curRot = groupRef.current.rotation;
+    const curScl = groupRef.current.scale;
+
+    if (gizmoMode === "translate") {
+      const init = initialGizmoPosRef.current;
+      const dx = curPos.x - init[0];
+      const dy = curPos.y - init[1];
+      const dz = curPos.z - init[2];
+      if (Math.hypot(dx, dy, dz) > 1e-4) {
+        onCommitGizmoDelta?.({
+          componentName: component.name,
+          mode: "translate",
+          delta: [dx, dy, dz],
+          newPosition: [curPos.x, curPos.y, curPos.z],
+          sourceMetadata: component.sourceMetadata,
+        });
+        initialGizmoPosRef.current = [curPos.x, curPos.y, curPos.z];
+        setGizmoDelta([0, 0, 0]);
+      }
+    } else if (gizmoMode === "rotate") {
+      const init = initialGizmoRotRef.current;
+      const rxDeg = (curRot.x * 180) / Math.PI;
+      const ryDeg = (curRot.y * 180) / Math.PI;
+      const rzDeg = (curRot.z * 180) / Math.PI;
+      const drx = rxDeg - init[0];
+      const dry = ryDeg - init[1];
+      const drz = rzDeg - init[2];
+      if (Math.hypot(drx, dry, drz) > 1e-2) {
+        const baseRot = component.sourceMetadata?.rotation ?? init;
+        const newRot: [number, number, number] = [baseRot[0] + drx, baseRot[1] + dry, baseRot[2] + drz];
+        onCommitGizmoDelta?.({
+          componentName: component.name,
+          mode: "rotate",
+          delta: [drx, dry, drz],
+          newPosition: [curPos.x, curPos.y, curPos.z],
+          newRotation: newRot,
+          sourceMetadata: component.sourceMetadata,
+        });
+        initialGizmoRotRef.current = [rxDeg, ryDeg, rzDeg];
+        setGizmoDelta([0, 0, 0]);
+      }
+    } else if (gizmoMode === "scale") {
+      const init = initialGizmoSclRef.current;
+      const sx = curScl.x / (init[0] || 1);
+      const sy = curScl.y / (init[1] || 1);
+      const sz = curScl.z / (init[2] || 1);
+      if (Math.hypot(sx - 1, sy - 1, sz - 1) > 1e-3) {
+        onCommitGizmoDelta?.({
+          componentName: component.name,
+          mode: "scale",
+          delta: [sx - 1, sy - 1, sz - 1],
+          newPosition: [curPos.x, curPos.y, curPos.z],
+          newScale: [sx, sy, sz],
+          sourceMetadata: component.sourceMetadata,
+        });
+        initialGizmoSclRef.current = [curScl.x, curScl.y, curScl.z];
+        setGizmoDelta([0, 0, 0]);
+      }
+    }
+  }, [component.name, component.sourceMetadata, gizmoMode, onCommitGizmoDelta, onDraggingGizmoChange]);
 
   // Ghost trail state (bypass React for performance)
   const maxTrailPoints = 300;
@@ -480,16 +707,9 @@ function CadModel({
     });
   }, [selected]);
 
-  const isBakedCsgMesh = Boolean(
-    component.proceduralMesh && !component.defaults && !component.cad.uri?.startsWith("procedural://msl"),
-  );
-  const pos: [number, number, number] = component.cad.position ?? [0, 0, 0];
-  const rot: [number, number, number] = isBakedCsgMesh ? [0, 0, 0] : (component.cad.rotation ?? [0, 0, 0]);
-  const scl: [number, number, number] = isBakedCsgMesh ? [1, 1, 1] : (component.cad.scale ?? [1, 1, 1]);
-
   // Drive transforms from animation controller when animating or when local MSL frame defaults are present
   useFrame(() => {
-    if (!groupRef.current || !animationController) return;
+    if (!groupRef.current || !animationController || isDraggingGizmo) return;
     if (animationController.mode === "stopped" && !component.defaults) return;
 
     const tf = animationController.getTransform(component.name);
@@ -550,6 +770,13 @@ function CadModel({
   });
 
   const showInspector = (hovered || selected) && inspectorValues.length > 0 && animationController?.mode !== "stopped";
+  const gizmoLabelPrefix = gizmoMode === "rotate" ? "Δθ°" : gizmoMode === "scale" ? "×S" : "Δ";
+  const showTransformGizmo = Boolean(
+    selected &&
+    (gizmoMode === "translate" || gizmoMode === "rotate" || gizmoMode === "scale") &&
+    (!animationController || animationController.mode === "stopped") &&
+    onCommitGizmoDelta,
+  );
 
   return (
     <>
@@ -562,6 +789,16 @@ function CadModel({
         onClick={(e) => {
           e.stopPropagation();
           onSelect?.(component.name);
+          if (selected && gizmoMode === "tag_face" && onFaceTagClick) {
+            const n = e.face?.normal;
+            onFaceTagClick({
+              componentName: component.name,
+              normal: n ? [n.x, n.y, n.z] : undefined,
+              worldPos: [e.point.x, e.point.y, e.point.z],
+              sourceMetadata: component.sourceMetadata,
+            });
+            return;
+          }
           if (onPickFace && e.face?.normal) {
             const meshObj = e.object as THREE.Mesh | undefined;
             const faceIds = meshObj?.geometry?.userData?.faceIds as ArrayLike<number> | undefined;
@@ -654,6 +891,28 @@ function CadModel({
           </Html>
         )}
 
+        {isDraggingGizmo && (
+          <Html position={[0, 1.2, 0]} center style={{ pointerEvents: "none", zIndex: 20 }}>
+            <div
+              style={{
+                background: "rgba(15, 23, 42, 0.92)",
+                backdropFilter: "blur(6px)",
+                color: "#38bdf8",
+                padding: "4px 8px",
+                borderRadius: "6px",
+                border: "1px solid rgba(56, 189, 248, 0.45)",
+                fontSize: "11px",
+                fontFamily: "monospace",
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+              }}
+            >
+              {gizmoLabelPrefix}: [{gizmoDelta[0].toFixed(2)}, {gizmoDelta[1].toFixed(2)}, {gizmoDelta[2].toFixed(2)}]
+            </div>
+          </Html>
+        )}
+
         {component.ports?.map((p) => (
           <PortIndicator
             key={p.name}
@@ -664,39 +923,31 @@ function CadModel({
         ))}
       </group>
 
+      {showTransformGizmo && (
+        <TransformControls
+          object={groupRef as React.RefObject<THREE.Object3D>}
+          mode={gizmoMode as "translate" | "rotate" | "scale"}
+          onMouseDown={handleGizmoMouseDown}
+          onObjectChange={handleGizmoChange}
+          onMouseUp={handleGizmoMouseUp}
+        />
+      )}
+
       {/* Ghost trail (world space) */}
       {selected && <primitive object={trailLine} />}
     </>
   );
 }
 
-/** Scene contents: lights, grid, models. */
-function SceneContents({
-  components,
-  assetBaseUrl,
-  selectedName,
-  onSelect,
-  dark,
-  animationController,
-  vtkBuffer,
-  touchScrollPassThrough,
-  solidPlane,
-  wirePlane,
-  sectionSplit,
-  autoSweep,
-  clipSpan,
-  gdtOverlay,
-  showGdt,
-  showEdges = true,
-  enableSsao = false,
-  activeCaeField,
-  onPickFace,
-  sceneBounds,
-  fitInsets,
-}: {
+interface SceneContentsProps {
   components: CadComponent[];
   assetBaseUrl: string;
   selectedName?: string | null | undefined;
+  gizmoMode?: GizmoMode | undefined;
+  isDraggingGizmo?: boolean | undefined;
+  onDraggingGizmoChange?: ((dragging: boolean) => void) | undefined;
+  onCommitGizmoDelta?: ((payload: GizmoCommitPayload) => void) | undefined;
+  onFaceTagClick?: ((hit: FaceTagHit) => void) | undefined;
   onSelect?: ((name: string | null) => void) | undefined;
   dark?: boolean | undefined;
   animationController?: AnimationController | null | undefined;
@@ -715,15 +966,65 @@ function SceneContents({
   onPickFace?: ((label: string) => void) | undefined;
   sceneBounds: { center: [number, number, number]; radius: number; minY: number };
   fitInsets?: { top: number; right: number; bottom: number; left: number } | undefined;
-}) {
-  const { gl, camera, size } = useThree();
+  isInXr?: boolean | undefined;
+}
+
+/** Scene contents: lights, grid, models. */
+function SceneContents({
+  components,
+  assetBaseUrl,
+  selectedName,
+  gizmoMode = "select",
+  isDraggingGizmo = false,
+  onDraggingGizmoChange,
+  onCommitGizmoDelta,
+  onFaceTagClick,
+  onSelect,
+  dark,
+  animationController,
+  vtkBuffer,
+  touchScrollPassThrough,
+  solidPlane,
+  wirePlane,
+  sectionSplit,
+  autoSweep,
+  clipSpan,
+  gdtOverlay,
+  showGdt,
+  showEdges = true,
+  enableSsao = false,
+  activeCaeField,
+  onPickFace,
+  sceneBounds,
+  fitInsets,
+  isInXr = false,
+}: SceneContentsProps) {
+  const { gl, scene, camera, size } = useThree();
   const controlsRef = useRef<any>(null);
   const framedSignatureRef = useRef<string>("");
   const sweepPhaseRef = useRef(0);
 
+  // Set opaque scene background in WebXR so Quest 2 renders solid studio backdrop instead of passthrough transparency
+  useEffect(() => {
+    if (!isInXr) return;
+    const prevBackground = scene.background;
+    const prevClearAlpha = gl.getClearAlpha();
+    scene.background = new THREE.Color(dark ? "#111827" : "#e2e8f0");
+    gl.setClearAlpha(1);
+    return () => {
+      scene.background = prevBackground;
+      gl.setClearAlpha(prevClearAlpha);
+    };
+  }, [isInXr, scene, gl, dark]);
+
   // Offset camera frustum so the model orbits and centers within the visible area (excluding floating sidebars/panels)
   useEffect(() => {
     if (!(camera instanceof THREE.PerspectiveCamera)) return;
+    if (isInXr) {
+      camera.clearViewOffset();
+      camera.updateProjectionMatrix();
+      return;
+    }
     if (size.width <= 0 || size.height <= 0) return;
 
     const top = fitInsets?.top ?? 0;
@@ -739,9 +1040,10 @@ function SceneContents({
       camera.setViewOffset(size.width, size.height, offsetX, offsetY, size.width, size.height);
     }
     camera.updateProjectionMatrix();
-  }, [camera, size.width, size.height, fitInsets?.top, fitInsets?.right, fitInsets?.bottom, fitInsets?.left]);
+  }, [camera, isInXr, size.width, size.height, fitInsets?.top, fitInsets?.right, fitInsets?.bottom, fitInsets?.left]);
 
   useEffect(() => {
+    if (isInXr) return;
     if (components.length === 0) return;
     const sig = `${components.length}:${Math.round(Math.log10(Math.max(0.1, sceneBounds.radius)))}`;
     if (framedSignatureRef.current === sig) return;
@@ -771,7 +1073,7 @@ function SceneContents({
       controlsRef.current.target.set(cx, cy, cz);
       controlsRef.current.update();
     }
-  }, [components.length, sceneBounds, camera, size.width, size.height, fitInsets]);
+  }, [isInXr, components.length, sceneBounds, camera, size.width, size.height, fitInsets]);
 
   useEffect(() => {
     gl.localClippingEnabled = Boolean(solidPlane || wirePlane);
@@ -794,7 +1096,7 @@ function SceneContents({
 
   // Smoothly orbit and focus camera on target component anchor
   useEffect(() => {
-    if (!selectedName || !controlsRef.current) return;
+    if (isInXr || !selectedName || !controlsRef.current) return;
     const targetComp = components.find((c) => c.name === selectedName);
     if (!targetComp?.cad?.position) return;
     const [tx, ty, tz] = targetComp.cad.position;
@@ -803,7 +1105,7 @@ function SceneContents({
       controlsRef.current.target.lerp(targetVec, 0.8);
       controlsRef.current.update();
     }
-  }, [selectedName, components]);
+  }, [isInXr, selectedName, components]);
 
   // Drive the animation clock & optional split-section sweep from the render loop
   useFrame((_, delta) => {
@@ -875,7 +1177,11 @@ function SceneContents({
               component={comp}
               assetBaseUrl={assetBaseUrl}
               selected={selectedName === comp.name}
+              gizmoMode={gizmoMode}
               onSelect={onSelect}
+              onDraggingGizmoChange={onDraggingGizmoChange}
+              onCommitGizmoDelta={onCommitGizmoDelta}
+              onFaceTagClick={onFaceTagClick}
               animationController={animationController}
               dark={Boolean(dark)}
               solidPlane={solidPlane}
@@ -913,27 +1219,38 @@ function SceneContents({
         />
       )}
 
-      {/* Cavity Ambient Occlusion (SSAO) */}
-      <StudioSsaoPass enabled={Boolean(enableSsao)} />
+      {/* Cavity Ambient Occlusion (SSAO) — disabled during WebXR stereo rendering */}
+      {!isInXr && <StudioSsaoPass enabled={Boolean(enableSsao)} />}
 
-      {/* Controls */}
-      <OrbitControls
-        ref={controlsRef}
-        makeDefault
-        enableDamping
-        dampingFactor={0.1}
-        touches={touchScrollPassThrough ? { ONE: undefined as any, TWO: THREE.TOUCH.DOLLY_PAN } : undefined}
-      />
+      {/* Controls — unmounted during WebXR so OrbitControls never fights headset pose */}
+      {!isInXr && (
+        <OrbitControls
+          ref={controlsRef}
+          makeDefault
+          enabled={!isDraggingGizmo}
+          enableDamping
+          dampingFactor={0.1}
+          touches={touchScrollPassThrough ? { ONE: undefined as any, TWO: THREE.TOUCH.DOLLY_PAN } : undefined}
+        />
+      )}
 
-      {/* Gizmo */}
-      <GizmoHelper
-        alignment="bottom-right"
-        margin={[(fitInsets?.right ?? 0) + (fitInsets ? 44 : 60), (fitInsets?.bottom ?? 0) + (fitInsets ? 44 : 60)]}
-      >
-        <GizmoViewport labelColor="white" axisHeadScale={1} />
-      </GizmoHelper>
+      {/* Gizmo — unmounted during WebXR so secondary Hud pass never fights stereo framebuffer */}
+      {!isInXr && (
+        <GizmoHelper
+          alignment="bottom-right"
+          margin={[(fitInsets?.right ?? 0) + (fitInsets ? 44 : 60), (fitInsets?.bottom ?? 0) + (fitInsets ? 44 : 60)]}
+        >
+          <GizmoViewport labelColor="white" axisHeadScale={1} />
+        </GizmoHelper>
+      )}
     </>
   );
+}
+
+/** Safe wrapper subscribing to WebXR session state only when mounted inside `<XR>`. */
+function XrSceneContentsBridge(props: Omit<SceneContentsProps, "isInXr">) {
+  const isInXr = useXR((s) => Boolean(s.session));
+  return <SceneContents {...props} isInXr={isInXr} />;
 }
 
 // ── Empty state ──────────────────────────────────────────────────────────────
@@ -985,6 +1302,10 @@ export default function CadViewer({
   selectedName,
   onSelect,
   onConnect: _onConnect,
+  onCommitGizmoDelta,
+  onCommitDimensionDelta,
+  onCommitFaceTag,
+  onCommitAssemblyJoint,
   dark = false,
   animationController = null,
   vtkBuffer = null,
@@ -994,12 +1315,32 @@ export default function CadViewer({
   verificationOverlay = null,
   gdtOverlay = null,
   fitInsets,
+  sourceCode,
   caeSourceCode,
   onRevealLine,
   onInsertCaeSnippet,
+  onOpenVrRotunda,
 }: CadViewerProps) {
+  const xrStore = useMemo(() => (onOpenVrRotunda ? null : getSharedXrStore()), [onOpenVrRotunda]);
+  const xrCaps = useXrCapabilities();
   const [error, setError] = useState<string | null>(null);
   const [isBindingPickerOpen, setIsBindingPickerOpen] = useState(false);
+  const [gizmoMode, setGizmoMode] = useState<GizmoMode>(() => (onCommitGizmoDelta ? "translate" : "select"));
+  const [isDraggingGizmo, setIsDraggingGizmo] = useState(false);
+  const [faceTagDraft, setFaceTagDraft] = useState<{
+    hit: FaceTagHit;
+    portName: string;
+    portType: string;
+  } | null>(null);
+  const [matePartA, setMatePartA] = useState<string | null>(null);
+  const [mateDraft, setMateDraft] = useState<{
+    partA: string;
+    partB: string;
+    jointName: string;
+    jointType: CommitAssemblyJointPayload["jointType"];
+    axisKey: "z" | "y" | "x";
+  } | null>(null);
+  const [dimDrafts, setDimDrafts] = useState<Record<number, string>>({});
   const [clipAxis, setClipAxis] = useState<"none" | "x" | "y" | "z">("none");
   const [clipOffset, setClipOffset] = useState<number>(0);
   const [sectionSplit, setSectionSplit] = useState<boolean>(true);
@@ -1167,6 +1508,177 @@ export default function CadViewer({
     [components, selectedName],
   );
 
+  // Reset inline dimension drafts when selected component or its dimensions change
+  useEffect(() => {
+    setDimDrafts({});
+  }, [
+    selectedComponent?.name,
+    selectedComponent?.sourceMetadata?.dimensions?.[0],
+    selectedComponent?.sourceMetadata?.dimensions?.[1],
+    selectedComponent?.sourceMetadata?.dimensions?.[2],
+  ]);
+
+  // Clear face tag draft or mate state if mode changes
+  useEffect(() => {
+    if (gizmoMode !== "tag_face") {
+      setFaceTagDraft(null);
+    }
+    if (gizmoMode !== "mate") {
+      setMatePartA(null);
+      setMateDraft(null);
+    }
+  }, [gizmoMode, selectedName]);
+
+  // Direct-manipulation gizmo keyboard shortcuts (W/E/R/T/M/Escape)
+  useEffect(() => {
+    if ((!onCommitGizmoDelta && !onCommitAssemblyJoint) || typeof window === "undefined") return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      const activeEl = document.activeElement as HTMLElement | null;
+      const isEditable = (el: HTMLElement | null) => {
+        if (!el) return false;
+        const tag = el.tagName?.toLowerCase();
+        if (tag === "input" || tag === "textarea" || tag === "select" || el.isContentEditable) return true;
+        if (el.closest?.(".monaco-editor")) return true;
+        return false;
+      };
+      if (isEditable(target) || isEditable(activeEl)) return;
+
+      const key = e.key.toLowerCase();
+      if (key === "escape") {
+        if (mateDraft || matePartA) {
+          setMateDraft(null);
+          setMatePartA(null);
+          return;
+        }
+        setFaceTagDraft((prev) => {
+          if (prev) return null;
+          setGizmoMode("select");
+          return null;
+        });
+      } else if (key === "w" && onCommitGizmoDelta) {
+        setGizmoMode("translate");
+      } else if (key === "e" && onCommitGizmoDelta) {
+        setGizmoMode("rotate");
+      } else if (key === "r" && onCommitGizmoDelta) {
+        setGizmoMode("scale");
+      } else if (key === "t" && onCommitFaceTag) {
+        setGizmoMode("tag_face");
+      } else if (key === "m") {
+        setGizmoMode("mate");
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onCommitGizmoDelta, onCommitFaceTag, onCommitAssemblyJoint, mateDraft, matePartA]);
+
+  const handleFaceTagClick = useCallback(
+    (hit: FaceTagHit) => {
+      if (!onCommitFaceTag) return;
+      setFaceTagDraft({
+        hit,
+        portName: "port_1",
+        portType: "fixed_support",
+      });
+    },
+    [onCommitFaceTag],
+  );
+
+  const handleSceneSelect = useCallback(
+    (name: string | null) => {
+      onSelect?.(name);
+      if (gizmoMode !== "mate") return;
+      if (!name) {
+        setMatePartA(null);
+        setMateDraft(null);
+        return;
+      }
+      if (!matePartA) {
+        setMatePartA(name);
+        setMateDraft(null);
+      } else if (name !== matePartA) {
+        setMateDraft({
+          partA: matePartA,
+          partB: name,
+          jointName: `joint_${matePartA}_${name}`,
+          jointType: "Revolute",
+          axisKey: "z",
+        });
+      }
+    },
+    [onSelect, gizmoMode, matePartA],
+  );
+
+  const selectedDimensionFields = useMemo(() => {
+    const dims = selectedComponent?.sourceMetadata?.dimensions;
+    if (!dims || dims.length < 2) return [];
+    const prim = (
+      selectedComponent.sourceMetadata?.primitiveType ??
+      selectedComponent.shapeType ??
+      selectedComponent.name
+    ).toLowerCase();
+    if (prim.includes("sphere")) {
+      return [{ index: 0, label: "R", value: dims[0]!, primitiveType: "sphere" }];
+    }
+    if (prim.includes("cylinder") || prim.includes("cone")) {
+      return [
+        { index: 0, label: "R", value: dims[0]!, primitiveType: "cylinder" },
+        { index: 1, label: "H", value: dims[1]!, primitiveType: "cylinder" },
+      ];
+    }
+    return [
+      { index: 0, label: "X", value: dims[0]!, primitiveType: "cube" },
+      { index: 1, label: "Y", value: dims[1]!, primitiveType: "cube" },
+      ...(dims.length >= 3 ? [{ index: 2, label: "Z", value: dims[2]!, primitiveType: "cube" }] : []),
+    ];
+  }, [selectedComponent]);
+
+  const clearDimDraft = useCallback((dimIndex: number) => {
+    setDimDrafts((prev) => {
+      const next: Record<number, string> = {};
+      for (const [key, val] of Object.entries(prev)) {
+        const numKey = Number(key);
+        if (numKey !== dimIndex) {
+          next[numKey] = val;
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  const commitDimensionInput = useCallback(
+    (dimIndex: number, rawValue: string, currentValue: number, primitiveType: string) => {
+      if (!selectedComponent || !onCommitDimensionDelta) return;
+      const parsed = parseFloat(rawValue);
+      if (!Number.isFinite(parsed) || parsed <= 0 || Math.abs(parsed - currentValue) < 1e-6) {
+        clearDimDraft(dimIndex);
+        return;
+      }
+      onCommitDimensionDelta({
+        componentName: selectedComponent.name,
+        dimensionIndex: dimIndex,
+        newValue: parsed,
+        primitiveType,
+        sourceMetadata: selectedComponent.sourceMetadata,
+      });
+      clearDimDraft(dimIndex);
+    },
+    [selectedComponent, onCommitDimensionDelta, clearDimDraft],
+  );
+
+  const handleRevealComponentSource = useCallback(() => {
+    if (!selectedComponent || !onRevealLine) return;
+    const offset = selectedComponent.sourceMetadata?.startOffset;
+    if (offset === undefined) return;
+    const text = sourceCode ?? caeSourceCode;
+    const line =
+      typeof text === "string" && text.length > 0
+        ? text.slice(0, Math.max(0, Math.min(offset, text.length))).split("\n").length
+        : 1;
+    onRevealLine(line, selectedComponent.sourceMetadata?.parameterName ?? selectedComponent.name);
+  }, [selectedComponent, onRevealLine, sourceCode, caeSourceCode]);
+
   // Synchronized time scrubber: seek 3D animation when user scrubs simulation results chart
   useEffect(() => {
     if (typeof window === "undefined" || !animationController) return;
@@ -1208,6 +1720,42 @@ export default function CadViewer({
   if (components.length === 0 && !vtkBuffer) {
     return (
       <div style={{ height: "100%", position: "relative", background: dark ? "#121214" : "#f8fafc" }}>
+        {onOpenVrRotunda && (
+          <div
+            style={{
+              position: "absolute",
+              top: fitInsets ? fitInsets.top : 14,
+              right: fitInsets ? fitInsets.right : 14,
+              zIndex: 10,
+            }}
+          >
+            <button
+              type="button"
+              data-testid="cad-viewer-open-vr-rotunda"
+              onClick={onOpenVrRotunda}
+              title="Launch full Engineering VR Rotunda (45° Drafting Podium, 5 Environments, CAE Overlays & WebXR)"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "5px 12px",
+                borderRadius: 999,
+                border: "none",
+                background: "linear-gradient(135deg, #6366f1 0%, #06b6d4 100%)",
+                color: "#ffffff",
+                fontFamily: "system-ui, -apple-system, sans-serif",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                boxShadow: "0 4px 14px rgba(99, 102, 241, 0.35)",
+              }}
+            >
+              <span aria-hidden="true">🥽</span>
+              <span>VR Rotunda</span>
+            </button>
+          </div>
+        )}
         <EmptyState dark={dark} fitInsets={fitInsets} />
       </div>
     );
@@ -1235,8 +1783,58 @@ export default function CadViewer({
           fontFamily: "var(--font-mono, monospace)",
           fontSize: 10,
           color: dark ? "#e2e8f0" : "#1f2328",
+          flexWrap: "wrap",
         }}
       >
+        {(onCommitGizmoDelta || onCommitAssemblyJoint) && (
+          <>
+            {(
+              [
+                { mode: "select", label: "Select", title: "Select mode (Esc)" },
+                ...(onCommitGizmoDelta
+                  ? [
+                      { mode: "translate" as const, label: "Move (W)", title: "Translate gizmo (W)" },
+                      { mode: "rotate" as const, label: "Rotate (E)", title: "Rotate gizmo (E)" },
+                      { mode: "scale" as const, label: "Scale (R)", title: "Scale gizmo (R)" },
+                    ]
+                  : []),
+                ...(onCommitFaceTag
+                  ? [
+                      {
+                        mode: "tag_face" as const,
+                        label: "Tag Face (T)",
+                        title: "Tag a 3D face as a port/boundary (T)",
+                      },
+                    ]
+                  : []),
+                { mode: "mate" as const, label: "Mate (M)", title: "Mate two 3D parts with an assembly joint (M)" },
+              ] as Array<{ mode: GizmoMode; label: string; title: string }>
+            ).map((btn) => {
+              const active = gizmoMode === btn.mode;
+              return (
+                <button
+                  key={btn.mode}
+                  type="button"
+                  onClick={() => setGizmoMode(btn.mode)}
+                  title={btn.title}
+                  style={{
+                    background: active ? "rgba(6, 182, 212, 0.24)" : "transparent",
+                    color: active ? "#06b6d4" : "inherit",
+                    border: active ? "1px solid rgba(6, 182, 212, 0.5)" : "1px solid transparent",
+                    borderRadius: 12,
+                    padding: "2px 7px",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {btn.label}
+                </button>
+              );
+            })}
+            <span style={{ opacity: 0.4 }}>|</span>
+          </>
+        )}
         {(["x", "y", "z"] as const).map((axis) => {
           const active = clipAxis === axis;
           return (
@@ -1423,6 +2021,68 @@ export default function CadViewer({
             />
           </>
         )}
+        {(onOpenVrRotunda || (xrCaps.vrSupported && xrStore)) && (
+          <>
+            <span style={{ opacity: 0.4 }}>|</span>
+            {onOpenVrRotunda ? (
+              <button
+                type="button"
+                data-testid="cad-viewer-open-vr-rotunda"
+                onClick={onOpenVrRotunda}
+                title="Launch full Engineering VR Rotunda (45° Drafting Podium, 5 Environments, CAE Overlays & WebXR)"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "3px 10px",
+                  borderRadius: 999,
+                  border: "none",
+                  background: "linear-gradient(135deg, #6366f1 0%, #06b6d4 100%)",
+                  color: "#ffffff",
+                  fontFamily: "system-ui, -apple-system, sans-serif",
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: "0.02em",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  boxShadow: "0 2px 10px rgba(99, 102, 241, 0.35)",
+                }}
+              >
+                <span aria-hidden="true">🥽</span>
+                <span>VR Rotunda</span>
+              </button>
+            ) : (
+              xrCaps.vrSupported &&
+              xrStore && (
+                <button
+                  type="button"
+                  data-testid="cad-viewer-enter-vr"
+                  onClick={() => {
+                    void xrStore.enterVR();
+                  }}
+                  title="Enter immersive WebXR VR headset session"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "3px 9px",
+                    borderRadius: 999,
+                    border: "1px solid rgba(139, 92, 246, 0.65)",
+                    background: "rgba(99, 102, 241, 0.25)",
+                    color: dark ? "#e0e7ff" : "#3730a3",
+                    fontFamily: "system-ui, -apple-system, sans-serif",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Enter VR
+                </button>
+              )
+            )}
+          </>
+        )}
       </div>
 
       {/* Floating Selected Component HUD */}
@@ -1434,8 +2094,8 @@ export default function CadViewer({
             left: fitInsets ? fitInsets.left : 14,
             zIndex: 10,
             display: "flex",
-            alignItems: "center",
-            gap: 10,
+            flexDirection: "column",
+            gap: 8,
             padding: "8px 14px",
             background: dark ? "var(--overlay-bgColor, var(--ms-surface-glass))" : "rgba(255, 255, 255, 0.92)",
             backdropFilter: "blur(12px)",
@@ -1447,58 +2107,498 @@ export default function CadViewer({
             fontSize: "13px",
           }}
         >
-          <span style={{ fontSize: 16 }}>🧊</span>
-          <div>
-            <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-              <span>{selectedComponent.name}</span>
-              <span
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 16 }}>🧊</span>
+            <div>
+              <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <span>{selectedComponent.name}</span>
+                {selectedComponent.sourceMetadata?.parameterName && (
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      fontFamily: "var(--font-mono, monospace)",
+                      padding: "1px 6px",
+                      borderRadius: "10px",
+                      background: "rgba(6, 182, 212, 0.18)",
+                      color: "#06b6d4",
+                      border: "1px solid rgba(6, 182, 212, 0.35)",
+                      fontWeight: 600,
+                    }}
+                    title="Parametric source identifier"
+                  >
+                    {selectedComponent.sourceMetadata.parameterName}
+                  </span>
+                )}
+                <span
+                  style={{
+                    fontSize: "11px",
+                    padding: "1px 6px",
+                    borderRadius: "10px",
+                    background:
+                      selectedComponent.dynamicBindings && selectedComponent.dynamicBindings.length > 0
+                        ? "rgba(63, 185, 80, 0.2)"
+                        : "rgba(139, 148, 158, 0.2)",
+                    color:
+                      selectedComponent.dynamicBindings && selectedComponent.dynamicBindings.length > 0
+                        ? "#3fb950"
+                        : "#8b949e",
+                    fontWeight: 600,
+                  }}
+                >
+                  {selectedComponent.dynamicBindings && selectedComponent.dynamicBindings.length > 0
+                    ? `${selectedComponent.dynamicBindings.length} bound`
+                    : "unbound"}
+                </span>
+              </div>
+              <div style={{ fontSize: "11px", color: dark ? "#8b949e" : "#656d76" }}>
+                {formatCadAssetLabel(selectedComponent.cad.uri)}
+              </div>
+            </div>
+            {selectedComponent.sourceMetadata?.startOffset !== undefined && onRevealLine && (
+              <button
+                type="button"
+                onClick={handleRevealComponentSource}
                 style={{
+                  padding: "4px 8px",
+                  background: dark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)",
+                  color: dark ? "#e2e8f0" : "#1f2328",
+                  border: `1px solid ${dark ? "rgba(255, 255, 255, 0.14)" : "rgba(0, 0, 0, 0.12)"}`,
+                  borderRadius: "6px",
                   fontSize: "11px",
-                  padding: "1px 6px",
-                  borderRadius: "10px",
-                  background:
-                    selectedComponent.dynamicBindings && selectedComponent.dynamicBindings.length > 0
-                      ? "rgba(63, 185, 80, 0.2)"
-                      : "rgba(139, 148, 158, 0.2)",
-                  color:
-                    selectedComponent.dynamicBindings && selectedComponent.dynamicBindings.length > 0
-                      ? "#3fb950"
-                      : "#8b949e",
                   fontWeight: 600,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
                 }}
+                title="Jump to component definition in source code"
               >
-                {selectedComponent.dynamicBindings && selectedComponent.dynamicBindings.length > 0
-                  ? `${selectedComponent.dynamicBindings.length} bound`
-                  : "unbound"}
-              </span>
-            </div>
-            <div style={{ fontSize: "11px", color: dark ? "#8b949e" : "#656d76" }}>
-              {formatCadAssetLabel(selectedComponent.cad.uri)}
-            </div>
+                Go to Source
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsBindingPickerOpen(true)}
+              style={{
+                marginLeft: 2,
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "4px 10px",
+                background: "var(--ms-brand)",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+                transition: "background 0.15s ease",
+              }}
+              title="Link 3D geometry to simulation states"
+            >
+              <span>🧵</span>
+              <span>Link Variables</span>
+            </button>
           </div>
+
+          {onCommitDimensionDelta && selectedDimensionFields.length > 0 && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                paddingTop: 6,
+                borderTop: `1px solid ${dark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.08)"}`,
+                fontFamily: "var(--font-mono, monospace)",
+                fontSize: 11,
+              }}
+            >
+              {selectedDimensionFields.map((field) => {
+                const draftVal = dimDrafts[field.index] ?? String(Number(field.value.toFixed(4)));
+                const paramHint = selectedComponent.sourceMetadata?.dimensionParams?.[field.index];
+                return (
+                  <label
+                    key={field.index}
+                    style={{ display: "flex", alignItems: "center", gap: 4 }}
+                    title={paramHint ? `${field.label} (${paramHint})` : `${field.label} dimension`}
+                  >
+                    <span style={{ color: dark ? "#94a3b8" : "#64748b", fontWeight: 700 }}>{field.label}</span>
+                    <input
+                      type="number"
+                      step="any"
+                      value={draftVal}
+                      onChange={(e) =>
+                        setDimDrafts((prev) => ({
+                          ...prev,
+                          [field.index]: e.target.value,
+                        }))
+                      }
+                      onBlur={(e) =>
+                        commitDimensionInput(field.index, e.target.value, field.value, field.primitiveType)
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.currentTarget.blur();
+                        } else if (e.key === "Escape") {
+                          clearDimDraft(field.index);
+                          e.currentTarget.blur();
+                        }
+                      }}
+                      aria-label={`${field.label} dimension for ${selectedComponent.name}`}
+                      style={{
+                        width: 58,
+                        padding: "2px 5px",
+                        borderRadius: 5,
+                        border: `1px solid ${dark ? "rgba(255, 255, 255, 0.16)" : "rgba(0, 0, 0, 0.16)"}`,
+                        background: dark ? "rgba(15, 23, 42, 0.85)" : "#ffffff",
+                        color: "inherit",
+                        fontFamily: "inherit",
+                        fontSize: 11,
+                      }}
+                    />
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Floating Face Tagging Popover */}
+      {faceTagDraft && onCommitFaceTag && (
+        <div
+          style={{
+            position: "absolute",
+            top: (fitInsets ? fitInsets.top : 14) + 52,
+            right: fitInsets ? fitInsets.right : 14,
+            zIndex: 20,
+            width: 248,
+            padding: "10px 12px",
+            background: dark ? "rgba(15, 23, 42, 0.94)" : "rgba(255, 255, 255, 0.96)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            borderRadius: 10,
+            border: `1px solid ${dark ? "rgba(6, 182, 212, 0.45)" : "rgba(6, 182, 212, 0.35)"}`,
+            boxShadow: "0 10px 28px rgba(0, 0, 0, 0.32)",
+            color: dark ? "#f0f6fc" : "#1f2328",
+            fontSize: 12,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <strong style={{ fontSize: 12, color: "#06b6d4" }}>Tag Face · {faceTagDraft.hit.componentName}</strong>
+            <button
+              type="button"
+              onClick={() => setFaceTagDraft(null)}
+              aria-label="Close face tag popover"
+              style={{
+                background: "transparent",
+                border: "none",
+                color: dark ? "#94a3b8" : "#64748b",
+                cursor: "pointer",
+                fontSize: 13,
+                padding: 0,
+              }}
+            >
+              ✕
+            </button>
+          </div>
+          {faceTagDraft.hit.normal && (
+            <div style={{ fontSize: 10, fontFamily: "var(--font-mono, monospace)", opacity: 0.75 }}>
+              n = [{faceTagDraft.hit.normal.map((v) => v.toFixed(2)).join(", ")}]
+            </div>
+          )}
+          <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
+            <span style={{ opacity: 0.8 }}>Port Name</span>
+            <input
+              type="text"
+              value={faceTagDraft.portName}
+              onChange={(e) => setFaceTagDraft((prev) => (prev ? { ...prev, portName: e.target.value } : null))}
+              style={{
+                padding: "4px 7px",
+                borderRadius: 6,
+                border: `1px solid ${dark ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.16)"}`,
+                background: dark ? "#0f172a" : "#ffffff",
+                color: "inherit",
+                fontFamily: "var(--font-mono, monospace)",
+                fontSize: 11,
+              }}
+            />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
+            <span style={{ opacity: 0.8 }}>Port / Boundary Type</span>
+            <select
+              value={faceTagDraft.portType}
+              onChange={(e) => setFaceTagDraft((prev) => (prev ? { ...prev, portType: e.target.value } : null))}
+              style={{
+                padding: "4px 7px",
+                borderRadius: 6,
+                border: `1px solid ${dark ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.16)"}`,
+                background: dark ? "#0f172a" : "#ffffff",
+                color: "inherit",
+                fontSize: 11,
+              }}
+            >
+              <option value="fixed_support">fixed_support</option>
+              <option value="force_load">force_load</option>
+              <option value="thermal_boundary">thermal_boundary</option>
+              <option value="fluid_inlet">fluid_inlet</option>
+              <option value="mechanical_frame">mechanical_frame</option>
+            </select>
+          </label>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 2 }}>
+            <button
+              type="button"
+              onClick={() => setFaceTagDraft(null)}
+              style={{
+                padding: "4px 8px",
+                borderRadius: 6,
+                border: `1px solid ${dark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.14)"}`,
+                background: "transparent",
+                color: "inherit",
+                fontSize: 11,
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const portName = faceTagDraft.portName.trim() || "port_1";
+                onCommitFaceTag({
+                  componentName: faceTagDraft.hit.componentName,
+                  portName,
+                  portType: faceTagDraft.portType,
+                  normal: faceTagDraft.hit.normal,
+                  worldPos: faceTagDraft.hit.worldPos,
+                  sourceMetadata: faceTagDraft.hit.sourceMetadata,
+                });
+                setFaceTagDraft(null);
+              }}
+              style={{
+                padding: "4px 10px",
+                borderRadius: 6,
+                border: "none",
+                background: "#06b6d4",
+                color: "#0f172a",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Tag Face
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Mate Mode Status Hint (waiting for Part B) */}
+      {gizmoMode === "mate" && matePartA && !mateDraft && (
+        <div
+          style={{
+            position: "absolute",
+            top: (fitInsets ? fitInsets.top : 14) + 52,
+            right: fitInsets ? fitInsets.right : 14,
+            zIndex: 20,
+            padding: "6px 10px",
+            background: dark ? "rgba(15, 23, 42, 0.92)" : "rgba(255, 255, 255, 0.95)",
+            backdropFilter: "blur(10px)",
+            WebkitBackdropFilter: "blur(10px)",
+            borderRadius: 10,
+            border: `1px solid ${dark ? "rgba(6, 182, 212, 0.45)" : "rgba(6, 182, 212, 0.35)"}`,
+            boxShadow: "0 6px 20px rgba(0, 0, 0, 0.25)",
+            color: dark ? "#f0f6fc" : "#1f2328",
+            fontSize: 11,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <span>
+            <strong style={{ color: "#06b6d4" }}>Mate:</strong> {matePartA} → click second part
+          </span>
           <button
             type="button"
-            onClick={() => setIsBindingPickerOpen(true)}
+            onClick={() => setMatePartA(null)}
+            aria-label="Clear first mate part"
             style={{
-              marginLeft: 6,
-              display: "flex",
-              alignItems: "center",
-              gap: 5,
-              padding: "4px 10px",
-              background: "var(--ms-brand)",
-              color: "#ffffff",
+              background: "transparent",
               border: "none",
-              borderRadius: "6px",
-              fontSize: "12px",
-              fontWeight: 600,
+              color: dark ? "#94a3b8" : "#64748b",
               cursor: "pointer",
-              transition: "background 0.15s ease",
+              fontSize: 12,
+              padding: 0,
             }}
-            title="Link 3D geometry to simulation states"
           >
-            <span>🧵</span>
-            <span>Link Variables</span>
+            ✕
           </button>
+        </div>
+      )}
+
+      {/* Floating Assembly Joint (Mate) Popover */}
+      {mateDraft && (
+        <div
+          style={{
+            position: "absolute",
+            top: (fitInsets ? fitInsets.top : 14) + 52,
+            right: fitInsets ? fitInsets.right : 14,
+            zIndex: 20,
+            width: 256,
+            padding: "10px 12px",
+            background: dark ? "rgba(15, 23, 42, 0.94)" : "rgba(255, 255, 255, 0.96)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            borderRadius: 10,
+            border: `1px solid ${dark ? "rgba(6, 182, 212, 0.45)" : "rgba(6, 182, 212, 0.35)"}`,
+            boxShadow: "0 10px 28px rgba(0, 0, 0, 0.32)",
+            color: dark ? "#f0f6fc" : "#1f2328",
+            fontSize: 12,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <strong style={{ fontSize: 12, color: "#06b6d4" }}>
+              Mate · {mateDraft.partA} ↔ {mateDraft.partB}
+            </strong>
+            <button
+              type="button"
+              onClick={() => {
+                setMateDraft(null);
+                setMatePartA(null);
+              }}
+              aria-label="Close assembly joint popover"
+              style={{
+                background: "transparent",
+                border: "none",
+                color: dark ? "#94a3b8" : "#64748b",
+                cursor: "pointer",
+                fontSize: 13,
+                padding: 0,
+              }}
+            >
+              ✕
+            </button>
+          </div>
+          <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
+            <span style={{ opacity: 0.8 }}>Joint Name</span>
+            <input
+              type="text"
+              value={mateDraft.jointName}
+              onChange={(e) => setMateDraft((prev) => (prev ? { ...prev, jointName: e.target.value } : null))}
+              style={{
+                padding: "4px 7px",
+                borderRadius: 6,
+                border: `1px solid ${dark ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.16)"}`,
+                background: dark ? "#0f172a" : "#ffffff",
+                color: "inherit",
+                fontFamily: "var(--font-mono, monospace)",
+                fontSize: 11,
+              }}
+            />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
+            <span style={{ opacity: 0.8 }}>Joint Type</span>
+            <select
+              value={mateDraft.jointType}
+              onChange={(e) =>
+                setMateDraft((prev) =>
+                  prev ? { ...prev, jointType: e.target.value as CommitAssemblyJointPayload["jointType"] } : null,
+                )
+              }
+              style={{
+                padding: "4px 7px",
+                borderRadius: 6,
+                border: `1px solid ${dark ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.16)"}`,
+                background: dark ? "#0f172a" : "#ffffff",
+                color: "inherit",
+                fontSize: 11,
+              }}
+            >
+              <option value="Revolute">Revolute</option>
+              <option value="Prismatic">Prismatic</option>
+              <option value="Cylindrical">Cylindrical</option>
+              <option value="Spherical">Spherical</option>
+              <option value="Fixed">Fixed</option>
+            </select>
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11 }}>
+            <span style={{ opacity: 0.8 }}>Axis</span>
+            <select
+              value={mateDraft.axisKey}
+              onChange={(e) =>
+                setMateDraft((prev) => (prev ? { ...prev, axisKey: e.target.value as "z" | "y" | "x" } : null))
+              }
+              style={{
+                padding: "4px 7px",
+                borderRadius: 6,
+                border: `1px solid ${dark ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.16)"}`,
+                background: dark ? "#0f172a" : "#ffffff",
+                color: "inherit",
+                fontFamily: "var(--font-mono, monospace)",
+                fontSize: 11,
+              }}
+            >
+              <option value="z">Z [0, 0, 1]</option>
+              <option value="y">Y [0, 1, 0]</option>
+              <option value="x">X [1, 0, 0]</option>
+            </select>
+          </label>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 2 }}>
+            <button
+              type="button"
+              onClick={() => {
+                setMateDraft(null);
+                setMatePartA(null);
+              }}
+              style={{
+                padding: "4px 8px",
+                borderRadius: 6,
+                border: `1px solid ${dark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.14)"}`,
+                background: "transparent",
+                color: "inherit",
+                fontSize: 11,
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const axisMap: Record<"z" | "y" | "x", [number, number, number]> = {
+                  z: [0, 0, 1],
+                  y: [0, 1, 0],
+                  x: [1, 0, 0],
+                };
+                const jointName = mateDraft.jointName.trim() || `joint_${mateDraft.partA}_${mateDraft.partB}`;
+                onCommitAssemblyJoint?.({
+                  jointName,
+                  jointType: mateDraft.jointType,
+                  partA: mateDraft.partA,
+                  partB: mateDraft.partB,
+                  axis: axisMap[mateDraft.axisKey],
+                });
+                setMateDraft(null);
+                setMatePartA(null);
+                onSelect?.(null);
+              }}
+              style={{
+                padding: "4px 10px",
+                borderRadius: 6,
+                border: "none",
+                background: "#06b6d4",
+                color: "#0f172a",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Create Joint
+            </button>
+          </div>
         </div>
       )}
 
@@ -1835,29 +2935,43 @@ export default function CadViewer({
         style={{ background: dark ? "#1a1a2e" : "#f0f4f8" }}
         onError={(e) => setError(String(e))}
       >
-        <SceneContents
-          components={effectiveComponents}
-          assetBaseUrl={assetBaseUrl}
-          selectedName={selectedName}
-          onSelect={onSelect}
-          dark={dark}
-          animationController={animationController}
-          vtkBuffer={effectiveVtkBuffer}
-          touchScrollPassThrough={touchScrollPassThrough}
-          solidPlane={solidPlane}
-          wirePlane={wirePlane}
-          sectionSplit={sectionSplit && clipAxis !== "none"}
-          autoSweep={autoSweep}
-          clipSpan={clipSpan}
-          gdtOverlay={gdtOverlay}
-          showGdt={showGdt}
-          showEdges={showEdges}
-          enableSsao={enableSsao}
-          activeCaeField={activeCaeField}
-          onPickFace={hasCaeContext ? (label) => setPickedFaceSet(label) : undefined}
-          sceneBounds={sceneBounds}
-          fitInsets={fitInsets}
-        />
+        {(() => {
+          const sceneProps: Omit<SceneContentsProps, "isInXr"> = {
+            components: effectiveComponents,
+            assetBaseUrl,
+            selectedName,
+            gizmoMode,
+            isDraggingGizmo,
+            onDraggingGizmoChange: setIsDraggingGizmo,
+            onCommitGizmoDelta,
+            onFaceTagClick: onCommitFaceTag ? handleFaceTagClick : undefined,
+            onSelect: handleSceneSelect,
+            dark,
+            animationController,
+            vtkBuffer: effectiveVtkBuffer,
+            touchScrollPassThrough,
+            solidPlane,
+            wirePlane,
+            sectionSplit: sectionSplit && clipAxis !== "none",
+            autoSweep,
+            clipSpan,
+            gdtOverlay,
+            showGdt,
+            showEdges,
+            enableSsao,
+            activeCaeField,
+            onPickFace: hasCaeContext ? (label) => setPickedFaceSet(label) : undefined,
+            sceneBounds,
+            fitInsets,
+          };
+          return xrStore ? (
+            <XR store={xrStore}>
+              <XrSceneContentsBridge {...sceneProps} />
+            </XR>
+          ) : (
+            <SceneContents {...sceneProps} isInXr={false} />
+          );
+        })()}
       </Canvas>
 
       {/* Animation timeline overlay */}

@@ -13,16 +13,10 @@
 
 import type { Request } from "express";
 import type { LibraryDatabase } from "../database.js";
-import { escapeXml, extractPostTitle } from "./og-renderer.js";
+import { escapeHtml, escapeXml } from "./escape.js";
+import { extractPostTitle } from "./og-renderer.js";
 
-export function escapeHtml(str: unknown): string {
-  return String(str ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+export { escapeHtml };
 
 export function resolveRequestHost(req: Request, fallback: string = "https://ansatz.social"): string {
   const configuredPublicUrl = process.env["PUBLIC_URL"]?.trim();

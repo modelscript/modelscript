@@ -73,9 +73,6 @@ export class NexarConnector {
         }
       `;
 
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-
       const res = await fetch(this.endpoint, {
         method: "POST",
         headers: {
@@ -83,9 +80,8 @@ export class NexarConnector {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ query, variables: { q: mpn } }),
-        signal: controller.signal,
+        signal: AbortSignal.timeout(this.timeoutMs),
       });
-      clearTimeout(timer);
 
       if (!res.ok) {
         return this.generateMockQuotes(mpn);

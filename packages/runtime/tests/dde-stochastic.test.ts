@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { DdeFlowpipeSolver, type DdeProblem } from "../src/analysis/wasm_dde_flowpipe.js";
+import { DdeFlowpipeSolver, type DdeProblem } from "../src/analysis/dde_flowpipe.js";
 import { Interval } from "../src/analysis/wasm_interval.js";
 import { StochasticBarrierSynthesizer } from "../src/analysis/wasm_stochastic_barrier.js";
 

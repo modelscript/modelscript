@@ -10,10 +10,98 @@
  * exact 5th-order embedded error estimator `(y_{h/2} - y_h) / 15`.
  */
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
 import { luFactorFlat, luSolveFlat } from "@modelscript/runtime/wasm_gaussian.js";
+import { WasmScratchPool, type WasmMemoryHost, type WasmScratchScope } from "@modelscript/solve";
 import type { CommonSolverResult, SolverStats } from "../core/problem-types.js";
 import { RODAS4P_GAMMA, type Rodas4PEventCallback, type Rodas4PEventFunction, type Rodas4POptions } from "./rodas4p.js";
 import { tsit5 } from "./tsit5.js";
+
+interface Rodas5PWasmExports extends WasmMemoryHost {
+  rodas5p_assemble_and_factor?: (
+    n: number,
+    invGammaH: number,
+    hasMass: number,
+    mPtr: number,
+    jPtr: number,
+    wPtr: number,
+    pivPtr: number,
+    scalePtr: number,
+  ) => number;
+  rodas5p_stage_step?: (
+    stage: number,
+    n: number,
+    h: number,
+    hasMass: number,
+    mPtr: number,
+    wPtr: number,
+    pivPtr: number,
+    scalePtr: number,
+    yPtr: number,
+    fStagePtr: number,
+    dfdtPtr: number,
+    kBufPtr: number,
+    mkBufPtr: number,
+    yStagePtr: number,
+    luScratchPtr: number,
+  ) => number;
+  rodas5p_richardson_update_and_error?: (
+    n: number,
+    yPtr: number,
+    yCoarsePtr: number,
+    yFinePtr: number,
+    yNewPtr: number,
+    atol: number,
+    rtol: number,
+  ) => number;
+}
+
+interface Rodas5PWasmContext {
+  wasm: Rodas5PWasmExports;
+  hasMass: number;
+  mPtr: number;
+  jPtr: number;
+  wPtr: number;
+  pivPtr: number;
+  scalePtr: number;
+  yPtr: number;
+  fStagePtr: number;
+  dfdtPtr: number;
+  kBufPtr: number;
+  mkBufPtr: number;
+  yStagePtr: number;
+  luScratchPtr: number;
+  yOuterPtr: number;
+  yCoarsePtr: number;
+  yFinePtr: number;
+  yNewPtr: number;
+  yStageJs: number[];
+  yMidJs: number[];
+}
+
+const _rodas5pScratchPools = new WeakMap<object, WasmScratchPool>();
+function getRodas5PPool(wasm: WasmMemoryHost): WasmScratchPool {
+  let pool = _rodas5pScratchPools.get(wasm);
+  if (!pool) {
+    pool = new WasmScratchPool(wasm, 65536);
+    _rodas5pScratchPools.set(wasm, pool);
+  }
+  return pool;
+}
+
+function writeVecToWasm(wasm: WasmMemoryHost, ptr: number, src: number[], n: number): void {
+  const view = new Float64Array(wasm.memory.buffer, ptr, n);
+  for (let i = 0; i < n; i++) {
+    view[i] = src[i] ?? 0;
+  }
+}
+
+function readVecFromWasm(wasm: WasmMemoryHost, ptr: number, dst: number[], n: number): void {
+  const view = new Float64Array(wasm.memory.buffer, ptr, n);
+  for (let i = 0; i < n; i++) {
+    dst[i] = view[i]!;
+  }
+}
 
 // Verified Steinebach RODAS4P base coefficients (L-stable, stiffly accurate, γ = 0.25)
 const GAMMA = RODAS4P_GAMMA;
@@ -239,6 +327,179 @@ function rodasBaseStep(
   return yOut;
 }
 
+function rodasBaseStepWasm(
+  ctx: Rodas5PWasmContext,
+  f: (t: number, y: number[]) => number[],
+  t: number,
+  y: number[],
+  h: number,
+  counters: RodasStepCounters,
+): boolean {
+  const n = y.length;
+  const wasm = ctx.wasm;
+  const f0 = f(t, y);
+  counters.nfev++;
+  const J = computeJacobianFD(f, t, y, f0);
+  counters.njev++;
+  counters.nfev += n;
+  const dfdt = computeDfDtFD(f, t, y, f0);
+  counters.nfev++;
+
+  new Float64Array(wasm.memory.buffer, ctx.jPtr, n * n).set(J);
+  const invGh = 1.0 / (GAMMA * h);
+  const factored = wasm.rodas5p_assemble_and_factor!(
+    n,
+    invGh,
+    ctx.hasMass,
+    ctx.mPtr,
+    ctx.jPtr,
+    ctx.wPtr,
+    ctx.pivPtr,
+    ctx.scalePtr,
+  );
+  counters.nlu++;
+  if (!factored) return false;
+
+  writeVecToWasm(wasm, ctx.yPtr, y, n);
+  writeVecToWasm(wasm, ctx.fStagePtr, f0, n);
+  new Float64Array(wasm.memory.buffer, ctx.dfdtPtr, n).set(dfdt);
+
+  // Stage 1
+  wasm.rodas5p_stage_step!(
+    1,
+    n,
+    h,
+    ctx.hasMass,
+    ctx.mPtr,
+    ctx.wPtr,
+    ctx.pivPtr,
+    ctx.scalePtr,
+    ctx.yPtr,
+    ctx.fStagePtr,
+    ctx.dfdtPtr,
+    ctx.kBufPtr,
+    ctx.mkBufPtr,
+    ctx.yStagePtr,
+    ctx.luScratchPtr,
+  );
+
+  // Stage 2
+  readVecFromWasm(wasm, ctx.yStagePtr, ctx.yStageJs, n);
+  const f1 = f(t + C2 * h, ctx.yStageJs);
+  counters.nfev++;
+  writeVecToWasm(wasm, ctx.fStagePtr, f1, n);
+  wasm.rodas5p_stage_step!(
+    2,
+    n,
+    h,
+    ctx.hasMass,
+    ctx.mPtr,
+    ctx.wPtr,
+    ctx.pivPtr,
+    ctx.scalePtr,
+    ctx.yPtr,
+    ctx.fStagePtr,
+    ctx.dfdtPtr,
+    ctx.kBufPtr,
+    ctx.mkBufPtr,
+    ctx.yStagePtr,
+    ctx.luScratchPtr,
+  );
+
+  // Stage 3
+  readVecFromWasm(wasm, ctx.yStagePtr, ctx.yStageJs, n);
+  const f2 = f(t + C3 * h, ctx.yStageJs);
+  counters.nfev++;
+  writeVecToWasm(wasm, ctx.fStagePtr, f2, n);
+  wasm.rodas5p_stage_step!(
+    3,
+    n,
+    h,
+    ctx.hasMass,
+    ctx.mPtr,
+    ctx.wPtr,
+    ctx.pivPtr,
+    ctx.scalePtr,
+    ctx.yPtr,
+    ctx.fStagePtr,
+    ctx.dfdtPtr,
+    ctx.kBufPtr,
+    ctx.mkBufPtr,
+    ctx.yStagePtr,
+    ctx.luScratchPtr,
+  );
+
+  // Stage 4
+  readVecFromWasm(wasm, ctx.yStagePtr, ctx.yStageJs, n);
+  const f3 = f(t + C4 * h, ctx.yStageJs);
+  counters.nfev++;
+  writeVecToWasm(wasm, ctx.fStagePtr, f3, n);
+  wasm.rodas5p_stage_step!(
+    4,
+    n,
+    h,
+    ctx.hasMass,
+    ctx.mPtr,
+    ctx.wPtr,
+    ctx.pivPtr,
+    ctx.scalePtr,
+    ctx.yPtr,
+    ctx.fStagePtr,
+    ctx.dfdtPtr,
+    ctx.kBufPtr,
+    ctx.mkBufPtr,
+    ctx.yStagePtr,
+    ctx.luScratchPtr,
+  );
+
+  // Stage 5
+  readVecFromWasm(wasm, ctx.yStagePtr, ctx.yStageJs, n);
+  const f4 = f(t + h, ctx.yStageJs);
+  counters.nfev++;
+  writeVecToWasm(wasm, ctx.fStagePtr, f4, n);
+  wasm.rodas5p_stage_step!(
+    5,
+    n,
+    h,
+    ctx.hasMass,
+    ctx.mPtr,
+    ctx.wPtr,
+    ctx.pivPtr,
+    ctx.scalePtr,
+    ctx.yPtr,
+    ctx.fStagePtr,
+    ctx.dfdtPtr,
+    ctx.kBufPtr,
+    ctx.mkBufPtr,
+    ctx.yStagePtr,
+    ctx.luScratchPtr,
+  );
+
+  // Stage 6 (4th-order stiffly accurate solution written to yStagePtr)
+  readVecFromWasm(wasm, ctx.yStagePtr, ctx.yStageJs, n);
+  const f5 = f(t + h, ctx.yStageJs);
+  counters.nfev++;
+  writeVecToWasm(wasm, ctx.fStagePtr, f5, n);
+  const ok = wasm.rodas5p_stage_step!(
+    6,
+    n,
+    h,
+    ctx.hasMass,
+    ctx.mPtr,
+    ctx.wPtr,
+    ctx.pivPtr,
+    ctx.scalePtr,
+    ctx.yPtr,
+    ctx.fStagePtr,
+    ctx.dfdtPtr,
+    ctx.kBufPtr,
+    ctx.mkBufPtr,
+    ctx.yStagePtr,
+    ctx.luScratchPtr,
+  );
+  return ok !== 0;
+}
+
 /**
  * Integrate a stiff ODE/DAE `M * dy/dt = f(t, y)` using 5th-order L-stable extrapolated Rosenbrock-W (`Rodas5P`).
  */
@@ -290,93 +551,221 @@ export function rodas5p(
   let rejected = 0;
   let prevEvVals = evFns ? evFns.map((fn) => fn(t, y)) : null;
 
-  while (t < tEnd - 1e-13 && steps + rejected < maxSteps) {
-    if (t + h > tEnd) h = tEnd - t;
-    if (h < minStep) h = minStep;
+  const wasm = n > 0 ? (getDefaultWasmExports() as Rodas5PWasmExports | null) : null;
+  const useWasmDense = Boolean(
+    n > 0 &&
+    wasm &&
+    typeof wasm.__new === "function" &&
+    typeof wasm.rodas5p_assemble_and_factor === "function" &&
+    typeof wasm.rodas5p_stage_step === "function" &&
+    typeof wasm.rodas5p_richardson_update_and_error === "function",
+  );
 
-    // 1 coarse step of h + 2 half steps of h/2 -> Richardson 5th-order L-stable update
-    const yCoarse = rodasBaseStep(f, t, y, h, massMatrix, counters);
-    const yMid = yCoarse ? rodasBaseStep(f, t, y, 0.5 * h, massMatrix, counters) : null;
-    const yFine = yMid ? rodasBaseStep(f, t + 0.5 * h, yMid, 0.5 * h, massMatrix, counters) : null;
+  let wasmScope: WasmScratchScope | null = null;
+  let wasmCtx: Rodas5PWasmContext | null = null;
 
-    if (!yCoarse || !yFine) {
-      h *= 0.25;
-      rejected++;
-      continue;
-    }
-
-    const yNew = new Array<number>(n);
-    let errSq = 0;
-    for (let i = 0; i < n; i++) {
-      const diff = yFine[i]! - yCoarse[i]!;
-      const yn = yFine[i]! + diff / 15.0; // (16 * yFine - yCoarse) / 15
-      yNew[i] = yn;
-      const sc = atol + rtol * Math.max(Math.abs(y[i]!), Math.abs(yn));
-      const e = Math.abs(diff) / (15.0 * sc);
-      errSq += e * e;
-    }
-
-    const errNorm = Math.sqrt(errSq / Math.max(1, n));
-    if (errNorm <= 1.0 || h <= minStep * 1.01) {
-      const tNext = t + h;
-      const f0 = f(t, y);
-      const fNext = f(tNext, yNew);
-      counters.nfev += 2;
-
-      if (outputTimes && outputTimes.length > 0) {
-        while (outIdx < outputTimes.length && outputTimes[outIdx]! <= tNext + 1e-13) {
-          const tOut = outputTimes[outIdx]!;
-          const theta = Math.max(0, Math.min(1, (tOut - t) / h));
-          record(tOut, hermiteInterp(y, yNew, f0, fNext, h, theta, n));
-          outIdx++;
+  if (useWasmDense && wasm) {
+    const hasMass = massMatrix ? 1 : 0;
+    wasmScope = getRodas5PPool(wasm).scope();
+    const alloc8 = (bytes: number): number => wasmScope!.allocU8((bytes + 7) & ~7).ptr;
+    const nnBytes = n * n * 8;
+    const nBytes = n * 8;
+    const pivBytes = (n * 4 + 7) & ~7;
+    let mPtr = 0;
+    if (hasMass) {
+      mPtr = alloc8(nnBytes);
+      const mView = new Float64Array(wasm.memory.buffer, mPtr, n * n);
+      for (let i = 0; i < n; i++) {
+        const rowOff = i * n;
+        for (let j = 0; j < n; j++) {
+          mView[rowOff + j] = massMatrix![i]?.[j] ?? 0;
         }
+      }
+    }
+    const jPtr = alloc8(nnBytes);
+    const wPtr = alloc8(nnBytes);
+    const pivPtr = alloc8(pivBytes);
+    const scalePtr = alloc8(nBytes);
+    const yPtr = alloc8(nBytes);
+    const fStagePtr = alloc8(nBytes);
+    const dfdtPtr = alloc8(nBytes);
+    const kBufPtr = alloc8(6 * nBytes);
+    const mkBufPtr = hasMass ? alloc8(5 * nBytes) : 0;
+    const yStagePtr = alloc8(nBytes);
+    const luScratchPtr = alloc8(nBytes);
+    const yOuterPtr = alloc8(nBytes);
+    const yCoarsePtr = alloc8(nBytes);
+    const yFinePtr = alloc8(nBytes);
+    const yNewPtr = alloc8(nBytes);
+
+    wasmCtx = {
+      wasm,
+      hasMass,
+      mPtr,
+      jPtr,
+      wPtr,
+      pivPtr,
+      scalePtr,
+      yPtr,
+      fStagePtr,
+      dfdtPtr,
+      kBufPtr,
+      mkBufPtr,
+      yStagePtr,
+      luScratchPtr,
+      yOuterPtr,
+      yCoarsePtr,
+      yFinePtr,
+      yNewPtr,
+      yStageJs: new Array<number>(n),
+      yMidJs: new Array<number>(n),
+    };
+  }
+
+  try {
+    while (t < tEnd - 1e-13 && steps + rejected < maxSteps) {
+      if (t + h > tEnd) h = tEnd - t;
+      if (h < minStep) h = minStep;
+
+      let yNew: number[];
+      let errNorm: number;
+
+      if (wasmCtx) {
+        // 1 coarse step of h + 2 half steps of h/2 -> Richardson 5th-order L-stable update in WASM
+        writeVecToWasm(wasmCtx.wasm, wasmCtx.yOuterPtr, y, n);
+        const okCoarse = rodasBaseStepWasm(wasmCtx, f, t, y, h, counters);
+        if (!okCoarse) {
+          h *= 0.25;
+          rejected++;
+          continue;
+        }
+        new Float64Array(wasmCtx.wasm.memory.buffer, wasmCtx.yCoarsePtr, n).set(
+          new Float64Array(wasmCtx.wasm.memory.buffer, wasmCtx.yStagePtr, n),
+        );
+
+        const okMid = rodasBaseStepWasm(wasmCtx, f, t, y, 0.5 * h, counters);
+        if (!okMid) {
+          h *= 0.25;
+          rejected++;
+          continue;
+        }
+        readVecFromWasm(wasmCtx.wasm, wasmCtx.yStagePtr, wasmCtx.yMidJs, n);
+
+        const okFine = rodasBaseStepWasm(wasmCtx, f, t + 0.5 * h, wasmCtx.yMidJs, 0.5 * h, counters);
+        if (!okFine) {
+          h *= 0.25;
+          rejected++;
+          continue;
+        }
+        new Float64Array(wasmCtx.wasm.memory.buffer, wasmCtx.yFinePtr, n).set(
+          new Float64Array(wasmCtx.wasm.memory.buffer, wasmCtx.yStagePtr, n),
+        );
+
+        errNorm = wasmCtx.wasm.rodas5p_richardson_update_and_error!(
+          n,
+          wasmCtx.yOuterPtr,
+          wasmCtx.yCoarsePtr,
+          wasmCtx.yFinePtr,
+          wasmCtx.yNewPtr,
+          atol,
+          rtol,
+        );
+        if (!Number.isFinite(errNorm)) {
+          h *= 0.25;
+          rejected++;
+          continue;
+        }
+        yNew = new Array<number>(n);
+        readVecFromWasm(wasmCtx.wasm, wasmCtx.yNewPtr, yNew, n);
       } else {
-        record(tNext, yNew);
-      }
+        // 1 coarse step of h + 2 half steps of h/2 -> Richardson 5th-order L-stable update (TS fallback)
+        const yCoarse = rodasBaseStep(f, t, y, h, massMatrix, counters);
+        const yMid = yCoarse ? rodasBaseStep(f, t, y, 0.5 * h, massMatrix, counters) : null;
+        const yFine = yMid ? rodasBaseStep(f, t + 0.5 * h, yMid, 0.5 * h, massMatrix, counters) : null;
 
-      if (evFns && prevEvVals) {
-        const curEvVals = evFns.map((fn) => fn(tNext, yNew));
-        for (let eIdx = 0; eIdx < evFns.length; eIdx++) {
-          const g0 = prevEvVals[eIdx]!;
-          const g1 = curEvVals[eIdx]!;
-          const dirReq = evDirs?.[eIdx] ?? 0;
-          const crossed = (g0 < 0 && g1 >= 0 && dirReq >= 0) || (g0 > 0 && g1 <= 0 && dirReq <= 0);
-          if (crossed && evCb) {
-            let lo = 0;
-            let hi = 1;
-            let gLo = g0;
-            for (let b = 0; b < 24; b++) {
-              const mid = 0.5 * (lo + hi);
-              const yM = hermiteInterp(y, yNew, f0, fNext, h, mid, n);
-              const gM = evFns[eIdx]!(t + mid * h, yM);
-              if ((gLo < 0 && gM < 0) || (gLo > 0 && gM > 0)) {
-                lo = mid;
-                gLo = gM;
-              } else {
-                hi = mid;
-              }
-            }
-            const tEv = t + 0.5 * (lo + hi) * h;
-            const yEv = hermiteInterp(y, yNew, f0, fNext, h, 0.5 * (lo + hi), n);
-            const yAfter = evCb(tEv, yEv, eIdx, g1 >= g0 ? 1 : -1);
-            for (let i = 0; i < n; i++) yNew[i] = yAfter[i]!;
-            break;
-          }
+        if (!yCoarse || !yFine) {
+          h *= 0.25;
+          rejected++;
+          continue;
         }
-        prevEvVals = evFns.map((fn) => fn(tNext, yNew));
+
+        yNew = new Array<number>(n);
+        let errSq = 0;
+        for (let i = 0; i < n; i++) {
+          const diff = yFine[i]! - yCoarse[i]!;
+          const yn = yFine[i]! + diff / 15.0; // (16 * yFine - yCoarse) / 15
+          yNew[i] = yn;
+          const sc = atol + rtol * Math.max(Math.abs(y[i]!), Math.abs(yn));
+          const e = Math.abs(diff) / (15.0 * sc);
+          errSq += e * e;
+        }
+
+        errNorm = Math.sqrt(errSq / Math.max(1, n));
       }
 
-      t = tNext;
-      y = yNew;
-      steps++;
+      if (errNorm <= 1.0 || h <= minStep * 1.01) {
+        const tNext = t + h;
+        const f0 = f(t, y);
+        const fNext = f(tNext, yNew);
+        counters.nfev += 2;
 
-      const fac = errNorm > 0 ? Math.min(4.0, Math.max(0.2, 0.9 * Math.pow(errNorm, -0.2))) : 2.0;
-      h = Math.min(maxStep, Math.max(minStep, h * fac));
-    } else {
-      rejected++;
-      const fac = Math.max(0.1, Math.min(0.5, 0.9 * Math.pow(errNorm, -0.2)));
-      h = Math.max(minStep, h * fac);
+        if (outputTimes && outputTimes.length > 0) {
+          while (outIdx < outputTimes.length && outputTimes[outIdx]! <= tNext + 1e-13) {
+            const tOut = outputTimes[outIdx]!;
+            const theta = Math.max(0, Math.min(1, (tOut - t) / h));
+            record(tOut, hermiteInterp(y, yNew, f0, fNext, h, theta, n));
+            outIdx++;
+          }
+        } else {
+          record(tNext, yNew);
+        }
+
+        if (evFns && prevEvVals) {
+          const curEvVals = evFns.map((fn) => fn(tNext, yNew));
+          for (let eIdx = 0; eIdx < evFns.length; eIdx++) {
+            const g0 = prevEvVals[eIdx]!;
+            const g1 = curEvVals[eIdx]!;
+            const dirReq = evDirs?.[eIdx] ?? 0;
+            const crossed = (g0 < 0 && g1 >= 0 && dirReq >= 0) || (g0 > 0 && g1 <= 0 && dirReq <= 0);
+            if (crossed && evCb) {
+              let lo = 0;
+              let hi = 1;
+              let gLo = g0;
+              for (let b = 0; b < 24; b++) {
+                const mid = 0.5 * (lo + hi);
+                const yM = hermiteInterp(y, yNew, f0, fNext, h, mid, n);
+                const gM = evFns[eIdx]!(t + mid * h, yM);
+                if ((gLo < 0 && gM < 0) || (gLo > 0 && gM > 0)) {
+                  lo = mid;
+                  gLo = gM;
+                } else {
+                  hi = mid;
+                }
+              }
+              const tEv = t + 0.5 * (lo + hi) * h;
+              const yEv = hermiteInterp(y, yNew, f0, fNext, h, 0.5 * (lo + hi), n);
+              const yAfter = evCb(tEv, yEv, eIdx, g1 >= g0 ? 1 : -1);
+              for (let i = 0; i < n; i++) yNew[i] = yAfter[i]!;
+              break;
+            }
+          }
+          prevEvVals = evFns.map((fn) => fn(tNext, yNew));
+        }
+
+        t = tNext;
+        y = yNew;
+        steps++;
+
+        const fac = errNorm > 0 ? Math.min(4.0, Math.max(0.2, 0.9 * Math.pow(errNorm, -0.2))) : 2.0;
+        h = Math.min(maxStep, Math.max(minStep, h * fac));
+      } else {
+        rejected++;
+        const fac = Math.max(0.1, Math.min(0.5, 0.9 * Math.pow(errNorm, -0.2)));
+        h = Math.max(minStep, h * fac);
+      }
     }
+  } finally {
+    wasmScope?.dispose();
   }
 
   return {

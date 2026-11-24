@@ -146,6 +146,7 @@ export class SysML2OmgService {
   private commits = new Map<string, OmgCommit[]>(); // projectId -> commits
   private elements = new Map<string, Map<string, OmgElement>>(); // commitId -> (elementId -> element)
   private relationships = new Map<string, OmgRelationship[]>(); // commitId -> relationships
+  private projectOwners = new Map<string, number>(); // projectId -> ownerId
 
   constructor(private db?: LibraryDatabase | null) {
     if (this.db) {
@@ -192,8 +193,77 @@ export class SysML2OmgService {
           this.relationships.set(c["@id"], rels as unknown as OmgRelationship[]);
         }
       }
+      if (this.db.db) {
+        try {
+          const ownerRows = this.db.db
+            .prepare("SELECT project_id, owner_id FROM sysml2_project_owners")
+            .all() as Array<{ project_id: string; owner_id: number }>;
+          for (const row of ownerRows) {
+            this.projectOwners.set(row.project_id, Number(row.owner_id));
+          }
+        } catch (ownerErr) {
+          console.warn("[SysML2OmgService] Could not load project owners from database:", ownerErr);
+        }
+      }
     } catch (err) {
       console.warn("[SysML2OmgService] Could not load from database:", err);
+    }
+  }
+
+  /**
+   * Associates a SysML v2 project with an owning user ID, persisting to SQLite when available.
+   */
+  setProjectOwner(projectId: string, ownerId: number): void {
+    this.projectOwners.set(projectId, ownerId);
+    if (this.db?.db) {
+      try {
+        this.db.db
+          .prepare(
+            `INSERT INTO sysml2_project_owners (project_id, owner_id)
+             VALUES (?, ?)
+             ON CONFLICT(project_id) DO UPDATE SET owner_id = excluded.owner_id`,
+          )
+          .run(projectId, ownerId);
+      } catch (err) {
+        console.warn("[SysML2OmgService] Could not persist project owner to database:", err);
+      }
+    }
+  }
+
+  /**
+   * Returns the owning user ID for a SysML v2 project, if one is recorded.
+   */
+  getProjectOwner(projectId: string): number | undefined {
+    const cached = this.projectOwners.get(projectId);
+    if (cached !== undefined) return cached;
+    if (this.db?.db) {
+      try {
+        const row = this.db.db
+          .prepare("SELECT owner_id FROM sysml2_project_owners WHERE project_id = ?")
+          .get(projectId) as { owner_id: number } | undefined;
+        if (row) {
+          const ownerId = Number(row.owner_id);
+          this.projectOwners.set(projectId, ownerId);
+          return ownerId;
+        }
+      } catch (err) {
+        console.warn("[SysML2OmgService] Could not read project owner from database:", err);
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Removes the ownership record for a SysML v2 project from memory and SQLite.
+   */
+  deleteProjectOwner(projectId: string): void {
+    this.projectOwners.delete(projectId);
+    if (this.db?.db) {
+      try {
+        this.db.db.prepare("DELETE FROM sysml2_project_owners WHERE project_id = ?").run(projectId);
+      } catch (err) {
+        console.warn("[SysML2OmgService] Could not delete project owner from database:", err);
+      }
     }
   }
 
@@ -285,6 +355,7 @@ export class SysML2OmgService {
     this.branches.delete(projectId);
     this.tags.delete(projectId);
     this.projects.delete(projectId);
+    this.deleteProjectOwner(projectId);
 
     if (this.db) {
       try {

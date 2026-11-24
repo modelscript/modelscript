@@ -260,8 +260,7 @@ function parseEnumLiteralsFromText(
   const sliceRange = findEnumerationSliceRange(cstText);
   if (!sliceRange || sliceRange.isColon) return [];
   const parser = UnifiedWorkspace.getGlobalParser(".mo") as
-    | { parse?: (src: string) => { rootNode?: CstNodeLike } | null | undefined }
-    | undefined;
+    { parse?: (src: string) => { rootNode?: CstNodeLike } | null | undefined } | undefined;
   if (!parser || typeof parser.parse !== "function") return [];
   const prefix = "type _E = ";
   const enumSlice = cstText.slice(sliceRange.start, sliceRange.end);
@@ -377,7 +376,7 @@ function findAnnotationClearanceMin(cst: CstNodeLike | null | undefined): number
   return null;
 }
 
-function isClassExtendsInCst(cst: CstNodeLike | null | undefined): boolean {
+export function isClassExtendsInCst(cst: CstNodeLike | null | undefined): boolean {
   if (!cst) return false;
   const specContainer =
     (Cst.ClassDefinition.classSpecifier(cst as SyntaxNode) as CstNodeLike | null) ??
@@ -444,8 +443,7 @@ function extractDeclBindingExprText(declOrCompNode: CstNodeLike | null | undefin
 
 function parseConnectRefCst(refText: string): CstNodeLike | null {
   const parser = UnifiedWorkspace.getGlobalParser(".mo") as
-    | { parse?: (src: string) => { rootNode?: CstNodeLike } | null | undefined }
-    | undefined;
+    { parse?: (src: string) => { rootNode?: CstNodeLike } | null | undefined } | undefined;
   if (!parser || typeof parser.parse !== "function") return null;
   const tree = parser.parse(`model _ConnectRefCheck equation connect(${refText}, _b); end _ConnectRefCheck;`);
   if (!tree?.rootNode) return null;
@@ -3271,36 +3269,6 @@ export const classDefinitionQueries: Record<string, any> = {
   lint__typeNotFound: (db: QueryDB, self: SymbolEntry) => {
     const cst = db.cstNode(self.id) as SyntaxNode | null;
     if (!cst) return null;
-    if (
-      self.parentId !== null &&
-      db.childrenOf(self.id).some((c) => c.kind === "Extends" && c.name === self.name) &&
-      isClassExtendsInCst(cst)
-    ) {
-      let hasIgnoreReplaceable = false;
-      let currId: SymbolId | null = self.id;
-      while (currId !== null) {
-        const currNode = db.cstNode(currId) as any;
-        if (currNode?.text?.includes("--ignoreReplaceable")) {
-          hasIgnoreReplaceable = true;
-          break;
-        }
-        const sym = db.symbol(currId);
-        currId = sym?.parentId ?? null;
-      }
-      if (hasIgnoreReplaceable) return null;
-
-      const inheritedMap = db.query<Record<string, SymbolId>>("inheritedSymbolsMap", self.parentId);
-      const inheritedId = inheritedMap?.[self.name];
-      if (inheritedId !== undefined && !db.query<boolean>("isReplaceable", inheritedId)) {
-        return [
-          error(`Redeclaration with a new type requires '${self.name}' to be replaceable.`, {
-            startOffset: self.startOffset,
-            endOffset: self.endOffset,
-            code: 4019,
-          }),
-        ];
-      }
-    }
     const spec = getShortClassSpecifierNode(cst);
     if (!spec) return null;
 
@@ -7306,6 +7274,17 @@ export const componentDeclarationQueries: Record<string, any> = {
   lint__cyclicDimension: (db: QueryDB, self: SymbolEntry) => {
     const diags = db.query<Array<{ dimIndex: number; exprText: string }> | null>("cyclicDimensionInfo", self.id);
     if (diags && diags.length > 0) {
+      if (self.parentId) {
+        for (const sib of db.childrenOf(self.parentId)) {
+          if (sib.id === self.id) break;
+          if (sib.kind !== "Component") continue;
+          const sibDiags = db.query<Array<{ dimIndex: number; exprText: string }> | null>(
+            "cyclicDimensionInfo",
+            sib.id,
+          );
+          if (sibDiags && sibDiags.length > 0) return null;
+        }
+      }
       const d = diags[0]!;
       const cst = db.cstNode(self.id) as SyntaxNode | null;
       let clauseNode = cst;
@@ -7315,7 +7294,12 @@ export const componentDeclarationQueries: Record<string, any> = {
       const rangeNode = clauseNode ?? cst;
       const startOffset = rangeNode?.startIndex ?? rangeNode?.startOffset ?? self.startOffset;
       const endOffset = rangeNode?.endIndex ?? rangeNode?.endOffset ?? self.endOffset;
-      const msg = ModelicaErrorCode.CYCLIC_DIMENSION_DEPENDENCY.message(String(d.dimIndex + 1), self.name, d.exprText);
+      const formattedExpr = d.exprText.replace(/,(\S)/g, ", $1");
+      const msg = ModelicaErrorCode.CYCLIC_DIMENSION_DEPENDENCY.message(
+        String(d.dimIndex + 1),
+        self.name,
+        formattedExpr,
+      );
       return error(msg, {
         startOffset,
         endOffset,

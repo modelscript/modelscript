@@ -951,5 +951,139 @@ export function lbfgsTwoLoopWasm(
   }
 }
 
+/**
+ * Dense Householder QR decomposition in WebAssembly linear memory: A = Q * R.
+ * - aPtr: input n x n row-major f64 matrix A (not modified)
+ * - qPtr: output n x n row-major f64 orthogonal matrix Q
+ * - rPtr: output n x n row-major f64 upper-triangular matrix R
+ * - workVPtr: scratch f64[n] buffer for Householder reflector vector v
+ */
+export function householderQrWasm(
+  aPtr: u32,
+  qPtr: u32,
+  rPtr: u32,
+  workVPtr: u32,
+  n: u32,
+): void {
+  const nn = n * n;
+  // Copy A -> R and initialize Q = I
+  for (let i: u32 = 0; i < nn; i++) {
+    const byteOff = i << 3;
+    store<f64>(rPtr + byteOff, load<f64>(aPtr + byteOff));
+    store<f64>(qPtr + byteOff, 0.0);
+  }
+  for (let i: u32 = 0; i < n; i++) {
+    store<f64>(qPtr + ((i * n + i) << 3), 1.0);
+  }
+
+  if (n <= 1) return;
+
+  for (let k: u32 = 0; k < n - 1; k++) {
+    // 1. Compute 2-norm of subcolumn R[k..n-1, k]
+    let normSq: f64 = 0.0;
+    for (let i: u32 = k; i < n; i++) {
+      const val = load<f64>(rPtr + ((i * n + k) << 3));
+      normSq += val * val;
+    }
+    const norm = Math.sqrt(normSq);
+    if (norm < 1e-15) continue;
+
+    // 2. Form Householder vector v
+    const rkk = load<f64>(rPtr + ((k * n + k) << 3));
+    const alpha: f64 = rkk >= 0.0 ? -norm : norm;
+    store<f64>(workVPtr + (k << 3), rkk - alpha);
+    let vNormSq: f64 = (rkk - alpha) * (rkk - alpha);
+    for (let i: u32 = k + 1; i < n; i++) {
+      const vi = load<f64>(rPtr + ((i * n + k) << 3));
+      store<f64>(workVPtr + (i << 3), vi);
+      vNormSq += vi * vi;
+    }
+    if (vNormSq < 1e-30) continue;
+    const beta: f64 = 2.0 / vNormSq;
+
+    // 3. Apply reflection to R: R = (I - beta * v * v^T) * R
+    for (let j: u32 = k; j < n; j++) {
+      let dot: f64 = 0.0;
+      for (let i: u32 = k; i < n; i++) {
+        dot += load<f64>(workVPtr + (i << 3)) * load<f64>(rPtr + ((i * n + j) << 3));
+      }
+      const scale = beta * dot;
+      for (let i: u32 = k; i < n; i++) {
+        const addr = rPtr + ((i * n + j) << 3);
+        store<f64>(addr, load<f64>(addr) - scale * load<f64>(workVPtr + (i << 3)));
+      }
+    }
+    store<f64>(rPtr + ((k * n + k) << 3), alpha);
+    for (let i: u32 = k + 1; i < n; i++) {
+      store<f64>(rPtr + ((i * n + k) << 3), 0.0);
+    }
+
+    // 4. Accumulate into Q: Q = Q * (I - beta * v * v^T)
+    for (let i: u32 = 0; i < n; i++) {
+      const rowOff = i * n;
+      let dot: f64 = 0.0;
+      for (let j: u32 = k; j < n; j++) {
+        dot += load<f64>(qPtr + ((rowOff + j) << 3)) * load<f64>(workVPtr + (j << 3));
+      }
+      const scale = beta * dot;
+      for (let j: u32 = k; j < n; j++) {
+        const addr = qPtr + ((rowOff + j) << 3);
+        store<f64>(addr, load<f64>(addr) - scale * load<f64>(workVPtr + (j << 3)));
+      }
+    }
+  }
+}
+
+/**
+ * Computes out = Q * v for an n x n row-major matrix Q and n-vector v.
+ */
+export function matVecMulWasm(qPtr: u32, vPtr: u32, outPtr: u32, n: u32): void {
+  for (let i: u32 = 0; i < n; i++) {
+    const rowOff = i * n;
+    let sum: f64 = 0.0;
+    for (let j: u32 = 0; j < n; j++) {
+      sum += load<f64>(qPtr + ((rowOff + j) << 3)) * load<f64>(vPtr + (j << 3));
+    }
+    store<f64>(outPtr + (i << 3), sum);
+  }
+}
+
+/**
+ * Computes out = Q^T * v for an n x n row-major matrix Q and n-vector v.
+ */
+export function matTransposeVecMulWasm(qPtr: u32, vPtr: u32, outPtr: u32, n: u32): void {
+  for (let i: u32 = 0; i < n; i++) {
+    let sum: f64 = 0.0;
+    for (let j: u32 = 0; j < n; j++) {
+      sum += load<f64>(qPtr + ((j * n + i) << 3)) * load<f64>(vPtr + (j << 3));
+    }
+    store<f64>(outPtr + (i << 3), sum);
+  }
+}
+
+/**
+ * Encloses rotated coordinate interval box y in [-w, w] via x = center + Q * y.
+ * Writes axis-aligned bounds to outLoPtr[i] = c_i - sum_j |Q_{ij}| w_j, outHiPtr[i] = c_i + sum_j |Q_{ij}| w_j.
+ */
+export function encloseRotatedBoxWasm(
+  centerPtr: u32,
+  qPtr: u32,
+  halfWidthsPtr: u32,
+  outLoPtr: u32,
+  outHiPtr: u32,
+  n: u32,
+): void {
+  for (let i: u32 = 0; i < n; i++) {
+    const c = load<f64>(centerPtr + (i << 3));
+    const rowOff = i * n;
+    let radius: f64 = 0.0;
+    for (let j: u32 = 0; j < n; j++) {
+      radius += Math.abs(load<f64>(qPtr + ((rowOff + j) << 3))) * load<f64>(halfWidthsPtr + (j << 3));
+    }
+    store<f64>(outLoPtr + (i << 3), c - radius);
+    store<f64>(outHiPtr + (i << 3), c + radius);
+  }
+}
+
 
 

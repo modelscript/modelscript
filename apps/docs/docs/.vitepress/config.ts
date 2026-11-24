@@ -81,29 +81,59 @@ const CUSTOM_GRAMMAR_ALIASES: Record<string, string[]> = {
 
 const SKIP_BUILTIN_GRAMMARS = new Set(["c"]);
 
+function collectUsedCodeFenceLanguages(docsDir: string): Set<string> {
+  const used = new Set<string>();
+  const fenceRe = /^[ \t]*```([a-zA-Z0-9_+-]+)/gm;
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith(".") || entry.name === "node_modules" || entry.name === "public") continue;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+      } else if (entry.name.endsWith(".md")) {
+        const content = fs.readFileSync(fullPath, "utf-8");
+        let match: RegExpExecArray | null;
+        fenceRe.lastIndex = 0;
+        while ((match = fenceRe.exec(content)) !== null) {
+          if (match[1]) used.add(match[1].toLowerCase());
+        }
+      }
+    }
+  };
+  if (fs.existsSync(docsDir)) walk(docsDir);
+  return used;
+}
+
 function loadAllLanguageGrammars(): Record<string, unknown>[] {
+  const usedLangs = collectUsedCodeFenceLanguages(path.resolve(__dirname, ".."));
+  const isGrammarUsed = (slug: string): boolean => {
+    if (usedLangs.has(slug.toLowerCase())) return true;
+    const aliases = CUSTOM_GRAMMAR_ALIASES[slug];
+    return aliases ? aliases.some((a) => usedLangs.has(a.toLowerCase())) : false;
+  };
+
   const loaded = new Map<string, Record<string, unknown>>();
   const ideSyntaxesDir = path.resolve(__dirname, "../../../../apps/ide/dist/extension/syntaxes");
   const rootSyntaxesDir = path.resolve(__dirname, "../../../../dist/extension/syntaxes");
   const languagesDir = path.resolve(__dirname, "../../../../languages");
 
-  // 1. Load from apps/ide/dist/extension/syntaxes (all 94 grammars) or fallback dist/extension/syntaxes
+  // 1. Load from apps/ide/dist/extension/syntaxes or fallback dist/extension/syntaxes (only grammars used in docs)
   for (const dir of [ideSyntaxesDir, rootSyntaxesDir]) {
     if (!fs.existsSync(dir)) continue;
     for (const file of fs.readdirSync(dir)) {
       if (!file.endsWith(".tmLanguage.json")) continue;
       const slug = file.replace(/\.tmLanguage\.json$/, "");
-      if (slug === "sysml2" || SKIP_BUILTIN_GRAMMARS.has(slug) || loaded.has(slug)) continue;
+      if (slug === "sysml2" || SKIP_BUILTIN_GRAMMARS.has(slug) || loaded.has(slug) || !isGrammarUsed(slug)) continue;
       const grammar = loadTmGrammar([path.join(dir, file)], slug, `source.${slug}`, CUSTOM_GRAMMAR_ALIASES[slug] ?? []);
       if (grammar) loaded.set(slug, grammar);
     }
   }
 
-  // 2. Fallback to languages/*/as-gen/tmLanguage.json for any missing grammars
+  // 2. Fallback to languages/*/as-gen/tmLanguage.json for any missing used grammars
   if (fs.existsSync(languagesDir)) {
     for (const entry of fs.readdirSync(languagesDir)) {
       const slug = entry === "sysml2" ? "sysml" : entry;
-      if (SKIP_BUILTIN_GRAMMARS.has(slug) || loaded.has(slug)) continue;
+      if (SKIP_BUILTIN_GRAMMARS.has(slug) || loaded.has(slug) || !isGrammarUsed(slug)) continue;
       const tmPath = path.join(languagesDir, entry, "as-gen", "tmLanguage.json");
       const grammar = loadTmGrammar([tmPath], slug, `source.${slug}`, CUSTOM_GRAMMAR_ALIASES[slug] ?? []);
       if (grammar) loaded.set(slug, grammar);
@@ -243,6 +273,7 @@ export default defineConfig({
     },
     build: {
       target: ["es2020", "safari15"],
+      reportCompressedSize: false,
     },
     esbuild: {
       target: ["es2020", "safari15"],

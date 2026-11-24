@@ -3,6 +3,7 @@
 import { emitAssemblyScriptCodec, emitTypeScriptCodecBindings } from "@modelscript/dsl";
 import fs from "node:fs";
 import path from "node:path";
+import { writeFormattedTsIfChanged } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { runLanguageWasmBuild } from "../../../scripts/build/build-language-wasm.js";
 import { psseSavSoaCodecDef } from "../src/parser/codec-defs.ts";
 
@@ -131,7 +132,5 @@ if (fs.existsSync(symbolsPath) && fs.existsSync(diagramsPath) && fs.existsSync(r
     "}",
     "",
   ].join("\n");
-  if (!fs.existsSync(outTsPath) || fs.readFileSync(outTsPath, "utf-8") !== content) {
-    fs.writeFileSync(outTsPath, content, "utf-8");
-  }
+  await writeFormattedTsIfChanged(outTsPath, content);
 }

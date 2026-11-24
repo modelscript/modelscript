@@ -20,6 +20,7 @@
 import { StaticTapeBuilder, evaluateTapeForward, evaluateTapeReverse } from "../autodiff/wasm_tape.js";
 import { BinOp, DAEBuilder, ExprKind } from "../dae/wasm_dae.js";
 import { type ImplicitInitBlock } from "../dae/wasm_init.js";
+import { getDefaultWasmExports } from "../dae/wasm_loader.js";
 
 /** Result of the MINLP freeze-and-solve iteration. */
 export interface MinlpResult {
@@ -372,6 +373,58 @@ function simpleEvalMinlp(exprId: number, env: Map<string, number>, arena: DAEBui
 }
 
 function solveLUMinlp(A: number[][], b: number[], n: number): number[] {
+  if (n <= 0) return [];
+
+  const w = getDefaultWasmExports();
+  if (
+    w &&
+    typeof w.luFactorFlatInPlace === "function" &&
+    typeof w.luSolveFlatInPlace === "function" &&
+    typeof w.alloc === "function" &&
+    typeof w.free === "function"
+  ) {
+    const matPtr = w.alloc(n * n * 8);
+    const pivPtr = w.alloc(n * 4);
+    const scalePtr = w.alloc(n * 8);
+    const rhsPtr = w.alloc(n * 8);
+    const solPtr = w.alloc(n * 8);
+    try {
+      const matView = new Float64Array(w.memory.buffer, matPtr, n * n);
+      for (let i = 0; i < n; i++) {
+        const row = A[i];
+        const off = i * n;
+        for (let j = 0; j < n; j++) {
+          matView[off + j] = row?.[j] ?? 0;
+        }
+      }
+      const rhsView = new Float64Array(w.memory.buffer, rhsPtr, n);
+      for (let i = 0; i < n; i++) rhsView[i] = b[i] ?? 0;
+
+      w.luFactorFlatInPlace(matPtr, pivPtr, scalePtr, n);
+      w.luSolveFlatInPlace(matPtr, pivPtr, scalePtr, rhsPtr, solPtr, n);
+
+      const solView = new Float64Array(w.memory.buffer, rhsPtr, n);
+      const x = new Array<number>(n);
+      let valid = true;
+      for (let i = 0; i < n; i++) {
+        const v = solView[i]!;
+        if (!Number.isFinite(v)) {
+          valid = false;
+          break;
+        }
+        x[i] = v;
+      }
+      if (valid) return x;
+    } finally {
+      w.free(matPtr);
+      w.free(pivPtr);
+      w.free(scalePtr);
+      w.free(rhsPtr);
+      w.free(solPtr);
+    }
+  }
+
+  // Fallback for singular matrices or uninitialized WASM
   const M = A.map((row) => [...row]);
   const rhs = [...b];
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import crypto from "node:crypto";
 import { JWT_SECRET } from "../middleware/auth-middleware.js";
+import { parseHmacTokenPayload, signHmacToken, verifyHmacToken } from "./hmac-token.js";
 
 export interface PasswordResetTokenPayload {
   userId: number;
@@ -31,18 +31,8 @@ export function signPasswordResetToken(
   secret: string = JWT_SECRET,
   expiresInMs: number = DEFAULT_RESET_EXPIRY_MS,
 ): string {
-  const payload: PasswordResetTokenPayload = {
-    userId,
-    email: email.toLowerCase().trim(),
-    tokenVersion,
-    expiresAt: Date.now() + expiresInMs,
-  };
-
-  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const hmacSecret = buildResetSecret(secret, passwordHash, tokenVersion);
-  const signature = crypto.createHmac("sha256", hmacSecret).update(payloadB64).digest("base64url");
-
-  return `${payloadB64}.${signature}`;
+  return signHmacToken({ userId, email: email.toLowerCase().trim(), tokenVersion }, hmacSecret, expiresInMs);
 }
 
 /**
@@ -50,17 +40,7 @@ export function signPasswordResetToken(
  * Useful to retrieve the userId/email in order to fetch the user's current hash/tokenVersion from DB.
  */
 export function parsePasswordResetTokenPayload(token: string): PasswordResetTokenPayload | null {
-  if (!token || typeof token !== "string" || !token.includes(".")) {
-    return null;
-  }
-  const [payloadB64] = token.split(".");
-  if (!payloadB64) return null;
-  try {
-    const payloadStr = Buffer.from(payloadB64, "base64url").toString("utf8");
-    return JSON.parse(payloadStr) as PasswordResetTokenPayload;
-  } catch {
-    return null;
-  }
+  return parseHmacTokenPayload<PasswordResetTokenPayload>(token);
 }
 
 /**
@@ -76,24 +56,22 @@ export function verifyPasswordResetToken(
   },
   secret: string = JWT_SECRET,
 ): { valid: boolean; userId?: number | undefined; email?: string | undefined; error?: string | undefined } {
-  if (!token || typeof token !== "string" || !token.includes(".")) {
-    return { valid: false, error: "Malformed reset token" };
+  const expectedTokenVersion = currentUser.token_version ?? 1;
+  const hmacSecret = buildResetSecret(secret, currentUser.password_hash, expectedTokenVersion);
+
+  const result = verifyHmacToken<{ userId: number; email: string; tokenVersion: number }>(token, hmacSecret);
+  if (!result.valid) {
+    if (result.code === "expired") {
+      return { valid: false, error: "Password reset link has expired. Please request a new one." };
+    }
+    if (result.code === "invalid_signature") {
+      return { valid: false, error: "Invalid password reset token signature" };
+    }
+    return { valid: false, error: result.error };
   }
 
-  const [payloadB64, providedSig] = token.split(".");
-  if (!payloadB64 || !providedSig) {
-    return { valid: false, error: "Malformed reset token parts" };
-  }
-
-  let payload: PasswordResetTokenPayload;
-  try {
-    const payloadStr = Buffer.from(payloadB64, "base64url").toString("utf8");
-    payload = JSON.parse(payloadStr) as PasswordResetTokenPayload;
-  } catch (err: unknown) {
-    return { valid: false, error: `Invalid reset token payload structure: ${(err as Error).message}` };
-  }
-
-  if (!payload.userId || !payload.email || typeof payload.expiresAt !== "number") {
+  const { payload } = result;
+  if (!payload.userId || !payload.email) {
     return { valid: false, error: "Missing required claims in reset token payload" };
   }
 
@@ -101,23 +79,8 @@ export function verifyPasswordResetToken(
     return { valid: false, error: "Token subject mismatch" };
   }
 
-  const expectedTokenVersion = currentUser.token_version ?? 1;
   if (payload.tokenVersion !== expectedTokenVersion) {
     return { valid: false, error: "Reset token has already been used or was revoked" };
-  }
-
-  if (Date.now() > payload.expiresAt) {
-    return { valid: false, error: "Password reset link has expired. Please request a new one." };
-  }
-
-  const hmacSecret = buildResetSecret(secret, currentUser.password_hash, expectedTokenVersion);
-  const expectedSig = crypto.createHmac("sha256", hmacSecret).update(payloadB64).digest("base64url");
-
-  const providedBuffer = Buffer.from(providedSig, "utf8");
-  const expectedBuffer = Buffer.from(expectedSig, "utf8");
-
-  if (providedBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(providedBuffer, expectedBuffer)) {
-    return { valid: false, error: "Invalid password reset token signature" };
   }
 
   return {

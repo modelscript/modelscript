@@ -5,11 +5,15 @@
 const CHUNK_ALLOC_LOCK_PTR: usize = memory.data(4);
 
 @inline function acquireChunkAllocLock(): void {
-  while (atomic.cmpxchg<u32>(CHUNK_ALLOC_LOCK_PTR, 0, 1) != 0) { /* spin */ }
+  if (ASC_FEATURE_THREADS) {
+    while (atomic.cmpxchg<u32>(CHUNK_ALLOC_LOCK_PTR, 0, 1) != 0) { /* spin */ }
+  }
 }
 
 @inline function releaseChunkAllocLock(): void {
-  atomic.store<u32>(CHUNK_ALLOC_LOCK_PTR, 0);
+  if (ASC_FEATURE_THREADS) {
+    atomic.store<u32>(CHUNK_ALLOC_LOCK_PTR, 0);
+  }
 }
 
 export function atomicChunkAlloc(size: u32): u32 {

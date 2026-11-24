@@ -23,8 +23,191 @@
  *   the tau-leaping simulation method." The Journal of Chemical Physics, 124(4), 044109.
  */
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
+import { WasmScratchPool, type WasmMemoryHost, type WasmScratchScope } from "@modelscript/solve";
 import { Xoshiro256pp } from "../uq/monte-carlo.js";
 import { getSimulateWasmSync } from "../wasm/simulate-wasm.js";
+
+interface JumpProcessWasmExports extends WasmMemoryHost {
+  jump_rng_seed?: (rngStatePtr: number, seedLo: number, seedHi: number) => void;
+  jump_propensity_prefix_sum?: (m: number, propensitiesPtr: number, prefixOutPtr: number) => number;
+  jump_select_reaction?: (m: number, prefixPtr: number, threshold: number) => number;
+  jump_direct_select_step?: (m: number, propensitiesPtr: number, rngStatePtr: number, outDtPtr: number) => number;
+  jump_first_reaction_select?: (
+    m: number,
+    propensitiesPtr: number,
+    rngStatePtr: number,
+    outMinTauPtr: number,
+  ) => number;
+  jump_apply_stoichiometry?: (n: number, statePtr: number, stoichRowPtr: number, count: number) => void;
+  jump_check_critical?: (
+    n: number,
+    m: number,
+    statePtr: number,
+    propensitiesPtr: number,
+    stoichPtr: number,
+    nc: number,
+  ) => number;
+  jump_compute_cgp_tau?: (
+    n: number,
+    m: number,
+    statePtr: number,
+    propensitiesPtr: number,
+    stoichPtr: number,
+    eps: number,
+    maxTau: number,
+    muHatPtr: number,
+    sigmaSqHatPtr: number,
+  ) => number;
+  jump_sample_poisson_batch?: (
+    m: number,
+    propensitiesPtr: number,
+    tau: number,
+    rngStatePtr: number,
+    firingsOutPtr: number,
+  ) => number;
+  jump_tau_leap_attempt_loop?: (
+    n: number,
+    m: number,
+    statePtr: number,
+    propensitiesPtr: number,
+    stoichPtr: number,
+    initialTau: number,
+    maxHalvings: number,
+    rngStatePtr: number,
+    trialStatePtr: number,
+    firingsOutPtr: number,
+    outTauPtr: number,
+  ) => number;
+  jump_eval_mass_action_propensities?: (
+    m: number,
+    statePtr: number,
+    ratesPtr: number,
+    reactRowPtr: number,
+    reactSpPtr: number,
+    reactOrdPtr: number,
+    propensitiesOutPtr: number,
+  ) => number;
+  jump_gillespie_mass_action_trajectory?: (
+    n: number,
+    m: number,
+    initStatePtr: number,
+    ratesPtr: number,
+    reactRowPtr: number,
+    reactSpPtr: number,
+    reactOrdPtr: number,
+    stoichRowPtr: number,
+    stoichSpPtr: number,
+    stoichDelPtr: number,
+    t0: number,
+    tEnd: number,
+    dtSave: number,
+    maxOutputs: number,
+    maxSteps: number,
+    seedLo: number,
+    seedHi: number,
+    outTimesPtr: number,
+    outStatesPtr: number,
+    outChannelCountsPtr: number,
+    outNumWrittenPtr: number,
+    stateWorkPtr: number,
+    propWorkPtr: number,
+    rngStatePtr: number,
+  ) => number;
+  jump_ensemble_moments?: (
+    numTrajectories: number,
+    nTimes: number,
+    nSpecies: number,
+    trajStatesPtr: number,
+    meanOutPtr: number,
+    varOutPtr: number,
+  ) => void;
+}
+
+const _jumpScratchPools = new WeakMap<object, WasmScratchPool>();
+function getJumpPool(wasm: WasmMemoryHost): WasmScratchPool {
+  let pool = _jumpScratchPools.get(wasm);
+  if (!pool) {
+    pool = new WasmScratchPool(wasm, 65536);
+    _jumpScratchPools.set(wasm, pool);
+  }
+  return pool;
+}
+
+function getJumpWasm(): JumpProcessWasmExports | null {
+  const raw = getDefaultWasmExports() as JumpProcessWasmExports | null;
+  if (!raw || !raw.memory) return null;
+  return raw;
+}
+
+function splitSeedU32(seed: number): [number, number] {
+  const s = Math.trunc(seed);
+  const lo = s >>> 0;
+  const hi = Math.floor(Math.abs(s) / 0x100000000) >>> 0;
+  return [lo, hi];
+}
+
+function packDenseStoichiometry(channels: readonly JumpReactionChannel[], n: number): Float64Array {
+  const M = channels.length;
+  const out = new Float64Array(M * n);
+  for (let j = 0; j < M; j++) {
+    const nu = channels[j]!.netStoichiometry;
+    const base = j * n;
+    for (let i = 0; i < n; i++) {
+      out[base + i] = nu[i] ?? 0;
+    }
+  }
+  return out;
+}
+
+function packMassActionCsr(channels: readonly JumpReactionChannel[]): {
+  rates: Float64Array;
+  reactRow: Int32Array;
+  reactSp: Int32Array;
+  reactOrd: Int32Array;
+  stoichRow: Int32Array;
+  stoichSp: Int32Array;
+  stoichDel: Float64Array;
+} {
+  const M = channels.length;
+  const reactRow = new Int32Array(M + 1);
+  const reactSpList: number[] = [];
+  const reactOrdList: number[] = [];
+  const stoichRow = new Int32Array(M + 1);
+  const stoichSpList: number[] = [];
+  const stoichDelList: number[] = [];
+  const rates = new Float64Array(M);
+
+  for (let j = 0; j < M; j++) {
+    const ch = channels[j]!;
+    rates[j] = ch._massActionRate!;
+    reactRow[j] = reactSpList.length;
+    for (const r of ch.reactants!) {
+      reactSpList.push(r.speciesIndex);
+      reactOrdList.push(r.count);
+    }
+    stoichRow[j] = stoichSpList.length;
+    for (let s = 0; s < ch.netStoichiometry.length; s++) {
+      const d = ch.netStoichiometry[s]!;
+      if (d !== 0) {
+        stoichSpList.push(s);
+        stoichDelList.push(d);
+      }
+    }
+  }
+  reactRow[M] = reactSpList.length;
+  stoichRow[M] = stoichSpList.length;
+
+  return {
+    rates,
+    reactRow,
+    reactSp: Int32Array.from(reactSpList),
+    reactOrd: Int32Array.from(reactOrdList),
+    stoichRow,
+    stoichSp: Int32Array.from(stoichSpList),
+    stoichDel: Float64Array.from(stoichDelList),
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public Types & Interfaces
@@ -187,68 +370,128 @@ export function gillespieSSA(problem: JumpProblem, options: JumpOptions = {}): J
   const dtSave = options.dtSave;
   const seed = options.seed ?? problem.seed ?? 42;
 
-  // Fast-path: run full Gillespie Direct Method in simulate.wasm linear memory for mass-action networks
-  if (
-    dtSave !== undefined &&
-    dtSave > 0 &&
-    n > 0 &&
-    M > 0 &&
-    problem.channels.every((ch) => ch._massActionRate !== undefined && ch.reactants !== undefined)
-  ) {
+  const isAllMassAction =
+    n > 0 && M > 0 && problem.channels.every((ch) => ch._massActionRate !== undefined && ch.reactants !== undefined);
+
+  const wasm = getJumpWasm();
+
+  // Fast-path 1: full Gillespie Direct Method in @modelscript/runtime WASM linear memory
+  if (dtSave !== undefined && dtSave > 0 && isAllMassAction && wasm?.jump_gillespie_mass_action_trajectory) {
+    const maxOutputs = Math.max(2, Math.floor((tEnd - t0) / dtSave) + 2);
+    const csr = packMassActionCsr(problem.channels);
+    const [seedLo, seedHi] = splitSeedU32(seed);
+    const scope: WasmScratchScope = getJumpPool(wasm).scope();
+    try {
+      const initPtr = scope.allocF64(n).ptr;
+      const ratePtr = scope.allocF64(M).ptr;
+      const rRowPtr = scope.allocI32(M + 1).ptr;
+      const rSpPtr = scope.allocI32(Math.max(1, csr.reactSp.length)).ptr;
+      const rOrdPtr = scope.allocI32(Math.max(1, csr.reactOrd.length)).ptr;
+      const sRowPtr = scope.allocI32(M + 1).ptr;
+      const sSpPtr = scope.allocI32(Math.max(1, csr.stoichSp.length)).ptr;
+      const sDelPtr = scope.allocF64(Math.max(1, csr.stoichDel.length)).ptr;
+      const outTPtr = scope.allocF64(maxOutputs).ptr;
+      const outXPtr = scope.allocF64(maxOutputs * n).ptr;
+      const outCountsPtr = scope.allocI32(M).ptr;
+      const outWrittenPtr = scope.allocI32(1).ptr;
+      const stateWorkPtr = scope.allocF64(n).ptr;
+      const propWorkPtr = scope.allocF64(M).ptr;
+      const rngStatePtr = scope.allocF64(4).ptr;
+
+      const buf = wasm.memory.buffer;
+      new Float64Array(buf, initPtr, n).set(problem.u0);
+      new Float64Array(buf, ratePtr, M).set(csr.rates);
+      new Int32Array(buf, rRowPtr, M + 1).set(csr.reactRow);
+      if (csr.reactSp.length > 0) {
+        new Int32Array(buf, rSpPtr, csr.reactSp.length).set(csr.reactSp);
+        new Int32Array(buf, rOrdPtr, csr.reactOrd.length).set(csr.reactOrd);
+      }
+      new Int32Array(buf, sRowPtr, M + 1).set(csr.stoichRow);
+      if (csr.stoichSp.length > 0) {
+        new Int32Array(buf, sSpPtr, csr.stoichSp.length).set(csr.stoichSp);
+        new Float64Array(buf, sDelPtr, csr.stoichDel.length).set(csr.stoichDel);
+      }
+
+      const totalReactions = wasm.jump_gillespie_mass_action_trajectory(
+        n,
+        M,
+        initPtr,
+        ratePtr,
+        rRowPtr,
+        rSpPtr,
+        rOrdPtr,
+        sRowPtr,
+        sSpPtr,
+        sDelPtr,
+        t0,
+        tEnd,
+        dtSave,
+        maxOutputs,
+        maxSteps,
+        seedLo,
+        seedHi,
+        outTPtr,
+        outXPtr,
+        outCountsPtr,
+        outWrittenPtr,
+        stateWorkPtr,
+        propWorkPtr,
+        rngStatePtr,
+      );
+
+      const postBuf = wasm.memory.buffer;
+      const numWritten = new Int32Array(postBuf, outWrittenPtr, 1)[0] ?? 0;
+      const tView = new Float64Array(postBuf, outTPtr, numWritten);
+      const xView = new Float64Array(postBuf, outXPtr, numWritten * n);
+      const cView = new Int32Array(postBuf, outCountsPtr, M);
+      const times = Array.from(tView);
+      const states: number[][] = new Array(numWritten);
+      for (let i = 0; i < numWritten; i++) {
+        const row = new Array<number>(n);
+        for (let s = 0; s < n; s++) row[s] = xView[i * n + s]!;
+        states[i] = row;
+      }
+      return {
+        times,
+        states,
+        totalReactions,
+        channelCounts: Array.from(cView),
+      };
+    } finally {
+      scope.dispose();
+    }
+  }
+
+  // Fast-path 2: run full Gillespie Direct Method in simulate.wasm linear memory for mass-action networks
+  if (dtSave !== undefined && dtSave > 0 && isAllMassAction) {
     const w = getSimulateWasmSync();
     if (w) {
       const numOutputs = Math.max(2, Math.floor((tEnd - t0) / dtSave) + 1);
-      const reactRow = new Int32Array(M + 1);
-      const reactSpList: number[] = [];
-      const reactOrdList: number[] = [];
-      const stoichRow = new Int32Array(M + 1);
-      const stoichSpList: number[] = [];
-      const stoichDelList: number[] = [];
-      const rates = new Float64Array(M);
-
-      for (let j = 0; j < M; j++) {
-        const ch = problem.channels[j]!;
-        rates[j] = ch._massActionRate!;
-        reactRow[j] = reactSpList.length;
-        for (const r of ch.reactants!) {
-          reactSpList.push(r.speciesIndex);
-          reactOrdList.push(r.count);
-        }
-        stoichRow[j] = stoichSpList.length;
-        for (let s = 0; s < ch.netStoichiometry.length; s++) {
-          const d = ch.netStoichiometry[s]!;
-          if (d !== 0) {
-            stoichSpList.push(s);
-            stoichDelList.push(d);
-          }
-        }
-      }
-      reactRow[M] = reactSpList.length;
-      stoichRow[M] = stoichSpList.length;
+      const csr = packMassActionCsr(problem.channels);
 
       const initPtr = w.alloc(n * 8);
       const ratePtr = w.alloc(M * 8);
       const rRowPtr = w.alloc((M + 1) * 4);
-      const rSpPtr = w.alloc(Math.max(4, reactSpList.length * 4));
-      const rOrdPtr = w.alloc(Math.max(4, reactOrdList.length * 4));
+      const rSpPtr = w.alloc(Math.max(4, csr.reactSp.length * 4));
+      const rOrdPtr = w.alloc(Math.max(4, csr.reactOrd.length * 4));
       const sRowPtr = w.alloc((M + 1) * 4);
-      const sSpPtr = w.alloc(Math.max(4, stoichSpList.length * 4));
-      const sDelPtr = w.alloc(Math.max(8, stoichDelList.length * 8));
+      const sSpPtr = w.alloc(Math.max(4, csr.stoichSp.length * 4));
+      const sDelPtr = w.alloc(Math.max(8, csr.stoichDel.length * 8));
       const outTPtr = w.alloc(numOutputs * 8);
       const outXPtr = w.alloc(numOutputs * n * 8);
 
       try {
         new Float64Array(w.memory.buffer, initPtr, n).set(problem.u0);
-        new Float64Array(w.memory.buffer, ratePtr, M).set(rates);
-        new Int32Array(w.memory.buffer, rRowPtr, M + 1).set(reactRow);
-        if (reactSpList.length > 0) {
-          new Int32Array(w.memory.buffer, rSpPtr, reactSpList.length).set(reactSpList);
-          new Int32Array(w.memory.buffer, rOrdPtr, reactOrdList.length).set(reactOrdList);
+        new Float64Array(w.memory.buffer, ratePtr, M).set(csr.rates);
+        new Int32Array(w.memory.buffer, rRowPtr, M + 1).set(csr.reactRow);
+        if (csr.reactSp.length > 0) {
+          new Int32Array(w.memory.buffer, rSpPtr, csr.reactSp.length).set(csr.reactSp);
+          new Int32Array(w.memory.buffer, rOrdPtr, csr.reactOrd.length).set(csr.reactOrd);
         }
-        new Int32Array(w.memory.buffer, sRowPtr, M + 1).set(stoichRow);
-        if (stoichSpList.length > 0) {
-          new Int32Array(w.memory.buffer, sSpPtr, stoichSpList.length).set(stoichSpList);
-          new Float64Array(w.memory.buffer, sDelPtr, stoichDelList.length).set(stoichDelList);
+        new Int32Array(w.memory.buffer, sRowPtr, M + 1).set(csr.stoichRow);
+        if (csr.stoichSp.length > 0) {
+          new Int32Array(w.memory.buffer, sSpPtr, csr.stoichSp.length).set(csr.stoichSp);
+          new Float64Array(w.memory.buffer, sDelPtr, csr.stoichDel.length).set(csr.stoichDel);
         }
 
         const totalReactions = w.ssa_gillespieTrajectory(
@@ -298,6 +541,118 @@ export function gillespieSSA(problem: JumpProblem, options: JumpOptions = {}): J
         w.free(outTPtr);
         w.free(outXPtr);
       }
+    }
+  }
+
+  // Step-level WASM path for general propensity callbacks or ungridded recording
+  if (n > 0 && M > 0 && wasm?.jump_rng_seed && wasm.jump_direct_select_step && wasm.jump_apply_stoichiometry) {
+    const scope: WasmScratchScope = getJumpPool(wasm).scope();
+    try {
+      const statePtr = scope.allocF64(n).ptr;
+      const propPtr = scope.allocF64(M).ptr;
+      const stoichPtr = scope.allocF64(M * n).ptr;
+      const rngPtr = scope.allocF64(4).ptr;
+      const dtPtr = scope.allocF64(1).ptr;
+
+      const useMassActionEval = isAllMassAction && !!wasm.jump_eval_mass_action_propensities;
+      let ratePtr = 0;
+      let rRowPtr = 0;
+      let rSpPtr = 0;
+      let rOrdPtr = 0;
+      const csr = useMassActionEval ? packMassActionCsr(problem.channels) : null;
+      if (csr) {
+        ratePtr = scope.allocF64(M).ptr;
+        rRowPtr = scope.allocI32(M + 1).ptr;
+        rSpPtr = scope.allocI32(Math.max(1, csr.reactSp.length)).ptr;
+        rOrdPtr = scope.allocI32(Math.max(1, csr.reactOrd.length)).ptr;
+      }
+
+      const buf = wasm.memory.buffer;
+      const stateView = new Float64Array(buf, statePtr, n);
+      const propView = new Float64Array(buf, propPtr, M);
+      const stoichView = new Float64Array(buf, stoichPtr, M * n);
+      const dtView = new Float64Array(buf, dtPtr, 1);
+
+      stateView.set(problem.u0);
+      stoichView.set(packDenseStoichiometry(problem.channels, n));
+      if (csr) {
+        new Float64Array(buf, ratePtr, M).set(csr.rates);
+        new Int32Array(buf, rRowPtr, M + 1).set(csr.reactRow);
+        if (csr.reactSp.length > 0) {
+          new Int32Array(buf, rSpPtr, csr.reactSp.length).set(csr.reactSp);
+          new Int32Array(buf, rOrdPtr, csr.reactOrd.length).set(csr.reactOrd);
+        }
+      }
+
+      const [seedLo, seedHi] = splitSeedU32(seed);
+      wasm.jump_rng_seed(rngPtr, seedLo, seedHi);
+
+      let t = t0;
+      const state = [...problem.u0];
+      const channelCounts = new Array<number>(M).fill(0);
+      const times: number[] = [t0];
+      const states: number[][] = [[...state]];
+      let nextSaveTime = dtSave !== undefined && dtSave > 0 ? t0 + dtSave : Infinity;
+      let totalReactions = 0;
+
+      for (let step = 0; step < maxSteps && t < tEnd; step++) {
+        if (useMassActionEval) {
+          wasm.jump_eval_mass_action_propensities!(M, statePtr, ratePtr, rRowPtr, rSpPtr, rOrdPtr, propPtr);
+        } else {
+          for (let j = 0; j < M; j++) {
+            propView[j] = Math.max(0.0, problem.channels[j]!.propensity(state, t));
+          }
+        }
+
+        const chosen = wasm.jump_direct_select_step(M, propPtr, rngPtr, dtPtr);
+        if (chosen < 0) {
+          while (nextSaveTime <= tEnd + 1e-12) {
+            times.push(nextSaveTime);
+            states.push([...state]);
+            nextSaveTime += dtSave!;
+          }
+          if (times[times.length - 1]! < tEnd - 1e-12) {
+            times.push(tEnd);
+            states.push([...state]);
+          }
+          break;
+        }
+
+        const dt = dtView[0]!;
+        const tNext = t + dt;
+
+        if (dtSave !== undefined && dtSave > 0) {
+          while (nextSaveTime <= Math.min(tNext, tEnd) + 1e-12) {
+            times.push(nextSaveTime);
+            states.push([...state]);
+            nextSaveTime += dtSave;
+          }
+        }
+
+        if (tNext > tEnd) {
+          if (dtSave === undefined && times[times.length - 1]! < tEnd) {
+            times.push(tEnd);
+            states.push([...state]);
+          }
+          t = tEnd;
+          break;
+        }
+
+        wasm.jump_apply_stoichiometry(n, statePtr, stoichPtr + chosen * n * 8, 1.0);
+        for (let i = 0; i < n; i++) state[i] = stateView[i]!;
+        t = tNext;
+        totalReactions++;
+        channelCounts[chosen] = channelCounts[chosen]! + 1;
+
+        if (dtSave === undefined && times.length < 10000) {
+          times.push(t);
+          states.push([...state]);
+        }
+      }
+
+      return { times, states, totalReactions, channelCounts };
+    } finally {
+      scope.dispose();
     }
   }
 
@@ -407,6 +762,123 @@ export function firstReactionSSA(problem: JumpProblem, options: JumpOptions = {}
   const maxSteps = options.maxSteps ?? 500000;
   const dtSave = options.dtSave;
   const seed = options.seed ?? problem.seed ?? 42;
+  const wasm = getJumpWasm();
+
+  if (n > 0 && M > 0 && wasm?.jump_rng_seed && wasm.jump_first_reaction_select && wasm.jump_apply_stoichiometry) {
+    const isAllMassAction = problem.channels.every(
+      (ch) => ch._massActionRate !== undefined && ch.reactants !== undefined,
+    );
+    const useMassActionEval = isAllMassAction && !!wasm.jump_eval_mass_action_propensities;
+    const scope: WasmScratchScope = getJumpPool(wasm).scope();
+    try {
+      const statePtr = scope.allocF64(n).ptr;
+      const propPtr = scope.allocF64(M).ptr;
+      const stoichPtr = scope.allocF64(M * n).ptr;
+      const rngPtr = scope.allocF64(4).ptr;
+      const minTauPtr = scope.allocF64(1).ptr;
+
+      let ratePtr = 0;
+      let rRowPtr = 0;
+      let rSpPtr = 0;
+      let rOrdPtr = 0;
+      const csr = useMassActionEval ? packMassActionCsr(problem.channels) : null;
+      if (csr) {
+        ratePtr = scope.allocF64(M).ptr;
+        rRowPtr = scope.allocI32(M + 1).ptr;
+        rSpPtr = scope.allocI32(Math.max(1, csr.reactSp.length)).ptr;
+        rOrdPtr = scope.allocI32(Math.max(1, csr.reactOrd.length)).ptr;
+      }
+
+      const buf = wasm.memory.buffer;
+      const stateView = new Float64Array(buf, statePtr, n);
+      const propView = new Float64Array(buf, propPtr, M);
+      const stoichView = new Float64Array(buf, stoichPtr, M * n);
+      const minTauView = new Float64Array(buf, minTauPtr, 1);
+
+      stateView.set(problem.u0);
+      stoichView.set(packDenseStoichiometry(problem.channels, n));
+      if (csr) {
+        new Float64Array(buf, ratePtr, M).set(csr.rates);
+        new Int32Array(buf, rRowPtr, M + 1).set(csr.reactRow);
+        if (csr.reactSp.length > 0) {
+          new Int32Array(buf, rSpPtr, csr.reactSp.length).set(csr.reactSp);
+          new Int32Array(buf, rOrdPtr, csr.reactOrd.length).set(csr.reactOrd);
+        }
+      }
+
+      const [seedLo, seedHi] = splitSeedU32(seed);
+      wasm.jump_rng_seed(rngPtr, seedLo, seedHi);
+
+      let t = t0;
+      const state = [...problem.u0];
+      const channelCounts = new Array<number>(M).fill(0);
+      const times: number[] = [t0];
+      const states: number[][] = [[...state]];
+      let nextSaveTime = dtSave !== undefined && dtSave > 0 ? t0 + dtSave : Infinity;
+      let totalReactions = 0;
+
+      for (let step = 0; step < maxSteps && t < tEnd; step++) {
+        if (useMassActionEval) {
+          wasm.jump_eval_mass_action_propensities!(M, statePtr, ratePtr, rRowPtr, rSpPtr, rOrdPtr, propPtr);
+        } else {
+          for (let j = 0; j < M; j++) {
+            propView[j] = Math.max(0.0, problem.channels[j]!.propensity(state, t));
+          }
+        }
+
+        const chosen = wasm.jump_first_reaction_select(M, propPtr, rngPtr, minTauPtr);
+        const minTau = minTauView[0]!;
+
+        if (chosen < 0 || !isFinite(minTau)) {
+          while (nextSaveTime <= tEnd + 1e-12) {
+            times.push(nextSaveTime);
+            states.push([...state]);
+            nextSaveTime += dtSave!;
+          }
+          if (times[times.length - 1]! < tEnd - 1e-12) {
+            times.push(tEnd);
+            states.push([...state]);
+          }
+          break;
+        }
+
+        const tNext = t + minTau;
+
+        if (dtSave !== undefined && dtSave > 0) {
+          while (nextSaveTime <= Math.min(tNext, tEnd) + 1e-12) {
+            times.push(nextSaveTime);
+            states.push([...state]);
+            nextSaveTime += dtSave;
+          }
+        }
+
+        if (tNext > tEnd) {
+          if (dtSave === undefined && times[times.length - 1]! < tEnd) {
+            times.push(tEnd);
+            states.push([...state]);
+          }
+          t = tEnd;
+          break;
+        }
+
+        wasm.jump_apply_stoichiometry(n, statePtr, stoichPtr + chosen * n * 8, 1.0);
+        for (let i = 0; i < n; i++) state[i] = stateView[i]!;
+        t = tNext;
+        totalReactions++;
+        channelCounts[chosen] = channelCounts[chosen]! + 1;
+
+        if (dtSave === undefined && times.length < 10000) {
+          times.push(t);
+          states.push([...state]);
+        }
+      }
+
+      return { times, states, totalReactions, channelCounts };
+    } finally {
+      scope.dispose();
+    }
+  }
+
   const rng = new Xoshiro256pp(seed);
 
   let t = t0;
@@ -506,6 +978,191 @@ export function tauLeaping(problem: JumpProblem, options: JumpOptions = {}): Jum
   const eps = options.epsilon ?? 0.03;
   const nc = options.criticalThreshold ?? 10;
   const seed = options.seed ?? problem.seed ?? 42;
+  const wasm = getJumpWasm();
+
+  if (
+    n > 0 &&
+    M > 0 &&
+    wasm?.jump_rng_seed &&
+    wasm.jump_check_critical &&
+    wasm.jump_compute_cgp_tau &&
+    wasm.jump_tau_leap_attempt_loop &&
+    wasm.jump_direct_select_step &&
+    wasm.jump_apply_stoichiometry
+  ) {
+    const isAllMassAction = problem.channels.every(
+      (ch) => ch._massActionRate !== undefined && ch.reactants !== undefined,
+    );
+    const useMassActionEval = isAllMassAction && !!wasm.jump_eval_mass_action_propensities;
+    const scope: WasmScratchScope = getJumpPool(wasm).scope();
+    try {
+      const statePtr = scope.allocF64(n).ptr;
+      const trialStatePtr = scope.allocF64(n).ptr;
+      const propPtr = scope.allocF64(M).ptr;
+      const stoichPtr = scope.allocF64(M * n).ptr;
+      const muHatPtr = scope.allocF64(n).ptr;
+      const sigmaSqHatPtr = scope.allocF64(n).ptr;
+      const firingsPtr = scope.allocI32(M).ptr;
+      const rngPtr = scope.allocF64(4).ptr;
+      const scalarOutPtr = scope.allocF64(1).ptr;
+
+      let ratePtr = 0;
+      let rRowPtr = 0;
+      let rSpPtr = 0;
+      let rOrdPtr = 0;
+      const csr = useMassActionEval ? packMassActionCsr(problem.channels) : null;
+      if (csr) {
+        ratePtr = scope.allocF64(M).ptr;
+        rRowPtr = scope.allocI32(M + 1).ptr;
+        rSpPtr = scope.allocI32(Math.max(1, csr.reactSp.length)).ptr;
+        rOrdPtr = scope.allocI32(Math.max(1, csr.reactOrd.length)).ptr;
+      }
+
+      const buf = wasm.memory.buffer;
+      const stateView = new Float64Array(buf, statePtr, n);
+      const trialStateView = new Float64Array(buf, trialStatePtr, n);
+      const propView = new Float64Array(buf, propPtr, M);
+      const stoichView = new Float64Array(buf, stoichPtr, M * n);
+      const firingsView = new Int32Array(buf, firingsPtr, M);
+      const scalarOutView = new Float64Array(buf, scalarOutPtr, 1);
+
+      stateView.set(problem.u0);
+      stoichView.set(packDenseStoichiometry(problem.channels, n));
+      if (csr) {
+        new Float64Array(buf, ratePtr, M).set(csr.rates);
+        new Int32Array(buf, rRowPtr, M + 1).set(csr.reactRow);
+        if (csr.reactSp.length > 0) {
+          new Int32Array(buf, rSpPtr, csr.reactSp.length).set(csr.reactSp);
+          new Int32Array(buf, rOrdPtr, csr.reactOrd.length).set(csr.reactOrd);
+        }
+      }
+
+      const [seedLo, seedHi] = splitSeedU32(seed);
+      wasm.jump_rng_seed(rngPtr, seedLo, seedHi);
+
+      let t = t0;
+      const state = [...problem.u0];
+      const channelCounts = new Array<number>(M).fill(0);
+      const times: number[] = [t0];
+      const states: number[][] = [[...state]];
+      let nextSaveTime = dtSave !== undefined && dtSave > 0 ? t0 + dtSave : Infinity;
+      let totalReactions = 0;
+
+      for (let step = 0; step < maxSteps && t < tEnd - 1e-14; step++) {
+        let a0 = 0.0;
+        if (useMassActionEval) {
+          a0 = wasm.jump_eval_mass_action_propensities!(M, statePtr, ratePtr, rRowPtr, rSpPtr, rOrdPtr, propPtr);
+        } else {
+          for (let j = 0; j < M; j++) {
+            const aj = Math.max(0.0, problem.channels[j]!.propensity(state, t));
+            propView[j] = aj;
+            a0 += aj;
+          }
+        }
+
+        if (a0 <= 1e-15) {
+          while (nextSaveTime <= tEnd + 1e-12) {
+            times.push(nextSaveTime);
+            states.push([...state]);
+            nextSaveTime += dtSave!;
+          }
+          if (times[times.length - 1]! < tEnd - 1e-12) {
+            times.push(tEnd);
+            states.push([...state]);
+          }
+          break;
+        }
+
+        const hasCritical = wasm.jump_check_critical(n, M, statePtr, propPtr, stoichPtr, nc) !== 0;
+
+        if (hasCritical && options.tau === undefined) {
+          const chosen = wasm.jump_direct_select_step(M, propPtr, rngPtr, scalarOutPtr);
+          if (chosen < 0) {
+            t = tEnd;
+            break;
+          }
+          const dt = scalarOutView[0]!;
+          const tNext = t + dt;
+
+          if (dtSave !== undefined && dtSave > 0) {
+            while (nextSaveTime <= Math.min(tNext, tEnd) + 1e-12) {
+              times.push(nextSaveTime);
+              states.push([...state]);
+              nextSaveTime += dtSave;
+            }
+          }
+
+          if (tNext > tEnd) {
+            t = tEnd;
+            break;
+          }
+
+          wasm.jump_apply_stoichiometry(n, statePtr, stoichPtr + chosen * n * 8, 1.0);
+          for (let i = 0; i < n; i++) state[i] = stateView[i]!;
+          t = tNext;
+          totalReactions++;
+          channelCounts[chosen] = channelCounts[chosen]! + 1;
+          if (dtSave === undefined && times.length < 10000) {
+            times.push(t);
+            states.push([...state]);
+          }
+          continue;
+        }
+
+        const maxTau = tEnd - t;
+        const initialTau =
+          options.tau === undefined
+            ? wasm.jump_compute_cgp_tau(n, M, statePtr, propPtr, stoichPtr, eps, maxTau, muHatPtr, sigmaSqHatPtr)
+            : Math.min(options.tau, maxTau);
+
+        wasm.jump_tau_leap_attempt_loop(
+          n,
+          M,
+          statePtr,
+          propPtr,
+          stoichPtr,
+          initialTau,
+          8,
+          rngPtr,
+          trialStatePtr,
+          firingsPtr,
+          scalarOutPtr,
+        );
+
+        const tau = scalarOutView[0]!;
+        const tNext = t + tau;
+        if (dtSave !== undefined && dtSave > 0) {
+          while (nextSaveTime <= tNext + 1e-12 && nextSaveTime <= tEnd + 1e-12) {
+            times.push(nextSaveTime);
+            states.push([...state]);
+            nextSaveTime += dtSave;
+          }
+        }
+
+        for (let i = 0; i < n; i++) {
+          const v = trialStateView[i]!;
+          stateView[i] = v;
+          state[i] = v;
+        }
+        for (let j = 0; j < M; j++) {
+          const kj = firingsView[j]!;
+          totalReactions += kj;
+          channelCounts[j] = channelCounts[j]! + kj;
+        }
+        t = tNext;
+
+        if (dtSave === undefined && times.length < 10000) {
+          times.push(t);
+          states.push([...state]);
+        }
+      }
+
+      return { times, states, totalReactions, channelCounts };
+    } finally {
+      scope.dispose();
+    }
+  }
+
   const rng = new Xoshiro256pp(seed);
 
   let t = t0;
@@ -739,6 +1396,49 @@ export function simulateJumpEnsemble(
   const nTimes = times.length;
   const mean: number[][] = Array.from({ length: nTimes }, () => new Array<number>(n).fill(0.0));
   const variance: number[][] = Array.from({ length: nTimes }, () => new Array<number>(n).fill(0.0));
+
+  const wasm = getJumpWasm();
+  if (numTrajectories > 0 && nTimes > 0 && n > 0 && wasm?.jump_ensemble_moments) {
+    const gridSize = nTimes * n;
+    const scope: WasmScratchScope = getJumpPool(wasm).scope();
+    try {
+      const trajPtr = scope.allocF64(numTrajectories * gridSize).ptr;
+      const meanPtr = scope.allocF64(gridSize).ptr;
+      const varPtr = scope.allocF64(gridSize).ptr;
+
+      const buf = wasm.memory.buffer;
+      const trajView = new Float64Array(buf, trajPtr, numTrajectories * gridSize);
+      for (let r = 0; r < numTrajectories; r++) {
+        const trajStates = trajectories[r]!.states;
+        const lastIdx = trajStates.length - 1;
+        const rBase = r * gridSize;
+        for (let ti = 0; ti < nTimes; ti++) {
+          const row = trajStates[Math.min(ti, lastIdx)]!;
+          const tBase = rBase + ti * n;
+          for (let i = 0; i < n; i++) {
+            trajView[tBase + i] = row[i]!;
+          }
+        }
+      }
+
+      wasm.jump_ensemble_moments(numTrajectories, nTimes, n, trajPtr, meanPtr, varPtr);
+
+      const postBuf = wasm.memory.buffer;
+      const meanView = new Float64Array(postBuf, meanPtr, gridSize);
+      const varView = new Float64Array(postBuf, varPtr, gridSize);
+      for (let ti = 0; ti < nTimes; ti++) {
+        const base = ti * n;
+        for (let i = 0; i < n; i++) {
+          mean[ti]![i] = meanView[base + i]!;
+          variance[ti]![i] = varView[base + i]!;
+        }
+      }
+
+      return { times, mean, variance, trajectories };
+    } finally {
+      scope.dispose();
+    }
+  }
 
   for (let ti = 0; ti < nTimes; ti++) {
     for (let r = 0; r < numTrajectories; r++) {

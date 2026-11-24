@@ -69,6 +69,7 @@ const DOMAIN_COMMAND_LOADERS: Record<string, DomainModuleLoader> = {
   swmm: async () => (await import("../commands/swmm.js")).SwmmCommand,
   touchstone: async () => (await import("../commands/touchstone.js")).TouchstoneCommand,
   tough: async () => (await import("../commands/tough.js")).ToughCommand,
+  twentysim: async () => (await import("../commands/twentysim.js")).TwentySimCommand,
   urdf: async () => (await import("../commands/urdf.js")).UrdfCommand,
   "verilog-a": async () => (await import("../commands/verilog-a.js")).VerilogACommand,
 };

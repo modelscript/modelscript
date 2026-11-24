@@ -10,6 +10,18 @@ interface CachedFlag {
   allowedRoles: string[];
 }
 
+const FLAG_ALIAS_GROUPS: Record<string, string[]> = {
+  repositories: ["git_repositories"],
+  git_repositories: ["repositories"],
+  spaces: ["spaces_hub"],
+  spaces_hub: ["spaces"],
+  billing: ["billing_stripe_live"],
+  billing_stripe_live: ["billing"],
+  ai_bots: ["bots", "bot_accounts"],
+  bots: ["ai_bots", "bot_accounts"],
+  bot_accounts: ["ai_bots", "bots"],
+};
+
 export class FeatureFlagService {
   readonly #db: LibraryDatabase;
   #cache: Map<string, CachedFlag> | null = null;
@@ -42,13 +54,13 @@ export class FeatureFlagService {
             : [],
         });
       }
+      this.#cache = map;
+      this.#lastCacheTime = now;
+      return map;
     } catch (err) {
-      console.error("[FeatureFlagService] Failed to load feature flags from DB, using defaults:", err);
+      console.error("[FeatureFlagService] Failed to load feature flags from DB, using cached/default values:", err);
+      return this.#cache ?? map;
     }
-
-    this.#cache = map;
-    this.#lastCacheTime = now;
-    return map;
   }
 
   public invalidateCache(): void {
@@ -69,14 +81,16 @@ export class FeatureFlagService {
     } | null,
   ): boolean {
     const def: FeatureFlagDefinition | undefined = FEATURE_FLAGS[flagKey];
-    const envKey = `FEATURE_FLAG_${flagKey.toUpperCase()}`;
-    const envVal = process.env[envKey];
+    const candidateKeys = [flagKey, ...(FLAG_ALIAS_GROUPS[flagKey] ?? [])];
 
-    // 1. Explicit environment variable override takes top priority
-    if (envVal !== undefined) {
-      const normalized = envVal.toLowerCase().trim();
-      if (normalized === "true" || normalized === "1") return true;
-      if (normalized === "false" || normalized === "0") return false;
+    // 1. Explicit environment variable override takes top priority (checking key & aliases)
+    for (const key of candidateKeys) {
+      const envVal = process.env[`FEATURE_FLAG_${key.toUpperCase()}`];
+      if (envVal !== undefined) {
+        const normalized = envVal.toLowerCase().trim();
+        if (normalized === "true" || normalized === "1") return true;
+        if (normalized === "false" || normalized === "0") return false;
+      }
     }
 
     // In test environment, bypass flag gating for legacy tests unless strict evaluation is requested
@@ -85,7 +99,16 @@ export class FeatureFlagService {
     }
 
     const cache = this.#loadCache();
-    const dbFlag = cache.get(flagKey);
+    let dbFlag = cache.get(flagKey);
+    if (!dbFlag) {
+      for (const alias of FLAG_ALIAS_GROUPS[flagKey] ?? []) {
+        const aliasFlag = cache.get(alias);
+        if (aliasFlag) {
+          dbFlag = aliasFlag;
+          break;
+        }
+      }
+    }
 
     const isEnabledInDb = dbFlag ? dbFlag.isEnabled : (def?.defaultValue ?? false);
     const allowedRoles = dbFlag?.allowedRoles?.length ? dbFlag.allowedRoles : (def?.allowedRoles ?? []);

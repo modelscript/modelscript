@@ -17,6 +17,7 @@
  *    unbounded parameters make the result `unknown`, never a false proof.
  */
 
+import type { DaeSystem } from "../../analysis/dae_flowpipe.js";
 import {
   ivAbs,
   ivAdd,
@@ -34,7 +35,6 @@ import {
   ivTan,
   ivTanh,
 } from "../../analysis/outward_rounding.js";
-import type { DaeSystem } from "../../analysis/wasm_dae_flowpipe.js";
 import { Interval } from "../../analysis/wasm_interval.js";
 import { pantelidesIndexReductionArena } from "../../analysis/wasm_pantelides.js";
 import {

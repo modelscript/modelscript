@@ -2,6 +2,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { escapeXml } from "../util/escape.js";
 import { NodeFileSystem } from "../util/filesystem.js";
 
 export type ModelicaPreviewMode = "diagram" | "icon" | "simulation" | "code";
@@ -58,10 +59,6 @@ async function ensureModelicaRuntime(): Promise<void> {
     })();
   }
   await parserInitPromise;
-}
-
-function escapeXml(str: string): string {
-  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function hasVisualElements(svg: string): boolean {

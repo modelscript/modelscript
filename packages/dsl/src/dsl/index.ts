@@ -9,6 +9,7 @@ export * from "./combinators.js";
 export * from "./compose.js";
 export * from "./config-types.js";
 export * from "./container-types.js";
+export * from "./cst-indexer.js";
 export * from "./dae-types.js";
 export * from "./diagram-types.js";
 export * from "./grammar.js";

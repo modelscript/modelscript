@@ -129,20 +129,8 @@ export function redactEmailHint(email: string): string {
   return `${local[0]}***${local[local.length - 1]}@${domain}`;
 }
 
-function ipv4ToInt(ip: string): number | null {
-  const parts = ip.split(".");
-  if (parts.length !== 4) return null;
-  let res = 0;
-  for (const p of parts) {
-    const n = Number(p);
-    if (!Number.isInteger(n) || n < 0 || n > 255) return null;
-    res = ((res << 8) | n) >>> 0;
-  }
-  return res;
-}
-
 /**
- * Checks if a client IP matches an exact IP, wildcard prefix (`192.0.2.*`), or IPv4 CIDR block (`192.0.2.0/24`).
+ * Checks if a client IP matches an exact IP, wildcard prefix (`192.0.2.*`), or IPv4/IPv6 CIDR block (`192.0.2.0/24`, `2001:db8::/32`).
  */
 export function ipMatchesCidr(clientIp: string, ruleCidr: string): boolean {
   const cleanIp = clientIp.trim().replace(/^::ffff:/i, "");
@@ -158,15 +146,23 @@ export function ipMatchesCidr(clientIp: string, ruleCidr: string): boolean {
   if (cleanRule.includes("/")) {
     const [baseIp, bitsStr] = cleanRule.split("/");
     const bits = Number(bitsStr);
-    if (!baseIp || !Number.isInteger(bits)) return false;
+    if (!baseIp || !Number.isInteger(bits) || bits < 0) return false;
 
-    if (net.isIPv4(cleanIp) && net.isIPv4(baseIp) && bits >= 0 && bits <= 32) {
-      const ipInt = ipv4ToInt(cleanIp);
-      const baseInt = ipv4ToInt(baseIp);
-      if (ipInt === null || baseInt === null) return false;
-      if (bits === 0) return true;
-      const mask = (~0 << (32 - bits)) >>> 0;
-      return (ipInt & mask) === (baseInt & mask);
+    const ipType = net.isIP(cleanIp);
+    const baseType = net.isIP(baseIp);
+    if (ipType === 0 || ipType !== baseType) return false;
+
+    const family = ipType === 6 ? "ipv6" : "ipv4";
+    const maxBits = ipType === 6 ? 128 : 32;
+    if (bits > maxBits) return false;
+    if (bits === 0) return true;
+
+    try {
+      const blockList = new net.BlockList();
+      blockList.addSubnet(baseIp, bits, family);
+      return blockList.check(cleanIp, family);
+    } catch {
+      return false;
     }
   }
 

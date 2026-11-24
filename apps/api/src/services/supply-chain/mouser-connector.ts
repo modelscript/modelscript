@@ -36,9 +36,6 @@ export class MouserConnector {
 
     try {
       const url = `${this.endpoint}/search/partnumber?apiKey=${this.apiKey}`;
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -48,9 +45,8 @@ export class MouserConnector {
             partSearchOptions: "Exact",
           },
         }),
-        signal: controller.signal,
+        signal: AbortSignal.timeout(this.timeoutMs),
       });
-      clearTimeout(timer);
 
       if (!res.ok) return this.generateMockQuotes(mpn);
 

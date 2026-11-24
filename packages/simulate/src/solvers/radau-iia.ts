@@ -18,9 +18,78 @@
  * - Embedded error estimation with predictive PI step-size controller and automatic step rejection.
  */
 
-import { bicgstab, denseMatVec, gmres, jacobiPreconditioner, jfnkSolve } from "@modelscript/runtime";
+import {
+  bicgstab,
+  denseMatVec,
+  getDefaultWasmExports,
+  gmres,
+  jacobiPreconditioner,
+  jfnkSolve,
+} from "@modelscript/runtime";
 import { luFactorFlat, luSolveFlat, type LUFactorizationFlat } from "@modelscript/runtime/wasm_gaussian.js";
+import { WasmScratchPool, type WasmMemoryHost, type WasmScratchScope } from "@modelscript/solve";
 import type { CommonSolverResult, DAEProblem, ODEProblem, SolverStats } from "../core/problem-types.js";
+
+interface Radau5WasmExports extends WasmMemoryHost {
+  radau5_factor_decoupled?: (
+    n: number,
+    h: number,
+    mPtr: number,
+    jPtr: number,
+    matRealPtr: number,
+    pivRealPtr: number,
+    scaleRealPtr: number,
+    arPtr: number,
+    aiPtr: number,
+    pivComplexPtr: number,
+  ) => number;
+  radau5_stage_residual?: (
+    n: number,
+    h: number,
+    mPtr: number,
+    zPtr: number,
+    fAllPtr: number,
+    rOutPtr: number,
+  ) => number;
+  radau5_newton_solve_and_update?: (
+    n: number,
+    matRealPtr: number,
+    pivRealPtr: number,
+    scaleRealPtr: number,
+    arPtr: number,
+    aiPtr: number,
+    pivComplexPtr: number,
+    rPtr: number,
+    yPtr: number,
+    zPtr: number,
+    scratchPtr: number,
+    outNormsPtr: number,
+  ) => void;
+  radau5_error_estimate?: (
+    n: number,
+    h: number,
+    mPtr: number,
+    zPtr: number,
+    f0Ptr: number,
+    yPtr: number,
+    matRealPtr: number,
+    pivRealPtr: number,
+    scaleRealPtr: number,
+    atol: number,
+    rtol: number,
+    scratchPtr: number,
+  ) => number;
+}
+
+const _radau5ScratchPools = new WeakMap<object, WasmScratchPool>();
+function getRadau5Pool(wasm: WasmMemoryHost): WasmScratchPool {
+  let pool = _radau5ScratchPools.get(wasm);
+  if (!pool) {
+    pool = new WasmScratchPool(wasm, 65536);
+    _radau5ScratchPools.set(wasm, pool);
+  }
+  return pool;
+}
 
 export interface RadauIIAOptions {
   /** Method order: 5 (3 stages, default) or 9 (5 stages). */
@@ -474,359 +543,517 @@ export class RadauIIASolver {
 
     // Preallocate decoupled scratch buffers for s = 3 direct linear solver (5.4x flop reduction)
     const isDecoupled = s === 3 && linearSolverMode === "direct";
-    const MatReal = isDecoupled ? new Float64Array(n * n) : new Float64Array(0);
-    const Ar = isDecoupled ? new Float64Array(n * n) : new Float64Array(0);
-    const Ai = isDecoupled ? new Float64Array(n * n) : new Float64Array(0);
-    const pivReal = isDecoupled ? new Int32Array(n) : new Int32Array(0);
-    const scaleReal = isDecoupled ? new Float64Array(n) : new Float64Array(0);
-    const pivComplex = isDecoupled ? new Int32Array(n) : new Int32Array(0);
-    const R_tilde = isDecoupled ? new Float64Array(sn) : new Float64Array(0);
-    const dW1 = isDecoupled ? new Float64Array(n) : new Float64Array(0);
-    const br = isDecoupled ? new Float64Array(n) : new Float64Array(0);
-    const bi = isDecoupled ? new Float64Array(n) : new Float64Array(0);
+    const wasm = isDecoupled && n > 0 ? (getDefaultWasmExports() as Radau5WasmExports | null) : null;
+    const useWasmDecoupled = Boolean(
+      isDecoupled &&
+      n > 0 &&
+      wasm &&
+      typeof wasm.__new === "function" &&
+      typeof wasm.radau5_factor_decoupled === "function" &&
+      typeof wasm.radau5_stage_residual === "function" &&
+      typeof wasm.radau5_newton_solve_and_update === "function" &&
+      typeof wasm.radau5_error_estimate === "function",
+    );
+
+    const MatReal = isDecoupled && !useWasmDecoupled ? new Float64Array(n * n) : new Float64Array(0);
+    const Ar = isDecoupled && !useWasmDecoupled ? new Float64Array(n * n) : new Float64Array(0);
+    const Ai = isDecoupled && !useWasmDecoupled ? new Float64Array(n * n) : new Float64Array(0);
+    const pivReal = isDecoupled && !useWasmDecoupled ? new Int32Array(n) : new Int32Array(0);
+    const scaleReal = isDecoupled && !useWasmDecoupled ? new Float64Array(n) : new Float64Array(0);
+    const pivComplex = isDecoupled && !useWasmDecoupled ? new Int32Array(n) : new Int32Array(0);
+    const R_tilde = isDecoupled && !useWasmDecoupled ? new Float64Array(sn) : new Float64Array(0);
+    const dW1 = isDecoupled && !useWasmDecoupled ? new Float64Array(n) : new Float64Array(0);
+    const br = isDecoupled && !useWasmDecoupled ? new Float64Array(n) : new Float64Array(0);
+    const bi = isDecoupled && !useWasmDecoupled ? new Float64Array(n) : new Float64Array(0);
+
+    let wasmScope: WasmScratchScope | null = null;
+    let mPtr = 0;
+    let jPtr = 0;
+    let matRealPtr = 0;
+    let arPtr = 0;
+    let aiPtr = 0;
+    let pivRealPtr = 0;
+    let scaleRealPtr = 0;
+    let pivComplexPtr = 0;
+    let yPtr = 0;
+    let zPtr = 0;
+    let fAllPtr = 0;
+    let rPtr = 0;
+    let f0Ptr = 0;
+    let newtonScratchPtr = 0;
+    let outNormsPtr = 0;
+
+    if (useWasmDecoupled && wasm) {
+      wasmScope = getRadau5Pool(wasm).scope();
+      const alloc8 = (bytes: number): number => wasmScope!.allocU8((bytes + 7) & ~7).ptr;
+      const nnBytes = n * n * 8;
+      const nBytes = n * 8;
+      const pivBytes = (n * 4 + 7) & ~7;
+      mPtr = alloc8(nnBytes);
+      jPtr = alloc8(nnBytes);
+      matRealPtr = alloc8(nnBytes);
+      arPtr = alloc8(nnBytes);
+      aiPtr = alloc8(nnBytes);
+      pivRealPtr = alloc8(pivBytes);
+      scaleRealPtr = alloc8(nBytes);
+      pivComplexPtr = alloc8(pivBytes);
+      yPtr = alloc8(nBytes);
+      zPtr = alloc8(sn * 8);
+      fAllPtr = alloc8(sn * 8);
+      rPtr = alloc8(sn * 8);
+      f0Ptr = alloc8(nBytes);
+      newtonScratchPtr = alloc8(Math.max(5 * nBytes, 3 * nBytes + ((n + 7) & ~7)));
+      outNormsPtr = alloc8(16);
+
+      new Float64Array(wasm.memory.buffer, mPtr, n * n).set(M);
+      new Float64Array(wasm.memory.buffer, yPtr, n).set(y);
+    }
 
     // Cached Jacobian across steps (modified Newton reuse when h & convergence are stable)
     const cachedJ = new Float64Array(n * n);
     let hasValidJ = false;
     let lastNewtonIters = 99;
 
-    while (t < tEnd - 1e-13 && acceptedSteps < this.maxSteps) {
-      if (t + h > tEnd) h = tEnd - t;
+    try {
+      while (t < tEnd - 1e-13 && acceptedSteps < this.maxSteps) {
+        if (t + h > tEnd) h = tEnd - t;
 
-      let stepConverged = false;
-      let Z_sol = new Float64Array(sn);
-      const Y_stage = new Float64Array(n);
-      const f_stage = new Float64Array(n);
+        let stepConverged = false;
+        let Z_sol = new Float64Array(sn);
+        const Y_stage = new Float64Array(n);
+        const f_stage = new Float64Array(n);
 
-      const evalStageResidual = (stateZ: Float64Array, outR: Float64Array): number => {
-        let maxR = 0;
-        for (let i = 0; i < s; i++) {
-          const ti = t + this.c[i]! * h;
-          for (let r = 0; r < n; r++) Y_stage[r] = y[r]! + stateZ[i * n + r]!;
-          evalF(ti, Y_stage, f_stage);
-
-          for (let r = 0; r < n; r++) {
-            let mTerm = 0;
-            for (let j = 0; j < s; j++) {
-              const wij = this.W[i * s + j]!;
-              for (let c = 0; c < n; c++) {
-                mTerm += wij * M[r * n + c]! * stateZ[j * n + c]!;
-              }
-            }
-            const res = mTerm - h * f_stage[r]!;
-            outR[i * n + r] = res;
-            const absR = Math.abs(res);
-            if (absR > maxR) maxR = absR;
-          }
-        }
-        return maxR;
-      };
-
-      if (linearSolverMode === "jfnk") {
-        // Matrix-Free Jacobian-Free Newton-Krylov stage solver: never forms J or Mat.
-        // Precondition with exact stage inverse (A \otimes diag(M)^{-1}), since W^{-1} = A.
-        const invMDiag = new Float64Array(n);
-        for (let r = 0; r < n; r++) {
-          const d = M[r * n + r]!;
-          invMDiag[r] = Math.abs(d) > 1e-14 ? 1.0 / d : 1.0;
-        }
-        const jfnkRes = jfnkSolve(
-          (stateZ: Float64Array, outR: Float64Array) => {
-            evalStageResidual(stateZ, outR);
-          },
-          Z,
-          {
-            tol: this.atol * Math.sqrt(sn),
-            maxNewtonIter: this.maxNewtonIter,
-            krylovTol: 1e-5,
-            maxKrylovIter: sn * 2,
-            restart: sn,
-            preconditioner: (rVec: Float64Array, outVec: Float64Array) => {
-              for (let i = 0; i < s; i++) {
-                for (let r = 0; r < n; r++) {
-                  let sum = 0.0;
-                  for (let j = 0; j < s; j++) {
-                    sum += this.A[i * s + j]! * rVec[j * n + r]!;
-                  }
-                  outVec[i * n + r] = sum * invMDiag[r]!;
-                }
-              }
-            },
-          },
-        );
-        if (jfnkRes.converged) {
-          stepConverged = true;
-          Z_sol = jfnkRes.x as Float64Array<ArrayBuffer>;
-        }
-      } else {
-        // Modified Newton Jacobian reuse: skip recomputing J when previous step converged quickly
-        if (!hasValidJ || lastNewtonIters > 3) {
-          evalJ(t, y, cachedJ);
-          hasValidJ = true;
-        }
-        const J = cachedJ;
-
-        let fact: LUFactorizationFlat | null = null;
-        let factReal: LUFactorizationFlat | null = null;
-        let Mat: Float64Array | null = null;
-
-        if (isDecoupled) {
-          try {
-            // Decoupled Hairer spectral decomposition: 1 real n x n + 1 complex n x n solve
-            // Factor Real Block: (gamma * M - h * J)
-            for (let r = 0; r < n; r++) {
-              const rowOff = r * n;
-              for (let c = 0; c < n; c++) {
-                MatReal[rowOff + c] = RADAU5_GAMMA * M[rowOff + c]! - h * J[rowOff + c]!;
-              }
-            }
-            factReal = luFactorFlat(MatReal, n, pivReal, scaleReal);
-
-            // Factor Complex Block: ((alpha * M - h * J) - i * (beta * M))
-            for (let r = 0; r < n; r++) {
-              const rowOff = r * n;
-              for (let c = 0; c < n; c++) {
-                Ar[rowOff + c] = RADAU5_ALPHA * M[rowOff + c]! - h * J[rowOff + c]!;
-                Ai[rowOff + c] = -RADAU5_BETA * M[rowOff + c]!;
-              }
-            }
-            const okC = complexLuFactorFlat(n, Ar, Ai, pivComplex);
-            if (!okC) throw new Error("Singular complex Jacobian block");
-            luFactorizations++;
-          } catch {
-            h *= 0.5;
-            rejectedSteps++;
-            continue;
-          }
-        } else {
-          // Monolithic fallback for s = 5 (Order 9) or iterative Krylov
-          Mat = new Float64Array(sn * sn);
+        const evalStageResidual = (stateZ: Float64Array, outR: Float64Array): number => {
+          let maxR = 0;
           for (let i = 0; i < s; i++) {
-            for (let j = 0; j < s; j++) {
-              const wij = this.W[i * s + j]!;
-              for (let r = 0; r < n; r++) {
+            const ti = t + this.c[i]! * h;
+            for (let r = 0; r < n; r++) Y_stage[r] = y[r]! + stateZ[i * n + r]!;
+            evalF(ti, Y_stage, f_stage);
+
+            for (let r = 0; r < n; r++) {
+              let mTerm = 0;
+              for (let j = 0; j < s; j++) {
+                const wij = this.W[i * s + j]!;
                 for (let c = 0; c < n; c++) {
-                  let val = wij * M[r * n + c]!;
-                  if (i === j) {
-                    val -= h * J[r * n + c]!;
-                  }
-                  Mat[(i * n + r) * sn + (j * n + c)] = val;
+                  mTerm += wij * M[r * n + c]! * stateZ[j * n + c]!;
                 }
               }
+              const res = mTerm - h * f_stage[r]!;
+              outR[i * n + r] = res;
+              const absR = Math.abs(res);
+              if (absR > maxR) maxR = absR;
             }
           }
-
-          if (linearSolverMode === "direct") {
-            try {
-              fact = luFactorFlat(Mat, sn);
-              luFactorizations++;
-            } catch {
-              h *= 0.5;
-              rejectedSteps++;
-              continue;
-            }
-          }
-        }
-
-        const precond =
-          !isDecoupled && linearSolverMode !== "direct" && Mat ? jacobiPreconditioner(Mat, sn) : undefined;
-        const matVecOp = (v: Float64Array, out: Float64Array): void => {
-          if (Mat) denseMatVec(Mat, sn, v, out);
+          return maxR;
         };
 
-        // Newton-Raphson iteration on stage increments Z
-        const currentZ = new Float64Array(Z); // Warm-start from previous step
-        const R = new Float64Array(sn);
-        const deltaZ = new Float64Array(sn);
-
-        for (let iter = 0; iter < this.maxNewtonIter; iter++) {
-          const maxR = evalStageResidual(currentZ, R);
-
-          const earlyResidualTol = 0.01 * this.atol * Math.min(1.0, Math.abs(h));
-          if (iter > 0 && maxR < earlyResidualTol) {
-            stepConverged = true;
-            Z_sol = currentZ;
-            break;
-          }
-
-          // Solve Mat * deltaZ = -R
-          if (isDecoupled && factReal) {
-            // 1. Transform residual R into decoupled basis: R_tilde = (T_INV \otimes I) * R
-            for (let i = 0; i < 3; i++) {
-              const t0 = RADAU5_T_INV[i * 3 + 0]!;
-              const t1 = RADAU5_T_INV[i * 3 + 1]!;
-              const t2 = RADAU5_T_INV[i * 3 + 2]!;
-              const rowOffset = i * n;
-              for (let r = 0; r < n; r++) {
-                R_tilde[rowOffset + r] = t0 * R[r]! + t1 * R[n + r]! + t2 * R[2 * n + r]!;
-              }
-            }
-
-            // 2. Real Block solve: dW1 = -(gamma * M - h * J)^-1 * R_tilde_1
-            for (let r = 0; r < n; r++) dW1[r] = -R_tilde[r]!;
-            luSolveFlat(factReal, dW1);
-
-            // 3. Complex Block solve: (dW2 + i * dW3) = -A_complex^-1 * (R_tilde_2 + i * R_tilde_3)
-            for (let r = 0; r < n; r++) {
-              br[r] = -R_tilde[n + r]!;
-              bi[r] = -R_tilde[2 * n + r]!;
-            }
-            complexLuSolveFlat(n, Ar, Ai, pivComplex, br, bi);
-
-            // 4. Transform back to stage coordinates: deltaZ = (T \otimes I) * dW
-            for (let i = 0; i < 3; i++) {
-              const t0 = RADAU5_T[i * 3 + 0]!;
-              const t1 = RADAU5_T[i * 3 + 1]!;
-              const t2 = RADAU5_T[i * 3 + 2]!;
-              const rowOffset = i * n;
-              for (let r = 0; r < n; r++) {
-                deltaZ[rowOffset + r] = t0 * dW1[r]! + t1 * br[r]! + t2 * bi[r]!;
-              }
-            }
-          } else if (linearSolverMode === "direct" && fact) {
-            for (let k = 0; k < sn; k++) deltaZ[k] = -R[k]!;
-            luSolveFlat(fact, deltaZ);
-          } else if (linearSolverMode === "gmres") {
-            for (let k = 0; k < sn; k++) deltaZ[k] = -R[k]!;
-            const res = gmres(matVecOp, deltaZ, {
-              tol: 1e-9,
-              maxIter: sn * 2,
-              restart: Math.min(30, sn),
-              preconditioner: precond,
-            });
-            deltaZ.set(res.x);
-          } else {
-            for (let k = 0; k < sn; k++) deltaZ[k] = -R[k]!;
-            const res = bicgstab(matVecOp, deltaZ, {
-              tol: 1e-9,
-              maxIter: sn * 2,
-              preconditioner: precond,
-            });
-            deltaZ.set(res.x);
-          }
-
-          // Update Z
-          let maxDelta = 0;
-          let maxState = 0;
-          for (let k = 0; k < sn; k++) {
-            currentZ[k] = currentZ[k]! + deltaZ[k]!;
-            const absD = Math.abs(deltaZ[k]!);
-            if (absD > maxDelta) maxDelta = absD;
-            const yMag = Math.abs(y[k % n]! + currentZ[k]!);
-            if (yMag > maxState) maxState = yMag;
-          }
-
-          const tol = 0.1 * (this.atol + this.rtol * maxState);
-          if (maxDelta < tol && maxR < tol * 10) {
-            stepConverged = true;
-            lastNewtonIters = iter + 1;
-            Z_sol = currentZ;
-            break;
-          }
-        }
-        if (!stepConverged) {
-          hasValidJ = false;
-          lastNewtonIters = this.maxNewtonIter;
-        }
-
-        if (stepConverged && isDecoupled && factReal) {
-          // Hairer & Wanner (IV.8, Eq. 8.19) stiff-filtered embedded error estimator for Radau5:
-          // (gamma * M - h * J) * err = h * f(t, y) + M * (e1 * Z1 + e2 * Z2 + e3 * Z3)
-          const sqrt6 = Math.sqrt(6.0);
-          const e1 = (-13.0 - 7.0 * sqrt6) / 3.0;
-          const e2 = (-13.0 + 7.0 * sqrt6) / 3.0;
-          const e3 = -1.0 / 3.0;
-          const f0Vec = new Float64Array(n);
-          evalF(t, y, f0Vec);
-          const eZ = new Float64Array(n);
+        if (linearSolverMode === "jfnk") {
+          // Matrix-Free Jacobian-Free Newton-Krylov stage solver: never forms J or Mat.
+          // Precondition with exact stage inverse (A \otimes diag(M)^{-1}), since W^{-1} = A.
+          const invMDiag = new Float64Array(n);
           for (let r = 0; r < n; r++) {
-            eZ[r] = e1 * Z_sol[r]! + e2 * Z_sol[n + r]! + e3 * Z_sol[2 * n + r]!;
+            const d = M[r * n + r]!;
+            invMDiag[r] = Math.abs(d) > 1e-14 ? 1.0 / d : 1.0;
           }
-          const errRhs = new Float64Array(n);
-          const isDiffRow = new Uint8Array(n);
-          for (let r = 0; r < n; r++) {
-            let mEz = 0;
-            let rowNormM = 0;
-            const rowOff = r * n;
-            for (let c = 0; c < n; c++) {
-              const mrc = M[rowOff + c]!;
-              rowNormM += Math.abs(mrc);
-              mEz += mrc * eZ[c]!;
+          const jfnkRes = jfnkSolve(
+            (stateZ: Float64Array, outR: Float64Array) => {
+              evalStageResidual(stateZ, outR);
+            },
+            Z,
+            {
+              tol: this.atol * Math.sqrt(sn),
+              maxNewtonIter: this.maxNewtonIter,
+              krylovTol: 1e-5,
+              maxKrylovIter: sn * 2,
+              restart: sn,
+              preconditioner: (rVec: Float64Array, outVec: Float64Array) => {
+                for (let i = 0; i < s; i++) {
+                  for (let r = 0; r < n; r++) {
+                    let sum = 0.0;
+                    for (let j = 0; j < s; j++) {
+                      sum += this.A[i * s + j]! * rVec[j * n + r]!;
+                    }
+                    outVec[i * n + r] = sum * invMDiag[r]!;
+                  }
+                }
+              },
+            },
+          );
+          if (jfnkRes.converged) {
+            stepConverged = true;
+            Z_sol = jfnkRes.x as Float64Array<ArrayBuffer>;
+          }
+        } else {
+          // Modified Newton Jacobian reuse: skip recomputing J when previous step converged quickly
+          if (!hasValidJ || lastNewtonIters > 3) {
+            evalJ(t, y, cachedJ);
+            hasValidJ = true;
+            if (useWasmDecoupled && wasm) {
+              new Float64Array(wasm.memory.buffer, jPtr, n * n).set(cachedJ);
             }
-            if (rowNormM > 0) {
-              isDiffRow[r] = 1;
-              errRhs[r] = h * f0Vec[r]! + mEz;
+          }
+          const J = cachedJ;
+
+          let fact: LUFactorizationFlat | null = null;
+          let factReal: LUFactorizationFlat | null = null;
+          let Mat: Float64Array | null = null;
+
+          if (isDecoupled) {
+            if (useWasmDecoupled && wasm) {
+              const ok = wasm.radau5_factor_decoupled!(
+                n,
+                h,
+                mPtr,
+                jPtr,
+                matRealPtr,
+                pivRealPtr,
+                scaleRealPtr,
+                arPtr,
+                aiPtr,
+                pivComplexPtr,
+              );
+              if (!ok) {
+                h *= 0.5;
+                rejectedSteps++;
+                continue;
+              }
+              luFactorizations++;
             } else {
-              // Algebraic row (M[r,:] = 0): Newton convergence already enforces g(t, y) = 0
-              errRhs[r] = 0;
+              try {
+                // Decoupled Hairer spectral decomposition: 1 real n x n + 1 complex n x n solve
+                // Factor Real Block: (gamma * M - h * J)
+                for (let r = 0; r < n; r++) {
+                  const rowOff = r * n;
+                  for (let c = 0; c < n; c++) {
+                    MatReal[rowOff + c] = RADAU5_GAMMA * M[rowOff + c]! - h * J[rowOff + c]!;
+                  }
+                }
+                factReal = luFactorFlat(MatReal, n, pivReal, scaleReal);
+
+                // Factor Complex Block: ((alpha * M - h * J) - i * (beta * M))
+                for (let r = 0; r < n; r++) {
+                  const rowOff = r * n;
+                  for (let c = 0; c < n; c++) {
+                    Ar[rowOff + c] = RADAU5_ALPHA * M[rowOff + c]! - h * J[rowOff + c]!;
+                    Ai[rowOff + c] = -RADAU5_BETA * M[rowOff + c]!;
+                  }
+                }
+                const okC = complexLuFactorFlat(n, Ar, Ai, pivComplex);
+                if (!okC) throw new Error("Singular complex Jacobian block");
+                luFactorizations++;
+              } catch {
+                h *= 0.5;
+                rejectedSteps++;
+                continue;
+              }
+            }
+          } else {
+            // Monolithic fallback for s = 5 (Order 9) or iterative Krylov
+            Mat = new Float64Array(sn * sn);
+            for (let i = 0; i < s; i++) {
+              for (let j = 0; j < s; j++) {
+                const wij = this.W[i * s + j]!;
+                for (let r = 0; r < n; r++) {
+                  for (let c = 0; c < n; c++) {
+                    let val = wij * M[r * n + c]!;
+                    if (i === j) {
+                      val -= h * J[r * n + c]!;
+                    }
+                    Mat[(i * n + r) * sn + (j * n + c)] = val;
+                  }
+                }
+              }
+            }
+
+            if (linearSolverMode === "direct") {
+              try {
+                fact = luFactorFlat(Mat, sn);
+                luFactorizations++;
+              } catch {
+                h *= 0.5;
+                rejectedSteps++;
+                continue;
+              }
             }
           }
-          const errVec = new Float64Array(n);
-          luSolveFlat(factReal, errRhs, errVec);
-          let errSq = 0;
-          let diffCount = 0;
-          for (let r = 0; r < n; r++) {
-            if (!isDiffRow[r]) continue;
-            diffCount++;
-            const yNewR = y[r]! + Z_sol[(s - 1) * n + r]!;
-            const sc = this.atol + this.rtol * Math.max(Math.abs(y[r]!), Math.abs(yNewR));
-            const ratio = errVec[r]! / sc;
-            errSq += ratio * ratio;
-          }
-          const errNorm = diffCount > 0 ? Math.sqrt(errSq / diffCount) : 0;
-          const minAllowedStep = this.options.minStepSize ?? 1e-12;
-          if (!Number.isFinite(errNorm) || (errNorm > 1.0 && h > minAllowedStep * 2)) {
-            rejectedSteps++;
-            const fac = Number.isFinite(errNorm) ? Math.max(0.2, Math.min(0.8, 0.9 * Math.pow(errNorm, -0.25))) : 0.5;
-            h = Math.max(minAllowedStep, h * fac);
-            if (rejectedSteps > this.maxSteps) {
-              throw new Error(`RadauIIA failed error control after ${rejectedSteps} rejections`);
+
+          const precond =
+            !isDecoupled && linearSolverMode !== "direct" && Mat ? jacobiPreconditioner(Mat, sn) : undefined;
+          const matVecOp = (v: Float64Array, out: Float64Array): void => {
+            if (Mat) denseMatVec(Mat, sn, v, out);
+          };
+
+          if (useWasmDecoupled && wasm) {
+            // WASM-accelerated Newton-Raphson iteration on 3-stage increments Z
+            new Float64Array(wasm.memory.buffer, zPtr, sn).set(Z);
+
+            for (let iter = 0; iter < this.maxNewtonIter; iter++) {
+              const zView = new Float64Array(wasm.memory.buffer, zPtr, sn);
+              const fAllView = new Float64Array(wasm.memory.buffer, fAllPtr, sn);
+              for (let i = 0; i < 3; i++) {
+                const ti = t + this.c[i]! * h;
+                const stageOff = i * n;
+                for (let r = 0; r < n; r++) Y_stage[r] = y[r]! + zView[stageOff + r]!;
+                evalF(ti, Y_stage, f_stage);
+                fAllView.set(f_stage, stageOff);
+              }
+
+              const maxR = wasm.radau5_stage_residual!(n, h, mPtr, zPtr, fAllPtr, rPtr);
+
+              const earlyResidualTol = 0.01 * this.atol * Math.min(1.0, Math.abs(h));
+              if (iter > 0 && maxR < earlyResidualTol) {
+                stepConverged = true;
+                Z_sol.set(new Float64Array(wasm.memory.buffer, zPtr, sn));
+                break;
+              }
+
+              wasm.radau5_newton_solve_and_update!(
+                n,
+                matRealPtr,
+                pivRealPtr,
+                scaleRealPtr,
+                arPtr,
+                aiPtr,
+                pivComplexPtr,
+                rPtr,
+                yPtr,
+                zPtr,
+                newtonScratchPtr,
+                outNormsPtr,
+              );
+
+              const normsView = new Float64Array(wasm.memory.buffer, outNormsPtr, 2);
+              const maxDelta = normsView[0]!;
+              const maxState = normsView[1]!;
+
+              const tol = 0.1 * (this.atol + this.rtol * maxState);
+              if (maxDelta < tol && maxR < tol * 10) {
+                stepConverged = true;
+                lastNewtonIters = iter + 1;
+                Z_sol.set(new Float64Array(wasm.memory.buffer, zPtr, sn));
+                break;
+              }
             }
+          } else {
+            // Newton-Raphson iteration on stage increments Z
+            const currentZ = new Float64Array(Z); // Warm-start from previous step
+            const R = new Float64Array(sn);
+            const deltaZ = new Float64Array(sn);
+
+            for (let iter = 0; iter < this.maxNewtonIter; iter++) {
+              const maxR = evalStageResidual(currentZ, R);
+
+              const earlyResidualTol = 0.01 * this.atol * Math.min(1.0, Math.abs(h));
+              if (iter > 0 && maxR < earlyResidualTol) {
+                stepConverged = true;
+                Z_sol = currentZ;
+                break;
+              }
+
+              // Solve Mat * deltaZ = -R
+              if (isDecoupled && factReal) {
+                // 1. Transform residual R into decoupled basis: R_tilde = (T_INV \otimes I) * R
+                for (let i = 0; i < 3; i++) {
+                  const t0 = RADAU5_T_INV[i * 3 + 0]!;
+                  const t1 = RADAU5_T_INV[i * 3 + 1]!;
+                  const t2 = RADAU5_T_INV[i * 3 + 2]!;
+                  const rowOffset = i * n;
+                  for (let r = 0; r < n; r++) {
+                    R_tilde[rowOffset + r] = t0 * R[r]! + t1 * R[n + r]! + t2 * R[2 * n + r]!;
+                  }
+                }
+
+                // 2. Real Block solve: dW1 = -(gamma * M - h * J)^-1 * R_tilde_1
+                for (let r = 0; r < n; r++) dW1[r] = -R_tilde[r]!;
+                luSolveFlat(factReal, dW1);
+
+                // 3. Complex Block solve: (dW2 + i * dW3) = -A_complex^-1 * (R_tilde_2 + i * R_tilde_3)
+                for (let r = 0; r < n; r++) {
+                  br[r] = -R_tilde[n + r]!;
+                  bi[r] = -R_tilde[2 * n + r]!;
+                }
+                complexLuSolveFlat(n, Ar, Ai, pivComplex, br, bi);
+
+                // 4. Transform back to stage coordinates: deltaZ = (T \otimes I) * dW
+                for (let i = 0; i < 3; i++) {
+                  const t0 = RADAU5_T[i * 3 + 0]!;
+                  const t1 = RADAU5_T[i * 3 + 1]!;
+                  const t2 = RADAU5_T[i * 3 + 2]!;
+                  const rowOffset = i * n;
+                  for (let r = 0; r < n; r++) {
+                    deltaZ[rowOffset + r] = t0 * dW1[r]! + t1 * br[r]! + t2 * bi[r]!;
+                  }
+                }
+              } else if (linearSolverMode === "direct" && fact) {
+                for (let k = 0; k < sn; k++) deltaZ[k] = -R[k]!;
+                luSolveFlat(fact, deltaZ);
+              } else if (linearSolverMode === "gmres") {
+                for (let k = 0; k < sn; k++) deltaZ[k] = -R[k]!;
+                const res = gmres(matVecOp, deltaZ, {
+                  tol: 1e-9,
+                  maxIter: sn * 2,
+                  restart: Math.min(30, sn),
+                  preconditioner: precond,
+                });
+                deltaZ.set(res.x);
+              } else {
+                for (let k = 0; k < sn; k++) deltaZ[k] = -R[k]!;
+                const res = bicgstab(matVecOp, deltaZ, {
+                  tol: 1e-9,
+                  maxIter: sn * 2,
+                  preconditioner: precond,
+                });
+                deltaZ.set(res.x);
+              }
+
+              // Update Z
+              let maxDelta = 0;
+              let maxState = 0;
+              for (let k = 0; k < sn; k++) {
+                currentZ[k] = currentZ[k]! + deltaZ[k]!;
+                const absD = Math.abs(deltaZ[k]!);
+                if (absD > maxDelta) maxDelta = absD;
+                const yMag = Math.abs(y[k % n]! + currentZ[k]!);
+                if (yMag > maxState) maxState = yMag;
+              }
+
+              const tol = 0.1 * (this.atol + this.rtol * maxState);
+              if (maxDelta < tol && maxR < tol * 10) {
+                stepConverged = true;
+                lastNewtonIters = iter + 1;
+                Z_sol = currentZ;
+                break;
+              }
+            }
+          }
+          if (!stepConverged) {
+            hasValidJ = false;
+            lastNewtonIters = this.maxNewtonIter;
+          }
+
+          if (stepConverged && isDecoupled && (useWasmDecoupled || factReal)) {
+            // Hairer & Wanner (IV.8, Eq. 8.19) stiff-filtered embedded error estimator for Radau5:
+            // (gamma * M - h * J) * err = h * f(t, y) + M * (e1 * Z1 + e2 * Z2 + e3 * Z3)
+            const f0Vec = new Float64Array(n);
+            evalF(t, y, f0Vec);
+            let errNorm: number;
+            if (useWasmDecoupled && wasm) {
+              new Float64Array(wasm.memory.buffer, f0Ptr, n).set(f0Vec);
+              errNorm = wasm.radau5_error_estimate!(
+                n,
+                h,
+                mPtr,
+                zPtr,
+                f0Ptr,
+                yPtr,
+                matRealPtr,
+                pivRealPtr,
+                scaleRealPtr,
+                this.atol,
+                this.rtol,
+                newtonScratchPtr,
+              );
+            } else {
+              const sqrt6 = Math.sqrt(6.0);
+              const e1 = (-13.0 - 7.0 * sqrt6) / 3.0;
+              const e2 = (-13.0 + 7.0 * sqrt6) / 3.0;
+              const e3 = -1.0 / 3.0;
+              const eZ = new Float64Array(n);
+              for (let r = 0; r < n; r++) {
+                eZ[r] = e1 * Z_sol[r]! + e2 * Z_sol[n + r]! + e3 * Z_sol[2 * n + r]!;
+              }
+              const errRhs = new Float64Array(n);
+              const isDiffRow = new Uint8Array(n);
+              for (let r = 0; r < n; r++) {
+                let mEz = 0;
+                let rowNormM = 0;
+                const rowOff = r * n;
+                for (let c = 0; c < n; c++) {
+                  const mrc = M[rowOff + c]!;
+                  rowNormM += Math.abs(mrc);
+                  mEz += mrc * eZ[c]!;
+                }
+                if (rowNormM > 0) {
+                  isDiffRow[r] = 1;
+                  errRhs[r] = h * f0Vec[r]! + mEz;
+                } else {
+                  // Algebraic row (M[r,:] = 0): Newton convergence already enforces g(t, y) = 0
+                  errRhs[r] = 0;
+                }
+              }
+              const errVec = new Float64Array(n);
+              luSolveFlat(factReal!, errRhs, errVec);
+              let errSq = 0;
+              let diffCount = 0;
+              for (let r = 0; r < n; r++) {
+                if (!isDiffRow[r]) continue;
+                diffCount++;
+                const yNewR = y[r]! + Z_sol[(s - 1) * n + r]!;
+                const sc = this.atol + this.rtol * Math.max(Math.abs(y[r]!), Math.abs(yNewR));
+                const ratio = errVec[r]! / sc;
+                errSq += ratio * ratio;
+              }
+              errNorm = diffCount > 0 ? Math.sqrt(errSq / diffCount) : 0;
+            }
+            const minAllowedStep = this.options.minStepSize ?? 1e-12;
+            if (!Number.isFinite(errNorm) || (errNorm > 1.0 && h > minAllowedStep * 2)) {
+              rejectedSteps++;
+              const fac = Number.isFinite(errNorm) ? Math.max(0.2, Math.min(0.8, 0.9 * Math.pow(errNorm, -0.25))) : 0.5;
+              h = Math.max(minAllowedStep, h * fac);
+              if (rejectedSteps > this.maxSteps) {
+                throw new Error(`RadauIIA failed error control after ${rejectedSteps} rejections`);
+              }
+              continue;
+            }
+            // Step accepted — compute PI-clamped next step size
+            acceptedSteps++;
+            t += h;
+            for (let r = 0; r < n; r++) {
+              y[r] = y[r]! + Z_sol[(s - 1) * n + r]!;
+            }
+            if (useWasmDecoupled && wasm) {
+              new Float64Array(wasm.memory.buffer, yPtr, n).set(y);
+            }
+            times.push(t);
+            states.push(Array.from(y));
+            Z = Z_sol;
+            const safeErr = Math.max(errNorm, 1e-6);
+            const scale = Math.min(4.0, Math.max(0.2, 0.9 * Math.pow(safeErr, -0.25)));
+            h = Math.min(tEnd - t, h * scale);
+            if (this.options.maxStepSize) h = Math.min(h, this.options.maxStepSize);
             continue;
           }
-          // Step accepted — compute PI-clamped next step size
-          acceptedSteps++;
-          t += h;
-          for (let r = 0; r < n; r++) {
-            y[r] = y[r]! + Z_sol[(s - 1) * n + r]!;
+        }
+
+        if (!stepConverged) {
+          // Newton non-convergence: reject step and reduce h
+          rejectedSteps++;
+          h *= 0.5;
+          const minAllowedStep = this.options.minStepSize ?? 1e-12;
+          if (h < minAllowedStep || rejectedSteps > this.maxSteps) {
+            throw new Error(`RadauIIA failed to converge: step size ${h} fell below minimum ${minAllowedStep}`);
           }
-          times.push(t);
-          states.push(Array.from(y));
-          Z = Z_sol;
-          const safeErr = Math.max(errNorm, 1e-6);
-          const scale = Math.min(4.0, Math.max(0.2, 0.9 * Math.pow(safeErr, -0.25)));
-          h = Math.min(tEnd - t, h * scale);
-          if (this.options.maxStepSize) h = Math.min(h, this.options.maxStepSize);
           continue;
         }
-      }
 
-      if (!stepConverged) {
-        // Newton non-convergence: reject step and reduce h
-        rejectedSteps++;
-        h *= 0.5;
-        const minAllowedStep = this.options.minStepSize ?? 1e-12;
-        if (h < minAllowedStep || rejectedSteps > this.maxSteps) {
-          throw new Error(`RadauIIA failed to converge: step size ${h} fell below minimum ${minAllowedStep}`);
+        // Step accepted! Stiffly accurate property: y_{k+1} = y_k + Z_{s-1}
+        acceptedSteps++;
+        t += h;
+        for (let r = 0; r < n; r++) {
+          y[r] = y[r]! + Z_sol[(s - 1) * n + r]!;
         }
-        continue;
+
+        times.push(t);
+        states.push(Array.from(y));
+        Z = Z_sol;
+
+        // Predictive step size controller
+        const scale = 1.25;
+        h = Math.min(tEnd - t, h * scale);
+        if (this.options.maxStepSize) h = Math.min(h, this.options.maxStepSize);
       }
-
-      // Step accepted! Stiffly accurate property: y_{k+1} = y_k + Z_{s-1}
-      acceptedSteps++;
-      t += h;
-      for (let r = 0; r < n; r++) {
-        y[r] = y[r]! + Z_sol[(s - 1) * n + r]!;
-      }
-
-      times.push(t);
-      states.push(Array.from(y));
-      Z = Z_sol;
-
-      // Predictive step size controller
-      const scale = 1.25;
-      h = Math.min(tEnd - t, h * scale);
-      if (this.options.maxStepSize) h = Math.min(h, this.options.maxStepSize);
+    } finally {
+      wasmScope?.dispose();
     }
 
     return {

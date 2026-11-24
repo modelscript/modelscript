@@ -876,6 +876,25 @@ CONNECT CYL1.S_OUT TO LVDT1.S_IN
 CONNECT LVDT1.S_OUT TO SUM1.S_IN2`,
   },
 
+  twentysim: {
+    filename: "RCBondGraph.sid",
+    title: "20-sim RC Bond Graph & SCAP Causality",
+    description:
+      "Multi-domain Bond Graph connecting an effort source (Se), 1-junction, resistor (R), and capacitor (C) with automated SCAP causality assignment.",
+    viewLabel: "Bond Graph & Causal Strokes",
+    code: `model RC
+  submodels
+    Se V (effort = 5);
+    OneJunction j1;
+    R R1 (r = 10);
+    C C1 (c = 0.01);
+  connections
+    V.p => j1.p;
+    j1.p => R1.p;
+    j1.p => C1.p;
+end RC;`,
+  },
+
   autosar: {
     filename: "TorqueVectoringComposition.arxml",
     title: "AUTOSAR R4.x Torque Vectoring SWC & Virtual Function Bus",
@@ -4039,6 +4058,12 @@ async function renderExampleSvgs(slug: string, code: string): Promise<{ svgDark:
       const { parseEasy5, renderEasy5SchematicSvg } = await import("@modelscript/easy5");
       const model = parseEasy5(code);
       const svgDark = renderEasy5SchematicSvg(model);
+      return { svgDark, svgLight: adaptSvgToLightTheme(svgDark) };
+    }
+
+    case "twentysim": {
+      const { renderBondGraphSvg } = await import("../../../languages/twentysim/dist/src/index.js");
+      const svgDark = renderBondGraphSvg(code);
       return { svgDark, svgLight: adaptSvgToLightTheme(svgDark) };
     }
 

@@ -6,7 +6,7 @@ import {
   FmuSubsystemRegistry,
   LookupTableFmuSubsystem,
   NeuralNetFmuSubsystem,
-} from "../src/simulation/wasm_fmu_subsystem.js";
+} from "../src/simulation/fmu_subsystem.js";
 
 console.log("Testing WASM FMU Subsystems & Surrogate Registry...");
 

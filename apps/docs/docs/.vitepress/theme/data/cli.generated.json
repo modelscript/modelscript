@@ -12232,6 +12232,61 @@
     "subcommands": []
   },
   {
+    "name": "twentysim",
+    "specs": [
+      "twentysim <action> [files..]"
+    ],
+    "aliases": [],
+    "describe": "Inspect, lint (SCAP causality), simulate, render SVG, and lower 20-sim Bond Graph & SIDOPS models (.emx, .emxz, .sid)",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (inspect, lint, simulate, render, to-dae, to-modelica)",
+        "choices": [
+          "inspect",
+          "lint",
+          "simulate",
+          "render",
+          "to-dae",
+          "to-modelica"
+        ]
+      },
+      {
+        "name": "files",
+        "aliases": [],
+        "type": "string",
+        "description": "20-sim model file(s) (.emx, .emxz, .sid) to process",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out",
+        "aliases": [
+          "o",
+          "output"
+        ],
+        "type": "string",
+        "description": "Output file path (SVG, Modelica, DAE, or JSON trajectory)"
+      },
+      {
+        "name": "stop",
+        "aliases": [],
+        "type": "number",
+        "description": "Simulation finish time (s)"
+      },
+      {
+        "name": "step",
+        "aliases": [],
+        "type": "number",
+        "description": "Simulation RK4 step size (s)"
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "unparse",
     "specs": [
       "unparse <file>"

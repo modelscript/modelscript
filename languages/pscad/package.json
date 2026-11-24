@@ -63,6 +63,7 @@
     "src-gen/**"
   ],
   "scripts": {
+    "asbuild:native": "asc assembly/psout.ts --target native",
     "bench:pmr": "tsx tests/run-pmr-benchmark.ts",
     "build": "node ../../scripts/build/build-language-parser.js && npm run build:wasm && tsc",
     "build:parser": "node ../../scripts/build/build-language-parser.js --force",

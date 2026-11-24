@@ -57,26 +57,34 @@ export default {
       "HomeIndustries",
       defineAsyncComponent(() => import("./components/HomeIndustries.vue")),
     );
-    app.component(
-      "HomeWorkflowPairs",
-      defineAsyncComponent(() => import("./components/HomeWorkflowPairs.vue")),
-    );
-    app.component(
-      "HomeSemanticCoordinator",
-      defineAsyncComponent(() => import("./components/HomeSemanticCoordinator.vue")),
-    );
-    app.component(
-      "HomePolyglotSandbox",
-      defineAsyncComponent(() => import("./components/HomePolyglotSandbox.vue")),
-    );
+    if (__FEATURE_FLAG_HOME_WORKFLOW_PAIRS__) {
+      app.component(
+        "HomeWorkflowPairs",
+        defineAsyncComponent(() => import("./components/HomeWorkflowPairs.vue")),
+      );
+    }
+    if (__FEATURE_FLAG_HOME_SEMANTIC_COORDINATOR__) {
+      app.component(
+        "HomeSemanticCoordinator",
+        defineAsyncComponent(() => import("./components/HomeSemanticCoordinator.vue")),
+      );
+    }
+    if (__FEATURE_FLAG_HOME_POLYGLOT_SANDBOX__) {
+      app.component(
+        "HomePolyglotSandbox",
+        defineAsyncComponent(() => import("./components/HomePolyglotSandbox.vue")),
+      );
+    }
     app.component(
       "HomeThread",
       defineAsyncComponent(() => import("./components/HomeThread.vue")),
     );
-    app.component(
-      "HomeAiAgent",
-      defineAsyncComponent(() => import("./components/HomeAiAgent.vue")),
-    );
+    if (__FEATURE_FLAG_HOME_AI_AGENT__) {
+      app.component(
+        "HomeAiAgent",
+        defineAsyncComponent(() => import("./components/HomeAiAgent.vue")),
+      );
+    }
     app.component(
       "HomeCapabilities",
       defineAsyncComponent(() => import("./components/HomeCapabilities.vue")),

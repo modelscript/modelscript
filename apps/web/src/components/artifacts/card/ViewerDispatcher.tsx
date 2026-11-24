@@ -71,6 +71,7 @@ const OtdrTraceViewer = React.lazy(() => import("../OtdrTraceViewer"));
 const FiberSpliceMatrixViewer = React.lazy(() => import("../FiberSpliceMatrixViewer"));
 const MicrowaveProfileViewer = React.lazy(() => import("../MicrowaveProfileViewer"));
 const MpeExclusionViewer = React.lazy(() => import("../MpeExclusionViewer"));
+const SpatialCanvasArtifactViewer = React.lazy(() => import("../SpatialCanvasArtifactViewer"));
 
 export function getViewerExpectedHeight(
   viewType: string | undefined,
@@ -102,6 +103,9 @@ export function getViewerExpectedHeight(
       return "450px";
     case "pdf":
       return "420px";
+    case "mscanvas":
+    case "spatial-canvas":
+    case "canvas-board":
     case "ssp":
     case "ssd":
     case "urdf":
@@ -532,6 +536,12 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
           >
             <WamRobotArtifactViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />
           </LazyHeavyViewer>
+        );
+      case "mscanvas":
+      case "spatial-canvas":
+      case "canvas-board":
+        return (
+          <SpatialCanvasArtifactViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />
         );
       case "package":
       case "library":

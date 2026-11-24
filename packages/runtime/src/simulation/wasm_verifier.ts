@@ -7,6 +7,7 @@
  * integrating symbol/CST resolution with zero-allocation in-WASM vector checking.
  */
 
+import { getDefaultWasmExports } from "../dae/wasm_loader.js";
 import {
   type ConstraintExprAst,
   type InlineCalcDef,
@@ -101,23 +102,34 @@ export function parseComparisonOp(opStr: string): VerifyOp {
  */
 export function computeSettlingTime(t: number[], x: number[], band: number = 0.02): number {
   if (t.length === 0 || x.length === 0) return 0;
-  const n = x.length;
-  const finalVal = x[n - 1] ?? 0;
-  const tolerance = Math.max(Math.abs(finalVal) * band, band);
-
-  let lastOutOfBandIndex = -1;
-  for (let i = 0; i < n; i++) {
-    if (Math.abs((x[i] ?? 0) - finalVal) > tolerance) {
-      lastOutOfBandIndex = i;
+  const n = Math.min(t.length, x.length);
+  const w = getDefaultWasmExports();
+  if (
+    w &&
+    typeof w.verifier_settlingTime === "function" &&
+    typeof w.alloc === "function" &&
+    typeof w.free === "function"
+  ) {
+    const tPtr = w.alloc(n * 8);
+    const xPtr = w.alloc(n * 8);
+    try {
+      new Float64Array(w.memory.buffer, tPtr, n).set(t.length === n ? t : t.slice(0, n));
+      new Float64Array(w.memory.buffer, xPtr, n).set(x.length === n ? x : x.slice(0, n));
+      return w.verifier_settlingTime(tPtr, xPtr, n, band);
+    } finally {
+      w.free(tPtr);
+      w.free(xPtr);
     }
   }
 
-  if (lastOutOfBandIndex === -1) {
-    return t[0] ?? 0;
+  const finalVal = x[n - 1] ?? 0;
+  const tolerance = Math.max(Math.abs(finalVal) * band, band);
+  let lastOutOfBandIndex = -1;
+  for (let i = 0; i < n; i++) {
+    if (Math.abs((x[i] ?? 0) - finalVal) > tolerance) lastOutOfBandIndex = i;
   }
-  if (lastOutOfBandIndex >= n - 1) {
-    return t[n - 1] ?? 0;
-  }
+  if (lastOutOfBandIndex === -1) return t[0] ?? 0;
+  if (lastOutOfBandIndex >= n - 1) return t[n - 1] ?? 0;
   return t[lastOutOfBandIndex + 1] ?? t[n - 1] ?? 0;
 }
 
@@ -126,9 +138,25 @@ export function computeSettlingTime(t: number[], x: number[], band: number = 0.0
  */
 export function computeOvershoot(x: number[], targetVal?: number): number {
   if (x.length === 0) return 0;
+  const n = x.length;
+  const w = getDefaultWasmExports();
+  if (
+    w &&
+    typeof w.verifier_overshoot === "function" &&
+    typeof w.alloc === "function" &&
+    typeof w.free === "function"
+  ) {
+    const xPtr = w.alloc(n * 8);
+    try {
+      new Float64Array(w.memory.buffer, xPtr, n).set(x);
+      return w.verifier_overshoot(xPtr, n, targetVal !== undefined ? 1 : 0, targetVal ?? 0);
+    } finally {
+      w.free(xPtr);
+    }
+  }
+
   const finalVal = targetVal !== undefined ? targetVal : (x[x.length - 1] ?? 0);
   const x0 = x[0] ?? 0;
-
   let minVal = x0;
   let maxVal = x0;
   for (let i = 1; i < x.length; i++) {
@@ -136,19 +164,13 @@ export function computeOvershoot(x: number[], targetVal?: number): number {
     if (val < minVal) minVal = val;
     if (val > maxVal) maxVal = val;
   }
-
-  if (finalVal === 0) {
-    return Math.max(Math.abs(minVal), Math.abs(maxVal));
-  }
-
+  if (finalVal === 0) return Math.max(Math.abs(minVal), Math.abs(maxVal));
   if (finalVal > x0) {
     const diff = maxVal - finalVal;
-    if (diff <= 0) return 0;
-    return (diff / Math.abs(finalVal)) * 100;
+    return diff <= 0 ? 0 : (diff / Math.abs(finalVal)) * 100;
   } else if (finalVal < x0) {
     const diff = finalVal - minVal;
-    if (diff <= 0) return 0;
-    return (diff / Math.abs(finalVal)) * 100;
+    return diff <= 0 ? 0 : (diff / Math.abs(finalVal)) * 100;
   } else {
     const maxDev = Math.max(Math.abs(maxVal - finalVal), Math.abs(finalVal - minVal));
     return (maxDev / Math.abs(finalVal)) * 100;
@@ -160,6 +182,23 @@ export function computeOvershoot(x: number[], targetVal?: number): number {
  */
 export function computeSteadyState(x: number[], windowFrac = 0.1): number {
   if (x.length === 0) return 0;
+  const n = x.length;
+  const w = getDefaultWasmExports();
+  if (
+    w &&
+    typeof w.verifier_steadyState === "function" &&
+    typeof w.alloc === "function" &&
+    typeof w.free === "function"
+  ) {
+    const xPtr = w.alloc(n * 8);
+    try {
+      new Float64Array(w.memory.buffer, xPtr, n).set(x);
+      return w.verifier_steadyState(xPtr, n, windowFrac);
+    } finally {
+      w.free(xPtr);
+    }
+  }
+
   const windowCount = Math.max(1, Math.floor(x.length * windowFrac));
   const slice = x.slice(x.length - windowCount);
   const sum = slice.reduce((acc, val) => acc + val, 0);
@@ -171,8 +210,23 @@ export function computeSteadyState(x: number[], windowFrac = 0.1): number {
  */
 export function computeIntegral(t: number[], x: number[]): number {
   if (t.length < 2 || x.length < 2) return 0;
+  const n = Math.min(t.length, x.length);
+  const w = getDefaultWasmExports();
+  if (w && typeof w.verifier_integral === "function" && typeof w.alloc === "function" && typeof w.free === "function") {
+    const tPtr = w.alloc(n * 8);
+    const xPtr = w.alloc(n * 8);
+    try {
+      new Float64Array(w.memory.buffer, tPtr, n).set(t.length === n ? t : t.slice(0, n));
+      new Float64Array(w.memory.buffer, xPtr, n).set(x.length === n ? x : x.slice(0, n));
+      return w.verifier_integral(tPtr, xPtr, n);
+    } finally {
+      w.free(tPtr);
+      w.free(xPtr);
+    }
+  }
+
   let sum = 0;
-  for (let i = 0; i < t.length - 1; i++) {
+  for (let i = 0; i < n - 1; i++) {
     const dt = (t[i + 1] ?? 0) - (t[i] ?? 0);
     const avgX = ((x[i] ?? 0) + (x[i + 1] ?? 0)) * 0.5;
     sum += avgX * dt;
@@ -939,7 +993,8 @@ export class VerificationRunner {
 }
 
 /**
- * Direct vectorized trajectory verification over typed arrays.
+ * Direct vectorized trajectory verification over typed arrays using
+ * the compiled AssemblyScript `verifier_verifyTrajectoryDirect` kernel.
  */
 export function verifyTrajectoryDirect(
   t: Float64Array | number[],
@@ -956,17 +1011,98 @@ export function verifyTrajectoryDirect(
   violationIndex?: number | undefined;
   timeSeriesResult: boolean[];
 } {
-  const numSteps = Array.isArray(t) ? t.length : t.length;
+  const numSteps = t.length;
+  const verifyOp = parseComparisonOp(op);
+
+  if (numSteps > 0) {
+    const w = getDefaultWasmExports();
+    if (
+      w &&
+      typeof w.verifier_verifyTrajectoryDirect === "function" &&
+      typeof w.alloc === "function" &&
+      typeof w.free === "function"
+    ) {
+      const tPtr = w.alloc(numSteps * 8);
+      const yFlatLen = numSteps * Math.max(1, numStates);
+      const yPtr = w.alloc(yFlatLen * 8);
+      const outSeriesPtr = w.alloc(numSteps);
+      const outStatsPtr = w.alloc(5 * 8);
+      try {
+        const tView = new Float64Array(w.memory.buffer, tPtr, numSteps);
+        if (t instanceof Float64Array) {
+          tView.set(t);
+        } else {
+          for (let i = 0; i < numSteps; i++) tView[i] = t[i] ?? 0;
+        }
+
+        const yView = new Float64Array(w.memory.buffer, yPtr, yFlatLen);
+        if (y instanceof Float64Array) {
+          yView.set(y.subarray(0, Math.min(y.length, yFlatLen)));
+        } else {
+          // Support both row-major y[step][state] and column-major y[state][step]
+          const isRowMajor = y.length === numSteps && y[0] && y[0]![stateIdx] !== undefined;
+          for (let i = 0; i < numSteps; i++) {
+            let val: number;
+            if (isRowMajor) {
+              val = y[i]?.[stateIdx] ?? 0;
+            } else if (y[stateIdx] && y[stateIdx]![i] !== undefined) {
+              val = y[stateIdx]![i]!;
+            } else {
+              val = y[i]?.[stateIdx] ?? 0;
+            }
+            yView[i * numStates + stateIdx] = val;
+          }
+        }
+
+        const satisfiedFlag = w.verifier_verifyTrajectoryDirect(
+          tPtr,
+          yPtr,
+          numSteps,
+          numStates,
+          stateIdx,
+          verifyOp,
+          limitValue,
+          tol,
+          outSeriesPtr,
+          outStatsPtr,
+        );
+
+        const stats = new Float64Array(w.memory.buffer, outStatsPtr, 5);
+        const seriesBytes = new Uint8Array(w.memory.buffer, outSeriesPtr, numSteps);
+        const timeSeriesResult: boolean[] = new Array(numSteps);
+        for (let i = 0; i < numSteps; i++) {
+          timeSeriesResult[i] = seriesBytes[i] === 1;
+        }
+
+        const isSatisfied = satisfiedFlag === 1;
+        const peakValue = stats[1]!;
+        const violationTime = !isSatisfied && stats[3]! >= 0 ? stats[3]! : undefined;
+        const violationIndex = !isSatisfied && stats[4]! >= 0 ? Math.trunc(stats[4]!) : undefined;
+
+        return {
+          isSatisfied,
+          peakValue,
+          violationTime,
+          violationIndex,
+          timeSeriesResult,
+        };
+      } finally {
+        w.free(tPtr);
+        w.free(yPtr);
+        w.free(outSeriesPtr);
+        w.free(outStatsPtr);
+      }
+    }
+  }
+
   let allSatisfied = true;
   let peakValue = -Infinity;
   let violationTime: number | undefined;
   let violationIndex: number | undefined;
   const timeSeriesResult: boolean[] = new Array(numSteps);
 
-  const verifyOp = parseComparisonOp(op);
-
   for (let i = 0; i < numSteps; i++) {
-    const timeVal = Array.isArray(t) ? t[i]! : t[i]!;
+    const timeVal = t[i]!;
     let val: number;
     if (Array.isArray(y)) {
       if (y.length === numSteps && y[i] && y[i]![stateIdx] !== undefined) {

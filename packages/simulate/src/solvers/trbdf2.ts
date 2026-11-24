@@ -28,8 +28,95 @@
  * - Robust Newton iteration with backtracking linesearch for nonlinear stage equations.
  */
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
+import { WasmScratchPool, type WasmMemoryHost, type WasmScratchScope } from "@modelscript/solve";
 import type { CommonSolverResult, DAEProblem, ODEProblem, SolverStats } from "../core/problem-types.js";
-import { factorizeLinearMatrix } from "./sparse-solver-bridge.js";
+import { factorizeLinearMatrix, type FactorizedLinearSolver } from "./sparse-solver-bridge.js";
+
+interface TrBdf2WasmExports extends WasmMemoryHost {
+  trbdf2_assemble_and_factor?: (
+    n: number,
+    dh: number,
+    hasMass: number,
+    mPtr: number,
+    jPtr: number,
+    wPtr: number,
+    pivPtr: number,
+    scalePtr: number,
+  ) => number;
+  trbdf2_tr_stage_step?: (
+    n: number,
+    dh: number,
+    hasMass: number,
+    mPtr: number,
+    wPtr: number,
+    pivPtr: number,
+    scalePtr: number,
+    y0Ptr: number,
+    f0Ptr: number,
+    yGammaPtr: number,
+    fGammaPtr: number,
+    deltaPtr: number,
+    luScratchPtr: number,
+    atol: number,
+    rtol: number,
+  ) => number;
+  trbdf2_bdf2_stage_step?: (
+    n: number,
+    dh: number,
+    cGamma: number,
+    c0: number,
+    hasMass: number,
+    mPtr: number,
+    wPtr: number,
+    pivPtr: number,
+    scalePtr: number,
+    y0Ptr: number,
+    yGammaPtr: number,
+    yNewPtr: number,
+    fNewPtr: number,
+    deltaPtr: number,
+    luScratchPtr: number,
+    atol: number,
+    rtol: number,
+  ) => number;
+  trbdf2_error_estimate?: (
+    n: number,
+    kErrScale: number,
+    gamma: number,
+    y0Ptr: number,
+    yNewPtr: number,
+    f0Ptr: number,
+    fGammaPtr: number,
+    fNewPtr: number,
+    atol: number,
+    rtol: number,
+  ) => number;
+}
+
+const _trbdf2ScratchPools = new WeakMap<object, WasmScratchPool>();
+function getTrBdf2Pool(wasm: WasmMemoryHost): WasmScratchPool {
+  let pool = _trbdf2ScratchPools.get(wasm);
+  if (!pool) {
+    pool = new WasmScratchPool(wasm, 65536);
+    _trbdf2ScratchPools.set(wasm, pool);
+  }
+  return pool;
+}
+
+function writeVecToWasm(wasm: WasmMemoryHost, ptr: number, src: number[], n: number): void {
+  const view = new Float64Array(wasm.memory.buffer, ptr, n);
+  for (let i = 0; i < n; i++) {
+    view[i] = src[i] ?? 0;
+  }
+}
+
+function readVecFromWasm(wasm: WasmMemoryHost, ptr: number, dst: number[], n: number): void {
+  const view = new Float64Array(wasm.memory.buffer, ptr, n);
+  for (let i = 0; i < n; i++) {
+    dst[i] = view[i]!;
+  }
+}
 
 export const TRBDF2_GAMMA = 2.0 - Math.SQRT2; // ≈ 0.585786437626905
 export const TRBDF2_D = TRBDF2_GAMMA / 2.0; // = 1 - 1/√2 ≈ 0.2928932188134524
@@ -194,301 +281,450 @@ export function trbdf2(
   const d = TRBDF2_D;
   const kErr = (1.0 - 3.0 * d) / (3.0 * gamma * (1.0 - gamma)); // Hosea-Shampine error scale
 
-  const delta = new Float64Array(n);
+  const solverType = options.linearSolver ?? "auto";
+  const useSparse = solverType === "sparse" || (solverType === "auto" && n >= 25);
+  const wasm = !useSparse && n > 0 ? (getDefaultWasmExports() as TrBdf2WasmExports | null) : null;
+  const useWasmDense = Boolean(
+    !useSparse &&
+    n > 0 &&
+    wasm &&
+    typeof wasm.__new === "function" &&
+    typeof wasm.trbdf2_assemble_and_factor === "function" &&
+    typeof wasm.trbdf2_tr_stage_step === "function" &&
+    typeof wasm.trbdf2_bdf2_stage_step === "function" &&
+    typeof wasm.trbdf2_error_estimate === "function",
+  );
+  const hasMass = massMatrix ? 1 : 0;
+
+  const delta = useWasmDense ? new Float64Array(0) : new Float64Array(n);
   const yGamma = new Array<number>(n);
   const yNew = new Array<number>(n);
   const yPertScratch = new Array<number>(n);
   const flatJ = new Float64Array(n * n);
-  const flatW = new Float64Array(n * n);
+  const flatW = useWasmDense ? new Float64Array(0) : new Float64Array(n * n);
   const JScratch: Float64Array[] = new Array(n);
-  const W: Float64Array[] = new Array(n);
+  const W: Float64Array[] = useWasmDense ? [] : new Array(n);
   for (let i = 0; i < n; i++) {
     JScratch[i] = new Float64Array(flatJ.buffer, i * n * 8, n);
-    W[i] = new Float64Array(flatW.buffer, i * n * 8, n);
+    if (!useWasmDense) {
+      W[i] = new Float64Array(flatW.buffer, i * n * 8, n);
+    }
   }
 
-  while ((tEnd > t0 ? t < tEnd - 1e-14 : t > tEnd + 1e-14) && stats.acceptedSteps + stats.rejectedSteps < maxSteps) {
-    if (tEnd > t0) {
-      if (t + h > tEnd) h = tEnd - t;
-    } else {
-      if (t + h < tEnd) h = tEnd - t;
-    }
+  let wasmScope: WasmScratchScope | null = null;
+  let mPtr = 0;
+  let jPtr = 0;
+  let wPtr = 0;
+  let pivPtr = 0;
+  let scalePtr = 0;
+  let y0Ptr = 0;
+  let f0Ptr = 0;
+  let yGammaPtr = 0;
+  let fGammaPtr = 0;
+  let yNewPtr = 0;
+  let fNewPtr = 0;
+  let deltaPtr = 0;
+  let luScratchPtr = 0;
 
-    if (Math.abs(h) < minStep) {
-      stats.converged = false;
-      break;
-    }
-
-    const f0 = f(t, y);
-    stats.fEvals++;
-
-    // Compute Jacobian J at (t, y)
-    const J = computeJacobian(f, t, y, f0, JScratch, yPertScratch);
-    stats.jacobianEvals!++;
-
-    // Form iteration matrix W = M - d * h * J
-    for (let i = 0; i < n; i++) {
-      for (let j = 0; j < n; j++) {
-        const mij = massMatrix ? (massMatrix[i]?.[j] ?? 0) : i === j ? 1.0 : 0.0;
-        W[i]![j] = mij - d * h * (J[i]![j] ?? 0);
-      }
-    }
-
-    // LU factorize W (sparse or dense according to dimension/option)
-    const solver = factorizeLinearMatrix(W, n, { linearSolver: options.linearSolver });
-    stats.luFactorizations!++;
-
-    // ── Stage 1: Trapezoidal rule at t + gamma * h ──
-    // y_gamma - y0 = (gamma * h / 2) * (f(t, y0) + f(t + gamma*h, y_gamma))
-    const tGamma = t + gamma * h;
-    for (let i = 0; i < n; i++) yGamma[i] = y[i]!; // initial guess
-
-    let stage1Converged = false;
-    for (let iter = 0; iter < maxNewtonIters; iter++) {
-      const fGamma = f(tGamma, yGamma);
-      stats.fEvals++;
-
-      // Residual R1 = (M * (yGamma - y0)) - (gamma * h / 2) * (f0 + fGamma)
+  if (useWasmDense && wasm) {
+    wasmScope = getTrBdf2Pool(wasm).scope();
+    const alloc8 = (bytes: number): number => wasmScope!.allocU8((bytes + 7) & ~7).ptr;
+    const nnBytes = n * n * 8;
+    const nBytes = n * 8;
+    const pivBytes = (n * 4 + 7) & ~7;
+    if (hasMass) {
+      mPtr = alloc8(nnBytes);
+      const mView = new Float64Array(wasm.memory.buffer, mPtr, n * n);
       for (let i = 0; i < n; i++) {
-        let My = 0;
+        const rowOff = i * n;
         for (let j = 0; j < n; j++) {
-          const mij = massMatrix ? (massMatrix[i]?.[j] ?? 0) : i === j ? 1.0 : 0.0;
-          My += mij * ((yGamma[j] ?? 0) - (y[j] ?? 0));
+          mView[rowOff + j] = massMatrix![i]?.[j] ?? 0;
         }
-        delta[i] = -(My - d * h * ((f0[i] ?? 0) + (fGamma[i] ?? 0)));
-      }
-
-      solver.solve(delta);
-
-      let maxDelta = 0;
-      for (let i = 0; i < n; i++) {
-        const di = delta[i] ?? 0;
-        yGamma[i] = (yGamma[i] ?? 0) + di;
-        const tol = atol + rtol * Math.abs(yGamma[i] ?? 0);
-        maxDelta = Math.max(maxDelta, Math.abs(di) / tol);
-      }
-
-      if (maxDelta < 1.0) {
-        stage1Converged = true;
-        break;
       }
     }
+    jPtr = alloc8(nnBytes);
+    wPtr = alloc8(nnBytes);
+    pivPtr = alloc8(pivBytes);
+    scalePtr = alloc8(nBytes);
+    y0Ptr = alloc8(nBytes);
+    f0Ptr = alloc8(nBytes);
+    yGammaPtr = alloc8(nBytes);
+    fGammaPtr = alloc8(nBytes);
+    yNewPtr = alloc8(nBytes);
+    fNewPtr = alloc8(nBytes);
+    deltaPtr = alloc8(nBytes);
+    luScratchPtr = alloc8(nBytes);
+  }
 
-    if (!stage1Converged) {
-      // Newton failed, shrink step
-      stats.rejectedSteps++;
-      h = Math.abs(h) <= minStep * 1.01 ? h * 0.5 : Math.max(minStep, h * 0.5);
-      continue;
-    }
-
-    // ── Stage 2: BDF-2 at t + h ──
-    // y_new - (1 / (gamma*(2-gamma))) * yGamma + ((1-gamma)^2 / (gamma*(2-gamma))) * y0 = d * h * f(t+h, y_new)
-    const tNew = t + h;
-    const cGamma = 1.0 / (gamma * (2.0 - gamma));
-    const c0 = Math.pow(1.0 - gamma, 2) / (gamma * (2.0 - gamma));
-
-    for (let i = 0; i < n; i++) yNew[i] = yGamma[i]!; // initial guess from stage 1
-
-    let stage2Converged = false;
-    for (let iter = 0; iter < maxNewtonIters; iter++) {
-      const fNew = f(tNew, yNew);
-      stats.fEvals++;
-
-      // Residual R2 = M * (yNew - cGamma * yGamma + c0 * y0) - d * h * fNew
-      for (let i = 0; i < n; i++) {
-        let My = 0;
-        for (let j = 0; j < n; j++) {
-          const mij = massMatrix ? (massMatrix[i]?.[j] ?? 0) : i === j ? 1.0 : 0.0;
-          My += mij * ((yNew[j] ?? 0) - cGamma * (yGamma[j] ?? 0) + c0 * (y[j] ?? 0));
-        }
-        delta[i] = -(My - d * h * (fNew[i] ?? 0));
+  try {
+    while ((tEnd > t0 ? t < tEnd - 1e-14 : t > tEnd + 1e-14) && stats.acceptedSteps + stats.rejectedSteps < maxSteps) {
+      if (tEnd > t0) {
+        if (t + h > tEnd) h = tEnd - t;
+      } else {
+        if (t + h < tEnd) h = tEnd - t;
       }
 
-      solver.solve(delta);
-
-      let maxDelta = 0;
-      for (let i = 0; i < n; i++) {
-        const di = delta[i] ?? 0;
-        yNew[i] = (yNew[i] ?? 0) + di;
-        const tol = atol + rtol * Math.abs(yNew[i] ?? 0);
-        maxDelta = Math.max(maxDelta, Math.abs(di) / tol);
-      }
-
-      if (maxDelta < 1.0) {
-        stage2Converged = true;
-        break;
-      }
-    }
-
-    if (!stage2Converged) {
-      stats.rejectedSteps++;
-      h = Math.abs(h) <= minStep * 1.01 ? h * 0.5 : Math.max(minStep, h * 0.5);
-      continue;
-    }
-
-    // ── Local Error Estimation ──
-    // Hosea & Shampine (1996) / Bank et al. (1985) divided-difference error estimate:
-    // weights ((1 - gamma), -1, gamma) sum to 0, giving exact zero error on constant derivatives.
-    const fGammaFinal = f(tGamma, yGamma);
-    const fNewFinal = f(tNew, yNew);
-    stats.fEvals += 2;
-
-    const kErrScale = Math.abs(h) * kErr;
-    let maxErrorRatio = 0.0;
-    for (let i = 0; i < n; i++) {
-      const err_i =
-        kErrScale * Math.abs((1.0 - gamma) * (f0[i] ?? 0) - (fGammaFinal[i] ?? 0) + gamma * (fNewFinal[i] ?? 0));
-      const tol = atol + rtol * Math.max(Math.abs(y[i] ?? 0), Math.abs(yNew[i] ?? 0));
-      const ratio = err_i / tol;
-      if (!Number.isFinite(ratio)) {
-        maxErrorRatio = Infinity;
-        break;
-      }
-      maxErrorRatio = Math.max(maxErrorRatio, ratio);
-    }
-
-    const acceptedByTol = Number.isFinite(maxErrorRatio) && maxErrorRatio <= 1.0;
-    const acceptedAtMinStep = Number.isFinite(maxErrorRatio) && Math.abs(h) <= minStep * 2 && maxErrorRatio <= 2.0;
-    if (acceptedByTol || acceptedAtMinStep) {
-      if (acceptedAtMinStep && !acceptedByTol) {
+      if (Math.abs(h) < minStep) {
         stats.converged = false;
+        break;
       }
-      // Step accepted
-      stats.acceptedSteps++;
 
-      if (effEventFunctions && effEventFunctions.length > 0) {
-        const currEventVals = effEventFunctions.map((ef) => ef(tNew, yNew));
-        let eventTriggered = -1;
-        let eventDir: 1 | -1 = 1;
-        let bestTEvent = tEnd >= t0 ? Infinity : -Infinity;
-        let bestYEvent: number[] = [...yNew];
+      const f0 = f(t, y);
+      stats.fEvals++;
 
-        for (let ei = 0; ei < effEventFunctions.length; ei++) {
-          const vPrev = prevEventVals[ei] ?? 0;
-          const vCurr = currEventVals[ei] ?? 0;
-          const expectedDir = effEventDirections?.[ei] ?? 0;
+      // Compute Jacobian J at (t, y)
+      const J = computeJacobian(f, t, y, f0, JScratch, yPertScratch);
+      stats.jacobianEvals!++;
 
-          if (vPrev * vCurr < 0 && Math.max(Math.abs(vPrev), Math.abs(vCurr)) > 1e-14) {
-            const evDir: 1 | -1 = vCurr > vPrev ? 1 : -1;
-            if (expectedDir === 0 || expectedDir === evDir) {
-              let tLeft = t;
-              let tRight = tNew;
-              let yCand = [...yNew];
-              let valLeft = vPrev;
+      const dh = d * h;
+      let solver: FactorizedLinearSolver | null = null;
 
-              for (let iter = 0; iter < 30; iter++) {
-                const tMid = 0.5 * (tLeft + tRight);
-                const thetaMid = (tMid - t) / h;
-                const yMid = lagrangeInterpTrBdf2(y, yGamma, yNew, gamma, thetaMid, n);
-                const valMid = effEventFunctions[ei]!(tMid, yMid);
-
-                if (Math.abs(valMid) < 1e-12 || Math.abs(tRight - tLeft) < 1e-14) {
-                  yCand = yMid;
-                  tRight = tMid;
-                  break;
-                }
-                if (valLeft * valMid <= 0) {
-                  tRight = tMid;
-                } else {
-                  tLeft = tMid;
-                  valLeft = valMid;
-                }
-                yCand = yMid;
-              }
-
-              const isEarlier = tEnd >= t0 ? tRight < bestTEvent : tRight > bestTEvent;
-              if (isEarlier) {
-                bestTEvent = tRight;
-                bestYEvent = yCand;
-                eventTriggered = ei;
-                eventDir = evDir;
-              }
-            }
-          }
-        }
-
-        if (eventTriggered >= 0) {
-          const tEvent = bestTEvent;
-          const yEvent = bestYEvent;
-          const hasOutputGrid = denseOutputs && options.equidistantOutput !== false;
-
-          if (hasOutputGrid && outputTimes) {
-            while (outIdx < outputTimes.length) {
-              const tTarget = outputTimes[outIdx]!;
-              const beforeEvent = tEnd >= t0 ? tTarget < tEvent - 1e-14 : tTarget > tEvent + 1e-14;
-              if (beforeEvent) {
-                const theta = (tTarget - t) / h;
-                const yTarget = lagrangeInterpTrBdf2(y, yGamma, yNew, gamma, theta, n);
-                resultTimes.push(tTarget);
-                resultStates.push(yTarget);
-                outIdx++;
-              } else {
-                break;
-              }
-            }
-          }
-
-          if (effEventCallback) {
-            y = effEventCallback(tEvent, yEvent, eventTriggered, eventDir);
-          } else {
-            y = yEvent;
-          }
-
-          if (hasOutputGrid && outputTimes) {
-            if (outIdx < outputTimes.length && Math.abs(outputTimes[outIdx]! - tEvent) <= 1e-14) {
-              resultTimes.push(outputTimes[outIdx]!);
-              resultStates.push([...y]);
-              outIdx++;
-            }
-          } else {
-            resultTimes.push(tEvent);
-            resultStates.push([...y]);
-          }
-
-          t = tEvent;
-          prevEventVals = computeEventValuesWithProbe(t, y);
-          h = Math.max(minStep, Math.min(h * 0.5, maxStep));
+      if (useWasmDense && wasm) {
+        new Float64Array(wasm.memory.buffer, jPtr, n * n).set(flatJ);
+        const factored = wasm.trbdf2_assemble_and_factor!(n, dh, hasMass, mPtr, jPtr, wPtr, pivPtr, scalePtr);
+        stats.luFactorizations!++;
+        if (!factored) {
+          stats.rejectedSteps++;
+          h = Math.abs(h) <= minStep * 1.01 ? h * 0.5 : Math.max(minStep, h * 0.5);
           continue;
         }
-        prevEventVals = currEventVals;
-      }
-
-      // Output recording
-      if (denseOutputs && outputTimes) {
-        while (outIdx < outputTimes.length) {
-          const tTarget = outputTimes[outIdx]!;
-          if ((tEnd > t0 && tTarget <= tNew) || (tEnd < t0 && tTarget >= tNew)) {
-            // 2nd-order quadratic Lagrange interpolation through (0, y), (gamma, yGamma), (1, yNew)
-            const theta = (tTarget - t) / h;
-            const yTarget = lagrangeInterpTrBdf2(y, yGamma, yNew, gamma, theta, n);
-            resultTimes.push(tTarget);
-            resultStates.push(yTarget);
-            outIdx++;
-          } else {
-            break;
+        writeVecToWasm(wasm, y0Ptr, y, n);
+        writeVecToWasm(wasm, f0Ptr, f0, n);
+        new Float64Array(wasm.memory.buffer, yGammaPtr, n).set(new Float64Array(wasm.memory.buffer, y0Ptr, n));
+      } else {
+        // Form iteration matrix W = M - d * h * J
+        for (let i = 0; i < n; i++) {
+          for (let j = 0; j < n; j++) {
+            const mij = massMatrix ? (massMatrix[i]?.[j] ?? 0) : i === j ? 1.0 : 0.0;
+            W[i]![j] = mij - dh * (J[i]![j] ?? 0);
           }
         }
-      } else {
-        resultTimes.push(tNew);
-        resultStates.push([...yNew]);
+
+        // LU factorize W (sparse or dense according to dimension/option)
+        solver = factorizeLinearMatrix(W, n, { linearSolver: options.linearSolver });
+        stats.luFactorizations!++;
       }
 
-      t = tNew;
-      y = [...yNew];
+      // ── Stage 1: Trapezoidal rule at t + gamma * h ──
+      // y_gamma - y0 = (gamma * h / 2) * (f(t, y0) + f(t + gamma*h, y_gamma))
+      const tGamma = t + gamma * h;
+      for (let i = 0; i < n; i++) yGamma[i] = y[i]!; // initial guess
 
-      // Step adaptation for 2nd-order method (factor ~ (1/err)^(1/3))
-      const factor = Math.min(4.0, Math.max(0.2, 0.9 * Math.pow(Math.max(maxErrorRatio, 1e-6), -1.0 / 3.0)));
-      h = Math.min(maxStep, Math.max(minStep, h * factor));
-    } else {
-      // Step rejected based on truncation error
-      stats.rejectedSteps++;
-      if (!Number.isFinite(maxErrorRatio) || Math.abs(h) <= minStep * 1.01) {
-        h = h * 0.5;
+      let stage1Converged = false;
+      for (let iter = 0; iter < maxNewtonIters; iter++) {
+        const fGamma = f(tGamma, yGamma);
+        stats.fEvals++;
+
+        let maxDelta = 0;
+        if (useWasmDense && wasm) {
+          writeVecToWasm(wasm, fGammaPtr, fGamma, n);
+          maxDelta = wasm.trbdf2_tr_stage_step!(
+            n,
+            dh,
+            hasMass,
+            mPtr,
+            wPtr,
+            pivPtr,
+            scalePtr,
+            y0Ptr,
+            f0Ptr,
+            yGammaPtr,
+            fGammaPtr,
+            deltaPtr,
+            luScratchPtr,
+            atol,
+            rtol,
+          );
+          readVecFromWasm(wasm, yGammaPtr, yGamma, n);
+        } else {
+          // Residual R1 = (M * (yGamma - y0)) - (gamma * h / 2) * (f0 + fGamma)
+          for (let i = 0; i < n; i++) {
+            let My = 0;
+            for (let j = 0; j < n; j++) {
+              const mij = massMatrix ? (massMatrix[i]?.[j] ?? 0) : i === j ? 1.0 : 0.0;
+              My += mij * ((yGamma[j] ?? 0) - (y[j] ?? 0));
+            }
+            delta[i] = -(My - dh * ((f0[i] ?? 0) + (fGamma[i] ?? 0)));
+          }
+
+          solver!.solve(delta);
+
+          for (let i = 0; i < n; i++) {
+            const di = delta[i] ?? 0;
+            yGamma[i] = (yGamma[i] ?? 0) + di;
+            const tol = atol + rtol * Math.abs(yGamma[i] ?? 0);
+            maxDelta = Math.max(maxDelta, Math.abs(di) / tol);
+          }
+        }
+
+        if (maxDelta < 1.0) {
+          stage1Converged = true;
+          break;
+        }
+      }
+
+      if (!stage1Converged) {
+        // Newton failed, shrink step
+        stats.rejectedSteps++;
+        h = Math.abs(h) <= minStep * 1.01 ? h * 0.5 : Math.max(minStep, h * 0.5);
+        continue;
+      }
+
+      // ── Stage 2: BDF-2 at t + h ──
+      // y_new - (1 / (gamma*(2-gamma))) * yGamma + ((1-gamma)^2 / (gamma*(2-gamma))) * y0 = d * h * f(t+h, y_new)
+      const tNew = t + h;
+      const cGamma = 1.0 / (gamma * (2.0 - gamma));
+      const c0 = Math.pow(1.0 - gamma, 2) / (gamma * (2.0 - gamma));
+
+      for (let i = 0; i < n; i++) yNew[i] = yGamma[i]!; // initial guess from stage 1
+      if (useWasmDense && wasm) {
+        new Float64Array(wasm.memory.buffer, yNewPtr, n).set(new Float64Array(wasm.memory.buffer, yGammaPtr, n));
+      }
+
+      let stage2Converged = false;
+      for (let iter = 0; iter < maxNewtonIters; iter++) {
+        const fNew = f(tNew, yNew);
+        stats.fEvals++;
+
+        let maxDelta = 0;
+        if (useWasmDense && wasm) {
+          writeVecToWasm(wasm, fNewPtr, fNew, n);
+          maxDelta = wasm.trbdf2_bdf2_stage_step!(
+            n,
+            dh,
+            cGamma,
+            c0,
+            hasMass,
+            mPtr,
+            wPtr,
+            pivPtr,
+            scalePtr,
+            y0Ptr,
+            yGammaPtr,
+            yNewPtr,
+            fNewPtr,
+            deltaPtr,
+            luScratchPtr,
+            atol,
+            rtol,
+          );
+          readVecFromWasm(wasm, yNewPtr, yNew, n);
+        } else {
+          // Residual R2 = M * (yNew - cGamma * yGamma + c0 * y0) - d * h * fNew
+          for (let i = 0; i < n; i++) {
+            let My = 0;
+            for (let j = 0; j < n; j++) {
+              const mij = massMatrix ? (massMatrix[i]?.[j] ?? 0) : i === j ? 1.0 : 0.0;
+              My += mij * ((yNew[j] ?? 0) - cGamma * (yGamma[j] ?? 0) + c0 * (y[j] ?? 0));
+            }
+            delta[i] = -(My - dh * (fNew[i] ?? 0));
+          }
+
+          solver!.solve(delta);
+
+          for (let i = 0; i < n; i++) {
+            const di = delta[i] ?? 0;
+            yNew[i] = (yNew[i] ?? 0) + di;
+            const tol = atol + rtol * Math.abs(yNew[i] ?? 0);
+            maxDelta = Math.max(maxDelta, Math.abs(di) / tol);
+          }
+        }
+
+        if (maxDelta < 1.0) {
+          stage2Converged = true;
+          break;
+        }
+      }
+
+      if (!stage2Converged) {
+        stats.rejectedSteps++;
+        h = Math.abs(h) <= minStep * 1.01 ? h * 0.5 : Math.max(minStep, h * 0.5);
+        continue;
+      }
+
+      // ── Local Error Estimation ──
+      // Hosea & Shampine (1996) / Bank et al. (1985) divided-difference error estimate:
+      // weights ((1 - gamma), -1, gamma) sum to 0, giving exact zero error on constant derivatives.
+      const fGammaFinal = f(tGamma, yGamma);
+      const fNewFinal = f(tNew, yNew);
+      stats.fEvals += 2;
+
+      const kErrScale = Math.abs(h) * kErr;
+      let maxErrorRatio = 0.0;
+      if (useWasmDense && wasm) {
+        writeVecToWasm(wasm, fGammaPtr, fGammaFinal, n);
+        writeVecToWasm(wasm, fNewPtr, fNewFinal, n);
+        maxErrorRatio = wasm.trbdf2_error_estimate!(
+          n,
+          kErrScale,
+          gamma,
+          y0Ptr,
+          yNewPtr,
+          f0Ptr,
+          fGammaPtr,
+          fNewPtr,
+          atol,
+          rtol,
+        );
       } else {
-        const factor = Math.min(1.0, Math.max(0.1, 0.9 * Math.pow(maxErrorRatio, -0.5)));
-        h = Math.max(minStep, h * factor);
+        for (let i = 0; i < n; i++) {
+          const err_i =
+            kErrScale * Math.abs((1.0 - gamma) * (f0[i] ?? 0) - (fGammaFinal[i] ?? 0) + gamma * (fNewFinal[i] ?? 0));
+          const tol = atol + rtol * Math.max(Math.abs(y[i] ?? 0), Math.abs(yNew[i] ?? 0));
+          const ratio = err_i / tol;
+          if (!Number.isFinite(ratio)) {
+            maxErrorRatio = Infinity;
+            break;
+          }
+          maxErrorRatio = Math.max(maxErrorRatio, ratio);
+        }
+      }
+
+      const acceptedByTol = Number.isFinite(maxErrorRatio) && maxErrorRatio <= 1.0;
+      const acceptedAtMinStep = Number.isFinite(maxErrorRatio) && Math.abs(h) <= minStep * 2 && maxErrorRatio <= 2.0;
+      if (acceptedByTol || acceptedAtMinStep) {
+        if (acceptedAtMinStep && !acceptedByTol) {
+          stats.converged = false;
+        }
+        // Step accepted
+        stats.acceptedSteps++;
+
+        if (effEventFunctions && effEventFunctions.length > 0) {
+          const currEventVals = effEventFunctions.map((ef) => ef(tNew, yNew));
+          let eventTriggered = -1;
+          let eventDir: 1 | -1 = 1;
+          let bestTEvent = tEnd >= t0 ? Infinity : -Infinity;
+          let bestYEvent: number[] = [...yNew];
+
+          for (let ei = 0; ei < effEventFunctions.length; ei++) {
+            const vPrev = prevEventVals[ei] ?? 0;
+            const vCurr = currEventVals[ei] ?? 0;
+            const expectedDir = effEventDirections?.[ei] ?? 0;
+
+            if (vPrev * vCurr < 0 && Math.max(Math.abs(vPrev), Math.abs(vCurr)) > 1e-14) {
+              const evDir: 1 | -1 = vCurr > vPrev ? 1 : -1;
+              if (expectedDir === 0 || expectedDir === evDir) {
+                let tLeft = t;
+                let tRight = tNew;
+                let yCand = [...yNew];
+                let valLeft = vPrev;
+
+                for (let iter = 0; iter < 30; iter++) {
+                  const tMid = 0.5 * (tLeft + tRight);
+                  const thetaMid = (tMid - t) / h;
+                  const yMid = lagrangeInterpTrBdf2(y, yGamma, yNew, gamma, thetaMid, n);
+                  const valMid = effEventFunctions[ei]!(tMid, yMid);
+
+                  if (Math.abs(valMid) < 1e-12 || Math.abs(tRight - tLeft) < 1e-14) {
+                    yCand = yMid;
+                    tRight = tMid;
+                    break;
+                  }
+                  if (valLeft * valMid <= 0) {
+                    tRight = tMid;
+                  } else {
+                    tLeft = tMid;
+                    valLeft = valMid;
+                  }
+                  yCand = yMid;
+                }
+
+                const isEarlier = tEnd >= t0 ? tRight < bestTEvent : tRight > bestTEvent;
+                if (isEarlier) {
+                  bestTEvent = tRight;
+                  bestYEvent = yCand;
+                  eventTriggered = ei;
+                  eventDir = evDir;
+                }
+              }
+            }
+          }
+
+          if (eventTriggered >= 0) {
+            const tEvent = bestTEvent;
+            const yEvent = bestYEvent;
+            const hasOutputGrid = denseOutputs && options.equidistantOutput !== false;
+
+            if (hasOutputGrid && outputTimes) {
+              while (outIdx < outputTimes.length) {
+                const tTarget = outputTimes[outIdx]!;
+                const beforeEvent = tEnd >= t0 ? tTarget < tEvent - 1e-14 : tTarget > tEvent + 1e-14;
+                if (beforeEvent) {
+                  const theta = (tTarget - t) / h;
+                  const yTarget = lagrangeInterpTrBdf2(y, yGamma, yNew, gamma, theta, n);
+                  resultTimes.push(tTarget);
+                  resultStates.push(yTarget);
+                  outIdx++;
+                } else {
+                  break;
+                }
+              }
+            }
+
+            if (effEventCallback) {
+              y = effEventCallback(tEvent, yEvent, eventTriggered, eventDir);
+            } else {
+              y = yEvent;
+            }
+
+            if (hasOutputGrid && outputTimes) {
+              if (outIdx < outputTimes.length && Math.abs(outputTimes[outIdx]! - tEvent) <= 1e-14) {
+                resultTimes.push(outputTimes[outIdx]!);
+                resultStates.push([...y]);
+                outIdx++;
+              }
+            } else {
+              resultTimes.push(tEvent);
+              resultStates.push([...y]);
+            }
+
+            t = tEvent;
+            prevEventVals = computeEventValuesWithProbe(t, y);
+            h = Math.max(minStep, Math.min(h * 0.5, maxStep));
+            continue;
+          }
+          prevEventVals = currEventVals;
+        }
+
+        // Output recording
+        if (denseOutputs && outputTimes) {
+          while (outIdx < outputTimes.length) {
+            const tTarget = outputTimes[outIdx]!;
+            if ((tEnd > t0 && tTarget <= tNew) || (tEnd < t0 && tTarget >= tNew)) {
+              // 2nd-order quadratic Lagrange interpolation through (0, y), (gamma, yGamma), (1, yNew)
+              const theta = (tTarget - t) / h;
+              const yTarget = lagrangeInterpTrBdf2(y, yGamma, yNew, gamma, theta, n);
+              resultTimes.push(tTarget);
+              resultStates.push(yTarget);
+              outIdx++;
+            } else {
+              break;
+            }
+          }
+        } else {
+          resultTimes.push(tNew);
+          resultStates.push([...yNew]);
+        }
+
+        t = tNew;
+        y = [...yNew];
+
+        // Step adaptation for 2nd-order method (factor ~ (1/err)^(1/3))
+        const factor = Math.min(4.0, Math.max(0.2, 0.9 * Math.pow(Math.max(maxErrorRatio, 1e-6), -1.0 / 3.0)));
+        h = Math.min(maxStep, Math.max(minStep, h * factor));
+      } else {
+        // Step rejected based on truncation error
+        stats.rejectedSteps++;
+        if (!Number.isFinite(maxErrorRatio) || Math.abs(h) <= minStep * 1.01) {
+          h = h * 0.5;
+        } else {
+          const factor = Math.min(1.0, Math.max(0.1, 0.9 * Math.pow(maxErrorRatio, -0.5)));
+          h = Math.max(minStep, h * factor);
+        }
       }
     }
+  } finally {
+    wasmScope?.dispose();
   }
 
   return {

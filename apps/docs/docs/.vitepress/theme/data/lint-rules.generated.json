@@ -4257,6 +4257,65 @@
     ]
   },
   {
+    "slug": "twentysim",
+    "name": "20-sim",
+    "packageName": "@modelscript/twentysim",
+    "sources": [
+      "languages/twentysim/src/errors.ts"
+    ],
+    "cli": "msx twentysim lint",
+    "rules": [
+      {
+        "code": "M1001",
+        "rule": "syntax-error",
+        "severity": "error",
+        "message": "20-sim syntax error: <detail>."
+      },
+      {
+        "code": "M2001",
+        "rule": "unresolved-reference",
+        "severity": "error",
+        "message": "Unresolved submodel or port reference '<ref>' in connection."
+      },
+      {
+        "code": "M2002",
+        "rule": "duplicate-submodel",
+        "severity": "error",
+        "message": "Duplicate submodel declaration '<name>' in current scope."
+      },
+      {
+        "code": "M3001",
+        "rule": "port-kind-mismatch",
+        "severity": "error",
+        "message": "Port kind mismatch between '<fromRef>' and '<toRef>' (cannot connect power bond port to signal port)."
+      },
+      {
+        "code": "M4001",
+        "rule": "causality-conflict",
+        "severity": "error",
+        "message": "SCAP causality conflict at '<node>': <detail>."
+      },
+      {
+        "code": "M4002",
+        "rule": "derivative-causality",
+        "severity": "warning",
+        "message": "Storage element '<element>' (<kind>) assigned derivative causality (dependent state / index > 1 DAE)."
+      },
+      {
+        "code": "M4003",
+        "rule": "algebraic-loop",
+        "severity": "warning",
+        "message": "Algebraic loop detected in causal signal graph: <cycle>."
+      },
+      {
+        "code": "M5001",
+        "rule": "unconnected-port",
+        "severity": "warning",
+        "message": "Power port '<element>.<port>' is unconnected."
+      }
+    ]
+  },
+  {
     "slug": "autosar",
     "name": "AUTOSAR",
     "packageName": "@modelscript/autosar",

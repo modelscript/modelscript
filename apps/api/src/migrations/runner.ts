@@ -14,6 +14,61 @@ import type {
   RecreateTableOptions,
 } from "./types.js";
 
+export function quoteIdent(ident: string): string {
+  return `"${ident.replace(/"/g, '""')}"`;
+}
+
+export function computeMigrationChecksum(migration: Migration): string {
+  return crypto.createHash("sha256").update(`${migration.name}:${migration.up.toString()}`).digest("hex");
+}
+
+/**
+ * Translates SQLite-flavored DDL statements to PostgreSQL-compatible SQL for dual-dialect migrations.
+ * Returns null if the statement is strictly SQLite-only (e.g., PRAGMA or FTS5 virtual tables).
+ */
+export function translateSqliteSqlToPostgres(sql: string): string | null {
+  const trimmed = sql.trim();
+  if (!trimmed) return null;
+  if (/^PRAGMA\b/i.test(trimmed)) return null;
+
+  let out = trimmed
+    // Strip SQLite FTS5 virtual tables and triggers that rely on FTS5
+    .replace(/CREATE\s+VIRTUAL\s+TABLE\s+IF\s+NOT\s+EXISTS\s+[^;]+USING\s+fts5\s*\([^;]*\)\s*;/gi, "")
+    .replace(/CREATE\s+TRIGGER\s+IF\s+NOT\s+EXISTS\s+[^;]*_fts[^;]*BEGIN[\s\S]*?END\s*;/gi, "")
+    // AUTOINCREMENT -> SERIAL
+    .replace(/\bINTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT\b/gi, "SERIAL PRIMARY KEY")
+    // datetime('now') -> CURRENT_TIMESTAMP
+    .replace(/DEFAULT\s*\(\s*datetime\s*\(\s*'now'\s*\)\s*\)/gi, "DEFAULT CURRENT_TIMESTAMP")
+    .replace(/DEFAULT\s+datetime\s*\(\s*'now'\s*\)/gi, "DEFAULT CURRENT_TIMESTAMP")
+    .replace(/\bdatetime\s*\(\s*'now'\s*\)/gi, "CURRENT_TIMESTAMP")
+    // BLOB -> BYTEA
+    .replace(/\bBLOB\b/g, "BYTEA")
+    // INSERT OR IGNORE -> INSERT ... ON CONFLICT DO NOTHING (simple single-statement fallback)
+    .replace(/\bINSERT\s+OR\s+IGNORE\s+INTO\b/gi, "INSERT INTO");
+
+  out = out.trim();
+  return out.length > 0 ? out : null;
+}
+
+export function rewriteBindParamsToPostgres(sql: string): string {
+  let idx = 0;
+  let inSingleQuote = false;
+  let result = "";
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i]!;
+    if (ch === "'") {
+      inSingleQuote = !inSingleQuote;
+      result += ch;
+    } else if (ch === "?" && !inSingleQuote) {
+      idx++;
+      result += `$${idx}`;
+    } else {
+      result += ch;
+    }
+  }
+  return result;
+}
+
 export interface SqliteMigrationRunnerHooks {
   onBeforeMigration?: () => void;
   onAfterMigration?: () => void;
@@ -59,21 +114,42 @@ export class SqliteMigrationRunner {
         }
         return this.#db.prepare(sql).all() as T[];
       },
+      getTableColumns: (table: string): string[] => {
+        const safeTable = quoteIdent(table);
+        const rows = this.#db.prepare(`PRAGMA table_info(${safeTable})`).all() as { name: string }[];
+        return rows.map((r) => r.name);
+      },
+      addColumnIfNotExists: (table: string, column: string, definition: string): void => {
+        const safeTable = quoteIdent(table);
+        const rows = this.#db.prepare(`PRAGMA table_info(${safeTable})`).all() as { name: string }[];
+        if (!rows.some((r) => r.name === column)) {
+          this.#db.exec(`ALTER TABLE ${safeTable} ADD COLUMN ${quoteIdent(column)} ${definition};`);
+        }
+      },
+      dropColumnIfExists: (table: string, column: string): void => {
+        const safeTable = quoteIdent(table);
+        const rows = this.#db.prepare(`PRAGMA table_info(${safeTable})`).all() as { name: string }[];
+        if (rows.some((r) => r.name === column)) {
+          this.#db.exec(`ALTER TABLE ${safeTable} DROP COLUMN ${quoteIdent(column)};`);
+        }
+      },
       recreateTable: (options: RecreateTableOptions) => {
         const { table, newSchemaSql, columnMapping, copyWhere } = options;
         const tempOldTable = `__old_${table}_${Date.now()}`;
+        const safeTable = quoteIdent(table);
+        const safeTempOld = quoteIdent(tempOldTable);
 
         // 1. Rename existing table to temp table
-        this.#db.exec(`ALTER TABLE "${table}" RENAME TO "${tempOldTable}";`);
+        this.#db.exec(`ALTER TABLE ${safeTable} RENAME TO ${safeTempOld};`);
 
         // 2. Create the replacement table
         this.#db.exec(newSchemaSql);
 
         // 3. Inspect columns of both tables
-        const oldCols = (this.#db.prepare(`PRAGMA table_info("${tempOldTable}")`).all() as { name: string }[]).map(
+        const oldCols = (this.#db.prepare(`PRAGMA table_info(${safeTempOld})`).all() as { name: string }[]).map(
           (c) => c.name,
         );
-        const newCols = (this.#db.prepare(`PRAGMA table_info("${table}")`).all() as { name: string }[]).map(
+        const newCols = (this.#db.prepare(`PRAGMA table_info(${safeTable})`).all() as { name: string }[]).map(
           (c) => c.name,
         );
 
@@ -83,26 +159,26 @@ export class SqliteMigrationRunner {
         if (columnMapping) {
           for (const [oldCol, newCol] of Object.entries(columnMapping)) {
             if (oldCols.includes(oldCol) && newCols.includes(newCol)) {
-              targetCols.push(`"${newCol}"`);
-              sourceExprs.push(`"${oldCol}"`);
+              targetCols.push(quoteIdent(newCol));
+              sourceExprs.push(quoteIdent(oldCol));
             }
           }
         } else {
           const common = oldCols.filter((col) => newCols.includes(col));
-          targetCols = common.map((c) => `"${c}"`);
-          sourceExprs = common.map((c) => `"${c}"`);
+          targetCols = common.map((c) => quoteIdent(c));
+          sourceExprs = common.map((c) => quoteIdent(c));
         }
 
         if (targetCols.length > 0) {
           const whereClause = copyWhere ? ` WHERE ${copyWhere}` : "";
           this.#db.exec(`
-            INSERT INTO "${table}" (${targetCols.join(", ")})
-            SELECT ${sourceExprs.join(", ")} FROM "${tempOldTable}"${whereClause};
+            INSERT INTO ${safeTable} (${targetCols.join(", ")})
+            SELECT ${sourceExprs.join(", ")} FROM ${safeTempOld}${whereClause};
           `);
         }
 
         // 4. Drop temporary table
-        this.#db.exec(`DROP TABLE "${tempOldTable}";`);
+        this.#db.exec(`DROP TABLE ${safeTempOld};`);
       },
       archiveTable: (options: string | ArchiveTableOptions): ArchiveTableResult => {
         const opts: ArchiveTableOptions = typeof options === "string" ? { table: options } : options;
@@ -112,19 +188,21 @@ export class SqliteMigrationRunner {
           .slice(0, 14);
         const archiveTable = opts.archiveName || `_archived_${opts.table}_${timestamp}`;
         const dropOriginal = opts.dropOriginal !== false;
+        const safeTable = quoteIdent(opts.table);
+        const safeArchive = quoteIdent(archiveTable);
 
         const exists = this.#db.prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name=?`).get(opts.table);
         if (!exists) {
           return { archiveTable, rowCount: 0, archivedAt: new Date().toISOString() };
         }
 
-        const countRow = this.#db.prepare(`SELECT COUNT(*) as count FROM "${opts.table}"`).get() as { count: number };
+        const countRow = this.#db.prepare(`SELECT COUNT(*) as count FROM ${safeTable}`).get() as { count: number };
         const rowCount = countRow ? Number(countRow.count) : 0;
 
-        this.#db.exec(`CREATE TABLE IF NOT EXISTS "${archiveTable}" AS SELECT * FROM "${opts.table}";`);
+        this.#db.exec(`CREATE TABLE IF NOT EXISTS ${safeArchive} AS SELECT * FROM ${safeTable};`);
 
         if (dropOriginal) {
-          this.#db.exec(`DROP TABLE IF EXISTS "${opts.table}";`);
+          this.#db.exec(`DROP TABLE IF EXISTS ${safeTable};`);
         }
 
         return {
@@ -459,8 +537,7 @@ export class SqliteMigrationRunner {
   verifyIntegrity(): { foreignKeysOk: boolean; integrityOk: boolean } {
     const fkErrors = this.#db.prepare("PRAGMA foreign_key_check").all();
     const integrity = this.#db.prepare("PRAGMA integrity_check").get() as
-      | { integrity_check?: string | undefined }
-      | undefined;
+      { integrity_check?: string | undefined } | undefined;
 
     const foreignKeysOk = !fkErrors || fkErrors.length === 0;
     const integrityOk = integrity?.integrity_check === "ok";
@@ -523,10 +600,7 @@ export class PostgresMigrationRunner {
     for (const app of applied) {
       const def = migrations.find((m) => m.name === app.name);
       if (def) {
-        const sum = crypto
-          .createHash("sha256")
-          .update(def.name + (def.id || ""))
-          .digest("hex");
+        const sum = computeMigrationChecksum(def);
         if (app.checksum && app.checksum !== sum) {
           app.checksumMatch = false;
           checksumMatch = false;
@@ -546,6 +620,92 @@ export class PostgresMigrationRunner {
     };
   }
 
+  #buildPgContext(client: PostgresClientLike, pendingOps: Array<() => Promise<void>>): MigrationContext {
+    const enqueueSql = (rawSql: string, params?: unknown[]): Promise<void> => {
+      const translated = translateSqliteSqlToPostgres(rawSql);
+      if (!translated) return Promise.resolve();
+      const pgSql = params && params.length > 0 ? rewriteBindParamsToPostgres(translated) : translated;
+      let resolveOp!: () => void;
+      let rejectOp!: (err: unknown) => void;
+      const promise = new Promise<void>((res, rej) => {
+        resolveOp = res;
+        rejectOp = rej;
+      });
+      pendingOps.push(async () => {
+        try {
+          if (params && params.length > 0) {
+            await client.query(pgSql, params);
+          } else {
+            await client.query(pgSql);
+          }
+          resolveOp();
+        } catch (err) {
+          rejectOp(err);
+          throw err;
+        }
+      });
+      return promise;
+    };
+
+    return {
+      dialect: "postgres",
+      execute: (sql: string, params?: unknown[]) => enqueueSql(sql, params),
+      query: async <T = unknown>(sql: string, params?: unknown[]): Promise<T[]> => {
+        const translated = translateSqliteSqlToPostgres(sql);
+        if (!translated) return [];
+        const pgSql = params && params.length > 0 ? rewriteBindParamsToPostgres(translated) : translated;
+        const res = params && params.length > 0 ? await client.query(pgSql, params) : await client.query(pgSql);
+        return res.rows as T[];
+      },
+      getTableColumns: async (table: string): Promise<string[]> => {
+        const res = await client.query(
+          `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1`,
+          [table],
+        );
+        return (res.rows as { column_name: string }[]).map((r) => r.column_name);
+      },
+      addColumnIfNotExists: (table: string, column: string, definition: string) => {
+        const safeTable = quoteIdent(table);
+        const safeCol = quoteIdent(column);
+        return enqueueSql(`ALTER TABLE ${safeTable} ADD COLUMN IF NOT EXISTS ${safeCol} ${definition};`);
+      },
+      dropColumnIfExists: (table: string, column: string) => {
+        const safeTable = quoteIdent(table);
+        const safeCol = quoteIdent(column);
+        return enqueueSql(`ALTER TABLE ${safeTable} DROP COLUMN IF EXISTS ${safeCol};`);
+      },
+      recreateTable: (_opts: RecreateTableOptions) => {
+        throw new Error("recreateTable is not supported on PostgreSQL; use standard ALTER TABLE");
+      },
+      archiveTable: async (options: string | ArchiveTableOptions): Promise<ArchiveTableResult> => {
+        const opts: ArchiveTableOptions = typeof options === "string" ? { table: options } : options;
+        const timestamp = new Date()
+          .toISOString()
+          .replace(/[-:T.]/g, "")
+          .slice(0, 14);
+        const archiveTable = opts.archiveName || `_archived_${opts.table}_${timestamp}`;
+        const dropOriginal = opts.dropOriginal !== false;
+        const safeTable = quoteIdent(opts.table);
+        const safeArchive = quoteIdent(archiveTable);
+
+        const existsRes = await client.query(
+          `SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1`,
+          [opts.table],
+        );
+        if (existsRes.rows.length === 0) {
+          return { archiveTable, rowCount: 0, archivedAt: new Date().toISOString() };
+        }
+        const countRes = await client.query(`SELECT COUNT(*)::int AS count FROM ${safeTable}`);
+        const rowCount = Number((countRes.rows[0] as { count?: number } | undefined)?.count ?? 0);
+        await client.query(`CREATE TABLE IF NOT EXISTS ${safeArchive} AS SELECT * FROM ${safeTable};`);
+        if (dropOriginal) {
+          await client.query(`DROP TABLE IF EXISTS ${safeTable};`);
+        }
+        return { archiveTable, rowCount, archivedAt: new Date().toISOString() };
+      },
+    };
+  }
+
   async runPending(
     migrations: Migration[],
     options?: { dryRun?: boolean; silent?: boolean },
@@ -562,33 +722,16 @@ export class PostgresMigrationRunner {
       try {
         await client.query("BEGIN");
         const start = Date.now();
-        const ctx: MigrationContext = {
-          dialect: "postgres",
-          execute: async (sql: string, params?: unknown[]) => {
-            if (params && params.length > 0) {
-              await client.query(sql, params);
-            } else {
-              await client.query(sql);
-            }
-          },
-          query: async <T = unknown>(sql: string, params?: unknown[]): Promise<T[]> => {
-            const res = params && params.length > 0 ? await client.query(sql, params) : await client.query(sql);
-            return res.rows as T[];
-          },
-          recreateTable: (_opts: RecreateTableOptions) => {
-            throw new Error("recreateTable is not supported on PostgreSQL; use standard ALTER TABLE");
-          },
-          archiveTable: (_opts: string | ArchiveTableOptions): ArchiveTableResult => {
-            throw new Error("archiveTable is not implemented for PostgreSQL");
-          },
-        };
+        const pendingOps: Array<() => Promise<void>> = [];
+        const ctx = this.#buildPgContext(client, pendingOps);
 
         await migration.up(ctx);
+        for (const op of pendingOps) {
+          await op();
+        }
+
         const duration = Date.now() - start;
-        const checksum = crypto
-          .createHash("sha256")
-          .update(migration.name + (migration.id || ""))
-          .digest("hex");
+        const checksum = computeMigrationChecksum(migration);
         await client.query(`INSERT INTO _modelscript_migrations (name, checksum, execution_ms) VALUES ($1, $2, $3)`, [
           migration.name,
           checksum,
@@ -609,5 +752,41 @@ export class PostgresMigrationRunner {
       }
     }
     return { appliedCount };
+  }
+
+  async rollbackLast(migrations: Migration[], options?: { silent?: boolean }): Promise<{ rolledBack: string | null }> {
+    await this.ensureLedgerTable();
+    const applied = await this.getAppliedMigrations();
+    if (applied.length === 0) return { rolledBack: null };
+
+    const last = applied[applied.length - 1]!;
+    const def = migrations.find((m) => m.name === last.name);
+    if (!def || !def.down) {
+      throw new Error(`Migration '${last.name}' does not define a down() rollback handler.`);
+    }
+
+    const client = typeof this.#pool.connect === "function" ? await this.#pool.connect() : this.#pool;
+    try {
+      await client.query("BEGIN");
+      const pendingOps: Array<() => Promise<void>> = [];
+      const ctx = this.#buildPgContext(client, pendingOps);
+      await def.down(ctx);
+      for (const op of pendingOps) {
+        await op();
+      }
+      await client.query(`DELETE FROM _modelscript_migrations WHERE name = $1`, [last.name]);
+      await client.query("COMMIT");
+      if (!options?.silent) {
+        console.log(`[PostgresMigrationRunner] Rolled back migration: ${last.name}`);
+      }
+      return { rolledBack: last.name };
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      if ("release" in client && typeof (client as { release?: () => void }).release === "function") {
+        (client as { release: () => void }).release();
+      }
+    }
   }
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 import { useData } from "vitepress";
 import { useAnsatzOrigin } from "../util/ansatz.js";
 import {
@@ -21,7 +21,7 @@ import {
 } from "../util/polyglot-paste-detector.js";
 import type { SandboxMonacoHandle } from "../util/sandbox-monaco.js";
 import { hasDiagramElements, type SandboxDiagramHandle } from "../util/sandbox-diagram.js";
-import languageExamples from "../data/language-examples.generated.json";
+import languageExamplesUrl from "../data/language-examples.generated.json?url";
 import languagesData from "../data/languages.generated.json";
 import MsIcon from "./MsIcon.vue";
 
@@ -101,11 +101,7 @@ const groupedFilteredLanguages = computed(() => {
   }));
 });
 
-const examplesBySlug = new Map<
-  string,
-  { slug: string; ext: string; filename: string; code: string; svgDark?: string; svgLight?: string; viewLabel?: string }
->();
-for (const ex of languageExamples as Array<{
+interface LanguageExampleEntry {
   slug: string;
   ext: string;
   filename: string;
@@ -113,8 +109,51 @@ for (const ex of languageExamples as Array<{
   svgDark?: string;
   svgLight?: string;
   viewLabel?: string;
-}>) {
-  examplesBySlug.set(ex.slug, ex);
+}
+
+const examplesBySlug = shallowRef(new Map<string, LanguageExampleEntry>());
+let examplesLoadPromise: Promise<void> | null = null;
+
+function ensureLanguageExamplesLoaded(): Promise<void> {
+  if (examplesBySlug.value.size > 0) return Promise.resolve();
+  if (!examplesLoadPromise) {
+    examplesLoadPromise = fetch(languageExamplesUrl)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json() as Promise<LanguageExampleEntry[]>;
+      })
+      .then((list) => {
+        const nextMap = new Map<string, LanguageExampleEntry>();
+        for (const ex of list) {
+          nextMap.set(ex.slug, ex);
+        }
+        examplesBySlug.value = nextMap;
+        // Populate any unedited placeholder tabs with the loaded example code
+        for (let i = 0; i < tabs.value.length; i++) {
+          const tab = tabs.value[i]!;
+          if (!tab.code.startsWith("// Paste ")) continue;
+          const ex = nextMap.get(tab.langSlug);
+          if (!ex?.code) continue;
+          const oldUri = tab.uri;
+          tab.fileName = ex.filename || tab.fileName;
+          tab.code = ex.code;
+          tab.uri = `file:///sandbox/${i + 1}_${tab.fileName}`;
+          if (monacoHandle) {
+            if (oldUri !== tab.uri) monacoHandle.removeModel(oldUri);
+            if (tab.id === activeTabId.value) {
+              monacoHandle.switchTab(tab.uri, tab.code, tab.langSlug);
+            }
+          }
+        }
+        if (hasBooted) {
+          void syncTabsAndLint();
+        }
+      })
+      .catch(() => {
+        examplesLoadPromise = null;
+      });
+  }
+  return examplesLoadPromise;
 }
 
 function makePrimaryExt(rawExt: string): string {
@@ -125,7 +164,7 @@ let nextTabSeq = 1;
 
 function createTabForLang(slug: string, idx: number, customCode?: string, customFileName?: string): SandboxTab {
   const meta = allLanguages.value.find((l) => l.slug === slug) ?? allLanguages.value[0]!;
-  const ex = examplesBySlug.get(meta.slug);
+  const ex = examplesBySlug.value.get(meta.slug);
   const ext = makePrimaryExt(meta.ext);
   const fileName = customFileName || ex?.filename || `model_${idx}${ext}`;
   const code = customCode ?? ex?.code ?? `// Paste ${meta.name} (${ext}) model here\n`;
@@ -255,7 +294,7 @@ async function initMonacoEditor(): Promise<void> {
   }
 }
 
-const activeExampleMeta = computed(() => examplesBySlug.get(activeTab.value.langSlug));
+const activeExampleMeta = computed(() => examplesBySlug.value.get(activeTab.value.langSlug));
 
 async function refreshDiagramPreview(): Promise<void> {
   const tab = activeTab.value;
@@ -352,6 +391,7 @@ async function refreshQuickFixesForUri(uri: string, diags: LspDiagnostic[]): Pro
 function bootSandbox(): void {
   if (hasBooted) return;
   hasBooted = true;
+  void ensureLanguageExamplesLoaded();
   void initMonacoEditor();
   void syncTabsAndLint();
 }
@@ -427,8 +467,11 @@ function scheduleLint(): void {
 async function switchTabLanguage(tab: SandboxTab, newSlug: string, keepExistingCode: boolean): Promise<void> {
   const meta = allLanguages.value.find((l) => l.slug === newSlug);
   if (!meta) return;
+  if (!keepExistingCode) {
+    await ensureLanguageExamplesLoaded();
+  }
   const oldUri = tab.uri;
-  const ex = examplesBySlug.get(meta.slug);
+  const ex = examplesBySlug.value.get(meta.slug);
   const ext = makePrimaryExt(meta.ext);
   const tabIdx = Math.max(0, tabs.value.indexOf(tab)) + 1;
   tab.langSlug = meta.slug;

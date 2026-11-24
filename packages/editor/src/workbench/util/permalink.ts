@@ -225,7 +225,7 @@ export function buildMorselEmbedHtmlPage(options: { embedSrc: string; title?: st
   </style>
 </head>
 <body>
-  <iframe src="${safeSrc}" title="${safeTitle}" allow="clipboard-write; fullscreen" loading="eager"></iframe>
+  <iframe src="${safeSrc}" title="${safeTitle}" allow="clipboard-write; xr-spatial-tracking; fullscreen" loading="eager"></iframe>
 </body>
 </html>`;
 }

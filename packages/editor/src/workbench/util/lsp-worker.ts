@@ -86,6 +86,25 @@ export async function startLsp(initialLanguageId?: string): Promise<ProtocolConn
       });
       conn.listen();
 
+      conn.onRequest("window/workDoneProgress/create", () => null);
+      conn.onNotification("$/progress", (params: unknown) => {
+        if (isDebugLsp()) {
+          console.debug("[LSP-progress]", params);
+        }
+      });
+      conn.onNotification("window/showMessage", (params: { type?: number; message?: string } | null) => {
+        if (!params) return;
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("modelscript:lsp-message", { detail: params }));
+        }
+        if (params.type === 1) {
+          console.error(`[LSP-message] ${params.message}`);
+        } else if (params.type === 2) {
+          console.warn(`[LSP-message] ${params.message}`);
+        } else if (isDebugLsp()) {
+          console.debug(`[LSP-message] [type=${params.type}] ${params.message}`);
+        }
+      });
       conn.onNotification("window/logMessage", (params: any) => {
         if (params.type === 1) {
           console.error(`[LSP-server] ${params.message}`);
@@ -129,6 +148,7 @@ export async function startLsp(initialLanguageId?: string): Promise<ProtocolConn
                   formats: ["relative"],
                 },
                 formatting: {},
+                rangeFormatting: {},
                 colorProvider: {},
                 signatureHelp: {
                   signatureInformation: {
@@ -147,6 +167,13 @@ export async function startLsp(initialLanguageId?: string): Promise<ProtocolConn
                 inlayHint: {},
                 foldingRange: {},
                 selectionRange: {},
+              },
+              workspace: {
+                symbol: {},
+                configuration: true,
+              },
+              window: {
+                workDoneProgress: true,
               },
             },
             initializationOptions: {

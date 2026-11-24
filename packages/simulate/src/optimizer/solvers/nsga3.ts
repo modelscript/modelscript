@@ -25,14 +25,14 @@ interface Nsga3WasmExports {
   memory: WebAssembly.Memory;
   __new(bytes: number, id: number): number;
   __pin?(ptr: number): void;
-  nsga3AssociateAndNichingWasm?(
+  nsga3AssociateRefPointsWasm?(
     n: number,
     rCount: number,
     m: number,
-    objsPtr: number,
-    refPtsPtr: number,
-    ranksPtr: number,
-    distPtr: number,
+    normObjsPtr: number,
+    refPointsPtr: number,
+    outRefIdxPtr: number,
+    outDistPtr: number,
   ): void;
 }
 
@@ -266,12 +266,7 @@ function associateWithReferencePoints(pop: InternalIndividual[], refPoints: Floa
   if (n >= 16 && rCount > 0) {
     const m = pop[0]?.normalizedObjectives.length ?? 0;
     if (m > 0) {
-      const wasm = getDefaultWasmExports() as unknown as
-        | (ReturnType<typeof getDefaultWasmExports> & {
-            nsga3AssociateRefPointsWasm?: (...args: number[]) => void;
-            memory: WebAssembly.Memory;
-          })
-        | null;
+      const wasm = getDefaultWasmExports() as Nsga3WasmExports | null;
       if (wasm && typeof wasm.nsga3AssociateRefPointsWasm === "function") {
         const s = ensureNsga3Scratch(wasm, n, rCount, m);
         if (s) {

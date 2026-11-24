@@ -962,3 +962,65 @@ export function dae_evalCompressedJacobian(
   let coloring = changetype<ColoringResult>(coloringPtr);
   evalCompressedJacobian(dae, ccs, coloring, eqIndicesPtr, varIndicesPtr, varValuesPtr, baseResidualsPtr, eps);
 }
+
+/**
+ * Flat-buffer Curtis-Powell-Reid Distance-2 Column Graph Coloring in WASM linear memory.
+ * - colPtrBuf: i32[nCols + 1] CCS column pointers
+ * - rowIdxBuf: i32[nnz] CCS row indices
+ * - nCols: number of columns
+ * - outColorsPtr: output i32[nCols] assigned color per column
+ * - forbiddenBuf: scratch i32[nCols + 1] buffer
+ * Returns numColors.
+ */
+export function colorJacobianColumnsFlatWasm(
+  colPtrBuf: u32,
+  rowIdxBuf: u32,
+  nCols: u32,
+  outColorsPtr: u32,
+  forbiddenBuf: u32,
+): u32 {
+  if (nCols == 0) return 0;
+
+  for (let i: u32 = 0; i <= nCols; i++) {
+    store<i32>(forbiddenBuf + (i << 2), -1);
+  }
+  for (let j: u32 = 0; j < nCols; j++) {
+    store<i32>(outColorsPtr + (j << 2), -1);
+  }
+
+  let numColors: u32 = 0;
+
+  for (let j: u32 = 0; j < nCols; j++) {
+    const startJ = load<i32>(colPtrBuf + (j << 2));
+    const endJ = load<i32>(colPtrBuf + ((j + 1) << 2));
+
+    for (let pJ = startJ; pJ < endJ; pJ++) {
+      const row = load<i32>(rowIdxBuf + ((pJ as u32) << 2));
+      for (let k: u32 = 0; k < j; k++) {
+        const startK = load<i32>(colPtrBuf + (k << 2));
+        const endK = load<i32>(colPtrBuf + ((k + 1) << 2));
+        for (let pK = startK; pK < endK; pK++) {
+          if (load<i32>(rowIdxBuf + ((pK as u32) << 2)) == row) {
+            const c = load<i32>(outColorsPtr + (k << 2));
+            if (c >= 0) {
+              store<i32>(forbiddenBuf + ((c as u32) << 2), j as i32);
+            }
+            break;
+          }
+        }
+      }
+    }
+
+    let c: u32 = 0;
+    while (c <= nCols && load<i32>(forbiddenBuf + (c << 2)) == (j as i32)) {
+      c++;
+    }
+    store<i32>(outColorsPtr + (j << 2), c as i32);
+    if (c + 1 > numColors) {
+      numColors = c + 1;
+    }
+  }
+
+  return numColors;
+}
+

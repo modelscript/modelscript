@@ -53,22 +53,31 @@ function getArtifactType(filename: string): string | null {
   return null;
 }
 
+function sendErrorAndExit(msg: string, code: number = 1): void {
+  if (typeof process.send === "function") {
+    try {
+      process.send({ type: "error", error: msg }, undefined, undefined, () => {
+        process.exit(code);
+      });
+      setTimeout(() => process.exit(code), 500).unref();
+      return;
+    } catch {
+      // Fall through to immediate exit
+    }
+  }
+  process.exit(code);
+}
+
 process.on("uncaughtException", (err) => {
   const msg = err instanceof Error ? err.stack || err.message : String(err);
   console.error("[publish-worker] Uncaught Exception:", msg);
-  try {
-    process.send?.({ type: "error", error: msg });
-  } catch {}
-  process.exit(1);
+  sendErrorAndExit(msg, 1);
 });
 
 process.on("unhandledRejection", (reason) => {
   const msg = reason instanceof Error ? reason.stack || reason.message : String(reason);
   console.error("[publish-worker] Unhandled Rejection:", msg);
-  try {
-    process.send?.({ type: "error", error: msg });
-  } catch {}
-  process.exit(1);
+  sendErrorAndExit(msg, 1);
 });
 
 process.on(

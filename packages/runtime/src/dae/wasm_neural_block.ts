@@ -14,6 +14,7 @@
  */
 
 import { BinOp, DAEBuilder, EqKind, VarType, Variability } from "./wasm_dae.js";
+import { getDefaultWasmExports } from "./wasm_loader.js";
 
 export enum ActivationKind {
   Linear = 0,
@@ -277,33 +278,83 @@ export class ArenaNeuralBlock {
   }
 
   /**
-   * Fast vectorized forward pass (GEMV) operating purely in Float64Array buffers.
+   * Fast vectorized forward pass (GEMV) operating in WebAssembly linear memory via `nn_mlpForward`.
    */
   public forwardVectorized(inputs: Float64Array, weights?: Float64Array): Float64Array {
     const W = weights ?? this.config.initialWeights ?? this.generateXavierWeights();
+    const numLayers = this.layerOffsets.length;
+    if (numLayers === 0) return new Float64Array(inputs);
+
+    const w = getDefaultWasmExports();
+    if (w && typeof w.nn_mlpForward === "function" && typeof w.alloc === "function" && typeof w.free === "function") {
+      let maxDim = inputs.length;
+      for (const lo of this.layerOffsets) {
+        if (lo.inDim > maxDim) maxDim = lo.inDim;
+        if (lo.outDim > maxDim) maxDim = lo.outDim;
+      }
+      const lastOutDim = this.layerOffsets[numLayers - 1]!.outDim;
+      const infoPtr = w.alloc(numLayers * 16);
+      const wPtr = w.alloc(Math.max(1, W.length) * 8);
+      const inPtr = w.alloc(Math.max(1, inputs.length) * 8);
+      const outPtr = w.alloc(Math.max(1, lastOutDim) * 8);
+      const scrAPtr = w.alloc(Math.max(1, maxDim) * 8);
+      const scrBPtr = w.alloc(Math.max(1, maxDim) * 8);
+      try {
+        const infoView = new Int32Array(w.memory.buffer, infoPtr, numLayers * 4);
+        for (let l = 0; l < numLayers; l++) {
+          const lo = this.layerOffsets[l]!;
+          infoView[l * 4] = lo.wOffset;
+          infoView[l * 4 + 1] = lo.bOffset;
+          infoView[l * 4 + 2] = lo.inDim;
+          infoView[l * 4 + 3] = lo.outDim;
+        }
+        new Float64Array(w.memory.buffer, wPtr, W.length).set(W);
+        new Float64Array(w.memory.buffer, inPtr, inputs.length).set(inputs);
+
+        w.nn_mlpForward(
+          infoPtr,
+          numLayers,
+          wPtr,
+          inPtr,
+          outPtr,
+          this.activation,
+          this.outputActivation,
+          scrAPtr,
+          scrBPtr,
+        );
+
+        const out = new Float64Array(lastOutDim);
+        out.set(new Float64Array(w.memory.buffer, outPtr, lastOutDim));
+        return out;
+      } finally {
+        w.free(infoPtr);
+        w.free(wPtr);
+        w.free(inPtr);
+        w.free(outPtr);
+        w.free(scrAPtr);
+        w.free(scrBPtr);
+      }
+    }
+
     let curr = new Float64Array(inputs);
-
-    for (let l = 0; l < this.layerOffsets.length; l++) {
+    for (let l = 0; l < numLayers; l++) {
       const { wOffset, bOffset, inDim, outDim } = this.layerOffsets[l]!;
-      const isLast = l === this.layerOffsets.length - 1;
+      const isLast = l === numLayers - 1;
       const act = isLast ? this.outputActivation : this.activation;
-
       const next = new Float64Array(outDim);
       for (let j = 0; j < outDim; j++) {
         let sum = W[bOffset + j] ?? 0;
-        for (let i = 0; i < inDim; i++) {
-          sum += (W[wOffset + j * inDim + i] ?? 0) * (curr[i] ?? 0);
-        }
+        for (let i = 0; i < inDim; i++) sum += (W[wOffset + j * inDim + i] ?? 0) * (curr[i] ?? 0);
         next[j] = this.evaluateActivationScalar(sum, act);
       }
       curr = next;
     }
-
     return curr;
   }
 
   /**
-   * Vector-Jacobian Product (VJP) pullback: computes gradInputs and gradWeights given cotangent u.
+   * Vector-Jacobian Product (VJP) pullback: computes gradInputs and gradWeights given cotangent u
+   * using AssemblyScript `nn_mlpVjp` in WASM linear memory.
    */
   public vjpVectorized(
     cotangent: Float64Array,
@@ -311,86 +362,151 @@ export class ArenaNeuralBlock {
     weights?: Float64Array,
   ): { gradInputs: Float64Array; gradWeights: Float64Array } {
     const W = weights ?? this.config.initialWeights ?? this.generateXavierWeights();
-    const gradW = new Float64Array(this.totalWeightCount);
+    const numLayers = this.layerOffsets.length;
+    if (numLayers === 0) {
+      return { gradInputs: new Float64Array(cotangent), gradWeights: new Float64Array(this.totalWeightCount) };
+    }
 
-    // Forward pass with activation caching
+    const w = getDefaultWasmExports();
+    if (w && typeof w.nn_mlpVjp === "function" && typeof w.alloc === "function" && typeof w.free === "function") {
+      let maxDim = Math.max(inputs.length, cotangent.length);
+      let totalActs = inputs.length;
+      let totalPres = 0;
+      const actOffsets = new Int32Array(numLayers + 1);
+      const preOffsets = new Int32Array(numLayers);
+      actOffsets[0] = 0;
+      for (let l = 0; l < numLayers; l++) {
+        const lo = this.layerOffsets[l]!;
+        if (lo.inDim > maxDim) maxDim = lo.inDim;
+        if (lo.outDim > maxDim) maxDim = lo.outDim;
+        preOffsets[l] = totalPres;
+        totalPres += lo.outDim;
+        actOffsets[l + 1] = totalActs;
+        totalActs += lo.outDim;
+      }
+      const inDim0 = this.layerOffsets[0]!.inDim;
+      const infoPtr = w.alloc(numLayers * 16);
+      const wPtr = w.alloc(Math.max(1, W.length) * 8);
+      const inPtr = w.alloc(Math.max(1, inputs.length) * 8);
+      const cotPtr = w.alloc(Math.max(1, cotangent.length) * 8);
+      const gradInPtr = w.alloc(Math.max(1, inDim0) * 8);
+      const gradWPtr = w.alloc(Math.max(1, this.totalWeightCount) * 8);
+      const actOffPtr = w.alloc((numLayers + 1) * 4);
+      const preOffPtr = w.alloc(numLayers * 4);
+      const actBufPtr = w.alloc(Math.max(1, totalActs) * 8);
+      const preBufPtr = w.alloc(Math.max(1, totalPres) * 8);
+      const deltaAPtr = w.alloc(Math.max(1, maxDim) * 8);
+      const deltaBPtr = w.alloc(Math.max(1, maxDim) * 8);
+      const dZPtr = w.alloc(Math.max(1, maxDim) * 8);
+      try {
+        const infoView = new Int32Array(w.memory.buffer, infoPtr, numLayers * 4);
+        for (let l = 0; l < numLayers; l++) {
+          const lo = this.layerOffsets[l]!;
+          infoView[l * 4] = lo.wOffset;
+          infoView[l * 4 + 1] = lo.bOffset;
+          infoView[l * 4 + 2] = lo.inDim;
+          infoView[l * 4 + 3] = lo.outDim;
+        }
+        new Float64Array(w.memory.buffer, wPtr, W.length).set(W);
+        new Float64Array(w.memory.buffer, inPtr, inputs.length).set(inputs);
+        new Float64Array(w.memory.buffer, cotPtr, cotangent.length).set(cotangent);
+        new Int32Array(w.memory.buffer, actOffPtr, numLayers + 1).set(actOffsets);
+        new Int32Array(w.memory.buffer, preOffPtr, numLayers).set(preOffsets);
+
+        w.nn_mlpVjp(
+          infoPtr,
+          numLayers,
+          wPtr,
+          inPtr,
+          cotPtr,
+          this.activation,
+          this.outputActivation,
+          gradInPtr,
+          gradWPtr,
+          actOffPtr,
+          preOffPtr,
+          actBufPtr,
+          preBufPtr,
+          deltaAPtr,
+          deltaBPtr,
+          dZPtr,
+        );
+
+        const gradInputs = new Float64Array(inDim0);
+        gradInputs.set(new Float64Array(w.memory.buffer, gradInPtr, inDim0));
+        const gradWeights = new Float64Array(this.totalWeightCount);
+        gradWeights.set(new Float64Array(w.memory.buffer, gradWPtr, this.totalWeightCount));
+        return { gradInputs, gradWeights };
+      } finally {
+        w.free(infoPtr);
+        w.free(wPtr);
+        w.free(inPtr);
+        w.free(cotPtr);
+        w.free(gradInPtr);
+        w.free(gradWPtr);
+        w.free(actOffPtr);
+        w.free(preOffPtr);
+        w.free(actBufPtr);
+        w.free(preBufPtr);
+        w.free(deltaAPtr);
+        w.free(deltaBPtr);
+        w.free(dZPtr);
+      }
+    }
+
+    const gradW = new Float64Array(this.totalWeightCount);
     const activations: Float64Array[] = [new Float64Array(inputs)];
     const preActivations: Float64Array[] = [];
-
     let curr = new Float64Array(inputs);
-    for (let l = 0; l < this.layerOffsets.length; l++) {
+    for (let l = 0; l < numLayers; l++) {
       const { wOffset, bOffset, inDim, outDim } = this.layerOffsets[l]!;
-      const isLast = l === this.layerOffsets.length - 1;
+      const isLast = l === numLayers - 1;
       const act = isLast ? this.outputActivation : this.activation;
-
       const pre = new Float64Array(outDim);
       const post = new Float64Array(outDim);
-
       for (let j = 0; j < outDim; j++) {
         let sum = W[bOffset + j] ?? 0;
-        for (let i = 0; i < inDim; i++) {
-          sum += (W[wOffset + j * inDim + i] ?? 0) * (curr[i] ?? 0);
-        }
+        for (let i = 0; i < inDim; i++) sum += (W[wOffset + j * inDim + i] ?? 0) * (curr[i] ?? 0);
         pre[j] = sum;
         post[j] = this.evaluateActivationScalar(sum, act);
       }
-
       preActivations.push(pre);
       activations.push(post);
       curr = post;
     }
-
-    // Backward pass
     let delta = new Float64Array(cotangent);
-
-    for (let l = this.layerOffsets.length - 1; l >= 0; l--) {
+    for (let l = numLayers - 1; l >= 0; l--) {
       const { wOffset, bOffset, inDim, outDim } = this.layerOffsets[l]!;
-      const isLast = l === this.layerOffsets.length - 1;
+      const isLast = l === numLayers - 1;
       const act = isLast ? this.outputActivation : this.activation;
-
       const aIn = activations[l]!;
       const pre = preActivations[l]!;
-
-      // dL/dz = delta * d_act(pre)
       const dZ = new Float64Array(outDim);
       for (let j = 0; j < outDim; j++) {
         dZ[j] = (delta[j] ?? 0) * this.evaluateActivationDerivative(pre[j] ?? 0, act);
-        // dL/db_j = dZ_j
         gradW[bOffset + j] = dZ[j]!;
       }
-
-      // dL/dW_ji = dZ_j * aIn_i
       for (let j = 0; j < outDim; j++) {
-        for (let i = 0; i < inDim; i++) {
-          gradW[wOffset + j * inDim + i] = (dZ[j] ?? 0) * (aIn[i] ?? 0);
-        }
+        for (let i = 0; i < inDim; i++) gradW[wOffset + j * inDim + i] = (dZ[j] ?? 0) * (aIn[i] ?? 0);
       }
-
-      // Propagate delta to previous layer: delta_prev = W^T * dZ
       if (l > 0) {
         const deltaPrev = new Float64Array(inDim);
         for (let i = 0; i < inDim; i++) {
           let sum = 0;
-          for (let j = 0; j < outDim; j++) {
-            sum += (W[wOffset + j * inDim + i] ?? 0) * (dZ[j] ?? 0);
-          }
+          for (let j = 0; j < outDim; j++) sum += (W[wOffset + j * inDim + i] ?? 0) * (dZ[j] ?? 0);
           deltaPrev[i] = sum;
         }
         delta = deltaPrev;
       } else {
-        // Input gradient
         const gradIn = new Float64Array(inDim);
         for (let i = 0; i < inDim; i++) {
           let sum = 0;
-          for (let j = 0; j < outDim; j++) {
-            sum += (W[wOffset + j * inDim + i] ?? 0) * (dZ[j] ?? 0);
-          }
+          for (let j = 0; j < outDim; j++) sum += (W[wOffset + j * inDim + i] ?? 0) * (dZ[j] ?? 0);
           gradIn[i] = sum;
         }
         return { gradInputs: gradIn, gradWeights: gradW };
       }
     }
-
     return { gradInputs: delta, gradWeights: gradW };
   }
 

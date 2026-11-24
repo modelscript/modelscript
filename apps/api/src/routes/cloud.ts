@@ -8,21 +8,26 @@ import os from "node:os";
 import path from "node:path";
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
-import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 import { CaeSolverRunner, getValidatedGeometryPath, type CaeJobSpec } from "../services/cae-solver-runner.js";
 import {
   CaeTelemetryStreamer,
   type CaeSolverType,
   type CaeTelemetryEvent,
 } from "../services/cae-telemetry-streamer.js";
+import {
+  assertComputeJobAccess,
+  failComputeJob,
+  holdComputeEscrow,
+  resolveComputeActor,
+  runComputePreflight,
+} from "../services/compute-job-lifecycle.js";
 import { getComputeProfile, listComputeProfiles } from "../services/hpc/compute-profiles.js";
 import { HpcEngine } from "../services/hpc/hpc-engine.js";
 import type { HpcJobSpec, HpcUsageMetrics } from "../services/hpc/hpc-types.js";
-import { checkComputeQuota, resolveRequestUserId } from "../services/hpc/quota-guard.js";
+import { checkComputeQuota } from "../services/hpc/quota-guard.js";
 import { prepareNativeSimulation, type NativeSimPrepResult } from "../services/simulation/native-sim-runner.js";
 import type { LibraryStorage } from "../storage.js";
 import { enforceExportCompliance } from "../util/compliance.js";
-import { checkComputeSandboxing } from "../util/compute-sandboxing.js";
 import { resolveDataPackageLockfile } from "../util/datapackage-indexer.js";
 import { scanModelicaSource } from "../util/package-scanner.js";
 
@@ -105,7 +110,6 @@ export function getActiveCloudJob(jobId: string): CloudJobRecord | undefined {
 
 export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, database?: LibraryDatabase): Router {
   const router = express.Router();
-  router.use("/cloud", defaultApiLimiter);
   const hpcEngine = new HpcEngine();
   const caeRunner = new CaeSolverRunner(hpcEngine);
 
@@ -113,21 +117,6 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
   if (!fs.existsSync(CAE_CACHE_DIR)) {
     fs.mkdirSync(CAE_CACHE_DIR, { recursive: true });
   }
-
-  const isAuthorizedForCloudJob = (req: Request, job: CloudJobRecord): boolean => {
-    if (process.env["NODE_ENV"] === "test") return true;
-    const reqAny = req as Request & {
-      user?: { id?: number | undefined; role?: string | undefined; accountType?: string | undefined } | undefined;
-      userId?: number | undefined;
-    };
-    const isAdmin = reqAny.user?.role === "admin" || reqAny.user?.accountType === "admin";
-    if (isAdmin) return true;
-    const reqUserId = reqAny.user?.id ?? reqAny.userId ?? (database ? resolveRequestUserId(req, database) : null);
-    if (job.userId !== undefined && job.userId !== null && job.userId !== reqUserId) {
-      return false;
-    }
-    return true;
-  };
 
   const enqueueCloudExecution = (jobRecord: CloudJobRecord, payload: CloudDispatchPayload): void => {
     const { domain = "modelica", name } = payload;
@@ -248,9 +237,14 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
             jobRecord.error = result.error || "CAE solver failed";
             broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
             if (database && dbJobId) {
-              database.updateJobStatus(dbJobId, "FAILED");
+              failComputeJob({
+                database,
+                dbJobId,
+                userId,
+                error: jobRecord.error,
+                fallbackMessage: "CAE solver failed",
+              });
               if (userId) {
-                database.releaseUserEscrow(userId, dbJobId, jobRecord.error || "CAE solver failed");
                 database.createNotification(userId, userId, "simulation_failed", null, {
                   jobId: jobRecord.jobId,
                   dbJobId,
@@ -270,9 +264,14 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
           jobRecord.error = err instanceof Error ? err.message : String(err);
           broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
           if (database && dbJobId) {
-            database.updateJobStatus(dbJobId, "FAILED");
+            failComputeJob({
+              database,
+              dbJobId,
+              userId,
+              error: jobRecord.error,
+              fallbackMessage: "CAE execution error",
+            });
             if (userId) {
-              database.releaseUserEscrow(userId, dbJobId, jobRecord.error || "CAE execution error");
               database.createNotification(userId, userId, "simulation_failed", null, {
                 jobId: jobRecord.jobId,
                 dbJobId,
@@ -447,9 +446,14 @@ getErrorString();
             jobRecord.error = details || "Simulation failed to produce CSV results";
             broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
             if (database && dbJobId) {
-              database.updateJobStatus(dbJobId, "FAILED");
+              failComputeJob({
+                database,
+                dbJobId,
+                userId,
+                error: jobRecord.error,
+                fallbackMessage: "Simulation failed",
+              });
               if (userId) {
-                database.releaseUserEscrow(userId, dbJobId, jobRecord.error || "Simulation failed");
                 database.createNotification(userId, userId, "simulation_failed", null, {
                   jobId: jobRecord.jobId,
                   dbJobId,
@@ -469,9 +473,14 @@ getErrorString();
           jobRecord.error = err instanceof Error ? err.message : String(err);
           broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
           if (database && dbJobId) {
-            database.updateJobStatus(dbJobId, "FAILED");
+            failComputeJob({
+              database,
+              dbJobId,
+              userId,
+              error: jobRecord.error,
+              fallbackMessage: "Simulation error",
+            });
             if (userId) {
-              database.releaseUserEscrow(userId, dbJobId, jobRecord.error || "Simulation error");
               database.createNotification(userId, userId, "simulation_failed", null, {
                 jobId: jobRecord.jobId,
                 dbJobId,
@@ -506,7 +515,7 @@ getErrorString();
         res.json({ balance: 1000, creditBalance: 1000, tier: "unlimited" });
         return;
       }
-      const userId = resolveRequestUserId(req, database);
+      const { userId } = resolveComputeActor(req, database);
       if (!userId) {
         res.status(401).json({ error: "Unauthorized" });
         return;
@@ -552,43 +561,14 @@ getErrorString();
         }
       }
 
-      const profile = getComputeProfile(requestedProfile);
-      const userId = database ? resolveRequestUserId(req, database) : null;
-      if (process.env["NODE_ENV"] === "production" && !userId) {
-        res.status(401).json({ error: "Authentication required" });
+      const preflight = runComputePreflight(req, res, database, {
+        profileId: requestedProfile,
+        allowAnonymous: process.env["NODE_ENV"] !== "production",
+      });
+      if (!preflight.allowed) {
         return;
       }
-
-      // Sandboxing check for federated community accounts
-      if (database && userId) {
-        const user = database.getUserById(userId);
-        const sandbox = checkComputeSandboxing(user);
-        if (sandbox.sandboxed) {
-          res.status(403).json({
-            error: sandbox.error,
-            code: sandbox.code,
-            fallbackAvailable: sandbox.fallbackAvailable,
-          });
-          return;
-        }
-      }
-
-      // Pre-flight quota check
-      let estimatedCost = 0;
-      if (database && userId) {
-        const quota = checkComputeQuota(userId, profile.id, database);
-        if (!quota.allowed) {
-          res.status(402).json({
-            error: "Payment Required: Insufficient Compute Credits",
-            message: quota.reason,
-            balance: quota.userBalance,
-            required: quota.estimatedCost,
-            profile: quota.profileId,
-          });
-          return;
-        }
-        estimatedCost = quota.estimatedCost;
-      }
+      const { userId, profile, estimatedCost } = preflight;
 
       const jobId = `cloud_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
       let lockfile: DataPackageLockJson | undefined;
@@ -661,24 +641,19 @@ getErrorString();
         }
       }
 
-      if (database && userId && dbJobId && estimatedCost > 0) {
-        const holdRes = database.holdUserCredits(
+      if (
+        database &&
+        !holdComputeEscrow({
+          database,
+          res,
           userId,
-          estimatedCost,
           dbJobId,
-          `HPC Escrow Hold: Cloud [${domain.toUpperCase()}] ${name}`,
-          { jobId, profile: profile.id, domain },
-        );
-        if (!holdRes.success) {
-          database.updateJobStatus(dbJobId, "FAILED");
-          res.status(402).json({
-            error: "Payment Required: Escrow Hold Failed",
-            message: holdRes.reason,
-            balance: holdRes.newBalance,
-            required: estimatedCost,
-          });
-          return;
-        }
+          estimatedCost,
+          description: `HPC Escrow Hold: Cloud [${domain.toUpperCase()}] ${name}`,
+          metadata: { jobId, profile: profile.id, domain },
+        })
+      ) {
+        return;
       }
 
       // Dispatch asynchronously to job queue
@@ -699,9 +674,8 @@ getErrorString();
   // ── 4. GET /api/v1/cloud/jobs ──
   // List active and historical jobs
   router.get("/cloud/jobs", (req: Request, res: Response): void => {
-    const reqAny = req as { user?: { id?: number | undefined } | undefined; userId?: number | undefined };
-    const authUserId =
-      reqAny.user?.id ?? reqAny.userId ?? (database ? resolveRequestUserId(req, database) : null) ?? undefined;
+    const reqAny = req as { userId?: number | undefined };
+    const authUserId = resolveComputeActor(req, database).userId ?? reqAny.userId ?? undefined;
     if (process.env["NODE_ENV"] === "production" && !authUserId) {
       res.status(401).json({ error: "Authentication required" });
       return;
@@ -749,8 +723,7 @@ getErrorString();
       res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
       return;
     }
-    if (!isAuthorizedForCloudJob(req, job)) {
-      res.status(403).json({ error: "Forbidden" });
+    if (!assertComputeJobAccess(req, res, database, { ownerId: job.userId, allowWhenUnowned: true })) {
       return;
     }
 
@@ -779,8 +752,7 @@ getErrorString();
       res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
       return;
     }
-    if (!isAuthorizedForCloudJob(req, job)) {
-      res.status(403).json({ error: "Forbidden" });
+    if (!assertComputeJobAccess(req, res, database, { ownerId: job.userId, allowWhenUnowned: true })) {
       return;
     }
     if (!job.lockfile) {
@@ -799,8 +771,7 @@ getErrorString();
       res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
       return;
     }
-    if (!isAuthorizedForCloudJob(req, job)) {
-      res.status(403).json({ error: "Forbidden" });
+    if (!assertComputeJobAccess(req, res, database, { ownerId: job.userId, allowWhenUnowned: true })) {
       return;
     }
 
@@ -819,8 +790,7 @@ getErrorString();
       res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
       return;
     }
-    if (!isAuthorizedForCloudJob(req, job)) {
-      res.status(403).json({ error: "Forbidden" });
+    if (!assertComputeJobAccess(req, res, database, { ownerId: job.userId, allowWhenUnowned: true })) {
       return;
     }
 
@@ -858,8 +828,7 @@ getErrorString();
       res.status(404).json({ error: `Results for job '${req.params["id"]}' not available or job still in progress` });
       return;
     }
-    if (!isAuthorizedForCloudJob(req, job)) {
-      res.status(403).json({ error: "Forbidden" });
+    if (!assertComputeJobAccess(req, res, database, { ownerId: job.userId, allowWhenUnowned: true })) {
       return;
     }
     if (!job.resultPath || !fs.existsSync(job.resultPath)) {
@@ -889,8 +858,7 @@ getErrorString();
       res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
       return;
     }
-    if (!isAuthorizedForCloudJob(req, job)) {
-      res.status(403).json({ error: "Forbidden" });
+    if (!assertComputeJobAccess(req, res, database, { ownerId: job.userId, allowWhenUnowned: true })) {
       return;
     }
 
@@ -934,12 +902,11 @@ getErrorString();
       res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
       return;
     }
-    if (!isAuthorizedForCloudJob(req, existing)) {
-      res.status(403).json({ error: "Forbidden" });
+    if (!assertComputeJobAccess(req, res, database, { ownerId: existing.userId, allowWhenUnowned: true })) {
       return;
     }
 
-    const reqUserId = database ? resolveRequestUserId(req, database) : null;
+    const reqUserId = database ? resolveComputeActor(req, database).userId : null;
     const userId = existing.userId ?? reqUserId;
     if (process.env["NODE_ENV"] === "production" && !userId) {
       res.status(401).json({ error: "Authentication required" });
@@ -998,24 +965,24 @@ getErrorString();
       }
     }
 
-    if (database && userId && dbJobId && estimatedCost > 0) {
-      const holdRes = database.holdUserCredits(
+    if (
+      database &&
+      !holdComputeEscrow({
+        database,
+        res,
         userId,
-        estimatedCost,
         dbJobId,
-        `HPC Escrow Hold (Retry): Cloud [${existing.domain.toUpperCase()}] ${existing.name}`,
-        { jobId: newJobId, previousJobId: existing.jobId, profile: existing.profile, domain: existing.domain },
-      );
-      if (!holdRes.success) {
-        database.updateJobStatus(dbJobId, "FAILED");
-        res.status(402).json({
-          error: "Payment Required: Escrow Hold Failed",
-          message: holdRes.reason,
-          balance: holdRes.newBalance,
-          required: estimatedCost,
-        });
-        return;
-      }
+        estimatedCost,
+        description: `HPC Escrow Hold (Retry): Cloud [${existing.domain.toUpperCase()}] ${existing.name}`,
+        metadata: {
+          jobId: newJobId,
+          previousJobId: existing.jobId,
+          profile: existing.profile,
+          domain: existing.domain,
+        },
+      })
+    ) {
+      return;
     }
 
     activeJobs.set(newJobId, retried);

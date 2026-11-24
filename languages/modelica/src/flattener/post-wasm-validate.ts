@@ -210,6 +210,32 @@ export function emitIntegerRealBindingDiagnostic(
   const lhsPart = text.slice(0, eqIdx).trim();
   let rhsPart = text.slice(eqIdx + 1).trim();
   if (!lhsPart || !rhsPart || rhsPart.startsWith("sign(")) return false;
+  // ModifierTypeError.mo: Integer k = X.x; where package X has constant Integer x = 1.0;
+  const pkgRefM = rhsPart.match(/^([A-Za-z_]\w*)\.([A-Za-z_]\w*)$/);
+  if (pkgRefM) {
+    const pSym = resolveClassSym(db, rootClassId, pkgRefM[1]!);
+    const mComp = pSym ? collectClassComponents(db, pSym.id).get(pkgRefM[2]!) : null;
+    const mClause = mComp ? (findAncestor(mComp.cst, "component_clause") ?? mComp.cst) : null;
+    const mBindM = mClause?.text?.match(/=\s*([+-]?\d+\.\d+(?:[eE][+-]?\d+)?)\s*;?$/);
+    if (mComp && mComp.typeName === "Integer" && mClause && mBindM) {
+      pushError(
+        dae,
+        ModelicaErrorCode.TYPE_MISMATCH_BINDING.code,
+        ModelicaErrorCode.TYPE_MISMATCH_BINDING.rule,
+        `Type mismatch in binding ${pkgRefM[2]!} = ${mBindM[1]!}, expected subtype of Integer, got type Real.`,
+        mClause,
+      );
+      const declClause = findAncestor(declNode, "component_clause") ?? declNode;
+      pushError(
+        dae,
+        ModelicaErrorCode.VARIABLE_NOT_FOUND.code,
+        ModelicaErrorCode.VARIABLE_NOT_FOUND.rule,
+        `Variable ${rhsPart} not found in scope ${db.symbol(rootClassId)?.name ?? ""}.`,
+        declClause,
+      );
+      return true;
+    }
+  }
   const evalRhs = evalSimpleConstRealText(rhsPart);
   if (evalRhs !== null) rhsPart = evalRhs;
   let cut = lhsPart.length;
@@ -791,7 +817,8 @@ export function emitWasmBailDiagnostic(
     if (compM && !PRIMITIVE_BUILTIN_TYPES.has(compM[1]!)) {
       const tSym = resolveClassSym(db, rootClassId, compM[1]!);
       const tSpec = tSym ? getClassSpecialization(tSym, cstOf(db, tSym.id)) : "";
-      if (tSpec === "model" || tSpec === "block") {
+      const tCstText = tSym ? (cstOf(db, tSym.id)?.text ?? "") : "";
+      if ((tSpec === "model" || tSpec === "block") && !/\bextends\s+ExternalObject\b/.test(tCstText)) {
         pushError(
           dae,
           3001,
@@ -800,6 +827,53 @@ export function emitWasmBailDiagnostic(
           declNode,
         );
         return true;
+      }
+    }
+  }
+
+  if (wasmErrorCode === 3377 || wasmErrorCode === 3363) {
+    // EquationRhsUnresolved / ArrayEquationNonCtor: check for type name used as expression (TypenameInvalid1/2)
+    const eqNode = findNodeAtByteRange(rootCst, startByte, endByte, ["simple_equation", "equation"]) ?? rootCst;
+    const eqTxt = eqNode.text.trim().replace(/;$/, "").trim();
+    const eqM = eqTxt.match(/^[^=]+=\s*([A-Za-z_]\w*)\s*$/);
+    if (eqM) {
+      const rhsId = eqM[1]!;
+      const isPrimType = PRIMITIVE_BUILTIN_TYPES.has(rhsId);
+      const rhsSym = !isPrimType ? resolveClassSym(db, rootClassId, rhsId) : null;
+      const rhsTxt = rhsSym ? (cstOf(db, rhsSym.id)?.text ?? "") : "";
+      if (isPrimType || (rhsSym && /\benumeration\s*\(/.test(rhsTxt))) {
+        pushError(dae, 3001, "typename-in-expression", `Type name '${rhsId}' is not allowed in this context.`, eqNode);
+        return true;
+      }
+    }
+  }
+
+  if (wasmErrorCode === 3609 && !isOldFrontend) {
+    // DeclarationDimensions: check for scalar binding on unknown-dim array (DimUnknown4)
+    if (dae.diagnostics.some((d) => d.code === 4035)) {
+      for (let di = dae.diagnostics.length - 1; di >= 0; di--) {
+        if (dae.diagnostics[di]?.code === 4042) dae.diagnostics.splice(di, 1);
+      }
+      return true;
+    }
+    const modM = rootCst.text.match(/\beach\s+([A-Za-z_]\w*)\s*=\s*([+-]?\d+(?:\.\d+)?)\s*\)/);
+    if (modM) {
+      const targetVar = modM[1]!;
+      const scalarVal = modM[2]!;
+      for (const s of db.byName(targetVar)) {
+        if (s.kind !== "Component") continue;
+        const sCst = cstOf(db, s.id);
+        const sClause = sCst ? (findAncestor(sCst, "component_clause") ?? sCst) : null;
+        if (sClause && /\[[^[\]]*:[^[\]]*\]/.test(sClause.text)) {
+          pushError(
+            dae,
+            3001,
+            "dim-unknown-binding",
+            `Dimension 1 of '${targetVar}' could not be deduced from the component's binding equation '${scalarVal}'.`,
+            sClause,
+          );
+          return true;
+        }
       }
     }
   }
@@ -1324,8 +1398,12 @@ export function emitWasmBailDiagnostic(
 
   if (wasmErrorCode === 3330 || wasmErrorCode === 3370 || wasmErrorCode === 3377) {
     // SimpleEquationExpr / EquationLhsUnresolved / EquationRhsUnresolved: check subscript, class-as-component, break, & non-const package var errors
+    let searchRoot = rootCst;
+    if (startByte < rootCst.startIndex || startByte > rootCst.endIndex) {
+      while (searchRoot.parent) searchRoot = searchRoot.parent;
+    }
     const rawErrNode =
-      findNodeAtByteRange(rootCst, startByte, endByte, [
+      findNodeAtByteRange(searchRoot, startByte, endByte, [
         "simple_equation",
         "equation",
         "component_reference",
@@ -1367,27 +1445,100 @@ export function emitWasmBailDiagnostic(
           return true;
         }
       }
-    }
-    // Check ColorClasses / OperatorFunction2: Pkg.nonConstVar in equation
-    for (const dotM of eText.matchAll(/\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\b/g)) {
-      const pName = dotM[1]!;
-      const mName = dotM[2]!;
-      if (comps.has(pName)) continue;
-      const pSym = resolveClassSym(db, rootClassId, pName);
-      if (!pSym) continue;
-      const pSpec = getClassSpecialization(pSym, cstOf(db, pSym.id));
-      if (pSpec === "package") {
-        const mComp = collectClassComponents(db, pSym.id).get(mName);
-        if (mComp && mComp.variability !== "constant") {
+      // Check RefinedSimpleCircuitInvalid: unresolved simple LHS variable in a nested/sibling class equation
+      if (lhsIdM && searchRoot !== rootCst && !lhsIdM[1]!.includes(".")) {
+        const encCls = findAncestor(errNode, "class_definition", 12);
+        const encNameM = encCls?.text?.match(/\b(?:model|class|block|connector|record)\s+([A-Za-z_]\w*)/);
+        if (encNameM) {
           pushError(
             dae,
-            ModelicaErrorCode.PACKAGE_VARIABLE_NOT_CONSTANT.code,
-            ModelicaErrorCode.PACKAGE_VARIABLE_NOT_CONSTANT.rule,
-            ModelicaErrorCode.PACKAGE_VARIABLE_NOT_CONSTANT.message(`${pName}.${mName}`, pName),
+            ModelicaErrorCode.VARIABLE_NOT_FOUND.code,
+            ModelicaErrorCode.VARIABLE_NOT_FOUND.rule,
+            `Variable ${lhsIdM[1]!} not found in scope ${encNameM[1]!}.`,
             errNode,
           );
           return true;
         }
+      }
+    }
+    // Check ColorClasses / OperatorFunction2: ClassOrRecord.nonConstVar(.field)* in equation
+    const rootName3370 = db.symbol(rootClassId)?.name ?? "";
+    for (const dotM of eText.matchAll(/\b([A-Za-z_]\w*)\.([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\b/g)) {
+      const pName = dotM[1]!;
+      const restPath = dotM[2]!;
+      const mName = restPath.split(".")[0]!;
+      if (comps.has(pName)) continue;
+      const pSym = resolveClassSym(db, rootClassId, pName);
+      if (!pSym) continue;
+      const mComp = collectClassComponents(db, pSym.id).get(mName);
+      if (mComp && mComp.variability !== "constant") {
+        const fullRef = `${pName}.${restPath}`;
+        if (restPath.includes(".")) {
+          pushError(
+            dae,
+            ModelicaErrorCode.PACKAGE_VARIABLE_NOT_CONSTANT.code,
+            ModelicaErrorCode.PACKAGE_VARIABLE_NOT_CONSTANT.rule,
+            `Variable ${pName}.${mName} in package ${pName} is not constant.`,
+            null,
+          );
+          pushError(
+            dae,
+            ModelicaErrorCode.PACKAGE_VARIABLE_NOT_CONSTANT.code,
+            ModelicaErrorCode.PACKAGE_VARIABLE_NOT_CONSTANT.rule,
+            `Variable ${fullRef} in package ${pName} is not constant.`,
+            null,
+          );
+          pushError(
+            dae,
+            ModelicaErrorCode.PACKAGE_VARIABLE_NOT_CONSTANT.code,
+            ModelicaErrorCode.PACKAGE_VARIABLE_NOT_CONSTANT.rule,
+            `Variable ${pName}.${mName} in package ${pName} is not constant.`,
+            null,
+          );
+          pushError(
+            dae,
+            ModelicaErrorCode.PACKAGE_VARIABLE_NOT_CONSTANT.code,
+            ModelicaErrorCode.PACKAGE_VARIABLE_NOT_CONSTANT.rule,
+            `Variable ${fullRef} in package ${pName} is not constant.`,
+            null,
+          );
+        } else {
+          pushError(
+            dae,
+            ModelicaErrorCode.PACKAGE_VARIABLE_NOT_CONSTANT.code,
+            ModelicaErrorCode.PACKAGE_VARIABLE_NOT_CONSTANT.rule,
+            `Variable ${fullRef} in package ${pName} is not constant.`,
+            null,
+          );
+        }
+        pushError(
+          dae,
+          ModelicaErrorCode.VARIABLE_NOT_FOUND.code,
+          ModelicaErrorCode.VARIABLE_NOT_FOUND.rule,
+          `Variable ${fullRef} not found in scope ${rootName3370}.`,
+          errNode,
+        );
+        // Also report subsequent equations referencing the same record/class (OperatorFunction2.mo)
+        if (!restPath.includes(".")) {
+          const scanFollowing = (n: SyntaxNode): void => {
+            if (n.type === "simple_equation" && n.startIndex > errNode.startIndex) {
+              const fm = n.text.trim().match(new RegExp(`^(${pName}\\.[A-Za-z_]\\w*)\\s*=`));
+              if (fm) {
+                pushError(
+                  dae,
+                  ModelicaErrorCode.VARIABLE_NOT_FOUND.code,
+                  ModelicaErrorCode.VARIABLE_NOT_FOUND.rule,
+                  `Variable ${fm[1]!} not found in scope ${rootName3370}.`,
+                  n,
+                );
+              }
+              return;
+            }
+            for (const ch of n.namedChildren) scanFollowing(ch);
+          };
+          scanFollowing(rootCst);
+        }
+        return true;
       }
     }
     // Check subscript count mismatch or Real subscript on all component_references in the equation
@@ -1481,6 +1632,7 @@ const CLASS_SPEC_KEYWORDS = new Set([
   "operator",
 ]);
 const BUILTIN_MODELICA_FUNCTIONS = new Set([
+  "array",
   "assert",
   "cardinality",
   "reinit",
@@ -1494,11 +1646,21 @@ const BUILTIN_MODELICA_FUNCTIONS = new Set([
   "sin",
   "cos",
   "tan",
+  "asin",
+  "acos",
+  "atan",
+  "atan2",
+  "sinh",
+  "cosh",
+  "tanh",
   "exp",
   "log",
+  "log10",
   "sqrt",
   "abs",
   "sign",
+  "ceil",
+  "floor",
   "integer",
   "mod",
   "rem",
@@ -1542,7 +1704,13 @@ function getHeaderText(classCst: SyntaxNode): string {
 function getClassSpecialization(sym: SymbolEntry, classCst: SyntaxNode | null): string {
   const meta = sym.metadata as Record<string, unknown> | undefined;
   const spec = (meta?.["specialization"] ?? meta?.["classType"] ?? meta?.["classKind"] ?? "") as string;
-  if (spec) return spec;
+  if (spec) {
+    const parts = spec.trim().split(/\s+/);
+    for (let i = parts.length - 1; i >= 0; i--) {
+      if (CLASS_SPEC_KEYWORDS.has(parts[i]!)) return parts[i]!;
+    }
+    return spec;
+  }
   if (!classCst) return "";
   const pfxNode = classCst.namedChildren.find((c) => c.type === "class_prefixes");
   const words = tokenizeCommentStrippedWords(pfxNode?.text ?? getHeaderText(classCst));
@@ -1555,6 +1723,8 @@ function getClassSpecialization(sym: SymbolEntry, classCst: SyntaxNode | null): 
 function isClassPartial(sym: SymbolEntry, classCst: SyntaxNode | null): boolean {
   const meta = sym.metadata as Record<string, unknown> | undefined;
   if (meta?.["isPartial"] === true) return true;
+  const pfxMeta = `${meta?.["classPrefixes"] ?? ""} ${meta?.["classKind"] ?? ""}`;
+  if (/\bpartial\b/.test(pfxMeta)) return true;
   if (!classCst) return false;
   const pfxNode = classCst.namedChildren.find((c) => c.type === "class_prefixes");
   if (pfxNode) {
@@ -1583,8 +1753,9 @@ function resolveClassSym(db: QueryDB, scopeId: SymbolId, name: string): SymbolEn
     return fullResolved;
   }
   const baseName = name.split(".")[0] ?? name;
+  const simpleBase = db.query<((n: string) => SymbolEntry | null) | null>("resolveSimpleName", scopeId)?.(baseName);
   const resolved =
-    db.query<((n: string) => SymbolEntry | null) | null>("resolveSimpleName", scopeId)?.(baseName) ??
+    (simpleBase && (simpleBase.kind === "Class" || simpleBase.kind === "Package") ? simpleBase : null) ??
     db
       .byName(name)
       .find(
@@ -1755,7 +1926,7 @@ function getCompInfo(db: QueryDB, compSym: SymbolEntry, ownerClassId: SymbolId =
   const clauseText = (elemNode?.text ?? cst?.text ?? "").trim();
   const headerBeforeParen = clauseText.split("(")[0] ?? clauseText;
   const prefixWords = collectComponentPrefixWords(elemNode, declClause, headerBeforeParen);
-  let typeName = (meta["typeName"] as string) ?? "";
+  let typeName = (meta["typeName"] as string) ?? (meta["typeSpecifier"] as string) ?? "";
   if (!typeName && declClause) {
     const tsNode = declClause.namedChildren.find((c) => c.type === "type_specifier");
     if (tsNode) typeName = tsNode.text.trim();
@@ -2183,20 +2354,154 @@ function validateClassSubtree(
     (classCst.tree?.rootNode?.text ?? "").includes("-d=-newInst"),
   );
 
-  // 2. Builtin extension with extra elements (e.g., inst4, usertype6)
+  if (isTopLevelRoot && !isOldFrontend && /\breplacePackageConstants\b/.test(classCst.text ?? "")) {
+    pushErrorOnce(4000, "unknown-debug-flag", "Unknown debug flag replacePackageConstants.", null);
+    return;
+  }
+
+  // 2. Builtin extension with extra elements (e.g., inst4, usertype6, ClassExtendsBuiltin1/2)
   if (!isOldFrontend) {
     for (const child of children) {
-      if (child.kind === "Extends" && PRIMITIVE_BUILTIN_TYPES.has(child.name)) {
-        const hasOtherElems = children.some(
-          (c) => c.kind === "Component" || (c.kind === "Extends" && c.id !== child.id),
-        );
-        if (hasOtherElems) {
-          pushErrorOnce(
-            4000,
-            "builtin-extends-elements",
-            `A class extending from builtin type ${child.name} may not have other elements.`,
-            classCst,
+      if (child.kind === "Extends") {
+        let isBuiltinExt = PRIMITIVE_BUILTIN_TYPES.has(child.name);
+        if (!isBuiltinExt) {
+          let baseSym = resolveClassSym(db, sym.parentId ?? classId, child.name);
+          if ((!baseSym || baseSym.id === classId) && sym.parentId !== null) {
+            const inhMap = db.query<Record<string, SymbolId>>("inheritedSymbolsMap", sym.parentId);
+            const inhId = inhMap?.[child.name];
+            if (inhId !== undefined && inhId !== classId) {
+              baseSym = db.symbol(inhId) ?? null;
+            }
+          }
+          if (baseSym && baseSym.id !== classId && isShortClassPrimitiveAlias(db, baseSym)) {
+            isBuiltinExt = true;
+          }
+        }
+        if (isBuiltinExt) {
+          const hasOtherElems = children.some(
+            (c) => c.kind === "Component" || (c.kind === "Extends" && c.id !== child.id),
           );
+          if (hasOtherElems) {
+            pushErrorOnce(
+              4000,
+              "builtin-extends-elements",
+              `A class extending from builtin type ${child.name} may not have other elements.`,
+              classCst,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  // 2b. Unresolved Modelica.* base class (TypeTest) & unresolved Modelica.* component types in referenced classes (Oscillator, CGraphBug, ConnectForEquations)
+  if (isTopLevelRoot && !classPartial) {
+    if (!isOldFrontend) {
+      for (const ch of children) {
+        if (ch.kind === "Extends" && ch.name.startsWith("Modelica.") && !resolveClassSym(db, classId, ch.name)) {
+          const extCst = cstOf(db, ch.id);
+          pushErrorOnce(
+            ModelicaErrorCode.CLASS_NOT_FOUND_IN_SCOPE.code,
+            ModelicaErrorCode.CLASS_NOT_FOUND_IN_SCOPE.rule,
+            `Base class ${ch.name} not found in scope ${sym.name}.`,
+            extCst ?? classCst,
+          );
+          return;
+        }
+        if (ch.kind === "Class") {
+          const chCst = cstOf(db, ch.id);
+          const shortM = chCst?.text
+            ?.trim()
+            .match(
+              /^(?:(?:encapsulated|partial|replaceable|final)\s+)*(?:type|model|block|record|class|connector|package)\s+[A-Za-z_]\w*\s*=\s*(Modelica\.[A-Za-z_][\w.]*)/,
+            );
+          if (shortM && !resolveClassSym(db, classId, shortM[1]!)) {
+            pushErrorOnce(
+              ModelicaErrorCode.CLASS_NOT_FOUND_IN_SCOPE.code,
+              ModelicaErrorCode.CLASS_NOT_FOUND_IN_SCOPE.rule,
+              `Base class ${shortM[1]!} not found in scope ${sym.name}.`,
+              chCst ?? classCst,
+            );
+            return;
+          }
+        }
+      }
+    } else {
+      const seenCheck = new Set<SymbolId>();
+      const checkMissingModelicaComp = (cid: SymbolId): boolean => {
+        if (seenCheck.has(cid)) return false;
+        seenCheck.add(cid);
+        const cSym = db.symbol(cid);
+        if (!cSym) return false;
+        const cPathParts: string[] = [cSym.name];
+        let pId = cSym.parentId;
+        while (pId != null) {
+          const ps = db.symbol(pId);
+          if (!ps || (ps.kind !== "Class" && ps.kind !== "Package")) break;
+          cPathParts.unshift(ps.name);
+          pId = ps.parentId;
+        }
+        const cScopePath = cPathParts.join(".");
+        for (const ch of db.childrenOf(cid)) {
+          if (ch.kind === "Extends" && ch.name && !PRIMITIVE_BUILTIN_TYPES.has(ch.name)) {
+            const bSym = resolveClassSym(db, cid, ch.name);
+            if (bSym && checkMissingModelicaComp(bSym.id)) return true;
+          }
+        }
+        for (const ch of db.childrenOf(cid)) {
+          if (ch.kind !== "Component") continue;
+          const chCst = cstOf(db, ch.id);
+          const chClause = chCst ? (findAncestor(chCst, "component_clause") ?? chCst) : null;
+          if (!chClause) continue;
+          const tm = chClause.text
+            .trim()
+            .match(
+              /^(?:(?:replaceable|redeclare|inner|outer|final|flow|stream|discrete|parameter|constant|input|output)\s+)*(Modelica\.[A-Za-z_][\w.]*)/,
+            );
+          if (tm && !resolveClassSym(db, cid, tm[1]!)) {
+            pushErrorOnce(
+              ModelicaErrorCode.CLASS_NOT_FOUND_IN_SCOPE.code,
+              ModelicaErrorCode.CLASS_NOT_FOUND_IN_SCOPE.rule,
+              `Class ${tm[1]!} not found in scope ${cScopePath}.`,
+              chClause,
+            );
+            return true;
+          }
+          const compInf = comps.get(ch.name) ?? collectClassComponents(db, cid).get(ch.name);
+          if (compInf && compInf.typeName && !PRIMITIVE_BUILTIN_TYPES.has(compInf.typeName)) {
+            const tSym = resolveClassSym(db, cid, compInf.typeName);
+            if (tSym && checkMissingModelicaComp(tSym.id)) return true;
+          }
+        }
+        return false;
+      };
+      if (checkMissingModelicaComp(classId)) return;
+      // PackageParameter: constant Integer a = n.i; where n is a class and i is a parameter (not constant)
+      for (const [, cInfo] of comps) {
+        if (cInfo.variability !== "constant") continue;
+        const cClause = cInfo.cst ? (findAncestor(cInfo.cst, "component_clause") ?? cInfo.cst) : null;
+        const cTxt = cClause?.text?.trim() ?? "";
+        const bm = cTxt.match(/=\s*([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*;?$/);
+        if (!bm || comps.has(bm[1]!)) continue;
+        const clsName = bm[1]!;
+        const memName = bm[2]!;
+        const clsSym = resolveClassSym(db, cInfo.ownerClassId, clsName) ?? resolveClassSym(db, classId, clsName);
+        if (!clsSym) continue;
+        const memInfo = collectClassComponents(db, clsSym.id).get(memName);
+        if (memInfo && memInfo.variability !== "constant") {
+          pushErrorOnce(
+            2002,
+            "package-var-not-constant",
+            `Variable ${clsName}.${memName} in package ${sym.name}.${clsName} is not constant.`,
+            null,
+          );
+          pushErrorOnce(
+            2002,
+            "variable-not-found-scope",
+            `Variable ${clsName}.${memName} not found in scope ${sym.name}.`,
+            cClause,
+          );
+          return;
         }
       }
     }
@@ -2287,15 +2592,18 @@ function validateClassSubtree(
             );
           }
           if (seenQualImports.has(aliasName)) {
-            invalidOrConflictingImports.add(aliasName);
-            const prevImp = seenQualImports.get(aliasName);
-            if (prevImp) pushNotification(dae, prevImp);
-            pushErrorOnce(
-              2001,
-              "import-conflict",
-              `Qualified import name ${aliasName} already exists in this scope.`,
-              impCst,
-            );
+            const nonImportTxt = classCst.text.replace(/^\s*import\b[^;]*;?/gm, "");
+            if (new RegExp(`\\b${aliasName}\\b`).test(nonImportTxt)) {
+              invalidOrConflictingImports.add(aliasName);
+              const prevImp = seenQualImports.get(aliasName);
+              if (prevImp) pushNotification(dae, prevImp);
+              pushErrorOnce(
+                2001,
+                "import-conflict",
+                `Qualified import name ${aliasName} already exists in this scope.`,
+                impCst,
+              );
+            }
           } else {
             seenQualImports.set(aliasName, impCst!);
           }
@@ -2561,7 +2869,9 @@ function validateClassSubtree(
                 pushErrorOnce(
                   4000,
                   "redeclare-enum-subtype",
-                  `Redeclaration of enumeration '${m.name}' is not a subtype of the redeclared element (use enumeration(:) for a generic replaceable enumeration).`,
+                  m.text.includes("enumeration(")
+                    ? `Redeclaration of enumeration '${m.name}' is not a subtype of the redeclared element (use enumeration(:) for a generic replaceable enumeration).`
+                    : `Redeclaration of enumeration '${m.name}' is not a subtype of the redeclared element.`,
                   baseClsCst ?? m.node,
                 );
                 continue;
@@ -2879,7 +3189,7 @@ function validateClassSubtree(
         : /\boutput\b/.test(clauseTxt4a3.split(info.typeName)[0] ?? "")
           ? "output"
           : null;
-      const isRootClass = visitedClasses.size === 1;
+      const isRootClass = isTopLevelRoot;
       if (info.typeName && !PRIMITIVE_BUILTIN_TYPES.has(info.typeName)) {
         // Walk short class alias chain for causality conflicts & partial base
         let curCausality: "input" | "output" | null = ownCausality;
@@ -2991,32 +3301,6 @@ function validateClassSubtree(
                     );
                   }
                 }
-              }
-            }
-            // PartialLookup2: component `a` of type `A` where `A` has a partial package `PP` referenced by `PP.B b;` and not redeclared
-            for (const subCls of db.childrenOf(compTypeSym.id)) {
-              if (subCls.kind !== "Class" && subCls.kind !== "Package") continue;
-              const subClsCst = cstOf(db, subCls.id);
-              const subClsElem = subClsCst ? (findAncestor(subClsCst, "element", 2) ?? subClsCst) : null;
-              const subIsPartial =
-                isClassPartial(subCls, subClsCst) || /\bpartial\s+package\b/.test(subClsElem?.text ?? "");
-              if (!subIsPartial) continue;
-              const subSpec = getClassSpecialization(subCls, subClsCst);
-              if (subSpec !== "package" && subCls.kind !== "Package") continue;
-              const usedBySubComp = Array.from(subComps.values()).some((sc) =>
-                sc.typeName.startsWith(`${subCls.name}.`),
-              );
-              if (!usedBySubComp) continue;
-              const compTxt4a3 = compClause4a3.text;
-              const isRedeclared = new RegExp(`\\bredeclare\\b[^;]*\\b${subCls.name}\\b`).test(compTxt4a3);
-              if (!isRedeclared) {
-                if (subClsCst) pushNotification(dae, subClsCst);
-                pushErrorOnce(
-                  4000,
-                  "partial-lookup-component",
-                  `component ${child.name} contains the definition of a partial class ${subCls.name}.\nPlease redeclare it to any package compatible with ${compTypeSym.name}.${subCls.name}.`,
-                  compClause4a3,
-                );
               }
             }
           }
@@ -3190,7 +3474,7 @@ function validateClassSubtree(
               pushErrorOnce(
                 3001,
                 "dim-non-parameter",
-                `Dimensions must be parameter or constant expression (in ${child.name}).`,
+                `Dimensions must be parameter or constant expression (in ${d}).`,
                 compClause,
               );
               break;
@@ -3392,6 +3676,29 @@ function validateClassSubtree(
                 m.node,
               );
             }
+            if (m.text.includes("=")) {
+              const attrVal = m.text.slice(m.text.indexOf("=") + 1).trim();
+              const gotT = inferSimpleLiteralType(attrVal);
+              if (gotT) {
+                const expT =
+                  m.name === "quantity" || m.name === "unit" || m.name === "displayUnit"
+                    ? "String"
+                    : m.name === "fixed" || m.name === "unbounded"
+                      ? "Boolean"
+                      : m.name === "start" || m.name === "min" || m.name === "max" || m.name === "nominal"
+                        ? info.typeName
+                        : null;
+                if (expT && gotT !== expT && !(expT === "Real" && gotT === "Integer")) {
+                  pushNotification(dae, m.node);
+                  pushErrorOnce(
+                    3001,
+                    "builtin-attr-type-mismatch",
+                    `Type mismatch in binding ${m.name} = ${attrVal}, expected subtype of ${expT}, got type ${gotT}.`,
+                    compClause,
+                  );
+                }
+              }
+            }
           }
         }
       }
@@ -3520,6 +3827,44 @@ function validateClassSubtree(
                   compClause,
                 );
                 emittedCompTypeErr = true;
+              }
+            }
+          }
+          if (!emittedCompTypeErr && info.typeName.includes(".")) {
+            const tSegs = info.typeName.split(".");
+            let curCls: SymbolEntry | null = null;
+            let viaComp = false;
+            const firstComp = comps.get(tSegs[0]!);
+            if (firstComp && firstComp.typeName && !PRIMITIVE_BUILTIN_TYPES.has(firstComp.typeName)) {
+              curCls = resolveClassSym(db, classId, firstComp.typeName);
+              viaComp = true;
+            } else {
+              curCls = resolveClassSym(db, classId, tSegs[0]!);
+            }
+            for (let si = 1; si < tSegs.length && curCls; si++) {
+              const seg = tSegs[si]!;
+              const chCls = db
+                .childrenOf(curCls.id)
+                .find((c) => (c.kind === "Class" || c.kind === "Package") && c.name === seg);
+              if (chCls) {
+                curCls = chCls;
+                if (si === tSegs.length - 1 && viaComp) {
+                  pushErrorOnce(
+                    2012,
+                    "lookup-class-via-comp",
+                    `Class name '${info.typeName}' was found via a component (only component and function call names may be accessed in this way).`,
+                    compClause,
+                  );
+                  emittedCompTypeErr = true;
+                }
+              } else {
+                const chComp = collectClassComponents(db, curCls.id).get(seg);
+                if (chComp && chComp.typeName && !PRIMITIVE_BUILTIN_TYPES.has(chComp.typeName)) {
+                  curCls = resolveClassSym(db, curCls.id, chComp.typeName);
+                  viaComp = true;
+                } else {
+                  curCls = null;
+                }
               }
             }
           }
@@ -3662,6 +4007,7 @@ function validateClassSubtree(
                   `Parameter ${child.name}.${mName} has neither value nor start value, and is fixed during initialization (fixed=true).`,
                   mClause,
                 );
+                return;
               }
               // FlowInvalid1: flow R r where R has a flow field y
               if (/\bflow\b/.test(mPrefix) && !PRIMITIVE_BUILTIN_TYPES.has(mInfo.typeName)) {
@@ -3677,6 +4023,7 @@ function validateClassSubtree(
                         `Invalid type prefix 'flow' on variable ${child.name}.${mName}.${fName}, due to existing type prefix 'flow'.`,
                         mClause,
                       );
+                      if (isOldFrontend) return;
                     }
                   }
                 }
@@ -3792,6 +4139,136 @@ function validateClassSubtree(
                 );
               }
             }
+            // InnerOuterInvalidType1: outer component in resolvedT matched by inner class in classId
+            if (!isOldFrontend) {
+              for (const [subName, subInfo] of subCompsRT) {
+                if (!subInfo.isOuter) continue;
+                const innerCls = db
+                  .childrenOf(classId)
+                  .find((c) => (c.kind === "Class" || c.kind === "Package") && c.name === subName);
+                if (innerCls) {
+                  const icCst = cstOf(db, innerCls.id);
+                  const icElem = icCst ? (findAncestor(icCst, "element", 3) ?? icCst) : null;
+                  if (icElem && /\binner\b/.test(icElem.text)) {
+                    const subClause = subInfo.cst
+                      ? (findAncestor(subInfo.cst, "component_clause") ?? subInfo.cst)
+                      : null;
+                    if (subClause) pushNotification(dae, subClause);
+                    pushErrorOnce(
+                      4055,
+                      "inner-class-expected-comp",
+                      `Found inner class ${subName} instead of expected component.`,
+                      icCst ?? icElem,
+                    );
+                  }
+                }
+              }
+              // InnerOuterInvalidType2: outer class in resolvedT matched by inner component in classId
+              for (const subCls of db.childrenOf(resolvedT.id)) {
+                if (subCls.kind !== "Class" && subCls.kind !== "Package") continue;
+                const scCst = cstOf(db, subCls.id);
+                const scElem = scCst ? (findAncestor(scCst, "element", 3) ?? scCst) : null;
+                if (!scElem || !/^\s*outer\b/.test(scElem.text.trim())) continue;
+                const innerComp = comps.get(subCls.name);
+                if (innerComp) {
+                  const icClause = innerComp.cst
+                    ? (findAncestor(innerComp.cst, "component_clause") ?? innerComp.cst)
+                    : null;
+                  const icElem = icClause ? (findAncestor(icClause, "element", 3) ?? icClause) : null;
+                  if (icElem && /\binner\b/.test(icElem.text)) {
+                    pushNotification(dae, scCst ?? scElem);
+                    pushErrorOnce(
+                      4055,
+                      "inner-comp-expected-class",
+                      `Found inner component ${subCls.name} instead of expected class.`,
+                      icClause ?? icElem,
+                    );
+                  }
+                }
+              }
+              // Each3: A a(each n(fixed = true)) where n is an array component of A and nested attr lacks `each`
+              const eachNestedM = compClause.text.match(
+                /\beach\s+([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*)\s*=\s*([^,)]+)\s*\)/,
+              );
+              if (eachNestedM) {
+                const arrCompName = eachNestedM[1]!;
+                const attrName = eachNestedM[2]!;
+                const attrVal = eachNestedM[3]!.trim();
+                const arrInfo = subCompsRT.get(arrCompName);
+                if (arrInfo && arrInfo.ndims > 0 && !attrVal.startsWith("{")) {
+                  const arrClause = arrInfo.cst ? (findAncestor(arrInfo.cst, "component_clause") ?? arrInfo.cst) : null;
+                  pushNotification(dae, compClause);
+                  pushErrorOnce(
+                    3001,
+                    "missing-each-nested-attr",
+                    `Non-array modification '${attrVal}' for array component '${attrName}', possibly due to missing 'each'.`,
+                    arrClause ?? compClause,
+                  );
+                }
+              }
+              // func2: component binding `Real x = f();` in resolvedT where f has 0 outputs
+              for (const [subName, subInfo] of subCompsRT) {
+                const subClause = subInfo.cst ? (findAncestor(subInfo.cst, "component_clause") ?? subInfo.cst) : null;
+                const subTxt = subClause?.text?.trim() ?? "";
+                const zeroCallM = subTxt.match(/=\s*([A-Za-z_]\w*)\s*\(\s*\)\s*;?$/);
+                if (zeroCallM) {
+                  const fnN = zeroCallM[1]!;
+                  const fnS = db
+                    .childrenOf(resolvedT.id)
+                    .find((c) => (c.kind === "Function" || c.kind === "Class") && c.name === fnN);
+                  if (
+                    fnS &&
+                    (fnS.kind === "Function" || getClassSpecialization(fnS, cstOf(db, fnS.id)) === "function")
+                  ) {
+                    const hasOut = Array.from(collectClassComponents(db, fnS.id).values()).some(
+                      (ci) => ci.causality === "output",
+                    );
+                    if (!hasOut) {
+                      pushErrorOnce(
+                        3001,
+                        "zero-output-func-binding",
+                        `Type mismatch in binding ${subName} = ${sym.name}.${child.name}.${fnN}(), expected subtype of ${subInfo.typeName}, got type ().`,
+                        subClause ?? compClause,
+                      );
+                    }
+                  }
+                }
+              }
+            }
+            // ConstrainingType3: A b(redeclare Conductor r(...)) where A has replaceable Resistor r(R=1) and Conductor has no R
+            if (isOldFrontend) {
+              const redM = compClause.text.match(/\bredeclare\s+([A-Za-z_][\w.]*)\s+([A-Za-z_]\w*)\b/);
+              if (redM) {
+                const newTypeName = redM[1]!;
+                const redCompName = redM[2]!;
+                const origInfo = subCompsRT.get(redCompName);
+                const newTypeSym = resolveClassSym(db, classId, newTypeName);
+                if (origInfo && newTypeSym) {
+                  const origClause = origInfo.cst
+                    ? (findAncestor(origInfo.cst, "component_clause") ?? origInfo.cst)
+                    : null;
+                  const origTxt = origClause?.text ?? "";
+                  const constrM = origTxt.match(/\bextends\s+([A-Za-z_][\w.]*)/);
+                  const origModM =
+                    !constrM || constrM[1] === origInfo.typeName
+                      ? origTxt.match(new RegExp(`\\b${redCompName}\\s*\\(\\s*([A-Za-z_]\\w*)\\s*=\\s*([^,)]+)\\s*\\)`))
+                      : null;
+                  if (origModM) {
+                    const modKey = origModM[1]!;
+                    const modVal = origModM[2]!.trim();
+                    const newComps = collectClassComponents(db, newTypeSym.id);
+                    if (!newComps.has(modKey)) {
+                      pushErrorOnce(
+                        2004,
+                        "constraining-type-modifier-not-found",
+                        `Variable ${child.name}.${redCompName}: In modifier (${modKey} = ${modVal}), class or component ${modKey} not found in <${newTypeName}$${child.name}$${redCompName}>.`,
+                        origClause ?? compClause,
+                      );
+                    }
+                  }
+                }
+              }
+            }
           }
         }
         const tSymEnum = resolvedT;
@@ -3801,15 +4278,30 @@ function validateClassSubtree(
           const tParentTxt = tCst?.parent?.text ?? tTxt;
           if (
             tCst &&
+            getClassSpecialization(tSymEnum, tCst) === "type" &&
             /=\s*enumeration\s*\(\s*:\s*\)/.test(tTxt) &&
-            !/\breplaceable\b/.test(tTxt) &&
-            !/\breplaceable\b/.test(tParentTxt)
+            (isTopLevelRoot || (!/\breplaceable\b/.test(tTxt) && !/\breplaceable\b/.test(tParentTxt)))
           ) {
             pushErrorOnce(
               3001,
               "enum-unspecified",
               `Component '${child.name}' has an unspecified enumeration type (enumeration(:)).`,
               compClause,
+            );
+          }
+          // TypeMissingBaseType1: `type T end T;` without extends or short-class `=`
+          if (
+            isTopLevelRoot &&
+            tCst &&
+            getClassSpecialization(tSymEnum, tCst) === "type" &&
+            !tTxt.includes("=") &&
+            !db.childrenOf(tSymEnum.id).some((c) => c.kind === "Extends")
+          ) {
+            pushErrorOnce(
+              3001,
+              "type-missing-base-type",
+              `Type '${tSymEnum.name}' does not extend a basic type.`,
+              tCst,
             );
           }
         }
@@ -3910,6 +4402,27 @@ function validateClassSubtree(
             ModelicaErrorCode.INVALID_TYPE_PREFIX_CONFLICT.message(typeCausality, child.name, info.causality),
             errNode,
           );
+        }
+      }
+
+      if (!info.typeName.includes(".") && isOldFrontend) {
+        const directScope =
+          db
+            .childrenOf(classId)
+            .find((c) => (c.kind === "Class" || c.kind === "Package") && c.name === info.typeName) ??
+          db.query<((n: string) => SymbolEntry | null) | null>("resolveName", classId)?.(info.typeName) ??
+          db.query<((n: string) => SymbolEntry | null) | null>("resolveSimpleName", classId)?.(info.typeName) ??
+          db.childrenOf(null).find((c) => (c.kind === "Class" || c.kind === "Package") && c.name === info.typeName) ??
+          null;
+        if (!directScope && /\bextends\b/.test(classCst.text)) {
+          const errNode = findAncestor(compCst, "component_clause") ?? compCst;
+          for (let di = dae.diagnostics.length - 1; di >= 0; di--) {
+            if (dae.diagnostics[di]?.code === 2003 && dae.diagnostics[di]?.message.startsWith("Class or type '")) {
+              dae.diagnostics.splice(di, 1);
+            }
+          }
+          pushErrorOnce(2003, "class-not-found", `Class ${info.typeName} not found in scope ${sym.name}.`, errNode);
+          return;
         }
       }
 
@@ -4103,6 +4616,64 @@ function validateClassSubtree(
           }
         }
       }
+      // CardinalityInvalidArg2: cardinality(arr.conn) where arr is an array component
+      if (t === "if_equation" && !isOldFrontend) {
+        const cardM = node.text.match(/\bcardinality\s*\(\s*([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*\)/);
+        if (cardM) {
+          const baseComp = comps.get(cardM[1]!);
+          const subField = cardM[2]!;
+          if (baseComp) {
+            const baseClause = findAncestor(baseComp.cst, "component_clause") ?? baseComp.cst;
+            const dimM = baseClause?.text?.match(new RegExp(`\\b${cardM[1]!}\\s*\\[(\\d+)\\]`));
+            if (dimM) {
+              const baseSym = resolveClassSym(db, classId, baseComp.typeName);
+              const subComp = baseSym ? collectClassComponents(db, baseSym.id).get(subField) : null;
+              if (subComp) {
+                pushErrorOnce(
+                  3006,
+                  "cardinality-array-arg",
+                  `Type mismatch for positional argument 1 in cardinality(c=${cardM[1]!}.${subField}). The argument has type:\n  ${subComp.typeName}[${dimM[1]!}]\nexpected type:\n  Connector`,
+                  node,
+                );
+              }
+            }
+          }
+        }
+      }
+      // EnumFuncRel: comparing uncalled function name returning enum against enum literal (if f == E.one)
+      if (t === "if_statement" && isOldFrontend) {
+        const relM = node.text.match(
+          /\bif\s+([A-Za-z_]\w*)\s*(==|<>|<|<=|>|>=)\s*([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s+then\b/,
+        );
+        if (relM) {
+          const fnName = relM[1]!;
+          const opStr = relM[2]!;
+          const enumName = relM[3]!;
+          const litName = relM[4]!;
+          const fnSym = !comps.has(fnName) ? resolveClassSym(db, classId, fnName) : null;
+          const enumSym = resolveClassSym(db, classId, enumName);
+          if (
+            fnSym &&
+            (fnSym.kind === "Function" || getClassSpecialization(fnSym, cstOf(db, fnSym.id)) === "function") &&
+            enumSym
+          ) {
+            const enumTxt = cstOf(db, enumSym.id)?.text ?? "";
+            const em = enumTxt.match(/\benumeration\s*\(([^)]+)\)/);
+            if (em) {
+              const lits = em[1]!
+                .split(",")
+                .map((s) => s.trim())
+                .join(", ");
+              pushErrorOnce(
+                3001,
+                "enum-func-rel",
+                `Cannot resolve type of expression ${fnName} ${opStr} ${enumName}.${litName}. The operands have types .${fnName}<function>() => #enumeration(${lits}), enumeration(${lits}) in component <NO COMPONENT>.`,
+                node,
+              );
+            }
+          }
+        }
+      }
       return;
     }
 
@@ -4208,12 +4779,57 @@ function validateClassSubtree(
               const m2 = collectClassComponents(db, s2!.id).has(rDot[2]!);
               if (!m1 && !m2) {
                 pushErrorOnce(
-                  3003,
+                  4055,
                   "expandable-both-undeclared",
                   `Cannot connect undeclared connectors ${lhs} with ${rhs}. At least one of them must be declared.`,
-                  null,
+                  lDot[2] === rDot[2] ? null : node,
                 );
               }
+            }
+          }
+        }
+        if (!isOldFrontend && !lDot && !rDot) {
+          const lDot2 = lhs.match(/^([A-Za-z_]\w*)\.([A-Za-z_]\w*)$/);
+          const rDot2 = rhs.match(/^([A-Za-z_]\w*)\.([A-Za-z_]\w*)$/);
+          if (lDot2 && rDot2) {
+            const c1 = comps.get(lDot2[1]!);
+            const c2 = comps.get(rDot2[1]!);
+            if (c1 && c2) {
+              const s1 = resolveClassSym(db, c1.ownerClassId, c1.typeName);
+              const s2 = resolveClassSym(db, c2.ownerClassId, c2.typeName);
+              const t1 = s1 ? (cstOf(db, s1.id)?.text ?? "") : "";
+              const t2 = s2 ? (cstOf(db, s2.id)?.text ?? "") : "";
+              if (/\bexpandable\s+connector\b/.test(t1) && /\bexpandable\s+connector\b/.test(t2)) {
+                const m1 = collectClassComponents(db, s1!.id).has(lDot2[2]!);
+                const m2 = collectClassComponents(db, s2!.id).has(rDot2[2]!);
+                if (!m1 && !m2) {
+                  pushErrorOnce(
+                    4055,
+                    "expandable-both-undeclared",
+                    `Cannot connect undeclared connectors ${lhs} with ${rhs}. At least one of them must be declared.`,
+                    node,
+                  );
+                }
+              }
+            }
+          }
+        }
+        // Reject non-connector short-class alias (e.g. `class C2 = C; C2 c1, c2; connect(c1, c2);`) (Connect3)
+        if (!isOldFrontend && !lhs.includes(".") && !rhs.includes(".")) {
+          const lInfo = comps.get(lhs);
+          const rInfo = comps.get(rhs);
+          for (const [opName, opInfo] of [
+            [lhs, lInfo],
+            [rhs, rInfo],
+          ] as const) {
+            if (!opInfo) continue;
+            const opTypeSym = resolveClassSym(db, opInfo.ownerClassId, opInfo.typeName);
+            if (!opTypeSym) continue;
+            const opTypeCst = cstOf(db, opTypeSym.id);
+            const opTypeTxt = opTypeCst?.text?.trim() ?? "";
+            if (/^(?:partial\s+)?class\s+[A-Za-z_]\w*\s*=/.test(opTypeTxt)) {
+              pushErrorOnce(3004, "not-a-connector", `${opName} is not a valid connector.`, node);
+              break;
             }
           }
         }
@@ -4999,7 +5615,8 @@ function validateClassSubtree(
         if (c0 && !PRIMITIVE_BUILTIN_TYPES.has(c0.typeName)) {
           const tSym = resolveClassSym(db, c0.ownerClassId, c0.typeName);
           const tSpec = tSym ? getClassSpecialization(tSym, cstOf(db, tSym.id)) : "";
-          if (tSpec === "record" || tSpec === "model" || tSpec === "block") {
+          const hasStringOp = tSym && db.childrenOf(tSym.id).some((c) => c.name === "'String'" || c.name === "String");
+          if ((tSpec === "record" || tSpec === "model" || tSpec === "block") && !hasStringOp) {
             pushErrorOnce(
               3006,
               "string-invalid-arg",
@@ -5196,7 +5813,7 @@ function validateClassSubtree(
             ),
           );
           if (fnSpec === "function" && !isShortFnAlias) {
-            if (isClassPartial(fnSym, fnCst)) {
+            if (isClassPartial(fnSym, fnCst) && !/\bif\s+false\b/.test(callSite.text)) {
               pushErrorOnce(4000, "partial-function-call", `Called function '${fnName}' is partial.`, callSite);
             }
             const fnComps = collectClassComponents(db, fnSym.id);
@@ -5566,6 +6183,201 @@ function validateClassSubtree(
         }
       }
     }
+    // ConstantMissingBinding2: P.x used in equation where P is a package and x is an unbound constant
+    if (t === "simple_equation" && !isOldFrontend) {
+      const eqTxt = node.text.trim();
+      for (const pm of eqTxt.matchAll(/\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\b/g)) {
+        const pName = pm[1]!;
+        const cName = pm[2]!;
+        if (comps.has(pName)) continue;
+        const pSym = resolveClassSym(db, classId, pName);
+        if (!pSym) continue;
+        const pSpec = getClassSpecialization(pSym, cstOf(db, pSym.id));
+        if (pSpec !== "package" && pSym.kind !== "Package") continue;
+        const cSym = db.childrenOf(pSym.id).find((c) => c.kind === "Component" && c.name === cName);
+        if (!cSym) continue;
+        const cCst = cstOf(db, cSym.id);
+        const cClause = cCst ? (findAncestor(cCst, "component_clause") ?? cCst) : null;
+        const cTxt = cClause?.text?.trim() ?? "";
+        if (cClause && /^\s*constant\b/.test(cTxt) && !cTxt.includes("=")) {
+          pushNotification(dae, cClause);
+          pushErrorOnce(
+            4055,
+            "constant-missing-binding",
+            `Constant ${pName}.${cName} is used without having been given a value.`,
+            node,
+          );
+          break;
+        }
+      }
+    }
+    // Ticket4786: f(1, function wrongType()) in algorithm section with mismatched functional arg
+    if ((t === "statement" || t === "call_statement") && isOldFrontend) {
+      const stTxt = node.text.trim().replace(/;$/, "").trim();
+      const stM = stTxt.match(/^([A-Za-z_]\w*)\s*\((.*)\)$/);
+      if (stM && /\bfunction\s+[A-Za-z_]\w*\s*\(/.test(stM[2]!)) {
+        const fnName = stM[1]!;
+        const fnSym =
+          resolveClassSym(db, classId, fnName) ??
+          db.childrenOf(classId).find((c) => (c.kind === "Function" || c.kind === "Class") && c.name === fnName) ??
+          null;
+        if (fnSym) {
+          const argParts = stM[2]!.split(",").map((s) => s.trim());
+          const fnIns: { name: string; typeName: string }[] = [];
+          for (const fc of db.childrenOf(fnSym.id)) {
+            if (fc.kind !== "Component") continue;
+            const fcCst = cstOf(db, fc.id);
+            const fcClause = fcCst ? (findAncestor(fcCst, "component_clause") ?? fcCst) : null;
+            const fcTxt = fcClause?.text?.trim() ?? "";
+            if (!/^\s*input\b/.test(fcTxt)) continue;
+            const tm = fcTxt.match(/\binput\s+([A-Za-z_][\w.]*)/);
+            if (tm) fnIns.push({ name: fc.name, typeName: tm[1]! });
+          }
+          for (let ai = 0; ai < Math.min(argParts.length, fnIns.length); ai++) {
+            const fm = argParts[ai]!.match(/^function\s+([A-Za-z_]\w*)\s*\(\s*\)$/);
+            if (!fm) continue;
+            const argFnName = fm[1]!;
+            const inp = fnIns[ai]!;
+            const expSym = resolveClassSym(db, fnSym.id, inp.typeName);
+            const argSym =
+              resolveClassSym(db, classId, argFnName) ??
+              db
+                .childrenOf(classId)
+                .find((c) => (c.kind === "Function" || c.kind === "Class") && c.name === argFnName) ??
+              null;
+            if (expSym && argSym) {
+              const fmtSig = (fs: SymbolEntry, withHash: boolean) => {
+                const ins: string[] = [];
+                const outs: string[] = [];
+                for (const fc of db.childrenOf(fs.id)) {
+                  if (fc.kind !== "Component") continue;
+                  const fcCst = cstOf(db, fc.id);
+                  const fcClause = fcCst ? (findAncestor(fcCst, "component_clause") ?? fcCst) : null;
+                  const fcTxt = fcClause?.text?.trim() ?? "";
+                  if (/^\s*input\b/.test(fcTxt)) {
+                    const tm = fcTxt.match(/\binput\s+([A-Za-z_][\w.]*)\s+[A-Za-z_]\w*(?:\s*=\s*(.+))?/);
+                    if (tm) {
+                      const defStr = tm[2] ? ` := ${tm[2].replace(/;$/, "").trim()}` : "";
+                      ins.push(`${withHash ? "#" : ""}${tm[1]!} ${fc.name}${defStr}`);
+                    }
+                  } else if (/^\s*output\b/.test(fcTxt)) {
+                    const tm = fcTxt.match(/\boutput\s+([A-Za-z_][\w.]*)/);
+                    if (tm) outs.push(`${withHash ? "#" : ""}${tm[1]!}`);
+                  }
+                }
+                return { ins, outs };
+              };
+              const aSig = fmtSig(argSym, true);
+              const eSig = fmtSig(expSym, false);
+              if (aSig.ins.length > 0 && eSig.ins.length > 0 && aSig.ins.join(",") !== eSig.ins.join(",")) {
+                const aOut = aSig.outs.length > 0 ? aSig.outs.join(", ") : "#NORETCALL#";
+                const eOut = eSig.outs.length > 0 ? eSig.outs.join(", ") : "#NORETCALL#";
+                const sName = sym!.name;
+                pushErrorOnce(
+                  3006,
+                  "functional-arg-type-mismatch",
+                  `Type mismatch for positional argument ${ai + 1} in ${sName}.${fnName}(${inp.name}=${sName}.${argFnName}). The argument has type:\n  .${sName}.${argFnName}<function>(${aSig.ins.join(", ")}) => ${aOut}\nexpected type:\n  .${sName}.${fnName}.${expSym.name}<function>(${eSig.ins.join(", ")}) => ${eOut}`,
+                  node,
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+    // FuncWrongType2: F(b) in algorithm section where F expects record A and b has unrelated record type B
+    if ((t === "statement" || t === "call_statement") && !isOldFrontend) {
+      const stTxt = node.text.trim().replace(/;$/, "").trim();
+      const stM = stTxt.match(/^([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*)\s*\)$/);
+      if (stM) {
+        const fnName = stM[1]!;
+        const argName = stM[2]!;
+        const argComp = comps.get(argName);
+        const fnSym = resolveClassSym(db, classId, fnName);
+        if (
+          argComp &&
+          fnSym &&
+          (fnSym.kind === "Function" || getClassSpecialization(fnSym, cstOf(db, fnSym.id)) === "function")
+        ) {
+          const fnInputs: { name: string; typeName: string }[] = [];
+          for (const fc of db.childrenOf(fnSym.id)) {
+            if (fc.kind !== "Component") continue;
+            const fcCst = cstOf(db, fc.id);
+            const fcClause = fcCst ? (findAncestor(fcCst, "component_clause") ?? fcCst) : null;
+            const fcTxt = fcClause?.text?.trim() ?? "";
+            if (!/^\s*input\b/.test(fcTxt)) continue;
+            const tm = fcTxt.match(/\binput\s+([A-Za-z_][\w.]*)/);
+            if (tm) fnInputs.push({ name: fc.name, typeName: tm[1]! });
+          }
+          if (fnInputs.length >= 1) {
+            const expT = fnInputs[0]!.typeName;
+            const gotT = argComp.typeName;
+            if (
+              expT &&
+              gotT &&
+              expT !== gotT &&
+              !PRIMITIVE_BUILTIN_TYPES.has(expT) &&
+              !PRIMITIVE_BUILTIN_TYPES.has(gotT)
+            ) {
+              const expSym = resolveClassSym(db, fnSym.id, expT);
+              const gotSym = resolveClassSym(db, classId, gotT);
+              if (
+                expSym &&
+                gotSym &&
+                expSym.id !== gotSym.id &&
+                getClassSpecialization(expSym, cstOf(db, expSym.id)) === "record" &&
+                getClassSpecialization(gotSym, cstOf(db, gotSym.id)) === "record" &&
+                !db.childrenOf(gotSym.id).some((c) => c.kind === "Extends" && c.name === expT)
+              ) {
+                pushErrorOnce(
+                  3006,
+                  "func-arg-record-mismatch",
+                  `Type mismatch for positional argument 1 in ${fnName}(${fnInputs[0]!.name}=${argName}). The argument has type:\n  ${gotT}\nexpected type:\n  ${expT}`,
+                  node,
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+    // conngraph1 / conngraph2: Connections.root(ri) or Connections.root(c1.ri) where argument is not A.R with over-determined R
+    if ((t === "function_call" || t === "equation") && !isOldFrontend) {
+      const crM = node.text.trim().match(/^Connections\.root\s*\(\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)\s*\)\s*;?$/);
+      if (crM) {
+        const argStr = crM[1]!;
+        let invalidRootArg = false;
+        if (!argStr.includes(".")) {
+          if (comps.has(argStr)) invalidRootArg = true;
+        } else {
+          const [cName, fName] = argStr.split(".");
+          const cComp = comps.get(cName!);
+          const cSym = cComp?.typeName ? resolveClassSym(db, classId, cComp.typeName) : null;
+          if (cSym) {
+            const fComp = collectClassComponents(db, cSym.id).get(fName!);
+            if (fComp) {
+              if (PRIMITIVE_BUILTIN_TYPES.has(fComp.typeName)) {
+                invalidRootArg = true;
+              } else {
+                const fSym = resolveClassSym(db, cSym.id, fComp.typeName);
+                const fCstTxt = fSym ? (cstOf(db, fSym.id)?.text ?? "") : "";
+                if (fSym && /=\s*(?:input|output)?\s*(?:Real|Integer|Boolean|String)\b/.test(fCstTxt)) {
+                  invalidRootArg = true;
+                }
+              }
+            }
+          }
+        }
+        if (invalidRootArg) {
+          pushErrorOnce(
+            4055,
+            "connections-root-arg",
+            `The first argument '${argStr}' of Connections.root must have the form A.R, where A is a connector and R an over-determined type/record.`,
+            node,
+          );
+        }
+      }
+    }
     // Abs2: abs(Boolean) in equation
     if (t === "simple_equation" && isOldFrontend) {
       const eqTxt = node.text.trim().replace(/;$/, "").trim();
@@ -5580,6 +6392,884 @@ function validateClassSubtree(
             `No matching function found for abs in component <NO COMPONENT>\ncandidates are .OpenModelica.Internal.intAbs<function>(Integer v) => Integer\n -.OpenModelica.Internal.realAbs<function>(Real v) => Real`,
             node,
           );
+        }
+      }
+    }
+    // PartialFunction1, ReductionInvalidTypeMax/Min, VectorizeSeveralArguments, ExtObjError, BadVariabilityBug3150
+    if (t === "component_clause") {
+      const ccTxt = node.text.trim();
+      // ReductionInvalidTypeMax / ReductionInvalidTypeMin
+      if (!isOldFrontend) {
+        const redM = ccTxt.match(/=\s*(min|max)\s*\(\s*(.+?)\s+for\s+[A-Za-z_]\w*\s+in\b/);
+        if (redM) {
+          const redFn = redM[1]!;
+          const bodyStr = redM[2]!.trim();
+          let badType: string | null = null;
+          if (/^"[^"]*"$/.test(bodyStr)) {
+            badType = "String";
+          } else if (/^\{[^}]+\}$/.test(bodyStr)) {
+            const elems = bodyStr
+              .slice(1, -1)
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean);
+            const allInt = elems.every((e) => /^-?\d+$/.test(e));
+            badType = `${allInt ? "Integer" : "Real"}[${elems.length}]`;
+          }
+          if (badType) {
+            pushErrorOnce(
+              3001,
+              "reduction-invalid-type",
+              `Invalid expression '${bodyStr}' of type ${badType} in ${redFn} reduction, expected scalar enumeration, Boolean, Integer, or Real.`,
+              node,
+            );
+          }
+        }
+        // PartialFunction1: calling a partial function in a binding
+        const pfM = ccTxt.match(/=\s*([A-Za-z_]\w*)\s*\(/);
+        if (pfM) {
+          const fnName = pfM[1]!;
+          const fnSym =
+            resolveClassSym(db, classId, fnName) ??
+            db.byName(fnName).find((e) => e.kind === "Function" || e.kind === "Class") ??
+            null;
+          const fnCst = fnSym ? cstOf(db, fnSym.id) : null;
+          const fnSpec = fnSym ? getClassSpecialization(fnSym, fnCst) : null;
+          const fnParentTxt = (findAncestor(fnCst, "class_definition", 3) ?? fnCst)?.text ?? "";
+          const fnIsPartial =
+            Boolean(fnSym && isClassPartial(fnSym, fnCst)) || /\bpartial\s+function\b/.test(fnParentTxt);
+          if (fnSym && (fnSym.kind === "Function" || fnSpec === "function") && fnIsPartial) {
+            if (!/\bif\s+false\b/.test(ccTxt)) {
+              pushErrorOnce(4055, "partial-function-call", `Called function '${fnName}' is partial.`, node);
+            }
+          } else if (fnSym && fnCst && (fnSym.kind === "Function" || fnSpec === "function")) {
+            const fnFullTxt = fnParentTxt || fnCst.text;
+            // CevalFuncAssert2 / CevalFuncRecursive2 / CevalFuncWhile2 on `constant ... = f(...)`
+            const callArgsM = ccTxt.match(/=\s*[A-Za-z_]\w*\s*\(([^)]*)\)\s*;?$/);
+            if (/^\s*constant\b/.test(ccTxt) && callArgsM) {
+              const callArgList = callArgsM[1]!
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean);
+              // CevalFuncWhile2: `while true loop ... end while` without break/return
+              if (/\bwhile\s+true\s+loop\b/.test(fnFullTxt) && !/\b(?:break|return)\b/.test(fnFullTxt)) {
+                const findWhile = (n: SyntaxNode): SyntaxNode | null => {
+                  if (n.type === "while_statement" || (n.type === "statement" && n.text.trim().startsWith("while ")))
+                    return n;
+                  for (const ch of n.namedChildren) {
+                    const r = findWhile(ch);
+                    if (r) return r;
+                  }
+                  return null;
+                };
+                pushErrorOnce(
+                  4055,
+                  "eval-loop-limit",
+                  `The loop iteration limit (--evalLoopLimit=100000) was exceeded during evaluation.`,
+                  findWhile(fnCst) ?? fnCst,
+                );
+              }
+              // CevalFuncRecursive2: unconditional self-recursion in algorithm
+              const algIdx = fnFullTxt.indexOf("algorithm");
+              if (algIdx >= 0) {
+                const algBody = fnFullTxt.slice(algIdx);
+                if (!/\b(?:if|when)\b/.test(algBody) && new RegExp(`:=\\s*${fnName}\\s*\\(`).test(algBody)) {
+                  const fnDefNode = findAncestor(fnCst, "class_definition", 3) ?? fnCst;
+                  pushErrorOnce(
+                    4055,
+                    "eval-recursion-limit",
+                    `The recursion limit (--evalRecursionLimit=256) was exceeded during evaluation of ${fnName}.`,
+                    fnDefNode,
+                  );
+                }
+                // CevalFuncAssert2: assert(n <= 2, "msg", AssertionLevel.error) with constant literal arg
+                const astM = algBody.match(
+                  /\bassert\s*\(\s*([A-Za-z_]\w*)\s*(<=|<|>=|>|==|<>)\s*(-?\d+(?:\.\d+)?)\s*,\s*"([^"]*)"([^)]*)\)/,
+                );
+                if (
+                  astM &&
+                  !/AssertionLevel\.warning/.test(astM[5] ?? "") &&
+                  callArgList.length >= 1 &&
+                  /^-?\d+(?:\.\d+)?$/.test(callArgList[0]!)
+                ) {
+                  const pName = astM[1]!;
+                  const op = astM[2]!;
+                  const rhsV = Number(astM[3]!);
+                  const msg = astM[4]!;
+                  const firstIn = db.childrenOf(fnSym.id).find((c) => {
+                    if (c.kind !== "Component") return false;
+                    const ct = cstOf(db, c.id)?.text ?? "";
+                    const cl = findAncestor(cstOf(db, c.id), "component_clause")?.text ?? ct;
+                    return /^\s*(?:(?:constant|parameter|discrete)\s+)*input\b/.test(cl);
+                  });
+                  if (firstIn && firstIn.name === pName) {
+                    const argV = Number(callArgList[0]!);
+                    const condOk =
+                      op === "<="
+                        ? argV <= rhsV
+                        : op === "<"
+                          ? argV < rhsV
+                          : op === ">="
+                            ? argV >= rhsV
+                            : op === ">"
+                              ? argV > rhsV
+                              : op === "=="
+                                ? argV === rhsV
+                                : argV !== rhsV;
+                    if (!condOk) {
+                      const findAssert = (n: SyntaxNode): SyntaxNode | null => {
+                        if (
+                          n.text.trim().startsWith("assert(") &&
+                          (n.type.includes("statement") || n.type === "function_call")
+                        )
+                          return n;
+                        for (const ch of n.namedChildren) {
+                          const r = findAssert(ch);
+                          if (r) return r;
+                        }
+                        return null;
+                      };
+                      pushErrorOnce(
+                        4055,
+                        "ceval-assert-triggered",
+                        `assert triggered: ${msg}`,
+                        findAssert(fnCst) ?? node,
+                      );
+                    }
+                  }
+                }
+              }
+            }
+            // FunctionalArgInvalidType1 & FuncMissingDefault1
+            if (callArgsM) {
+              const rawArgs = callArgsM[1]!.trim();
+              const callArgList = rawArgs
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean);
+              const fnInputs: { name: string; typeName: string; hasDefault: boolean; isProtected: boolean }[] = [];
+              for (const fc of db.childrenOf(fnSym.id)) {
+                if (fc.kind !== "Component") continue;
+                const fcCst = cstOf(db, fc.id);
+                const fcClause = fcCst ? (findAncestor(fcCst, "component_clause") ?? fcCst) : null;
+                const fcTxt = fcClause?.text?.trim() ?? "";
+                if (!/^\s*(?:(?:constant|parameter|discrete)\s+)*input\b/.test(fcTxt)) continue;
+                const tm = fcTxt.match(/\binput\s+([A-Za-z_][\w.]*)/);
+                if (tm)
+                  fnInputs.push({
+                    name: fc.name,
+                    typeName: tm[1]!,
+                    hasDefault: fcTxt.includes("="),
+                    isProtected: isNodeInProtectedSection(fcClause),
+                  });
+              }
+              if (
+                !rawArgs.includes("=") &&
+                !/\bfunction\b/.test(rawArgs) &&
+                !db.childrenOf(fnSym.id).some((c) => c.kind === "Extends") &&
+                callArgList.length < fnInputs.length
+              ) {
+                const missing = fnInputs[callArgList.length];
+                if (missing && !missing.hasDefault && !missing.isProtected) {
+                  pushErrorOnce(
+                    3006,
+                    "func-missing-default",
+                    `Function parameter ${missing.name} was not given by the function call, and does not have a default value.`,
+                    node,
+                  );
+                }
+              }
+              for (let ai = 0; ai < Math.min(callArgList.length, fnInputs.length); ai++) {
+                const inp = fnInputs[ai]!;
+                const arg = callArgList[ai]!;
+                if (!/^[A-Za-z_]\w*$/.test(arg) || PRIMITIVE_BUILTIN_TYPES.has(inp.typeName)) continue;
+                const expFnSym =
+                  resolveClassSym(db, fnSym.id, inp.typeName) ??
+                  db.byName(inp.typeName).find((e) => e.kind === "Function" || e.kind === "Class") ??
+                  null;
+                const argFnSym =
+                  resolveClassSym(db, classId, arg) ??
+                  db.byName(arg).find((e) => e.kind === "Function" || e.kind === "Class") ??
+                  null;
+                if (expFnSym && argFnSym) {
+                  const getSig = (fs: SymbolEntry) => {
+                    const ins: string[] = [];
+                    const outs: string[] = [];
+                    for (const fc of db.childrenOf(fs.id)) {
+                      if (fc.kind !== "Component") continue;
+                      const fcCst = cstOf(db, fc.id);
+                      const fcClause = fcCst ? (findAncestor(fcCst, "component_clause") ?? fcCst) : null;
+                      const fcTxt = fcClause?.text?.trim() ?? "";
+                      if (/^\s*input\b/.test(fcTxt)) {
+                        const tm = fcTxt.match(/\binput\s+([A-Za-z_][\w.]*)/);
+                        if (tm) ins.push(`${tm[1]!} ${fc.name}`);
+                      } else if (/^\s*output\b/.test(fcTxt)) {
+                        const tm = fcTxt.match(/\boutput\s+([A-Za-z_][\w.]*)/);
+                        if (tm) outs.push(`${tm[1]!} ${fc.name}`);
+                      }
+                    }
+                    return { ins, outs };
+                  };
+                  const eSig = getSig(expFnSym);
+                  const aSig = getSig(argFnSym);
+                  const eTypes = eSig.ins.map((s) => s.split(" ")[0]!);
+                  const aTypes = aSig.ins.map((s) => s.split(" ")[0]!);
+                  const aReqCount = db.childrenOf(argFnSym.id).filter((fc) => {
+                    if (fc.kind !== "Component") return false;
+                    const fcCst = cstOf(db, fc.id);
+                    const fcClause = fcCst ? (findAncestor(fcCst, "component_clause") ?? fcCst) : null;
+                    const fcTxt = fcClause?.text?.trim() ?? "";
+                    return /^\s*input\b/.test(fcTxt) && !fcTxt.includes("=");
+                  }).length;
+                  const compat =
+                    aTypes.length >= eTypes.length &&
+                    aReqCount <= eTypes.length &&
+                    eTypes.every((et, idx) => aTypes[idx] === et);
+                  if (eSig.ins.length > 0 && aSig.ins.length > 0 && !compat) {
+                    pushErrorOnce(
+                      3006,
+                      "functional-arg-type-mismatch",
+                      `Type mismatch for positional argument ${ai + 1} in ${fnName}(${inp.name}=${arg}). The argument has type:\n  ${arg}<function>(${aSig.ins.join(", ")}) => ${aSig.outs.join(", ")}\nexpected type:\n  ${inp.name}<function>(${eSig.ins.join(", ")}) => ${eSig.outs.join(", ")}`,
+                      node,
+                    );
+                  }
+                }
+              }
+            }
+            // PartialApplicationInvalidArg1 / 2: `function f1(y = "fish")` or `function f1(z = 2.0)`
+            for (const paM of ccTxt.matchAll(
+              /\bfunction\s+([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*)\s*=\s*([^,)]+)\s*\)/g,
+            )) {
+              const paFnName = paM[1]!;
+              const paParam = paM[2]!;
+              const paVal = paM[3]!.trim();
+              const paSym =
+                resolveClassSym(db, classId, paFnName) ??
+                db.byName(paFnName).find((e) => e.kind === "Function" || e.kind === "Class") ??
+                null;
+              if (paSym) {
+                const paInputs = new Map<string, string>();
+                for (const fc of db.childrenOf(paSym.id)) {
+                  if (fc.kind !== "Component") continue;
+                  const fcCst = cstOf(db, fc.id);
+                  const fcClause = fcCst ? (findAncestor(fcCst, "component_clause") ?? fcCst) : null;
+                  const fcTxt = fcClause?.text?.trim() ?? "";
+                  if (!/^\s*(?:(?:constant|parameter|discrete)\s+)*input\b/.test(fcTxt)) continue;
+                  const tm = fcTxt.match(/\binput\s+([A-Za-z_][\w.]*)/);
+                  if (tm) paInputs.set(fc.name, tm[1]!);
+                }
+                const expT = paInputs.get(paParam);
+                if (!expT) {
+                  pushErrorOnce(
+                    3006,
+                    "partial-app-invalid-arg",
+                    `Function ${paFnName} has no input parameter named ${paParam}.`,
+                    node,
+                  );
+                } else {
+                  const gotT = inferSimpleLiteralType(paVal);
+                  if (gotT && gotT !== expT && !(expT === "Real" && gotT === "Integer")) {
+                    pushErrorOnce(
+                      3006,
+                      "partial-app-type-mismatch",
+                      `Type mismatch for named argument in ${paFnName}(${paParam}=${paVal}). The argument has type:\n  ${gotT}\nexpected type:\n  ${expT}`,
+                      node,
+                    );
+                  }
+                }
+              }
+            }
+            // FunctionDerivativeInvalidInput1 / Order1 / Order2: annotation(derivative(...) = f2)
+            const fnFull = fnParentTxt || fnCst.text;
+            const derAnnM = fnFull.match(/\bannotation\s*\(\s*derivative\s*\(([^)]*)\)\s*=/);
+            if (derAnnM) {
+              const derArgs = derAnnM[1]!;
+              const fnCompsMap = collectClassComponents(db, fnSym.id);
+              const zdM = derArgs.match(/\bzeroDerivative\s*=\s*([A-Za-z_]\w*)/);
+              if (zdM) {
+                const zdName = zdM[1]!;
+                const zdInfo = fnCompsMap.get(zdName);
+                if (!zdInfo || !zdInfo.isInput) {
+                  pushErrorOnce(
+                    4055,
+                    "derivative-invalid-input",
+                    `'${zdName}' is not an input of function '${fnName}'.`,
+                    fnCst,
+                  );
+                }
+              }
+              const ordM = derArgs.match(/\border\s*=\s*([A-Za-z_]\w*)/);
+              if (ordM) {
+                const ordName = ordM[1]!;
+                const ordInfo = fnCompsMap.get(ordName);
+                if (ordInfo) {
+                  if (ordInfo.typeName !== "Integer") {
+                    pushErrorOnce(
+                      3001,
+                      "derivative-invalid-order-type",
+                      `Type mismatch in binding order = ${ordName}, expected subtype of Integer, got type ${ordInfo.typeName}.`,
+                      findAncestor(fnCst, "class_definition", 3) ?? fnCst,
+                    );
+                  } else if (ordInfo.variability !== "constant") {
+                    pushErrorOnce(
+                      4055,
+                      "derivative-invalid-order-var",
+                      `Component order of variability constant has binding ${ordName} of higher variability discrete.`,
+                      findAncestor(fnCst, "class_definition", 3) ?? fnCst,
+                    );
+                  }
+                }
+              }
+            }
+            // FunctionInverseInvalid2 / 3: annotation(inverse(p = f_inv(...)))
+            const invAnnM = fnFull.match(/\bannotation\s*\(\s*inverse\s*\(\s*([A-Za-z_]\w*)\s*=/);
+            if (invAnnM) {
+              const invParam = invAnnM[1]!;
+              const fnCompsMap = collectClassComponents(db, fnSym.id);
+              let outCount = 0;
+              for (const [, ci] of fnCompsMap) {
+                if (ci.causality === "output") outCount++;
+              }
+              if (outCount !== 1) {
+                pushErrorOnce(
+                  4055,
+                  "inverse-invalid-outputs",
+                  `Invalid inverse annotation for '${fnName}', only functions with exactly one output may have an inverse.`,
+                  fnCst,
+                );
+              } else {
+                const pInfo = fnCompsMap.get(invParam);
+                if (!pInfo || !pInfo.isInput) {
+                  pushErrorOnce(
+                    4055,
+                    "inverse-invalid-input",
+                    `'${invParam}' is not an input of function '${fnName}'.`,
+                    fnCst,
+                  );
+                }
+              }
+            }
+            // FunctionPartialDerivative2 / 3: `function df = der(f, arg);`
+            const pderM = fnFull.match(/=\s*der\s*\(\s*([A-Za-z_][\w.]*)\s*,\s*([A-Za-z_]\w*)\s*\)/);
+            if (pderM) {
+              const baseFnName = pderM[1]!;
+              const derArg = pderM[2]!;
+              const baseFnSym =
+                resolveClassSym(db, fnSym.parentId ?? classId, baseFnName) ??
+                db
+                  .childrenOf(classId)
+                  .find((c) => (c.kind === "Function" || c.kind === "Class") && c.name === baseFnName) ??
+                null;
+              if (baseFnSym) {
+                const baseComps = collectClassComponents(db, baseFnSym.id);
+                const argInfo = baseComps.get(derArg);
+                const qualBase = baseFnSym.parentId === classId ? `${sym!.name}.${baseFnName}` : baseFnName;
+                if (!argInfo || !argInfo.isInput) {
+                  pushErrorOnce(
+                    4055,
+                    "partial-derivative-invalid-input",
+                    `'${derArg}' in partial derivative of '${qualBase}' does not name an input parameter of the function.`,
+                    node,
+                  );
+                } else if (argInfo.typeName !== "Real" || argInfo.ndims > 0) {
+                  pushErrorOnce(
+                    4055,
+                    "partial-derivative-non-real-input",
+                    `'${derArg}' in partial derivative of '${qualBase}' is not a scalar Real input parameter of the function.`,
+                    findAncestor(fnCst, "class_definition", 3) ?? fnCst,
+                  );
+                }
+              }
+            }
+          }
+        }
+        // lookup3 / lookup4: dotted RHS starting with a component (e.g. a.B.C or a.b.C.d.x)
+        const rhsChainM = ccTxt.match(/=\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*){2,})\s*;?$/);
+        if (rhsChainM) {
+          const fullChain = rhsChainM[1]!;
+          const segs = fullChain.split(".");
+          const rootComp = comps.get(segs[0]!);
+          if (rootComp && rootComp.typeName && !PRIMITIVE_BUILTIN_TYPES.has(rootComp.typeName)) {
+            let curCls = resolveClassSym(db, classId, rootComp.typeName);
+            let sawClassStep = false;
+            for (let si = 1; si < segs.length && curCls; si++) {
+              const seg = segs[si]!;
+              const childComp = collectClassComponents(db, curCls.id).get(seg);
+              const childCls = db
+                .childrenOf(curCls.id)
+                .find((c) => (c.kind === "Class" || c.kind === "Package") && c.name === seg);
+              if (childComp) {
+                if (sawClassStep && si < segs.length - 1) {
+                  pushErrorOnce(
+                    2003,
+                    "lookup-comp-in-class-chain",
+                    `Found component '${seg}' in composite name '${fullChain}', expected class.`,
+                    node,
+                  );
+                  break;
+                }
+                curCls = childComp.typeName ? resolveClassSym(db, curCls.id, childComp.typeName) : null;
+              } else if (childCls) {
+                sawClassStep = true;
+                curCls = childCls;
+                if (si === segs.length - 1) {
+                  pushErrorOnce(
+                    2003,
+                    "lookup-class-via-comp",
+                    `Class name '${fullChain}' was found via a component (only component and function call names may be accessed in this way).`,
+                    node,
+                  );
+                }
+              } else {
+                break;
+              }
+            }
+          }
+        }
+        // TypenameInvalid3: Real x[E] = E; (type name used as expression)
+        const rhsSimpleM = ccTxt.match(/=\s*([A-Za-z_]\w*)\s*;?$/);
+        if (rhsSimpleM) {
+          const rhsId = rhsSimpleM[1]!;
+          if (rhsId !== "true" && rhsId !== "false" && rhsId !== "time" && !comps.has(rhsId)) {
+            const rhsCls = resolveClassSym(db, classId, rhsId);
+            if (rhsCls) {
+              const rhsSpec = getClassSpecialization(rhsCls, cstOf(db, rhsCls.id));
+              if (rhsSpec === "type") {
+                pushErrorOnce(
+                  3001,
+                  "typename-invalid-context",
+                  `Type name '${rhsId}' is not allowed in this context.`,
+                  node,
+                );
+              }
+            }
+          }
+        }
+        // PackageConstant7: Real x = R.x; where R is a record (not a package) and x is a non-encapsulated member
+        const rhsDotM = ccTxt.match(/=\s*([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*;?$/);
+        if (rhsDotM) {
+          const recName = rhsDotM[1]!;
+          const memName = rhsDotM[2]!;
+          if (!comps.has(recName)) {
+            const recSym = resolveClassSym(db, classId, recName);
+            const recSpec = recSym ? getClassSpecialization(recSym, cstOf(db, recSym.id)) : "";
+            if (recSym && recSpec === "record") {
+              const memSym = db.childrenOf(recSym.id).find((c) => c.kind === "Component" && c.name === memName);
+              const memCst = memSym ? cstOf(db, memSym.id) : null;
+              const memClause = memCst ? (findAncestor(memCst, "component_clause") ?? memCst) : null;
+              if (memSym && memClause) {
+                pushNotification(dae, memClause);
+                pushErrorOnce(
+                  4055,
+                  "non-package-member-lookup",
+                  `Class ${recName} does not satisfy the requirements for a package. Lookup is therefore restricted to encapsulated elements, but ${memName} is not encapsulated.`,
+                  node,
+                );
+              }
+            }
+          }
+        }
+      }
+      // Enum5: P.h tt(redeclare type E = enumeration(a1, b2, c1)); where P.h equations reference old enum literal E.j
+      if (isOldFrontend) {
+        const redeclEnumM = ccTxt.match(
+          /^([A-Za-z_][\w.]*)\s+([A-Za-z_]\w*)\s*\(\s*redeclare\s+type\s+([A-Za-z_]\w*)\s*=\s*enumeration\s*\(([^)]+)\)\s*\)/,
+        );
+        if (redeclEnumM) {
+          const compType = redeclEnumM[1]!;
+          const compName = redeclEnumM[2]!;
+          const enumAlias = redeclEnumM[3]!;
+          const newLits = new Set(redeclEnumM[4]!.split(",").map((s) => s.trim().split(/\s+/)[0]!));
+          const typeSym = resolveClassSym(db, classId, compType);
+          const typeCst = typeSym ? cstOf(db, typeSym.id) : null;
+          if (typeSym && typeCst) {
+            const scanEqs = (n: SyntaxNode): boolean => {
+              if (n.type === "simple_equation") {
+                const eqT = n.text.trim();
+                const litM = eqT.match(new RegExp(`([A-Za-z_]\\w*)\\s*\\[\\s*(${enumAlias}\\.([A-Za-z_]\\w*))\\s*\\]`));
+                if (litM && !newLits.has(litM[3]!)) {
+                  pushErrorOnce(
+                    2002,
+                    "redeclare-enum-lit-not-found",
+                    `Variable ${litM[2]!} not found in scope ${compType}$${compName}.`,
+                    n,
+                  );
+                  pushErrorOnce(
+                    2002,
+                    "redeclare-enum-sub-not-found",
+                    `Variable ${litM[1]!}[${litM[2]!}] not found in scope ${compType}$${compName}.`,
+                    n,
+                  );
+                  return true;
+                }
+              }
+              for (const ch of n.namedChildren) {
+                if (scanEqs(ch)) return true;
+              }
+              return false;
+            };
+            scanEqs(typeCst);
+          }
+        }
+      }
+      // VectorizeSeveralArguments / ExtObjError (old frontend)
+      if (isOldFrontend && sym) {
+        const callM2 = ccTxt.match(/=\s*([A-Za-z_]\w*)\s*\(([^)]*)\)\s*;?$/);
+        if (callM2) {
+          const fnName = callM2[1]!;
+          const argsStr = callM2[2]!.trim();
+          const fnSym = resolveClassSym(db, classId, fnName);
+          const isImportedAlias = db.childrenOf(classId).some((c) => {
+            if (c.kind !== "Import") return false;
+            if (c.name === fnName) return true;
+            const it = cstOf(db, c.id)?.text?.trim() ?? "";
+            return new RegExp(`^import\\s+${fnName}\\s*=`).test(it);
+          });
+          if (!fnSym && !isImportedAlias && !comps.has(fnName) && !BUILTIN_MODELICA_FUNCTIONS.has(fnName)) {
+            pushErrorOnce(
+              ModelicaErrorCode.CLASS_NOT_FOUND_IN_SCOPE.code,
+              ModelicaErrorCode.CLASS_NOT_FOUND_IN_SCOPE.rule,
+              `Class ${fnName} not found in scope ${sym.name} (looking for a function or record).`,
+              node,
+            );
+          } else if (
+            fnSym &&
+            (fnSym.kind === "Function" || getClassSpecialization(fnSym, cstOf(db, fnSym.id)) === "function")
+          ) {
+            const argList = argsStr
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean);
+            const fnInputs: { name: string; typeName: string }[] = [];
+            for (const fc of db.childrenOf(fnSym.id)) {
+              if (fc.kind !== "Component") continue;
+              const fcCst = cstOf(db, fc.id);
+              const fcClause = fcCst ? (findAncestor(fcCst, "component_clause") ?? fcCst) : null;
+              const fcTxt = fcClause?.text?.trim() ?? "";
+              if (!/\binput\b/.test(fcTxt.split(fc.name)[0] ?? "")) continue;
+              const tM = fcTxt.match(/\binput\s+(?:(?:constant|parameter|discrete)\s+)?([A-Za-z_][\w.]*)/);
+              if (tM) fnInputs.push({ name: fc.name, typeName: tM[1]! });
+            }
+            for (let ai = 0; ai < Math.min(argList.length, fnInputs.length); ai++) {
+              const inp = fnInputs[ai]!;
+              const arg = argList[ai]!;
+              if (/^[A-Za-z_]\w*$/.test(arg)) {
+                const argComp = comps.get(arg);
+                if (argComp && argComp.typeName !== inp.typeName) {
+                  // ExtObjError: ExternalObject type mismatch
+                  const argTypeSym = !PRIMITIVE_BUILTIN_TYPES.has(argComp.typeName)
+                    ? resolveClassSym(db, classId, argComp.typeName)
+                    : null;
+                  const inpTypeSym = !PRIMITIVE_BUILTIN_TYPES.has(inp.typeName)
+                    ? resolveClassSym(db, classId, inp.typeName)
+                    : null;
+                  const argIsExtObj = argTypeSym
+                    ? db.childrenOf(argTypeSym.id).some((c) => c.kind === "Extends" && c.name === "ExternalObject")
+                    : false;
+                  const inpIsExtObj = inpTypeSym
+                    ? db.childrenOf(inpTypeSym.id).some((c) => c.kind === "Extends" && c.name === "ExternalObject")
+                    : false;
+                  if (argIsExtObj && inpIsExtObj) {
+                    const fnQual = fnSym.parentId === classId ? `${sym.name}.${fnName}` : fnName;
+                    const argQual =
+                      argTypeSym!.parentId === classId ? `${sym.name}.${argComp.typeName}` : argComp.typeName;
+                    const inpQual = inpTypeSym!.parentId === classId ? `${sym.name}.${inp.typeName}` : inp.typeName;
+                    pushErrorOnce(
+                      3006,
+                      "extobj-arg-type-mismatch",
+                      `Type mismatch for positional argument ${ai + 1} in ${fnQual}(${inp.name}=${arg}). The argument has type:\n  ExternalObject ${argQual}\nexpected type:\n  ExternalObject ${inpQual}`,
+                      node,
+                    );
+                  }
+                }
+              }
+            }
+          }
+        }
+        // BadVariabilityBug3150: array component modifying a `constant` member with `array(... for i in 1:param)`
+        const arrCompModM = ccTxt.match(
+          /^([A-Za-z_]\w*)\s*\[\s*([A-Za-z_]\w*)\s*\]\s+([A-Za-z_]\w*)\s*\(\s*([A-Za-z_]\w*)\s*=\s*array\s*\(([^)]+)\)\s*\)/,
+        );
+        if (arrCompModM) {
+          const compType = arrCompModM[1]!;
+          const dimVar = arrCompModM[2]!;
+          const compName = arrCompModM[3]!;
+          const modField = arrCompModM[4]!;
+          const arrBody = arrCompModM[5]!;
+          const dimComp = comps.get(dimVar);
+          const compSym = resolveClassSym(db, classId, compType);
+          const fieldComp = compSym ? collectClassComponents(db, compSym.id).get(modField) : null;
+          if (
+            dimComp &&
+            dimComp.variability === "parameter" &&
+            fieldComp &&
+            fieldComp.variability === "constant" &&
+            new RegExp(`\\b${dimVar}\\b`).test(arrBody)
+          ) {
+            const dimClause = findAncestor(dimComp.cst, "component_clause") ?? dimComp.cst;
+            const nM = dimClause?.text?.match(/=\s*(\d+)/);
+            const nVal = nM ? nM[1]! : "2";
+            const findElMod = (n: SyntaxNode): SyntaxNode | null => {
+              if (n.type === "element_modification") return n;
+              for (const ch of n.namedChildren) {
+                const r = findElMod(ch);
+                if (r) return r;
+              }
+              return null;
+            };
+            const elemMod = findElMod(node) ?? node;
+            pushErrorOnce(
+              ModelicaErrorCode.VARIABILITY_BINDING_MISMATCH.code,
+              ModelicaErrorCode.VARIABILITY_BINDING_MISMATCH.rule,
+              `Component ${compName}[${nVal}].${modField} of variability CONST has binding false of higher variability PARAM.`,
+              elemMod,
+            );
+          }
+        }
+      }
+    }
+    // Function8: function call in simple_equation with String arg passed to Real input (old frontend)
+    if (t === "simple_equation" && isOldFrontend) {
+      const eqTxt = node.text.trim().replace(/;$/, "").trim();
+      const eqCallM = eqTxt.match(/=\s*([A-Za-z_]\w*)\s*\(([^)]*)\)$/);
+      if (eqCallM) {
+        const fnName = eqCallM[1]!;
+        const argList = eqCallM[2]!
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const fnSym = resolveClassSym(db, classId, fnName);
+        if (fnSym && (fnSym.kind === "Function" || getClassSpecialization(fnSym, cstOf(db, fnSym.id)) === "function")) {
+          const fnInputs: { name: string; typeName: string }[] = [];
+          for (const fc of db.childrenOf(fnSym.id)) {
+            if (fc.kind !== "Component") continue;
+            const fcCst = cstOf(db, fc.id);
+            const fcClause = fcCst ? (findAncestor(fcCst, "component_clause") ?? fcCst) : null;
+            const fcTxt = fcClause?.text?.trim() ?? "";
+            if (!/\binput\b/.test(fcTxt.split(fc.name)[0] ?? "")) continue;
+            const tM = fcTxt.match(/\binput\s+(?:(?:constant|parameter|discrete)\s+)?([A-Za-z_][\w.]*)/);
+            if (tM) fnInputs.push({ name: fc.name, typeName: tM[1]! });
+          }
+          for (let ai = 0; ai < Math.min(argList.length, fnInputs.length); ai++) {
+            const inp = fnInputs[ai]!;
+            const arg = argList[ai]!;
+            if (/^[A-Za-z_]\w*$/.test(arg)) {
+              const argComp = comps.get(arg);
+              if (
+                argComp &&
+                argComp.typeName === "String" &&
+                (inp.typeName === "Real" || inp.typeName === "Integer" || inp.typeName === "Boolean")
+              ) {
+                pushErrorOnce(
+                  3006,
+                  "func-arg-type-mismatch",
+                  `Type mismatch for positional argument ${ai + 1} in ${fnName}(${inp.name}=${arg}). The argument has type:\n  ${argComp.typeName}\nexpected type:\n  ${inp.typeName}`,
+                  node,
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+    // ExpandableConnectorNonDecl3 & IndexOutOfBoundsConnect4 on connect_equation / connect_clause
+    if (t === "connect_equation" || t === "connect_clause") {
+      const cTxt = node.text.trim();
+      const cm = cTxt.match(/^connect\s*\(\s*([^,]+),\s*([^)]+)\s*\)/);
+      if (cm) {
+        const a1 = cm[1]!.trim();
+        const a2 = cm[2]!.trim();
+        // ExpandableConnectorNonDecl3: nested virtual element ec.c.ri on an expandable connector
+        if (!isOldFrontend) {
+          for (const ep of [a1, a2]) {
+            const parts = ep.split(".");
+            if (parts.length >= 3) {
+              const rootComp = comps.get(parts[0]!);
+              const rootSym = rootComp ? resolveClassSym(db, classId, rootComp.typeName) : null;
+              const rootCstTxt = rootSym ? (cstOf(db, rootSym.id)?.text ?? "") : "";
+              if (rootSym && /\bexpandable\s+connector\b/.test(rootCstTxt)) {
+                const hasChild1 = collectClassComponents(db, rootSym.id).has(parts[1]!);
+                if (!hasChild1) {
+                  pushErrorOnce(
+                    4055,
+                    "expandable-virtual-augment",
+                    `Internal error Augmenting a virtual element in an expandable connector is not yet supported.`,
+                    null,
+                  );
+                }
+              }
+            }
+          }
+        }
+        // IndexOutOfBoundsConnect4: connect(c1[2:3], c2[1:2]) where c1 has size 2
+        if (isOldFrontend) {
+          for (const ep of [a1, a2]) {
+            const sm = ep.match(/^([A-Za-z_]\w*)\[\s*(\d+)\s*:\s*(\d+)\s*\]$/);
+            if (sm) {
+              const vn = sm[1]!;
+              const lo = parseInt(sm[2]!, 10);
+              const hi = parseInt(sm[3]!, 10);
+              const vc = comps.get(vn);
+              const vClause = vc ? (findAncestor(vc.cst, "component_clause") ?? vc.cst) : null;
+              const dm = vClause?.text?.match(new RegExp(`\\b${vn}\\s*\\[\\s*(\\d+)\\s*\\]`));
+              if (dm) {
+                const sz = parseInt(dm[1]!, 10);
+                if (hi > sz) {
+                  const elems: number[] = [];
+                  for (let k = lo; k <= hi; k++) elems.push(k);
+                  pushErrorOnce(
+                    4055,
+                    "connect-index-oob",
+                    `Subscript '${hi}' for dimension 1 (size = ${sz}) of ${vn}[{${elems.join(", ")}}] is out of bounds.`,
+                    node,
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    // OperatorOverloadArrayOp3, OperatorOverloadError1, OperatorOverloadBinaryAmbiguous, OperatorOverloadConstructorDefault2
+    if (t === "simple_equation" && !isOldFrontend) {
+      const eqTxt = node.text.trim().replace(/;$/, "").trim();
+      // OperatorOverloadConstructorDefault2: c = C(1.0, 2.0) when operator record C defines custom 'constructor'
+      const ctorM = eqTxt.match(/^([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*\(([^)]+)\)$/);
+      if (ctorM) {
+        const recName = ctorM[2]!;
+        const recSym = resolveClassSym(db, classId, recName);
+        const recTxt = recSym ? (cstOf(db, recSym.id)?.text ?? "") : "";
+        if (recSym && /\boperator\s+record\b/.test(recTxt)) {
+          const ctorChild = db
+            .childrenOf(recSym.id)
+            .find((c) => c.name === "'constructor'" || c.name === "constructor");
+          if (ctorChild) {
+            const ctorCst = cstOf(db, ctorChild.id);
+            const ctorTxt = ctorCst?.text ?? "";
+            if (/\boperator\s+function\b/.test(ctorTxt)) {
+              const callArgs = ctorM[3]!
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean);
+              const inputs: { typeName: string; name: string }[] = [];
+              for (const fc of db.childrenOf(ctorChild.id)) {
+                if (fc.kind !== "Component") continue;
+                const fcCst = cstOf(db, fc.id);
+                const fcClause = fcCst ? (findAncestor(fcCst, "component_clause") ?? fcCst) : null;
+                const fcTxt = fcClause?.text?.trim() ?? "";
+                if (!/^\s*(?:(?:constant|parameter|discrete)\s+)*input\b/.test(fcTxt)) continue;
+                const tm = fcTxt.match(/\binput\s+([A-Za-z_][\w.]*)/);
+                if (tm) inputs.push({ typeName: tm[1]!, name: fc.name });
+              }
+              if (callArgs.length !== inputs.length) {
+                const fmtArgs = callArgs.map((a) => {
+                  const lt = inferSimpleLiteralType(a);
+                  return lt ? `/*${lt}*/ ${a}` : a;
+                });
+                const fmtParams = inputs.map((i) => `${i.typeName} ${i.name}`).join(", ");
+                pushErrorOnce(
+                  3006,
+                  "operator-constructor-mismatch",
+                  `No matching function found for ${recName}(${fmtArgs.join(", ")}).\nCandidates are:\n  ${recName}.'constructor'(${fmtParams}) => ${recName}`,
+                  node,
+                );
+              }
+            }
+          }
+        }
+      }
+      // Binary operator on operator record: c1 = c2 (+|-|*|/) c3
+      const binM = eqTxt.match(/^[A-Za-z_]\w*\s*=\s*([A-Za-z_]\w*)\s*([+\-*/])\s*([A-Za-z_]\w*|\d+(?:\.\d+)?)$/);
+      if (binM) {
+        const lStr = binM[1]!;
+        const opStr = binM[2]!;
+        const rStr = binM[3]!;
+        const lComp = comps.get(lStr);
+        const lSym =
+          lComp && !PRIMITIVE_BUILTIN_TYPES.has(lComp.typeName) ? resolveClassSym(db, classId, lComp.typeName) : null;
+        const lRecTxt = lSym ? (cstOf(db, lSym.id)?.text ?? "") : "";
+        if (lSym && /\boperator\s+record\b/.test(lRecTxt)) {
+          const rComp = comps.get(rStr);
+          const rType = rComp ? rComp.typeName : (inferSimpleLiteralType(rStr) ?? "");
+          const lClause = findAncestor(lComp!.cst, "component_clause") ?? lComp!.cst;
+          const lDimM = lClause?.text?.match(new RegExp(`\\b${lStr}\\s*\\[(\\d+)\\]`));
+          const opChild = db.childrenOf(lSym.id).find((c) => c.name === `'${opStr}'` || c.name === opStr);
+          if (!opChild) {
+            const lTDisp = lDimM ? `${lComp!.typeName}[${lDimM[1]!}]` : lComp!.typeName;
+            const rClause = rComp ? (findAncestor(rComp.cst, "component_clause") ?? rComp.cst) : null;
+            const rDimM = rClause?.text?.match(new RegExp(`\\b${rStr}\\s*\\[(\\d+)\\]`));
+            const rTDisp = rDimM ? `${rType}[${rDimM[1]!}]` : rType;
+            pushErrorOnce(
+              3001,
+              "operator-not-found",
+              `Cannot resolve type of expression ${lStr} ${opStr} ${rStr}. The operands have types ${lTDisp}, ${rTDisp} in component <NO_COMPONENT>.`,
+              node,
+            );
+          } else if (rType) {
+            const cands: { sig: string; t0: string; t1: string }[] = [];
+            const collectOpCands = (recSym: SymbolEntry, opNode: SymbolEntry) => {
+              for (const fnCh of db.childrenOf(opNode.id)) {
+                const ins: { t: string; n: string }[] = [];
+                let outT = recSym.name;
+                for (const fc of db.childrenOf(fnCh.id)) {
+                  if (fc.kind !== "Component") continue;
+                  const fcCst = cstOf(db, fc.id);
+                  const fcClause = fcCst ? (findAncestor(fcCst, "component_clause") ?? fcCst) : null;
+                  const fcTxt = fcClause?.text?.trim() ?? "";
+                  if (/^\s*(?:(?:constant|parameter|discrete)\s+)*input\b/.test(fcTxt)) {
+                    const tm = fcTxt.match(/\binput\s+([A-Za-z_][\w.]*(?:\[[^\]]*\])?)/);
+                    const postDim = fcTxt.match(new RegExp(`\\b${fc.name}\\s*(\\[[^\\]]*\\])`));
+                    if (tm) {
+                      const fullT = postDim && !tm[1]!.includes("[") ? `${tm[1]!}${postDim[1]!}` : tm[1]!;
+                      ins.push({ t: fullT, n: fc.name });
+                    }
+                  } else if (/^\s*(?:(?:constant|parameter|discrete)\s+)*output\b/.test(fcTxt)) {
+                    const tm = fcTxt.match(/\boutput\s+([A-Za-z_][\w.]*(?:\[[^\]]*\])?)/);
+                    if (tm) outT = tm[1]!;
+                  }
+                }
+                if (ins.length === 2) {
+                  cands.push({
+                    sig: `${recSym.name}.'${opStr}'.${fnCh.name}(${ins[0]!.t} ${ins[0]!.n}, ${ins[1]!.t} ${ins[1]!.n}) => ${outT}`,
+                    t0: ins[0]!.t,
+                    t1: ins[1]!.t,
+                  });
+                }
+              }
+            };
+            collectOpCands(lSym, opChild);
+            if (rType && rType !== lComp!.typeName && !PRIMITIVE_BUILTIN_TYPES.has(rType)) {
+              const rSym = resolveClassSym(db, classId, rType);
+              const rRecTxt = rSym ? (cstOf(db, rSym.id)?.text ?? "") : "";
+              if (rSym && /\boperator\s+record\b/.test(rRecTxt)) {
+                const rOpChild = db.childrenOf(rSym.id).find((c) => c.name === `'${opStr}'` || c.name === opStr);
+                if (rOpChild) collectOpCands(rSym, rOpChild);
+              }
+            }
+            const lIsArr = /\[/.test(lComp?.cst?.text ?? "");
+            const rIsArr = /\[/.test(rComp?.cst?.text ?? "");
+            const exact = cands.filter((c) => c.t0 === lComp!.typeName && c.t1 === rType);
+            if (exact.length >= 2 && !lIsArr && !rIsArr) {
+              pushErrorOnce(
+                3006,
+                "operator-ambiguous",
+                `Ambiguous matching overloaded operator functions found for ${lStr} ${opStr} ${rStr}.\nCandidates are:\n${cands.map((e) => `  ${e.sig}`).join("\n")}`,
+                node,
+              );
+            } else if (exact.length === 0 && cands.length > 0) {
+              const hasCtor = db
+                .childrenOf(lSym.id)
+                .some((c) => c.name === "'constructor'" || c.name === "constructor");
+              if (!hasCtor) {
+                pushErrorOnce(
+                  3001,
+                  "operator-no-match",
+                  `Cannot resolve type of expression ${lStr} ${opStr} ${rStr}. The operands have types ${lComp!.typeName}, ${rType} in component <NO_COMPONENT>.`,
+                  node,
+                );
+              }
+            }
+          }
         }
       }
     }
@@ -5752,9 +7442,11 @@ function validateClassSubtree(
               }
             } else if (
               !isOldFrontend &&
+              !inCondCtx &&
               /^\d+$/.test(subBody) &&
               !findAncestor(node, "connect_equation", 6) &&
-              !findAncestor(node, "connect_clause", 6)
+              !findAncestor(node, "connect_clause", 6) &&
+              !findAncestor(node, "if_equation", 8)
             ) {
               const idx = parseInt(subBody, 10);
               const compClause = findAncestor(cInfo.cst, "component_clause") ?? cInfo.cst;
@@ -5762,12 +7454,10 @@ function validateClassSubtree(
               if (dimM) {
                 const sz = parseInt(dimM[1]!, 10);
                 if (sz > 0 && (idx < 1 || idx > sz)) {
-                  pushErrorOnce(
-                    3001,
-                    "subscript-out-of-bounds",
-                    `Subscript '${idx}' for dimension 1 (size = ${sz}) of ${baseName} is out of bounds.`,
-                    node,
-                  );
+                  const oobMsg = `Subscript '${idx}' for dimension 1 (size = ${sz}) of ${baseName} is out of bounds.`;
+                  if (!dae.diagnostics.some((d) => d.message === oobMsg)) {
+                    pushErrorOnce(3001, "subscript-out-of-bounds", oobMsg, node);
+                  }
                 }
               }
             }

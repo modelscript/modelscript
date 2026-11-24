@@ -18,13 +18,14 @@ function decodeHtmlEntities(val: string): string {
   return val
     .replace(/&#x([0-9a-f]+);?/gi, (_, hex) => {
       const code = Number.parseInt(hex, 16);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : "";
+      return Number.isFinite(code) && code <= 0x10ffff ? String.fromCodePoint(code) : "";
     })
     .replace(/&#([0-9]+);?/g, (_, dec) => {
       const code = Number.parseInt(dec, 10);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : "";
+      return Number.isFinite(code) && code <= 0x10ffff ? String.fromCodePoint(code) : "";
     })
-    .replace(/&(?:tab|newline);/gi, "");
+    .replace(/&colon;?/gi, ":")
+    .replace(/&(?:tab|newline|nbsp);?/gi, "");
 }
 
 function stripDangerousUrls(input: string): string {

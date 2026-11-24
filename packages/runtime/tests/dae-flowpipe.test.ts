@@ -2,8 +2,8 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { DaeFlowpipeSolver, type DaeSystem, IntervalKrawczykOperator } from "../src/analysis/dae_flowpipe.js";
 import { ivAdd, ivMul, ivNeg, ivSub } from "../src/analysis/outward_rounding.js";
-import { DaeFlowpipeSolver, type DaeSystem, IntervalKrawczykOperator } from "../src/analysis/wasm_dae_flowpipe.js";
 import { Interval } from "../src/analysis/wasm_interval.js";
 
 describe("Native Validated DAE Flowpipe Reachability Suite", () => {

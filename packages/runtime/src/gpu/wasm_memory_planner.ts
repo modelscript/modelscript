@@ -10,6 +10,7 @@
 
 import { type ArenaBltResult, collectArenaExprDeps } from "../analysis/wasm_blt.js";
 import { Causality, DAEBuilder, Variability } from "../dae/wasm_dae.js";
+import { getDefaultWasmExports } from "../dae/wasm_loader.js";
 
 export interface VariableLiveness {
   varIdx: number;
@@ -152,46 +153,88 @@ export function planStaticArenaMemory(
   }
 
   // 5. Greedy Interval Coloring for Transient Scratchpad Slots: [P ... P + S - 1]
-  const transientVars: number[] = [];
-  for (let i = 0; i < varCount; i++) {
-    if (!arena.isVarRemoved(i) && isPersistent[i] === 0) {
-      transientVars.push(i);
-    }
-  }
-
-  // Sort transient variables by birth block
-  transientVars.sort((a, b) => birthBlock[a]! - birthBlock[b]!);
-
-  // Active slots tracking: slotIndex -> deathBlock
-  const activeSlots: number[] = [];
   let peakScratchpad = 0;
+  const w = getDefaultWasmExports();
+  if (
+    w &&
+    typeof w.gpu_greedyIntervalColoring === "function" &&
+    typeof w.alloc === "function" &&
+    typeof w.free === "function" &&
+    varCount > 0
+  ) {
+    const birthPtr = w.alloc(varCount * 4);
+    const deathPtr = w.alloc(varCount * 4);
+    const persPtr = w.alloc(varCount);
+    const remPtr = w.alloc(varCount);
+    const outOffPtr = w.alloc(varCount * 4);
+    const workTransPtr = w.alloc(varCount * 4);
+    const workSlotsPtr = w.alloc(varCount * 4);
+    try {
+      new Int32Array(w.memory.buffer, birthPtr, varCount).set(birthBlock);
+      new Int32Array(w.memory.buffer, deathPtr, varCount).set(deathBlock);
+      new Uint8Array(w.memory.buffer, persPtr, varCount).set(isPersistent);
+      const remView = new Uint8Array(w.memory.buffer, remPtr, varCount);
+      for (let i = 0; i < varCount; i++) remView[i] = arena.isVarRemoved(i) ? 1 : 0;
+      new Int32Array(w.memory.buffer, outOffPtr, varCount).set(varIdxToOffset);
 
-  for (const v of transientVars) {
-    const birth = birthBlock[v]!;
-    const death = deathBlock[v]!;
+      peakScratchpad = w.gpu_greedyIntervalColoring(
+        varCount,
+        persistentCount,
+        birthPtr,
+        deathPtr,
+        persPtr,
+        remPtr,
+        outOffPtr,
+        workTransPtr,
+        workSlotsPtr,
+      );
 
-    // Find a free slot whose occupant died before this birth
-    let assignedSlot = -1;
-    for (let s = 0; s < activeSlots.length; s++) {
-      if (activeSlots[s]! < birth) {
-        assignedSlot = s;
-        activeSlots[s] = death;
-        break;
+      const outView = new Int32Array(w.memory.buffer, outOffPtr, varCount);
+      for (let i = 0; i < varCount; i++) {
+        if (remView[i] === 0 && isPersistent[i] === 0) {
+          const packedOffset = outView[i]!;
+          varIdxToOffset[i] = packedOffset;
+          nameIdToOffset.set(arena.getVarNameId(i), packedOffset);
+        }
+      }
+    } finally {
+      w.free(birthPtr);
+      w.free(deathPtr);
+      w.free(persPtr);
+      w.free(remPtr);
+      w.free(outOffPtr);
+      w.free(workTransPtr);
+      w.free(workSlotsPtr);
+    }
+  } else {
+    const transientVars: number[] = [];
+    for (let i = 0; i < varCount; i++) {
+      if (!arena.isVarRemoved(i) && isPersistent[i] === 0) {
+        transientVars.push(i);
       }
     }
-
-    if (assignedSlot === -1) {
-      assignedSlot = activeSlots.length;
-      activeSlots.push(death);
+    transientVars.sort((a, b) => birthBlock[a]! - birthBlock[b]!);
+    const activeSlots: number[] = [];
+    for (const v of transientVars) {
+      const birth = birthBlock[v]!;
+      const death = deathBlock[v]!;
+      let assignedSlot = -1;
+      for (let s = 0; s < activeSlots.length; s++) {
+        if (activeSlots[s]! < birth) {
+          assignedSlot = s;
+          activeSlots[s] = death;
+          break;
+        }
+      }
+      if (assignedSlot === -1) {
+        assignedSlot = activeSlots.length;
+        activeSlots.push(death);
+      }
+      if (activeSlots.length > peakScratchpad) peakScratchpad = activeSlots.length;
+      const packedOffset = persistentCount + assignedSlot;
+      varIdxToOffset[v] = packedOffset;
+      nameIdToOffset.set(arena.getVarNameId(v), packedOffset);
     }
-
-    if (activeSlots.length > peakScratchpad) {
-      peakScratchpad = activeSlots.length;
-    }
-
-    const packedOffset = persistentCount + assignedSlot;
-    varIdxToOffset[v] = packedOffset;
-    nameIdToOffset.set(arena.getVarNameId(v), packedOffset);
   }
 
   const totalPackedSize = persistentCount + peakScratchpad;

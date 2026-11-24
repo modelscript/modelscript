@@ -7761,19 +7761,15 @@ export class WasmExprVisitor {
         if (this.isArrayExplicitZero(nameId)) {
           if (isSum) return this.dae.addRealLiteral(0.0);
           if (isProd) return this.dae.addRealLiteral(1.0);
-          if (this.flattenerPtr != 0) {
-            changetype<ModelicaFlattener>(this.flattenerPtr).setError(WasmBailReason.BindingExpr);
-          }
-          return 0xffffffff;
+          return this.dae.addExpression(ExprKind.Call, fnNameId, a0, 1);
         }
         if (this.hasArrayShape(nameId)) {
           let nd = this.getArrayNDims(nameId);
           for (let d: u32 = 1; d <= nd; d++) {
             if (this.getArrayShapeDim(nameId, d) == 0) {
-              if (this.flattenerPtr != 0) {
-                changetype<ModelicaFlattener>(this.flattenerPtr).setError(WasmBailReason.BindingExpr);
-              }
-              return 0xffffffff;
+              if (isSum) return this.dae.addRealLiteral(0.0);
+              if (isProd) return this.dae.addRealLiteral(1.0);
+              return this.dae.addExpression(ExprKind.Call, fnNameId, a0, 1);
             }
           }
         }
@@ -7908,7 +7904,7 @@ export class WasmExprVisitor {
       } else if (poolMatchesSimple(pool, fnNameId, "atan")) {
         if (isLit) return this.dae.addRealLiteral(Math.atan(v0));
       } else if (poolMatchesSimple(pool, fnNameId, "sinh")) {
-        if (isLit) return this.dae.addRealLiteral(Math.sinh(v0));
+        // Defer sinh to JS Math.sinh in foldArenaConstants for exact glibc/V8 ULP parity (FuncBuiltinMath)
       } else if (poolMatchesSimple(pool, fnNameId, "cosh")) {
         if (isLit) return this.dae.addRealLiteral(Math.cosh(v0));
       } else if (poolMatchesSimple(pool, fnNameId, "tanh")) {
@@ -9476,13 +9472,13 @@ export class WasmExprVisitor {
 
       let matStart = this.tempBuffer.length;
       let rowCount: u32 = 0;
-      for (let v1: i32 = s1; st1 > 0 ? v1 <= e1 : v1 >= e1; v1 += st1) {
-        let lit1 = this.dae.addIntLiteral(v1);
-        this.setLoopVar(var1, lit1);
+      for (let v2: i32 = s2; st2 > 0 ? v2 <= e2 : v2 >= e2; v2 += st2) {
+        let lit2 = this.dae.addIntLiteral(v2);
+        this.setLoopVar(var2, lit2);
         let rowStart = this.tempBuffer.length;
-        for (let v2: i32 = s2; st2 > 0 ? v2 <= e2 : v2 >= e2; v2 += st2) {
-          let lit2 = this.dae.addIntLiteral(v2);
-          this.setLoopVar(var2, lit2);
+        for (let v1: i32 = s1; st1 > 0 ? v1 <= e1 : v1 >= e1; v1 += st1) {
+          let lit1 = this.dae.addIntLiteral(v1);
+          this.setLoopVar(var1, lit1);
           let elemId = this.visitLoc(bodyLoc);
           if (elemId == 0xffffffff) {
             this.removeLoopVar(var1);
@@ -9675,25 +9671,42 @@ export class WasmExprVisitor {
         }
         fch = locNextSibling(fch);
       }
-      if (locIsNull(rangeExprLoc) && seenIn) {
+      if (locIsNull(rangeExprLoc)) {
         rangeExprLoc = locFindDescendant(fi1, SyntaxType.EXPRESSION);
       }
       // Implicit range: `sum(x[i] for i)` — infer 1..size(x, 1) from subscripted array in bodyLoc
-      if (!seenIn && var1 != 0) {
-        let crLoc = locFindDescendant(bodyLoc, SyntaxType.COMPONENT_REFERENCE);
+      if (locIsNull(rangeExprLoc) && var1 != 0) {
+        let crLoc = locType(bodyLoc) == SyntaxType.COMPONENT_REFERENCE
+          ? bodyLoc
+          : locFindDescendant(bodyLoc, SyntaxType.COMPONENT_REFERENCE);
         if (!locIsNull(crLoc)) {
           let arrIdLoc = locFindDescendant(crLoc, SyntaxType.IDENTIFIER);
+          if (locIsNull(arrIdLoc)) arrIdLoc = locFindDescendant(crLoc, SyntaxType.TOKEN_IDENTIFIER_ALT);
+          if (locIsNull(arrIdLoc)) arrIdLoc = locFirstNonEmptyChild(crLoc);
           if (!locIsNull(arrIdLoc)) {
             let arrNameId = this.resolveVarName(locIntern(pool, arrIdLoc));
+            let d1: u32 = 0;
             if (this.hasArrayShape(arrNameId) && this.getArrayNDims(arrNameId) >= 1) {
-              let d1 = this.getArrayShapeDim(arrNameId, 1);
-              if (d1 > 0) {
-                rangeInfo.push(var1 as i32);
-                rangeInfo.push(1);
-                rangeInfo.push(1);
-                rangeInfo.push(d1 as i32);
-                ok1 = 1;
+              d1 = this.getArrayShapeDim(arrNameId, 1);
+            }
+            if (d1 == 0) {
+              while (this.dae.lookupVariableByName(concatArrayIndex1D(pool, arrNameId, d1 + 1)) >= 0) {
+                d1++;
               }
+            }
+            if (d1 > 0) {
+              for (let v1: i32 = 1; v1 <= (d1 as i32); v1++) {
+                this.setLoopVar(var1, this.dae.addIntLiteral(v1));
+                let elemId = this.visitLoc(bodyLoc);
+                if (elemId == 0xffffffff) {
+                  this.removeLoopVar(var1);
+                  this.tempBuffer.length = elemStart;
+                  return 0xffffffff;
+                }
+                this.tempBuffer.push(elemId);
+              }
+              this.removeLoopVar(var1);
+              ok1 = 1;
             }
           }
         }
@@ -9824,6 +9837,72 @@ export class WasmExprVisitor {
                 this.tempBuffer.push(elemId);
               }
               this.removeLoopVar(var1);
+            } else if (kStart == ExprKind.Name && kStop == ExprKind.Name && this.flattenerPtr != 0) {
+              let startNameId = this.dae.getExprData1(startId);
+              let stopNameId = this.dae.getExprData1(stopId);
+              if (pool.hasDot(startNameId) && pool.hasDot(stopNameId)) {
+                let enumTypeId = pool.getParentPrefix(startNameId);
+                if (enumTypeId == pool.getParentPrefix(stopNameId)) {
+                  let fl = changetype<ModelicaFlattener>(this.flattenerPtr);
+                  let enumLoc = fl.findClassLoc(fl.currentClassLoc, enumTypeId, pool);
+                  if (locIsNull(enumLoc)) enumLoc = fl.findClassLoc(fl.rootProgramLoc, enumTypeId, pool);
+                  let enumListLoc: u64 = !locIsNull(enumLoc) ? locFindDescendant(enumLoc, SyntaxType.ENUM_LIST) : 0;
+                  if (!locIsNull(enumListLoc)) {
+                    let lits = new Array<u32>();
+                    let stk = new Array<u64>();
+                    stk.push(enumListLoc);
+                    while (stk.length > 0) {
+                      let cur = stk.pop();
+                      if (locType(cur) == SyntaxType.ENUMERATION_LITERAL) {
+                        let idLoc = locFindDescendant(cur, SyntaxType.IDENTIFIER);
+                        if (locIsNull(idLoc)) idLoc = locFindDescendant(cur, SyntaxType.TOKEN_IDENTIFIER_ALT);
+                        if (!locIsNull(idLoc)) lits.push(locIntern(pool, idLoc));
+                        continue;
+                      }
+                      let sibs = new Array<u64>();
+                      let ch = locFirstChild(cur);
+                      while (!locIsNull(ch)) {
+                        sibs.push(ch);
+                        ch = locNextSibling(ch);
+                      }
+                      for (let si = sibs.length - 1; si >= 0; si--) stk.push(sibs[si]);
+                    }
+                    let sLit = getPathLastPart(pool, startNameId);
+                    let eLit = getPathLastPart(pool, stopNameId);
+                    let sIdx: i32 = -1;
+                    let eIdx: i32 = -1;
+                    for (let li: i32 = 0; li < lits.length; li++) {
+                      if (lits[li] == sLit) sIdx = li;
+                      if (lits[li] == eLit) eIdx = li;
+                    }
+                    let stv: i32 = stepId != 0xffffffff ? this.evalConstIntArg(stepId) : 1;
+                    if (sIdx >= 0 && eIdx >= 0 && stv != I32.MIN_VALUE && stv != 0) {
+                      let qualPrefix = fl.getCanonicalClassName(enumLoc, pool);
+                      if (qualPrefix == 0) qualPrefix = enumTypeId;
+                      for (let li: i32 = sIdx; stv > 0 ? li <= eIdx : li >= eIdx; li += stv) {
+                        let fullLitId = pool.concatIds(qualPrefix, lits[li]);
+                        this.setLoopVar(var1, this.dae.addExpression(ExprKind.Name, fullLitId));
+                        let elemId = this.visitLoc(bodyLoc);
+                        if (elemId == 0xffffffff) {
+                          this.removeLoopVar(var1);
+                          this.tempBuffer.length = elemStart;
+                          return 0xffffffff;
+                        }
+                        this.tempBuffer.push(elemId);
+                      }
+                      this.removeLoopVar(var1);
+                    } else {
+                      return 0xffffffff;
+                    }
+                  } else {
+                    return 0xffffffff;
+                  }
+                } else {
+                  return 0xffffffff;
+                }
+              } else {
+                return 0xffffffff;
+              }
             } else {
               return 0xffffffff;
             }
@@ -9855,7 +9934,7 @@ export class WasmExprVisitor {
         } else {
           return 0xffffffff;
         }
-      } else if (var1 != 0 && rangeExprLoc == 0) {
+      } else if (ok1 == 0 && var1 != 0 && rangeExprLoc == 0) {
         // Implicit range: e.g., `sum(x[i] for i)` — infer 1D size from subscripted array in `bodyLoc`.
         let arrBaseId: u32 = findSubscriptedArrayForVar(bodyLoc, var1, pool);
         if (arrBaseId == 0) return 0xffffffff;
@@ -9888,7 +9967,7 @@ export class WasmExprVisitor {
           this.tempBuffer.push(elemId);
         }
         this.removeLoopVar(var1);
-      } else {
+      } else if (ok1 == 0) {
         return 0xffffffff;
       }
     } else if (ok1 == 0) {
@@ -10055,6 +10134,10 @@ export class WasmExprVisitor {
     if (elemCount == 0) {
       if (isSum) return this.dae.addRealLiteral(0.0);
       if (isProd) return this.dae.addRealLiteral(1.0);
+      if (isMin || isMax) {
+        let emptyArr = this.dae.addExpression(ExprKind.ArrayCtor, 0, 0xffffffff, 0);
+        return this.dae.addExpression(ExprKind.Call, fnNameId, emptyArr, 1);
+      }
       return 0xffffffff;
     }
 
@@ -10110,12 +10193,12 @@ export class WasmExprVisitor {
     return acc;
   }
 
-  private collectSubscripts(nodeLoc: u64, baseNameId: u32 = 0): void {
+  private collectSubscripts(nodeLoc: u64, baseNameId: u32 = 0, subStart: u32 = 0): void {
     if (locIsNull(nodeLoc)) return;
     let ch = locFirstChild(nodeLoc);
-    let dimIdx: u32 = 1;
     while (!locIsNull(ch)) {
       if (locType(ch) == SyntaxType.SUBSCRIPT) {
+        let dimIdx: u32 = (this.tempBuffer.length - subStart) + 1;
         let dSize: u32 = 0;
         if (baseNameId != 0) {
           dSize = this.getArrayShapeDim(baseNameId, dimIdx);
@@ -10134,9 +10217,8 @@ export class WasmExprVisitor {
         }
         let subVal = this.evalIntSubscript(ch, dSize > 0 ? dSize : 1);
         this.tempBuffer.push(subVal as u32);
-        dimIdx++;
       } else {
-        this.collectSubscripts(ch, baseNameId);
+        this.collectSubscripts(ch, baseNameId, subStart);
       }
       ch = locNextSibling(ch);
     }
@@ -10163,7 +10245,7 @@ export class WasmExprVisitor {
     // 2. Array Subscripts
     if (ct == SyntaxType.ARRAY_SUBSCRIPTS) {
       let subStart = this.tempBuffer.length;
-      this.collectSubscripts(nodeLoc, currentNameId);
+      this.collectSubscripts(nodeLoc, currentNameId, subStart);
       let subCount = this.tempBuffer.length - subStart;
       let sub1: i32 = subCount >= 1 ? (this.tempBuffer.get(subStart) as i32) : 0;
       let sub2: i32 = subCount >= 2 ? (this.tempBuffer.get(subStart + 1) as i32) : 0;
@@ -11054,41 +11136,15 @@ export class WasmExprVisitor {
         locType(firstCh) != SyntaxType.IDENTIFIER &&
         locType(firstCh) != SyntaxType.TOKEN_IDENTIFIER_ALT) {
       let baseExpr = this.visitLoc(firstCh);
-      if (baseExpr != 0xffffffff && this.dae.getExprKind(baseExpr) == ExprKind.ArrayCtor) {
-        let subStart = this.tempBuffer.length;
-        this.collectSubscripts(lastCh, 0);
-        let subCount = this.tempBuffer.length - subStart;
-        let cur = baseExpr;
-        let okSub = subCount > 0;
-        for (let si: u32 = 0; si < subCount; si++) {
-          let subExpr = this.tempBuffer.get(subStart + si);
-          let sv = this.evalConstIntArg(subExpr);
-          if (sv >= 1 && this.dae.getExprKind(cur) == ExprKind.ArrayCtor && (sv as u32) <= getArrayCtorCount(this.dae, cur)) {
-            cur = getArrayCtorElement(this.dae, cur, (sv - 1) as u32);
-          } else {
-            okSub = false;
-            break;
-          }
-        }
-        this.tempBuffer.length = subStart;
-        if (okSub) return cur;
-      }
-    }
-    if (nonZeroCount == 4 && !locIsNull(firstCh) && !locIsNull(lastCh) &&
-        locMatches(firstCh, "(") && locType(lastCh) == SyntaxType.ARRAY_SUBSCRIPTS) {
-      let middle = locNextNonEmptySibling(firstCh);
-      let closeP = !locIsNull(middle) ? locNextNonEmptySibling(middle) : 0;
-      if (!locIsNull(middle) && !locIsNull(closeP) && locMatches(closeP, ")")) {
-        let baseExpr = this.visitLoc(middle);
-        if (baseExpr != 0xffffffff && this.dae.getExprKind(baseExpr) == ExprKind.ArrayCtor) {
+      if (baseExpr != 0xffffffff) {
+        if (this.dae.getExprKind(baseExpr) == ExprKind.ArrayCtor) {
           let subStart = this.tempBuffer.length;
           this.collectSubscripts(lastCh, 0);
           let subCount = this.tempBuffer.length - subStart;
           let cur = baseExpr;
           let okSub = subCount > 0;
           for (let si: u32 = 0; si < subCount; si++) {
-            let subExpr = this.tempBuffer.get(subStart + si);
-            let sv = this.evalConstIntArg(subExpr);
+            let sv = this.tempBuffer.get(subStart + si) as i32;
             if (sv >= 1 && this.dae.getExprKind(cur) == ExprKind.ArrayCtor && (sv as u32) <= getArrayCtorCount(this.dae, cur)) {
               cur = getArrayCtorElement(this.dae, cur, (sv - 1) as u32);
             } else {
@@ -11098,6 +11154,50 @@ export class WasmExprVisitor {
           }
           this.tempBuffer.length = subStart;
           if (okSub) return cur;
+        }
+        let dynSub = locFindDescendant(lastCh, SyntaxType.SUBSCRIPT);
+        if (!locIsNull(dynSub)) {
+          let subExprId = this.visitLoc(dynSub);
+          if (subExprId != 0xffffffff) {
+            return this.dae.addExpression(ExprKind.Subscript, 0, baseExpr, subExprId);
+          }
+        }
+      }
+    }
+    if (nonZeroCount == 4 && !locIsNull(firstCh) && !locIsNull(lastCh) && locMatches(firstCh, "(")) {
+      let arrSubLoc: u64 = locType(lastCh) == SyntaxType.ARRAY_SUBSCRIPTS
+        ? lastCh
+        : locFindDescendant(lastCh, SyntaxType.ARRAY_SUBSCRIPTS);
+      let middle = locNextNonEmptySibling(firstCh);
+      let closeP = !locIsNull(middle) ? locNextNonEmptySibling(middle) : 0;
+      if (!locIsNull(arrSubLoc) && !locIsNull(middle) && !locIsNull(closeP) && locMatches(closeP, ")")) {
+        let baseExpr = this.visitLoc(middle);
+        if (baseExpr != 0xffffffff) {
+          if (this.dae.getExprKind(baseExpr) == ExprKind.ArrayCtor) {
+            let subStart = this.tempBuffer.length;
+            this.collectSubscripts(arrSubLoc, 0);
+            let subCount = this.tempBuffer.length - subStart;
+            let cur = baseExpr;
+            let okSub = subCount > 0;
+            for (let si: u32 = 0; si < subCount; si++) {
+              let sv = this.tempBuffer.get(subStart + si) as i32;
+              if (sv >= 1 && this.dae.getExprKind(cur) == ExprKind.ArrayCtor && (sv as u32) <= getArrayCtorCount(this.dae, cur)) {
+                cur = getArrayCtorElement(this.dae, cur, (sv - 1) as u32);
+              } else {
+                okSub = false;
+                break;
+              }
+            }
+            this.tempBuffer.length = subStart;
+            if (okSub) return cur;
+          }
+          let dynSub = locFindDescendant(arrSubLoc, SyntaxType.SUBSCRIPT);
+          if (!locIsNull(dynSub)) {
+            let subExprId = this.visitLoc(dynSub);
+            if (subExprId != 0xffffffff) {
+              return this.dae.addExpression(ExprKind.Subscript, 0, baseExpr, subExprId);
+            }
+          }
         }
       }
     }
@@ -11581,11 +11681,7 @@ export class WasmExprVisitor {
                 }
                 return this.dae.addExpression(ExprKind.Name, prefixedId);
               }
-              let vt = varAcc.varType;
-              if (vt == VarType.Real) return this.dae.addRealLiteral(varAcc.startValue);
-              if (vt == VarType.Integer) return this.dae.addIntLiteral(varAcc.startValue as i32);
-              if (vt == VarType.Boolean) return this.dae.addExpression(ExprKind.BoolLiteral, varAcc.startValue != 0.0 ? 1 : 0);
-              if (vt == VarType.Enumeration) return this.dae.addExpression(ExprKind.EnumLiteral, varAcc.startValue as i32, 0);
+              return this.dae.addExpression(ExprKind.Name, prefixedId);
             }
             return this.dae.addExpression(ExprKind.Name, prefixedId);
           }
@@ -11667,11 +11763,7 @@ export class WasmExprVisitor {
             }
             return this.dae.addExpression(ExprKind.Name, resolvedSimpleId);
           }
-          let vt = varAcc.varType;
-          if (vt == VarType.Real) return this.dae.addRealLiteral(varAcc.startValue);
-          if (vt == VarType.Integer) return this.dae.addIntLiteral(varAcc.startValue as i32);
-          if (vt == VarType.Boolean) return this.dae.addExpression(ExprKind.BoolLiteral, varAcc.startValue != 0.0 ? 1 : 0);
-          if (vt == VarType.Enumeration) return this.dae.addExpression(ExprKind.EnumLiteral, varAcc.startValue as i32, 0);
+          return this.dae.addExpression(ExprKind.Name, resolvedSimpleId);
         }
         return this.dae.addExpression(ExprKind.Name, resolvedSimpleId);
       }
@@ -16257,13 +16349,6 @@ export class ModelicaFlattener {
     } else if (t == SyntaxType.CONNECT_EQUATION) {
       return this.lowerConnectEquation(nodeLoc);
     } else if (t == SyntaxType.FUNCTION_CALL) {
-      if (
-        !locIsNull(locFindMatchingDescendant(nodeLoc, "initialState")) ||
-        !locIsNull(locFindMatchingDescendant(nodeLoc, "transition"))
-      ) {
-        this.setErrorAt(WasmBailReason.WhenOrIfEquation, nodeLoc);
-        return 0;
-      }
       let compRef = locFindChild(nodeLoc, SyntaxType.COMPONENT_REFERENCE);
       if (locIsNull(compRef)) compRef = locFirstNonEmptyChild(nodeLoc);
       let pool = this.dae.getStringPool();
@@ -17132,6 +17217,14 @@ export class ModelicaFlattener {
         let isScalarizedArr = this.exprVisitor.getArrayShapeDim(lNameId, 1) > 0 ||
           this.dae.lookupVariableByName(concatArrayIndex1D(pool, lNameId, 1)) >= 0;
         if (!isScalarizedArr) {
+          if (this.isComponentDisabled(lNameId, pool)) {
+            if (rKind == ExprKind.IntLiteral) {
+              rhs = this.dae.addRealLiteral(rExpr.data1 as f64);
+            }
+            let eqKind = isInitial ? EqKind.InitialSimple : EqKind.Simple;
+            this.dae.addEquation(eqKind, lhs, rhs);
+            return 1;
+          }
           this.setError(WasmBailReason.EquationLhsUnresolved);
           return 0;
         }
@@ -17462,6 +17555,10 @@ export class ModelicaFlattener {
           }
           let vt = varAcc.varType;
           if (bExpr == 0xffffffff && (vt == VarType.Real || vt == VarType.Integer || vt == VarType.Boolean || vt == VarType.Enumeration)) {
+            let fixedExpr = this.dae.getVarAttrExpr(varIdx as u32, VarAttrKind.Fixed as u32);
+            if (fixedExpr != 0xffffffff && this.dae.getExprKind(fixedExpr) == ExprKind.BoolLiteral && this.dae.getExprData1(fixedExpr) == 0) {
+              return false;
+            }
             if (markFinal && g_isOmcNewInst && vVar == Variability.Parameter) varAcc.setFlag(FLAG_VAR_FINAL | FLAG_VAR_EVALUATE);
             this.scalarOutVal = varAcc.startValue;
             return true;
@@ -21296,6 +21393,7 @@ export class ModelicaFlattener {
         }
         break;
       }
+      let shortOwnerLoc = curDefLoc;
       let baseTypeSpec = locFindDescendant(shortSpec, SyntaxType.TYPE_SPECIFIER);
       if (!locIsNull(baseTypeSpec)) {
         let baseIdLoc = locFindLastDescendant(baseTypeSpec, SyntaxType.IDENTIFIER);
@@ -21357,7 +21455,10 @@ export class ModelicaFlattener {
       }
       let shortSubLoc = locFindDescendant(shortSpec, SyntaxType.ARRAY_SUBSCRIPTS);
       if (!locIsNull(shortSubLoc)) {
+        let prevCurForShort = this.currentClassLoc;
+        if (!locIsNull(shortOwnerLoc)) this.currentClassLoc = shortOwnerLoc;
         let shortDims = parseArrayDimensionsLoc(shortSubLoc, this.dae, pool, prefixPathId, this.scopeStackPtr);
+        this.currentClassLoc = prevCurForShort;
         if (shortDims != 0xffffffffffffffff && shortDims != 0) {
           let sd1 = (shortDims >> 32) as u32;
           let sd2 = (shortDims & 0xffffffff) as u32;
@@ -22889,7 +22990,7 @@ export class ModelicaFlattener {
           }
         }
         let prevParentFlowFlags = this.parentFlowFlags;
-        if (isConnectorClassLoc(this.currentClassLoc)) {
+        if (isConnectorClassLoc(this.currentClassLoc) || (g_isOmcNewInst && isConnectorClassLoc(subClassLoc))) {
           this.parentFlowFlags |= varFlags & (FLAG_VAR_FLOW | FLAG_VAR_STREAM);
         }
         let recArrayCallEq = false;
@@ -24140,7 +24241,12 @@ export class ModelicaFlattener {
     let pool = this.dae.getStringPool();
     let nameLoc = locFindChild(loc, SyntaxType.COMPONENT_REFERENCE);
     if (locIsNull(nameLoc)) nameLoc = locFindDescendant(loc, SyntaxType.COMPONENT_REFERENCE);
-    if (!locIsNull(nameLoc) && locMatches(nameLoc, "reinit") && !(this.isOmcCompatibility && !g_isOmcNewInst)) {
+    if (
+      !locIsNull(nameLoc) &&
+      locMatches(nameLoc, "reinit") &&
+      !(this.isOmcCompatibility && !g_isOmcNewInst) &&
+      locIsNull(locFindMatchingDescendant(this.rootClassLoc, "\"--allowNonStandardModelica=reinitInAlgorithms\""))
+    ) {
       this.setErrorAt(WasmBailReason.AlgorithmReinit, loc);
       return 0;
     }

@@ -118,41 +118,34 @@ export class SlurmRestDriver implements HpcDriver {
     body?: unknown,
   ): Promise<{ status: number; data: T }> {
     const url = `${this.baseUrl}/slurm/${this.apiVersion}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-
-    try {
-      const requestInit: RequestInit = {
-        method,
-        headers: this.getHeaders(),
-        signal: controller.signal,
-      };
-      if (body !== undefined) {
-        requestInit.body = JSON.stringify(body);
-      }
-      const res = await this.fetchFn(url, requestInit);
-
-      const text = await res.text();
-      let data: Record<string, unknown> & {
-        errors?: { error?: string | undefined }[] | undefined;
-        error?: string | undefined;
-      } = {};
-      try {
-        data = text ? JSON.parse(text) : {};
-      } catch {
-        data = { rawText: text };
-      }
-
-      if (!res.ok) {
-        const errorMsg =
-          data.errors?.[0]?.error || data.error || `Slurm REST API error: HTTP ${res.status} (${method} ${endpoint})`;
-        throw new Error(errorMsg);
-      }
-
-      return { status: res.status, data: data as unknown as T };
-    } finally {
-      clearTimeout(timer);
+    const requestInit: RequestInit = {
+      method,
+      headers: this.getHeaders(),
+      signal: AbortSignal.timeout(this.timeoutMs),
+    };
+    if (body !== undefined) {
+      requestInit.body = JSON.stringify(body);
     }
+    const res = await this.fetchFn(url, requestInit);
+
+    const text = await res.text();
+    let data: Record<string, unknown> & {
+      errors?: { error?: string | undefined }[] | undefined;
+      error?: string | undefined;
+    } = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      data = { rawText: text };
+    }
+
+    if (!res.ok) {
+      const errorMsg =
+        data.errors?.[0]?.error || data.error || `Slurm REST API error: HTTP ${res.status} (${method} ${endpoint})`;
+      throw new Error(errorMsg);
+    }
+
+    return { status: res.status, data: data as unknown as T };
   }
 
   public async submit(spec: HpcJobSpec): Promise<HpcSubmissionResult> {

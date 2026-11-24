@@ -36,6 +36,7 @@ import { isSynthesizedStep, unionBounds } from "./qif-step-geometry";
 import SafeOrbitControls from "./SafeOrbitControls";
 import { useQifGeometry } from "./useQifGeometry";
 import ViewportCameraControls, { type CameraPreset, type ClipAxis, type RenderMode } from "./ViewportCameraControls";
+import { XrSceneBridge, XrViewportOverlay } from "./XrViewportOverlay";
 
 export interface QifViewerProps {
   artifactId?: string | number | undefined;
@@ -1002,266 +1003,269 @@ const QifViewerInner: React.FC<QifViewerProps & { parsedDoc?: QifDocument }> = (
                 artifactId={typeof artifactId === "number" ? artifactId : undefined}
                 hasThumbnail={Boolean(viewConfig?.thumbnailUrl || viewConfig?.thumbnail_url)}
               />
-              <ambientLight intensity={0.55} />
-              <directionalLight position={[30, -25, 40]} intensity={0.95} />
-              <directionalLight position={[-25, 25, -15]} intensity={0.4} />
-              <spotLight position={[10, 10, 35]} angle={0.3} penumbra={1} intensity={0.35} />
+              <XrSceneBridge>
+                <ambientLight intensity={0.55} />
+                <directionalLight position={[30, -25, 40]} intensity={0.95} />
+                <directionalLight position={[-25, 25, -15]} intensity={0.4} />
+                <spotLight position={[10, 10, 35]} angle={0.3} penumbra={1} intensity={0.35} />
 
-              <Suspense fallback={null}>
-                <Environment files="/hdri/studio.hdr" environmentIntensity={0.3} />
-              </Suspense>
+                <Suspense fallback={null}>
+                  <Environment files="/hdri/studio.hdr" environmentIntensity={0.3} />
+                </Suspense>
 
-              <group
-                scale={[sceneScale, sceneScale, sceneScale]}
-                position={[-sceneCenter[0] * sceneScale, -sceneCenter[1] * sceneScale, -sceneCenter[2] * sceneScale]}
-              >
-                {/* 1. 3D STEP AP242 B-Rep Solid & Individual Feature Topology Surfaces */}
-                {scene.meshes.map((meshPayload) => (
-                  <QifFeatureMesh
-                    key={meshPayload.id}
-                    payload={meshPayload}
-                    isSelected={Boolean(meshPayload.featureId) && meshPayload.featureId === selectedFeatureId}
-                    showHeatmap={showHeatmap}
-                    renderMode={renderMode}
-                    clippingPlanes={activeClippingPlanes}
-                    onSelectFeature={(fid) => {
-                      setSelectedFeatureId(fid ?? null);
-                      setSelectedCharId(null);
-                    }}
-                  />
-                ))}
-
-                {/* 2. Compact Datum Reference Frame (DRF) Coordinate Axes at Origin */}
-                <Line
-                  points={[
-                    [0, 0, 0],
-                    [10 * unitScale, 0, 0],
-                  ]}
-                  color="#ef4444"
-                  lineWidth={1.6}
-                />
-                <Line
-                  points={[
-                    [0, 0, 0],
-                    [0, 10 * unitScale, 0],
-                  ]}
-                  color="#22c55e"
-                  lineWidth={1.6}
-                />
-                <Line
-                  points={[
-                    [0, 0, 0],
-                    [0, 0, 10 * unitScale],
-                  ]}
-                  color="#3b82f6"
-                  lineWidth={1.6}
-                />
-
-                {/* 3. 3D CMM Touch-Probe Hit Spheres & Amplified Deviation Vectors */}
-                {(showProbes || Boolean(selectedFeatureId)) &&
-                  scene.probeHits.map((hit) => {
-                    if (!showProbes && hit.featureId !== selectedFeatureId) return null;
-                    const isHighlighted = !selectedFeatureId || hit.featureId === selectedFeatureId;
-                    const hitStatusColor =
-                      hit.status === "FAIL" ? "#ef4444" : hit.status === "MARGINAL" ? "#f59e0b" : "#22c55e";
-                    const whiskerColor = isHighlighted ? (hit.status === "FAIL" ? "#ef4444" : "#38bdf8") : "#475569";
-                    const tip: [number, number, number] = [
-                      hit.position[0] + hit.deviationVector[0] * whiskerScale,
-                      hit.position[1] + hit.deviationVector[1] * whiskerScale,
-                      hit.position[2] + hit.deviationVector[2] * whiskerScale,
-                    ];
-                    return (
-                      <group key={hit.id}>
-                        <mesh position={hit.position}>
-                          <sphereGeometry args={[(isHighlighted ? 0.55 : 0.35) * unitScale, 10, 10]} />
-                          <meshStandardMaterial
-                            color={isHighlighted ? hitStatusColor : "#475569"}
-                            emissive={isHighlighted ? hitStatusColor : "#000000"}
-                            emissiveIntensity={0.5}
-                          />
-                        </mesh>
-                        {isHighlighted && (
-                          <>
-                            <Line points={[hit.position, tip]} color={whiskerColor} lineWidth={1.6} />
-                            <mesh position={tip}>
-                              <sphereGeometry args={[0.22 * unitScale, 6, 6]} />
-                              <meshBasicMaterial color={whiskerColor} />
-                            </mesh>
-                          </>
-                        )}
-                      </group>
-                    );
-                  })}
-
-                {/* 4. Compact 3D ASME Datum Reference Badges ([A], [B], [C]) */}
-                {show3dLabels &&
-                  scene.datumBadges.map((datum) => (
-                    <group key={datum.datumId}>
-                      <Line
-                        points={[datum.surfaceAnchor, datum.badgePosition]}
-                        color="#94a3b8"
-                        lineWidth={1}
-                        dashed
-                        dashSize={1.5 * unitScale}
-                        gapSize={1.5 * unitScale}
-                      />
-                      <Html position={datum.badgePosition} center zIndexRange={[1, 4]}>
-                        <div
-                          onClick={() => {
-                            if (datum.featureId) {
-                              setSelectedFeatureId((prev) => (prev === datum.featureId ? null : datum.featureId!));
-                              setSelectedCharId(null);
-                            }
-                          }}
-                          style={{
-                            background: "rgba(15, 23, 42, 0.88)",
-                            border: "1px solid #60a5fa",
-                            borderRadius: "4px",
-                            padding: "1px 5px",
-                            color: "#f8fafc",
-                            fontSize: "9.5px",
-                            fontWeight: 700,
-                            fontFamily: "var(--font-mono, monospace)",
-                            whiteSpace: "nowrap",
-                            cursor: "pointer",
-                            boxShadow: "0 2px 6px rgba(0,0,0,0.35)",
-                          }}
-                          title={`Datum ${datum.datumLabel} (${datum.featureName ?? ""} ${datum.stepEntityId ?? ""})`}
-                        >
-                          [{datum.datumLabel}]
-                        </div>
-                      </Html>
-                    </group>
+                <group
+                  scale={[sceneScale, sceneScale, sceneScale]}
+                  position={[-sceneCenter[0] * sceneScale, -sceneCenter[1] * sceneScale, -sceneCenter[2] * sceneScale]}
+                >
+                  {/* 1. 3D STEP AP242 B-Rep Solid & Individual Feature Topology Surfaces */}
+                  {scene.meshes.map((meshPayload) => (
+                    <QifFeatureMesh
+                      key={meshPayload.id}
+                      payload={meshPayload}
+                      isSelected={Boolean(meshPayload.featureId) && meshPayload.featureId === selectedFeatureId}
+                      showHeatmap={showHeatmap}
+                      renderMode={renderMode}
+                      clippingPlanes={activeClippingPlanes}
+                      onSelectFeature={(fid) => {
+                        setSelectedFeatureId(fid ?? null);
+                        setSelectedCharId(null);
+                      }}
+                    />
                   ))}
 
-                {/* 5. Spatially Separated 3D Balloon Callouts & Leader Lines */}
-                {show3dLabels &&
-                  scene.callouts.map((callout) => {
-                    const statusColor = getStatusHexColor(callout.status, callout.toleranceRatio);
-                    const isActive =
-                      selectedCharId === callout.characteristicId || selectedFeatureId === callout.featureId;
-                    return (
-                      <group key={callout.characteristicId}>
-                        <Line
-                          points={[callout.surfaceAnchor, callout.leaderElbow, callout.calloutPosition]}
-                          color={isActive ? "#38bdf8" : statusColor}
-                          lineWidth={isActive ? 2 : 1.1}
-                        />
-                        <mesh position={callout.surfaceAnchor}>
-                          <sphereGeometry args={[0.7 * unitScale, 10, 10]} />
-                          <meshBasicMaterial color={isActive ? "#38bdf8" : statusColor} />
-                        </mesh>
-                        <Html position={callout.calloutPosition} center zIndexRange={[1, 5]}>
-                          <div
-                            onClick={() => handleSelectCalloutWithFocus(callout)}
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "4px",
-                              background: isActive ? "rgba(14, 116, 144, 0.95)" : "rgba(15, 23, 42, 0.90)",
-                              border: `1.2px solid ${isActive ? "#38bdf8" : statusColor}`,
-                              borderRadius: "4px",
-                              padding: "2px 4px",
-                              color: "#f8fafc",
-                              cursor: "pointer",
-                              boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
-                            }}
-                            title={`${callout.characteristicName} (${callout.featureName} ${callout.stepEntityId ?? ""}) — Click to inspect`}
-                          >
-                            <span
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                width: "15px",
-                                height: "15px",
-                                borderRadius: "50%",
-                                background: statusColor,
-                                color: "#0f172a",
-                                fontWeight: 800,
-                                fontSize: "9px",
-                                flexShrink: 0,
-                              }}
-                            >
-                              {callout.balloonNumber}
-                            </span>
-                            <FeatureControlFrame
-                              symbol={callout.gdtSymbol}
-                              isDiametrical={callout.isDiametrical}
-                              toleranceZone={callout.toleranceZone}
-                              materialCondition={callout.materialCondition}
-                              datumReferences={callout.datumReferences}
-                              status={callout.status}
-                              toleranceRatio={callout.toleranceRatio}
-                              compact={true}
+                  {/* 2. Compact Datum Reference Frame (DRF) Coordinate Axes at Origin */}
+                  <Line
+                    points={[
+                      [0, 0, 0],
+                      [10 * unitScale, 0, 0],
+                    ]}
+                    color="#ef4444"
+                    lineWidth={1.6}
+                  />
+                  <Line
+                    points={[
+                      [0, 0, 0],
+                      [0, 10 * unitScale, 0],
+                    ]}
+                    color="#22c55e"
+                    lineWidth={1.6}
+                  />
+                  <Line
+                    points={[
+                      [0, 0, 0],
+                      [0, 0, 10 * unitScale],
+                    ]}
+                    color="#3b82f6"
+                    lineWidth={1.6}
+                  />
+
+                  {/* 3. 3D CMM Touch-Probe Hit Spheres & Amplified Deviation Vectors */}
+                  {(showProbes || Boolean(selectedFeatureId)) &&
+                    scene.probeHits.map((hit) => {
+                      if (!showProbes && hit.featureId !== selectedFeatureId) return null;
+                      const isHighlighted = !selectedFeatureId || hit.featureId === selectedFeatureId;
+                      const hitStatusColor =
+                        hit.status === "FAIL" ? "#ef4444" : hit.status === "MARGINAL" ? "#f59e0b" : "#22c55e";
+                      const whiskerColor = isHighlighted ? (hit.status === "FAIL" ? "#ef4444" : "#38bdf8") : "#475569";
+                      const tip: [number, number, number] = [
+                        hit.position[0] + hit.deviationVector[0] * whiskerScale,
+                        hit.position[1] + hit.deviationVector[1] * whiskerScale,
+                        hit.position[2] + hit.deviationVector[2] * whiskerScale,
+                      ];
+                      return (
+                        <group key={hit.id}>
+                          <mesh position={hit.position}>
+                            <sphereGeometry args={[(isHighlighted ? 0.55 : 0.35) * unitScale, 10, 10]} />
+                            <meshStandardMaterial
+                              color={isHighlighted ? hitStatusColor : "#475569"}
+                              emissive={isHighlighted ? hitStatusColor : "#000000"}
+                              emissiveIntensity={0.5}
                             />
+                          </mesh>
+                          {isHighlighted && (
+                            <>
+                              <Line points={[hit.position, tip]} color={whiskerColor} lineWidth={1.6} />
+                              <mesh position={tip}>
+                                <sphereGeometry args={[0.22 * unitScale, 6, 6]} />
+                                <meshBasicMaterial color={whiskerColor} />
+                              </mesh>
+                            </>
+                          )}
+                        </group>
+                      );
+                    })}
+
+                  {/* 4. Compact 3D ASME Datum Reference Badges ([A], [B], [C]) */}
+                  {show3dLabels &&
+                    scene.datumBadges.map((datum) => (
+                      <group key={datum.datumId}>
+                        <Line
+                          points={[datum.surfaceAnchor, datum.badgePosition]}
+                          color="#94a3b8"
+                          lineWidth={1}
+                          dashed
+                          dashSize={1.5 * unitScale}
+                          gapSize={1.5 * unitScale}
+                        />
+                        <Html position={datum.badgePosition} center zIndexRange={[1, 4]}>
+                          <div
+                            onClick={() => {
+                              if (datum.featureId) {
+                                setSelectedFeatureId((prev) => (prev === datum.featureId ? null : datum.featureId!));
+                                setSelectedCharId(null);
+                              }
+                            }}
+                            style={{
+                              background: "rgba(15, 23, 42, 0.88)",
+                              border: "1px solid #60a5fa",
+                              borderRadius: "4px",
+                              padding: "1px 5px",
+                              color: "#f8fafc",
+                              fontSize: "9.5px",
+                              fontWeight: 700,
+                              fontFamily: "var(--font-mono, monospace)",
+                              whiteSpace: "nowrap",
+                              cursor: "pointer",
+                              boxShadow: "0 2px 6px rgba(0,0,0,0.35)",
+                            }}
+                            title={`Datum ${datum.datumLabel} (${datum.featureName ?? ""} ${datum.stepEntityId ?? ""})`}
+                          >
+                            [{datum.datumLabel}]
                           </div>
                         </Html>
                       </group>
-                    );
-                  })}
+                    ))}
 
-                {/* 6. 3D Spatial Collaboration Annotations / Review Pins */}
-                {showAnnotations &&
-                  annotations.map((ann) => {
-                    const isActive = activeAnnotationId === ann.id;
-                    const pinColor = ann.resolved ? "#22c55e" : "#f59e0b";
-                    return (
-                      <group key={ann.id}>
-                        <mesh
-                          position={ann.position}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveAnnotationId((prev) => (prev === ann.id ? null : ann.id));
-                          }}
-                        >
-                          <sphereGeometry args={[(isActive ? 0.9 : 0.6) * unitScale, 12, 12]} />
-                          <meshStandardMaterial
-                            color={pinColor}
-                            emissive={pinColor}
-                            emissiveIntensity={isActive ? 0.6 : 0.25}
+                  {/* 5. Spatially Separated 3D Balloon Callouts & Leader Lines */}
+                  {show3dLabels &&
+                    scene.callouts.map((callout) => {
+                      const statusColor = getStatusHexColor(callout.status, callout.toleranceRatio);
+                      const isActive =
+                        selectedCharId === callout.characteristicId || selectedFeatureId === callout.featureId;
+                      return (
+                        <group key={callout.characteristicId}>
+                          <Line
+                            points={[callout.surfaceAnchor, callout.leaderElbow, callout.calloutPosition]}
+                            color={isActive ? "#38bdf8" : statusColor}
+                            lineWidth={isActive ? 2 : 1.1}
                           />
-                        </mesh>
-                        <Html
-                          position={[ann.position[0], ann.position[1], ann.position[2] + 2 * unitScale]}
-                          center
-                          zIndexRange={[1, 6]}
-                        >
-                          <div
-                            data-testid={`qif-annotation-pin-${ann.id}`}
+                          <mesh position={callout.surfaceAnchor}>
+                            <sphereGeometry args={[0.7 * unitScale, 10, 10]} />
+                            <meshBasicMaterial color={isActive ? "#38bdf8" : statusColor} />
+                          </mesh>
+                          <Html position={callout.calloutPosition} center zIndexRange={[1, 5]}>
+                            <div
+                              onClick={() => handleSelectCalloutWithFocus(callout)}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                background: isActive ? "rgba(14, 116, 144, 0.95)" : "rgba(15, 23, 42, 0.90)",
+                                border: `1.2px solid ${isActive ? "#38bdf8" : statusColor}`,
+                                borderRadius: "4px",
+                                padding: "2px 4px",
+                                color: "#f8fafc",
+                                cursor: "pointer",
+                                boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
+                              }}
+                              title={`${callout.characteristicName} (${callout.featureName} ${callout.stepEntityId ?? ""}) — Click to inspect`}
+                            >
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  width: "15px",
+                                  height: "15px",
+                                  borderRadius: "50%",
+                                  background: statusColor,
+                                  color: "#0f172a",
+                                  fontWeight: 800,
+                                  fontSize: "9px",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {callout.balloonNumber}
+                              </span>
+                              <FeatureControlFrame
+                                symbol={callout.gdtSymbol}
+                                isDiametrical={callout.isDiametrical}
+                                toleranceZone={callout.toleranceZone}
+                                materialCondition={callout.materialCondition}
+                                datumReferences={callout.datumReferences}
+                                status={callout.status}
+                                toleranceRatio={callout.toleranceRatio}
+                                compact={true}
+                              />
+                            </div>
+                          </Html>
+                        </group>
+                      );
+                    })}
+
+                  {/* 6. 3D Spatial Collaboration Annotations / Review Pins */}
+                  {showAnnotations &&
+                    annotations.map((ann) => {
+                      const isActive = activeAnnotationId === ann.id;
+                      const pinColor = ann.resolved ? "#22c55e" : "#f59e0b";
+                      return (
+                        <group key={ann.id}>
+                          <mesh
+                            position={ann.position}
                             onClick={(e) => {
                               e.stopPropagation();
                               setActiveAnnotationId((prev) => (prev === ann.id ? null : ann.id));
                             }}
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "3px",
-                              background: isActive ? "rgba(245, 158, 11, 0.95)" : "rgba(15, 23, 42, 0.90)",
-                              border: `1.2px solid ${pinColor}`,
-                              borderRadius: "10px",
-                              padding: "1px 6px",
-                              color: isActive ? "#0f172a" : "#fef3c7",
-                              fontWeight: 700,
-                              fontSize: "9.5px",
-                              cursor: "pointer",
-                              boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
-                              whiteSpace: "nowrap",
-                            }}
-                            title={`Note by ${ann.author}: ${ann.text}`}
                           >
-                            <span>💬</span>
-                            <span>{ann.author}</span>
-                          </div>
-                        </Html>
-                      </group>
-                    );
-                  })}
-              </group>
+                            <sphereGeometry args={[(isActive ? 0.9 : 0.6) * unitScale, 12, 12]} />
+                            <meshStandardMaterial
+                              color={pinColor}
+                              emissive={pinColor}
+                              emissiveIntensity={isActive ? 0.6 : 0.25}
+                            />
+                          </mesh>
+                          <Html
+                            position={[ann.position[0], ann.position[1], ann.position[2] + 2 * unitScale]}
+                            center
+                            zIndexRange={[1, 6]}
+                          >
+                            <div
+                              data-testid={`qif-annotation-pin-${ann.id}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveAnnotationId((prev) => (prev === ann.id ? null : ann.id));
+                              }}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "3px",
+                                background: isActive ? "rgba(245, 158, 11, 0.95)" : "rgba(15, 23, 42, 0.90)",
+                                border: `1.2px solid ${pinColor}`,
+                                borderRadius: "10px",
+                                padding: "1px 6px",
+                                color: isActive ? "#0f172a" : "#fef3c7",
+                                fontWeight: 700,
+                                fontSize: "9.5px",
+                                cursor: "pointer",
+                                boxShadow: "0 2px 6px rgba(0,0,0,0.4)",
+                                whiteSpace: "nowrap",
+                              }}
+                              title={`Note by ${ann.author}: ${ann.text}`}
+                            >
+                              <span>💬</span>
+                              <span>{ann.author}</span>
+                            </div>
+                          </Html>
+                        </group>
+                      );
+                    })}
+                </group>
 
-              <CameraController controlsRef={controlsRef} presetTrigger={presetTrigger} focusTarget={focusTrigger} />
-              <SafeOrbitControls controlsRef={controlsRef} isFullScreen={isFullScreen} />
+                <CameraController controlsRef={controlsRef} presetTrigger={presetTrigger} focusTarget={focusTrigger} />
+                <SafeOrbitControls controlsRef={controlsRef} isFullScreen={isFullScreen} />
+              </XrSceneBridge>
             </Canvas>
+            <XrViewportOverlay position="bottom-right" />
 
             {/* Bottom-Left Unified MBD Overlay Pill Bar (non-overlapping with top-left camera controls) */}
             <Box

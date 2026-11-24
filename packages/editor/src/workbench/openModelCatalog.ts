@@ -103,6 +103,803 @@ end ChuaCircuit;
 `,
   },
 
+  // ── VR 3D SHOWCASE (BUNDLED & INSTANTLY LAUNCHABLE) ─────────────────
+  {
+    id: "vr-hexacopter-drone",
+    title: "Autonomous Hexacopter UAV (VR 3D)",
+    dialect: "urdf",
+    dialectLabel: "URDF",
+    category: "robotics-cad",
+    packageName: "VR-Showcase",
+    packageVersion: "1.0.0",
+    bundledByDefault: true,
+    summary:
+      "6-rotor autonomous carbon-fiber hexacopter UAV with central avionics hub, 6 radial arms, 6 continuous brushless rotor joints, 2-axis camera gimbal, and underslung 6S LiPo battery pack.",
+    nodeCount: 16,
+    edgeCount: 15,
+    keywords: ["vr", "rotunda", "3d", "urdf", "drone", "uav", "hexacopter", "rotor", "gimbal", "robotics", "multibody"],
+    diagramSvg: `<svg ${DIAG_ATTRS}>
+      <line x1="140" y1="78" x2="214" y2="78" stroke="#334155" stroke-width="3.2" stroke-linecap="round"/>
+      <line x1="140" y1="78" x2="177" y2="38" stroke="#334155" stroke-width="3.2" stroke-linecap="round"/>
+      <line x1="140" y1="78" x2="103" y2="38" stroke="#334155" stroke-width="3.2" stroke-linecap="round"/>
+      <line x1="140" y1="78" x2="66" y2="78" stroke="#334155" stroke-width="3.2" stroke-linecap="round"/>
+      <line x1="140" y1="78" x2="103" y2="118" stroke="#334155" stroke-width="3.2" stroke-linecap="round"/>
+      <line x1="140" y1="78" x2="177" y2="118" stroke="#334155" stroke-width="3.2" stroke-linecap="round"/>
+      <ellipse cx="214" cy="78" rx="24" ry="13" fill="#e0f2fe" stroke="#0891b2" stroke-width="1.9"/>
+      <line x1="196" y1="78" x2="232" y2="78" stroke="#0369a1" stroke-width="1.6"/>
+      <circle cx="214" cy="78" r="3" fill="#0369a1"/>
+      <ellipse cx="177" cy="38" rx="24" ry="13" fill="#fef3c7" stroke="#d97706" stroke-width="1.9"/>
+      <line x1="162" y1="33" x2="192" y2="43" stroke="#b45309" stroke-width="1.6"/>
+      <circle cx="177" cy="38" r="3" fill="#b45309"/>
+      <ellipse cx="103" cy="38" rx="24" ry="13" fill="#e0f2fe" stroke="#0891b2" stroke-width="1.9"/>
+      <line x1="88" y1="43" x2="118" y2="33" stroke="#0369a1" stroke-width="1.6"/>
+      <circle cx="103" cy="38" r="3" fill="#0369a1"/>
+      <ellipse cx="66" cy="78" rx="24" ry="13" fill="#fef3c7" stroke="#d97706" stroke-width="1.9"/>
+      <line x1="48" y1="78" x2="84" y2="78" stroke="#b45309" stroke-width="1.6"/>
+      <circle cx="66" cy="78" r="3" fill="#b45309"/>
+      <ellipse cx="103" cy="118" rx="24" ry="13" fill="#e0f2fe" stroke="#0891b2" stroke-width="1.9"/>
+      <line x1="88" y1="113" x2="118" y2="123" stroke="#0369a1" stroke-width="1.6"/>
+      <circle cx="103" cy="118" r="3" fill="#0369a1"/>
+      <ellipse cx="177" cy="118" rx="24" ry="13" fill="#fef3c7" stroke="#d97706" stroke-width="1.9"/>
+      <line x1="162" y1="123" x2="192" y2="113" stroke="#b45309" stroke-width="1.6"/>
+      <circle cx="177" cy="118" r="3" fill="#b45309"/>
+      <polygon points="140,59 157,68 157,88 140,97 123,88 123,68" fill="#dbeafe" stroke="#1e3a8a" stroke-width="2.1"/>
+      <circle cx="140" cy="78" r="6" fill="#0891b2" stroke="#1e3a8a" stroke-width="1.5"/>
+      <rect x="131" y="96" width="18" height="10" rx="3" fill="#eff6ff" stroke="#1d4ed8" stroke-width="1.5"/>
+      <text x="140" y="144" text-anchor="middle" font-size="8.5" font-weight="700" fill="#475569" font-family="Inter,sans-serif">6-Rotor UAV · 2-Axis Gimbal</text>
+      <text x="242" y="81" font-size="8" font-weight="600" fill="#0369a1" font-family="Inter,sans-serif">R1</text>
+      <text x="26" y="81" font-size="8" font-weight="600" fill="#b45309" font-family="Inter,sans-serif">R4</text>
+    </svg>`,
+    suggestedFilename: "HexacopterDrone.urdf",
+    fallbackCode: `<?xml version="1.0"?>
+<robot name="autonomous_hexacopter_uav">
+  <material name="carbon_matte">
+    <color rgba="0.12 0.14 0.18 1.0"/>
+  </material>
+  <material name="aerospace_cyan">
+    <color rgba="0.06 0.72 0.94 1.0"/>
+  </material>
+  <material name="safety_amber">
+    <color rgba="0.96 0.62 0.04 1.0"/>
+  </material>
+  <material name="lipo_graphite">
+    <color rgba="0.22 0.25 0.32 1.0"/>
+  </material>
+
+  <link name="base_link">
+    <inertial>
+      <mass value="1.85"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.024" ixy="0" ixz="0" iyy="0.024" iyz="0" izz="0.041"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.07" radius="0.14"/>
+      </geometry>
+      <material name="carbon_matte"/>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder length="0.08" radius="0.15"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="battery_pack">
+    <inertial>
+      <mass value="1.45"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.0042" ixy="0" ixz="0" iyy="0.0068" iyz="0" izz="0.0075"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.19 0.085 0.065"/>
+      </geometry>
+      <material name="lipo_graphite"/>
+    </visual>
+  </link>
+
+  <joint name="battery_mount_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="battery_pack"/>
+    <origin xyz="0 0 -0.068" rpy="0 0 0"/>
+  </joint>
+
+  <link name="gimbal_yaw_link">
+    <inertial>
+      <mass value="0.18"/>
+      <origin xyz="0 0 -0.03" rpy="0 0 0"/>
+      <inertia ixx="0.0004" ixy="0" ixz="0" iyy="0.0004" iyz="0" izz="0.0005"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 -0.025" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.05" radius="0.032"/>
+      </geometry>
+      <material name="aerospace_cyan"/>
+    </visual>
+  </link>
+
+  <joint name="gimbal_yaw_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="gimbal_yaw_link"/>
+    <origin xyz="0.095 0 -0.055" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="2.5" velocity="6.0"/>
+    <dynamics damping="0.02" friction="0.005"/>
+  </joint>
+
+  <link name="camera_gimbal_link">
+    <inertial>
+      <mass value="0.34"/>
+      <origin xyz="0.01 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.0006" ixy="0" ixz="0" iyy="0.0007" iyz="0" izz="0.0006"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.075 0.065 0.058"/>
+      </geometry>
+      <material name="carbon_matte"/>
+    </visual>
+  </link>
+
+  <joint name="gimbal_pitch_joint" type="revolute">
+    <parent link="gimbal_yaw_link"/>
+    <child link="camera_gimbal_link"/>
+    <origin xyz="0 0 -0.058" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.5708" upper="0.5236" effort="2.0" velocity="5.0"/>
+    <dynamics damping="0.015" friction="0.004"/>
+  </joint>
+
+  <link name="arm_1">
+    <inertial>
+      <mass value="0.16"/>
+      <origin xyz="0.21 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.0002" ixy="0" ixz="0" iyy="0.0024" iyz="0" izz="0.0024"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.21 0 0" rpy="0 1.5708 0"/>
+      <geometry>
+        <cylinder length="0.42" radius="0.014"/>
+      </geometry>
+      <material name="carbon_matte"/>
+    </visual>
+  </link>
+  <joint name="arm_1_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="arm_1"/>
+    <origin xyz="0 0 0.01" rpy="0 0 0"/>
+  </joint>
+
+  <link name="rotor_1">
+    <inertial>
+      <mass value="0.14"/>
+      <origin xyz="0 0 0.02" rpy="0 0 0"/>
+      <inertia ixx="0.0005" ixy="0" ixz="0" iyy="0.0005" iyz="0" izz="0.0009"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.012" radius="0.19"/>
+      </geometry>
+      <material name="aerospace_cyan"/>
+    </visual>
+  </link>
+  <joint name="rotor_1_joint" type="continuous">
+    <parent link="arm_1"/>
+    <child link="rotor_1"/>
+    <origin xyz="0.42 0 0.02" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <dynamics damping="0.002" friction="0.001"/>
+  </joint>
+
+  <link name="arm_2">
+    <inertial>
+      <mass value="0.16"/>
+      <origin xyz="0.21 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.0002" ixy="0" ixz="0" iyy="0.0024" iyz="0" izz="0.0024"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.21 0 0" rpy="0 1.5708 0"/>
+      <geometry>
+        <cylinder length="0.42" radius="0.014"/>
+      </geometry>
+      <material name="carbon_matte"/>
+    </visual>
+  </link>
+  <joint name="arm_2_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="arm_2"/>
+    <origin xyz="0 0 0.01" rpy="0 0 1.0472"/>
+  </joint>
+
+  <link name="rotor_2">
+    <inertial>
+      <mass value="0.14"/>
+      <origin xyz="0 0 0.02" rpy="0 0 0"/>
+      <inertia ixx="0.0005" ixy="0" ixz="0" iyy="0.0005" iyz="0" izz="0.0009"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.012" radius="0.19"/>
+      </geometry>
+      <material name="safety_amber"/>
+    </visual>
+  </link>
+  <joint name="rotor_2_joint" type="continuous">
+    <parent link="arm_2"/>
+    <child link="rotor_2"/>
+    <origin xyz="0.42 0 0.02" rpy="0 0 0"/>
+    <axis xyz="0 0 -1"/>
+    <dynamics damping="0.002" friction="0.001"/>
+  </joint>
+
+  <link name="arm_3">
+    <inertial>
+      <mass value="0.16"/>
+      <origin xyz="0.21 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.0002" ixy="0" ixz="0" iyy="0.0024" iyz="0" izz="0.0024"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.21 0 0" rpy="0 1.5708 0"/>
+      <geometry>
+        <cylinder length="0.42" radius="0.014"/>
+      </geometry>
+      <material name="carbon_matte"/>
+    </visual>
+  </link>
+  <joint name="arm_3_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="arm_3"/>
+    <origin xyz="0 0 0.01" rpy="0 0 2.0944"/>
+  </joint>
+
+  <link name="rotor_3">
+    <inertial>
+      <mass value="0.14"/>
+      <origin xyz="0 0 0.02" rpy="0 0 0"/>
+      <inertia ixx="0.0005" ixy="0" ixz="0" iyy="0.0005" iyz="0" izz="0.0009"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.012" radius="0.19"/>
+      </geometry>
+      <material name="aerospace_cyan"/>
+    </visual>
+  </link>
+  <joint name="rotor_3_joint" type="continuous">
+    <parent link="arm_3"/>
+    <child link="rotor_3"/>
+    <origin xyz="0.42 0 0.02" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <dynamics damping="0.002" friction="0.001"/>
+  </joint>
+
+  <link name="arm_4">
+    <inertial>
+      <mass value="0.16"/>
+      <origin xyz="0.21 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.0002" ixy="0" ixz="0" iyy="0.0024" iyz="0" izz="0.0024"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.21 0 0" rpy="0 1.5708 0"/>
+      <geometry>
+        <cylinder length="0.42" radius="0.014"/>
+      </geometry>
+      <material name="carbon_matte"/>
+    </visual>
+  </link>
+  <joint name="arm_4_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="arm_4"/>
+    <origin xyz="0 0 0.01" rpy="0 0 3.14159"/>
+  </joint>
+
+  <link name="rotor_4">
+    <inertial>
+      <mass value="0.14"/>
+      <origin xyz="0 0 0.02" rpy="0 0 0"/>
+      <inertia ixx="0.0005" ixy="0" ixz="0" iyy="0.0005" iyz="0" izz="0.0009"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.012" radius="0.19"/>
+      </geometry>
+      <material name="safety_amber"/>
+    </visual>
+  </link>
+  <joint name="rotor_4_joint" type="continuous">
+    <parent link="arm_4"/>
+    <child link="rotor_4"/>
+    <origin xyz="0.42 0 0.02" rpy="0 0 0"/>
+    <axis xyz="0 0 -1"/>
+    <dynamics damping="0.002" friction="0.001"/>
+  </joint>
+
+  <link name="arm_5">
+    <inertial>
+      <mass value="0.16"/>
+      <origin xyz="0.21 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.0002" ixy="0" ixz="0" iyy="0.0024" iyz="0" izz="0.0024"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.21 0 0" rpy="0 1.5708 0"/>
+      <geometry>
+        <cylinder length="0.42" radius="0.014"/>
+      </geometry>
+      <material name="carbon_matte"/>
+    </visual>
+  </link>
+  <joint name="arm_5_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="arm_5"/>
+    <origin xyz="0 0 0.01" rpy="0 0 4.18879"/>
+  </joint>
+
+  <link name="rotor_5">
+    <inertial>
+      <mass value="0.14"/>
+      <origin xyz="0 0 0.02" rpy="0 0 0"/>
+      <inertia ixx="0.0005" ixy="0" ixz="0" iyy="0.0005" iyz="0" izz="0.0009"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.012" radius="0.19"/>
+      </geometry>
+      <material name="aerospace_cyan"/>
+    </visual>
+  </link>
+  <joint name="rotor_5_joint" type="continuous">
+    <parent link="arm_5"/>
+    <child link="rotor_5"/>
+    <origin xyz="0.42 0 0.02" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <dynamics damping="0.002" friction="0.001"/>
+  </joint>
+
+  <link name="arm_6">
+    <inertial>
+      <mass value="0.16"/>
+      <origin xyz="0.21 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.0002" ixy="0" ixz="0" iyy="0.0024" iyz="0" izz="0.0024"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.21 0 0" rpy="0 1.5708 0"/>
+      <geometry>
+        <cylinder length="0.42" radius="0.014"/>
+      </geometry>
+      <material name="carbon_matte"/>
+    </visual>
+  </link>
+  <joint name="arm_6_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="arm_6"/>
+    <origin xyz="0 0 0.01" rpy="0 0 5.23599"/>
+  </joint>
+
+  <link name="rotor_6">
+    <inertial>
+      <mass value="0.14"/>
+      <origin xyz="0 0 0.02" rpy="0 0 0"/>
+      <inertia ixx="0.0005" ixy="0" ixz="0" iyy="0.0005" iyz="0" izz="0.0009"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.012" radius="0.19"/>
+      </geometry>
+      <material name="safety_amber"/>
+    </visual>
+  </link>
+  <joint name="rotor_6_joint" type="continuous">
+    <parent link="arm_6"/>
+    <child link="rotor_6"/>
+    <origin xyz="0.42 0 0.02" rpy="0 0 0"/>
+    <axis xyz="0 0 -1"/>
+    <dynamics damping="0.002" friction="0.001"/>
+  </joint>
+</robot>
+`,
+  },
+
+  {
+    id: "vr-wind-turbine",
+    title: "5 MW Wind Turbine & Gearbox (VR 3D)",
+    dialect: "modelica",
+    dialectLabel: "Modelica",
+    category: "mechanics",
+    packageName: "VR-Showcase",
+    packageVersion: "1.0.0",
+    bundledByDefault: true,
+    summary:
+      "5 MW variable-speed pitch-controlled offshore wind turbine coupling aerodynamic rotor torque, 2-mass flexible drivetrain, 1:97 nacelle planetary gearbox, generator torque control, and PI blade pitch regulation.",
+    nodeCount: 5,
+    edgeCount: 6,
+    keywords: [
+      "vr",
+      "rotunda",
+      "3d",
+      "wind",
+      "turbine",
+      "gearbox",
+      "drivetrain",
+      "pitch",
+      "offshore",
+      "renewable",
+      "modelica",
+    ],
+    diagramSvg: `<svg ${DIAG_ATTRS}>
+      <path d="M16 42 H38 M12 56 H34 M16 70 H38" stroke="#0891b2" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M35 39 L40 42 L35 45 M31 53 L36 56 L31 59 M35 67 L40 70 L35 73" stroke="#0891b2" stroke-width="1.5" stroke-linecap="round"/>
+      <polygon points="73,60 79,60 85,132 67,132" fill="#e2e8f0" stroke="#475569" stroke-width="1.8"/>
+      <path d="M28 134 Q52 128 76 134 T124 134" stroke="#0284c7" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M76 54 L72 14 L80 14 Z" fill="#e0f2fe" stroke="#0369a1" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M76 54 L110 73 L105 80 Z" fill="#e0f2fe" stroke="#0369a1" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M76 54 L47 80 L42 73 Z" fill="#e0f2fe" stroke="#0369a1" stroke-width="1.8" stroke-linejoin="round"/>
+      <circle cx="76" cy="54" r="6.5" fill="#2563eb" stroke="#1e3a8a" stroke-width="1.8"/>
+      <line x1="83" y1="54" x2="128" y2="54" stroke="#2563eb" stroke-width="2.4"/>
+      <rect x="128" y="38" width="54" height="32" rx="4" fill="#e0f2fe" stroke="#0369a1" stroke-width="1.9"/>
+      <text x="155" y="52" text-anchor="middle" font-size="8.5" font-weight="700" fill="#0c4a6e" font-family="Inter,sans-serif">1:97 Gear</text>
+      <text x="155" y="63" text-anchor="middle" font-size="7.5" font-weight="600" fill="#475569" font-family="Inter,sans-serif">Planetary</text>
+      <line x1="182" y1="54" x2="206" y2="54" stroke="#2563eb" stroke-width="2.4"/>
+      <rect x="206" y="38" width="56" height="32" rx="4" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1.9"/>
+      <text x="234" y="52" text-anchor="middle" font-size="8.5" font-weight="700" fill="#1e3a8a" font-family="Inter,sans-serif">5 MW Gen</text>
+      <text x="234" y="63" text-anchor="middle" font-size="7.5" font-weight="600" fill="#1d4ed8" font-family="Inter,sans-serif">P_elec</text>
+      <rect x="136" y="96" width="82" height="28" rx="4" fill="#fef3c7" stroke="#d97706" stroke-width="1.8"/>
+      <text x="177" y="113" text-anchor="middle" font-size="8.5" font-weight="700" fill="#92400e" font-family="Inter,sans-serif">Pitch PI Control</text>
+      <path d="M234 70 V110 H218" stroke="#d97706" stroke-width="1.7" stroke-dasharray="3 2"/>
+      <path d="M136 110 H102 V68" stroke="#d97706" stroke-width="1.7" stroke-dasharray="3 2"/>
+      <text x="24" y="29" font-size="8" font-weight="600" fill="#0369a1" font-family="Inter,sans-serif">v_wind</text>
+    </svg>`,
+    suggestedFilename: "WindTurbine5MW.mo",
+    fallbackCode: `model OffshoreWindTurbine5MW "5 MW variable-speed wind turbine drivetrain, nacelle gearbox & blade pitch controller"
+  parameter Real rho = 1.225 "Air density (kg/m3)";
+  parameter Real R_blade = 63.0 "Rotor blade radius (m)";
+  parameter Real N_gear = 97.0 "Nacelle planetary gearbox ratio";
+  parameter Real J_rotor = 3.54e7 "Low-speed rotor inertia (kg*m2)";
+  parameter Real J_gen = 534.0 "High-speed generator inertia (kg*m2)";
+  parameter Real K_shaft = 8.67e8 "Main shaft torsional stiffness (N*m/rad)";
+  parameter Real D_shaft = 6.21e6 "Main shaft torsional damping (N*m*s/rad)";
+  parameter Real eta_gear = 0.965 "Gearbox & converter efficiency";
+  parameter Real v_wind_mean = 13.5 "Mean hub-height wind speed (m/s)";
+  parameter Real v_gust_amp = 2.6 "Turbulent gust amplitude (m/s)";
+  parameter Real omega_ref = 1.267 "Rated rotor speed setpoint (rad/s, ~12.1 rpm)";
+  parameter Real P_rated = 5.0e6 "Rated electrical output (W)";
+  parameter Real Kp_pitch = 22.0 "Blade pitch proportional gain (deg*s/rad)";
+  parameter Real Ki_pitch = 5.5 "Blade pitch integral gain (deg/rad)";
+  parameter Real tau_pitch = 0.35 "Hydraulic pitch actuator lag (s)";
+
+  Real omega_r(start = 1.18) "Rotor low-speed shaft velocity (rad/s)";
+  Real omega_g(start = 114.46) "Generator high-speed shaft velocity (rad/s)";
+  Real theta_twist(start = 0.0042) "Drivetrain torsional shaft twist (rad)";
+  Real beta_deg(start = 4.5) "Collective blade pitch angle (deg)";
+  Real pitch_int(start = 4.5) "Blade pitch PI integrator state (deg)";
+
+  Real v_wind "Hub-height wind speed (m/s)";
+  Real tsr "Rotor tip-speed ratio";
+  Real Cp "Aerodynamic power coefficient";
+  Real T_aero "Aerodynamic rotor torque (N*m)";
+  Real T_shaft "Low-speed shaft torsional torque (N*m)";
+  Real T_gen "High-speed generator reaction torque (N*m)";
+  Real beta_raw "Unclamped blade pitch command (deg)";
+  Real beta_cmd "Clamped blade pitch command (deg)";
+  Real P_elec_MW "Net electrical power output (MW)";
+  Real rpm_rotor "Rotor speed (rpm)";
+equation
+  v_wind = v_wind_mean + v_gust_amp * sin(0.35 * time);
+  tsr = omega_r * R_blade / (if v_wind > 1.0 then v_wind else 1.0);
+  Cp = max(0.05, 0.48 * exp(-0.045 * (tsr - 7.5) * (tsr - 7.5)) * exp(-0.058 * beta_deg));
+
+  T_aero = 0.5 * rho * 3.14159265 * R_blade * R_blade * v_wind * v_wind * v_wind * Cp
+           / (if omega_r > 0.2 then omega_r else 0.2);
+
+  T_shaft = K_shaft * theta_twist + D_shaft * (omega_r - omega_g / N_gear);
+  T_gen = P_rated / (eta_gear * (if omega_g > 10.0 then omega_g else 10.0));
+
+  der(theta_twist) = omega_r - omega_g / N_gear;
+  J_rotor * der(omega_r) = T_aero - T_shaft;
+  J_gen * der(omega_g) = (T_shaft / N_gear) - T_gen;
+
+  der(pitch_int) = Ki_pitch * (omega_r - omega_ref);
+  beta_raw = pitch_int + Kp_pitch * (omega_r - omega_ref);
+  beta_cmd = if beta_raw < 0.0 then 0.0 else (if beta_raw > 28.0 then 28.0 else beta_raw);
+  tau_pitch * der(beta_deg) = beta_cmd - beta_deg;
+
+  P_elec_MW = eta_gear * T_gen * omega_g * 1.0e-6;
+  rpm_rotor = omega_r * 9.54929659;
+
+  annotation(experiment(StartTime = 0, StopTime = 30, Interval = 0.1));
+end OffshoreWindTurbine5MW;
+`,
+  },
+
+  {
+    id: "vr-ev-battery-cooling",
+    title: "800V EV Liquid-Cooled Battery Pack (VR 3D)",
+    dialect: "modelica",
+    dialectLabel: "Modelica",
+    category: "fluids-thermal",
+    packageName: "VR-Showcase",
+    packageVersion: "1.0.0",
+    bundledByDefault: true,
+    summary:
+      "800V 100 kWh EV traction battery pack coupling OCV + RC polarization electro-chemistry, Joule heat generation, serpentine liquid cold-plate conduction, and proportional glycol pump cooling.",
+    nodeCount: 5,
+    edgeCount: 6,
+    keywords: [
+      "vr",
+      "rotunda",
+      "3d",
+      "ev",
+      "battery",
+      "800v",
+      "thermal",
+      "cooling",
+      "cold-plate",
+      "glycol",
+      "automotive",
+      "modelica",
+    ],
+    diagramSvg: `<svg ${DIAG_ATTRS}>
+      <rect x="24" y="24" width="144" height="50" rx="5" fill="#eff6ff" stroke="#1d4ed8" stroke-width="1.9"/>
+      <rect x="33" y="34" width="26" height="32" rx="2" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+      <rect x="65" y="34" width="26" height="32" rx="2" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+      <rect x="97" y="34" width="26" height="32" rx="2" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+      <rect x="129" y="34" width="26" height="32" rx="2" fill="#fee2e2" stroke="#dc2626" stroke-width="1.5"/>
+      <text x="96" y="18" text-anchor="middle" font-size="8.5" font-weight="700" fill="#1e3a8a" font-family="Inter,sans-serif">800V Prismatic Cell Stack</text>
+      <path d="M52 74 V84 M96 74 V84 M140 74 V84" stroke="#dc2626" stroke-width="1.8" stroke-dasharray="2.5 2"/>
+      <rect x="24" y="84" width="144" height="44" rx="5" fill="#ecfeff" stroke="#0891b2" stroke-width="1.9"/>
+      <path d="M36 96 H154 V106 H42 V116 H156" stroke="#0284c7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="96" y="143" text-anchor="middle" font-size="8.5" font-weight="700" fill="#0c4a6e" font-family="Inter,sans-serif">Serpentine Liquid Cold-Plate</text>
+      <path d="M168 116 H204" stroke="#dc2626" stroke-width="2.2"/>
+      <circle cx="222" cy="116" r="16" fill="#e0f2fe" stroke="#0369a1" stroke-width="1.9"/>
+      <polygon points="217,110 230,116 217,122" fill="#0369a1"/>
+      <text x="222" y="143" text-anchor="middle" font-size="8" font-weight="700" fill="#0369a1" font-family="Inter,sans-serif">Pump</text>
+      <path d="M222 100 V68" stroke="#dc2626" stroke-width="2"/>
+      <rect x="192" y="32" width="60" height="36" rx="5" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.9"/>
+      <text x="222" y="48" text-anchor="middle" font-size="8.5" font-weight="700" fill="#0c4a6e" font-family="Inter,sans-serif">Chiller</text>
+      <text x="222" y="60" text-anchor="middle" font-size="7.5" font-weight="600" fill="#0369a1" font-family="Inter,sans-serif">Glycol</text>
+      <path d="M192 50 H178 V96 H168" stroke="#0284c7" stroke-width="2"/>
+    </svg>`,
+    suggestedFilename: "EvBatteryCooling.mo",
+    fallbackCode: `model EVBatteryPackCooling800V "800V EV traction battery electro-thermal & liquid cold-plate cooling model"
+  parameter Real Q_nom_Ah = 125.0 "Nominal pack capacity (Ah, ~100 kWh at 800V)";
+  parameter Real R0_ref = 0.042 "Pack ohmic internal resistance at 25 degC (Ohm)";
+  parameter Real R1 = 0.018 "RC polarization resistance (Ohm)";
+  parameter Real C1 = 1800.0 "RC polarization capacitance (F)";
+  parameter Real C_cell = 4.2e5 "Prismatic cell stack thermal mass (J/K)";
+  parameter Real C_plate = 6.5e4 "Serpentine aluminum cold-plate thermal mass (J/K)";
+  parameter Real UA_cell_plate = 950.0 "Cell-to-cold-plate thermal conductance (W/K)";
+  parameter Real UA_amb = 18.0 "Pack enclosure ambient conductance (W/K)";
+  parameter Real cp_coolant = 3450.0 "50/50 water-glycol specific heat (J/(kg*K))";
+  parameter Real T_inlet = 293.15 "Chiller coolant inlet temperature (K, 20 degC)";
+  parameter Real T_target = 306.15 "Target cell temperature setpoint (K, 33 degC)";
+  parameter Real T_amb = 298.15 "Ambient underbody air temperature (K, 25 degC)";
+  parameter Real I_base = 260.0 "Sustained highway/fast-charge current (A)";
+  parameter Real I_pulse = 140.0 "Acceleration/regen current modulation (A)";
+
+  Real soc(start = 0.85) "Pack State of Charge (0..1)";
+  Real V_rc(start = 0.0) "RC polarization overpotential (V)";
+  Real T_cell(start = 298.15) "Cell core temperature (K)";
+  Real T_plate(start = 295.15) "Liquid cold-plate temperature (K)";
+
+  Real I_pack "Pack discharge current (A)";
+  Real V_ocv "Pack open-circuit voltage (V)";
+  Real R0 "Temperature-dependent ohmic resistance (Ohm)";
+  Real V_term "Pack terminal voltage (V)";
+  Real P_elec_kW "Pack electrical power output (kW)";
+  Real Q_gen "Total electrochemical Joule heat generation (W)";
+  Real m_dot_raw "Unclamped glycol coolant pump flow command (kg/s)";
+  Real m_dot_coolant "Clamped coolant mass flow rate (kg/s)";
+  Real Q_cooling "Heat rejected into liquid cold-plate loop (W)";
+  Real T_cell_C "Cell core temperature (degC)";
+  Real T_plate_C "Cold-plate temperature (degC)";
+equation
+  I_pack = I_base + I_pulse * sin(0.04 * time);
+  der(soc) = -I_pack / (Q_nom_Ah * 3600.0);
+
+  V_ocv = 720.0 + 135.0 * soc - 28.0 * (1.0 - soc) * (1.0 - soc);
+  R0 = R0_ref * (1.0 - 0.004 * (T_cell - 298.15));
+  C1 * der(V_rc) = I_pack - V_rc / R1;
+  V_term = V_ocv - I_pack * R0 - V_rc;
+  P_elec_kW = V_term * I_pack * 1.0e-3;
+
+  Q_gen = I_pack * I_pack * R0 + (V_rc * V_rc) / R1;
+
+  m_dot_raw = 0.12 + 0.045 * (T_cell - T_target);
+  m_dot_coolant = if m_dot_raw < 0.08 then 0.08 else (if m_dot_raw > 0.65 then 0.65 else m_dot_raw);
+  Q_cooling = m_dot_coolant * cp_coolant * (T_plate - T_inlet) * 0.72;
+
+  C_cell * der(T_cell) = Q_gen - UA_cell_plate * (T_cell - T_plate) - UA_amb * (T_cell - T_amb);
+  C_plate * der(T_plate) = UA_cell_plate * (T_cell - T_plate) - Q_cooling;
+
+  T_cell_C = T_cell - 273.15;
+  T_plate_C = T_plate - 273.15;
+
+  annotation(experiment(StartTime = 0, StopTime = 600, Interval = 2));
+end EVBatteryPackCooling800V;
+`,
+  },
+
+  {
+    id: "vr-orbital-satellite",
+    title: "LEO Orbital Satellite & ADCS (VR 3D)",
+    dialect: "modelica",
+    dialectLabel: "Modelica",
+    category: "control",
+    packageName: "VR-Showcase",
+    packageVersion: "1.0.0",
+    bundledByDefault: true,
+    summary:
+      "Low-Earth-Orbit (LEO) spacecraft combining reaction-wheel attitude slew control (ADCS), wheel momentum exchange, and sunlit-to-eclipse radiative thermal balance.",
+    nodeCount: 5,
+    edgeCount: 6,
+    keywords: [
+      "vr",
+      "rotunda",
+      "3d",
+      "satellite",
+      "orbital",
+      "leo",
+      "adcs",
+      "reaction-wheel",
+      "spacecraft",
+      "attitude",
+      "eclipse",
+      "modelica",
+    ],
+    diagramSvg: `<svg ${DIAG_ATTRS}>
+      <path d="M18 144 Q140 110 262 144" stroke="#0284c7" stroke-width="2.2" fill="#e0f2fe"/>
+      <path d="M36 124 Q140 94 244 124" stroke="#64748b" stroke-width="1.3" stroke-dasharray="4 3"/>
+      <rect x="20" y="50" width="78" height="34" rx="2" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1.8"/>
+      <path d="M40 50 V84 M60 50 V84 M80 50 V84 M20 67 H98" stroke="#2563eb" stroke-width="1.1"/>
+      <line x1="98" y1="67" x2="112" y2="67" stroke="#475569" stroke-width="3"/>
+      <rect x="182" y="50" width="78" height="34" rx="2" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1.8"/>
+      <path d="M202 50 V84 M222 50 V84 M242 50 V84 M182 67 H260" stroke="#2563eb" stroke-width="1.1"/>
+      <line x1="168" y1="67" x2="182" y2="67" stroke="#475569" stroke-width="3"/>
+      <rect x="112" y="40" width="56" height="54" rx="5" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+      <circle cx="140" cy="67" r="15" fill="#fffbeb" stroke="#b45309" stroke-width="1.9"/>
+      <circle cx="140" cy="67" r="5" fill="#d97706"/>
+      <path d="M132 56 A13 13 0 0 1 151 60" stroke="#2563eb" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M132 94 L140 106 L148 94" stroke="#475569" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M128 106 Q140 113 152 106" stroke="#0369a1" stroke-width="1.8"/>
+      <text x="59" y="42" text-anchor="middle" font-size="8" font-weight="600" fill="#1e3a8a" font-family="Inter,sans-serif">Solar Wing</text>
+      <text x="140" y="31" text-anchor="middle" font-size="8.5" font-weight="700" fill="#92400e" font-family="Inter,sans-serif">ADCS Bus · RW</text>
+      <text x="221" y="42" text-anchor="middle" font-size="8" font-weight="600" fill="#1e3a8a" font-family="Inter,sans-serif">Radiator</text>
+      <text x="140" y="140" text-anchor="middle" font-size="8" font-weight="700" fill="#0369a1" font-family="Inter,sans-serif">LEO 90 min Orbit</text>
+    </svg>`,
+    suggestedFilename: "OrbitalSatelliteBus.mo",
+    fallbackCode: `model OrbitalSatelliteADCS "LEO spacecraft reaction-wheel ADCS slew & solar eclipse thermal balance"
+  parameter Real I_sc = 42.0 "Spacecraft bus moment of inertia (kg*m2)";
+  parameter Real I_rw = 0.035 "Reaction wheel rotor inertia (kg*m2)";
+  parameter Real theta_cmd = 0.5236 "Target attitude slew angle (rad, 30 deg)";
+  parameter Real Kp_adcs = 6.4 "ADCS attitude proportional gain (N*m/rad)";
+  parameter Real Kd_adcs = 14.5 "ADCS angular rate derivative gain (N*m*s/rad)";
+  parameter Real tau_rw_max = 0.25 "Reaction wheel peak torque limit (N*m)";
+  parameter Real T_orbit = 5400.0 "LEO orbital period (s, 90 min)";
+  parameter Real S_solar = 1361.0 "AM0 solar constant (W/m2)";
+  parameter Real A_panel = 2.4 "Projected solar wing area (m2)";
+  parameter Real alpha_s = 0.72 "Solar absorptivity";
+  parameter Real eps_ir = 0.82 "Radiator infrared emissivity";
+  parameter Real A_rad = 1.6 "Thermal radiator louver area (m2)";
+  parameter Real sigma_sb = 5.670374e-8 "Stefan-Boltzmann constant (W/(m2*K4))";
+  parameter Real C_bus = 38000.0 "Spacecraft thermal capacitance (J/K)";
+  parameter Real Q_avionics = 185.0 "Internal payload & ADCS heat load (W)";
+
+  Real theta(start = 0.0) "Spacecraft attitude angle (rad)";
+  Real omega_sc(start = 0.0) "Spacecraft angular rate (rad/s)";
+  Real omega_rw(start = 0.0) "Reaction wheel angular speed (rad/s)";
+  Real T_bus(start = 295.0) "Spacecraft bus temperature (K)";
+
+  Real tau_cmd "Unclamped PD attitude torque command (N*m)";
+  Real tau_rw "Reaction wheel applied torque (N*m)";
+  Real sunlight "Orbital solar illumination factor (1=sunlit, 0=eclipse)";
+  Real Q_solar "Absorbed solar flux (W)";
+  Real Q_rad "Deep-space infrared radiation (W)";
+  Real theta_deg "Spacecraft pointing angle (deg)";
+  Real rpm_rw "Reaction wheel speed (rpm)";
+  Real T_bus_C "Spacecraft bus temperature (degC)";
+equation
+  tau_cmd = Kp_adcs * (theta_cmd - theta) - Kd_adcs * omega_sc;
+  tau_rw = if tau_cmd > tau_rw_max then tau_rw_max else (if tau_cmd < -tau_rw_max then -tau_rw_max else tau_cmd);
+
+  der(theta) = omega_sc;
+  I_sc * der(omega_sc) = tau_rw - 0.002 * omega_sc;
+  I_rw * der(omega_rw) = -tau_rw - 1.0e-5 * omega_rw;
+
+  sunlight = if sin(2.0 * 3.14159265 * time / T_orbit) > -0.35 then 1.0 else 0.0;
+  Q_solar = sunlight * alpha_s * S_solar * A_panel * 0.28;
+  Q_rad = eps_ir * sigma_sb * A_rad * T_bus * T_bus * T_bus * T_bus;
+  C_bus * der(T_bus) = Q_solar + Q_avionics - Q_rad;
+
+  theta_deg = theta * 57.2957795;
+  rpm_rw = omega_rw * 9.54929659;
+  T_bus_C = T_bus - 273.15;
+
+  annotation(experiment(StartTime = 0, StopTime = 5400, Interval = 10));
+end OrbitalSatelliteADCS;
+`,
+  },
+
+  {
+    id: "vr-step-aerospace-bracket",
+    title: "Aerospace Ribbed Bracket (STEP / VR 3D)",
+    dialect: "step",
+    dialectLabel: "STEP",
+    category: "robotics-cad",
+    packageName: "VR-Showcase",
+    packageVersion: "1.0.0",
+    bundledByDefault: true,
+    summary:
+      "ISO 10303-21 AP242 Ti-6Al-4V aerospace actuator housing manifold B-Rep solid ready for 3D inspection, section cutting, and VR Rotunda walkthroughs.",
+    nodeCount: 6,
+    edgeCount: 12,
+    keywords: ["vr", "rotunda", "3d", "step", "cad", "brep", "aerospace", "bracket", "titanium", "iso-10303", "solid"],
+    diagramSvg: `<svg ${DIAG_ATTRS}>
+      <polygon points="56,96 144,126 226,90 138,60" fill="#e0f2fe" stroke="#0369a1" stroke-width="1.9" stroke-linejoin="round"/>
+      <polygon points="56,96 144,126 144,140 56,110" fill="#bfdbfe" stroke="#1d4ed8" stroke-width="1.8" stroke-linejoin="round"/>
+      <polygon points="144,126 226,90 226,104 144,140" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1.8" stroke-linejoin="round"/>
+      <polygon points="104,76 144,90 144,34 104,20" fill="#dbeafe" stroke="#1e3a8a" stroke-width="1.9" stroke-linejoin="round"/>
+      <polygon points="144,90 164,81 164,25 144,34" fill="#93c5fd" stroke="#1e3a8a" stroke-width="1.9" stroke-linejoin="round"/>
+      <polygon points="104,20 144,34 164,25 124,11" fill="#eff6ff" stroke="#1e3a8a" stroke-width="1.8" stroke-linejoin="round"/>
+      <polygon points="104,76 80,92 104,100" fill="#bae6fd" stroke="#0369a1" stroke-width="1.6" stroke-linejoin="round"/>
+      <ellipse cx="124" cy="54" rx="9" ry="12" fill="#f8fafc" stroke="#1d4ed8" stroke-width="1.8"/>
+      <ellipse cx="182" cy="96" rx="10" ry="5.5" fill="#f8fafc" stroke="#0369a1" stroke-width="1.6"/>
+      <ellipse cx="136" cy="112" rx="10" ry="5.5" fill="#f8fafc" stroke="#0369a1" stroke-width="1.6"/>
+      <path d="M56 124 L144 152" stroke="#64748b" stroke-width="1.2" stroke-dasharray="3 2"/>
+      <text x="192" y="34" font-size="8.5" font-weight="700" fill="#1e3a8a" font-family="Inter,sans-serif">AP242 B-Rep</text>
+      <text x="192" y="46" font-size="7.5" font-weight="600" fill="#475569" font-family="Inter,sans-serif">Ti-6Al-4V · 100×60</text>
+    </svg>`,
+    suggestedFilename: "AerospaceBracket.step",
+    fallbackCode: `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('Aerospace Ti-6Al-4V Bracket','AP242 Manifold B-Rep'),'2;1');
+FILE_NAME('Aerospace_Bracket.step','2026-01-01T00:00:00',('ModelScript'),(''),'','','');
+FILE_SCHEMA(('AUTOMOTIVE_DESIGN'));
+ENDSEC;
+DATA;
+#1 = PRODUCT('AEROSPACE_BRACKET','Aerospace Actuator Bracket','',());
+#101 = CARTESIAN_POINT('P1',(-50.0,-30.0,0.0));
+#102 = CARTESIAN_POINT('P2',( 50.0,-30.0,0.0));
+#103 = CARTESIAN_POINT('P3',( 50.0, 30.0,0.0));
+#104 = CARTESIAN_POINT('P4',(-50.0, 30.0,0.0));
+#105 = CARTESIAN_POINT('P5',(-50.0,-30.0,15.0));
+#106 = CARTESIAN_POINT('P6',( 50.0,-30.0,15.0));
+#107 = CARTESIAN_POINT('P7',( 50.0, 30.0,15.0));
+#108 = CARTESIAN_POINT('P8',(-50.0, 30.0,15.0));
+#201 = POLY_LOOP('BOT',(#101,#104,#103,#102));
+#202 = POLY_LOOP('TOP',(#105,#106,#107,#108));
+#203 = POLY_LOOP('FRONT',(#101,#102,#106,#105));
+#204 = POLY_LOOP('RIGHT',(#102,#103,#107,#106));
+#205 = POLY_LOOP('BACK',(#103,#104,#108,#107));
+#206 = POLY_LOOP('LEFT',(#104,#101,#105,#108));
+#301 = FACE_OUTER_BOUND('',#201,.T.);
+#302 = FACE_OUTER_BOUND('',#202,.T.);
+#303 = FACE_OUTER_BOUND('',#203,.T.);
+#304 = FACE_OUTER_BOUND('',#204,.T.);
+#305 = FACE_OUTER_BOUND('',#205,.T.);
+#306 = FACE_OUTER_BOUND('',#206,.T.);
+#401 = ADVANCED_FACE('Bottom',(#301),#1,.T.);
+#402 = ADVANCED_FACE('Top',(#302),#1,.T.);
+#403 = ADVANCED_FACE('Front',(#303),#1,.T.);
+#404 = ADVANCED_FACE('Right',(#304),#1,.T.);
+#405 = ADVANCED_FACE('Back',(#305),#1,.T.);
+#406 = ADVANCED_FACE('Left',(#306),#1,.T.);
+#501 = CLOSED_SHELL('Shell',(#401,#402,#403,#404,#405,#406));
+#601 = MANIFOLD_SOLID_BREP('AerospaceBracket',#501);
+ENDSEC;
+END-ISO-10303-21;
+`,
+  },
+
   {
     id: "cauer-lowpass",
     title: "Cauer Low-Pass Ladder Filter",

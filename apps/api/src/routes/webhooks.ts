@@ -5,7 +5,6 @@ import { Router as createRouter } from "express";
 import crypto from "node:crypto";
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
-import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 import { RepoBotReviewer } from "../services/ai/repo-bot-reviewer.js";
 import {
   extractImpactedModels,
@@ -31,7 +30,6 @@ function verifyGitHubSignature(secret: string, signature: string | undefined, pa
 
 export function webhooksRouter(database: LibraryDatabase, jobQueue?: JobQueue, storage?: LibraryStorage): Router {
   const router = createRouter();
-  router.use(defaultApiLimiter);
 
   /**
    * POST /api/v1/webhooks/incoming/jira
@@ -39,14 +37,22 @@ export function webhooksRouter(database: LibraryDatabase, jobQueue?: JobQueue, s
    * Supports ?space=namespace/slug or ?spaceId=...
    */
   router.post("/incoming/jira", (req: Request, res: Response): void => {
-    // 1. Verify webhook secret if configured
+    // 1. Verify webhook secret (fail closed in production if unset; constant-time compare)
     const expectedSecret = process.env["JIRA_WEBHOOK_SECRET"];
+    if (!expectedSecret && process.env["NODE_ENV"] === "production") {
+      res.status(503).json({ error: "Jira webhook receiver is not configured (JIRA_WEBHOOK_SECRET missing)" });
+      return;
+    }
     if (expectedSecret) {
       const providedSecret =
         (req.headers["x-webhook-secret"] as string) ||
         (req.headers["authorization"]?.replace(/^Bearer\s+/i, "") as string) ||
         (req.query["secret"] as string);
-      if (!providedSecret || providedSecret !== expectedSecret) {
+      if (
+        !providedSecret ||
+        providedSecret.length !== expectedSecret.length ||
+        !crypto.timingSafeEqual(Buffer.from(providedSecret, "utf-8"), Buffer.from(expectedSecret, "utf-8"))
+      ) {
         res.status(401).json({ error: "Invalid webhook secret" });
         return;
       }

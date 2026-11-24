@@ -164,17 +164,26 @@ export async function processRssFeeds(database: LibraryDatabase) {
         const newEtag = res.headers.get("etag");
         const newLastModified = res.headers.get("last-modified");
 
-        // Parse the body
+        // Parse the body (capped at 5MB to prevent memory exhaustion)
+        const MAX_RSS_BYTES = 5 * 1024 * 1024;
         const xmlBody = await res.text();
+        if (Buffer.byteLength(xmlBody, "utf8") > MAX_RSS_BYTES) {
+          throw new Error(`RSS feed payload exceeds ${MAX_RSS_BYTES} byte limit`);
+        }
         const parsed = await parser.parseString(xmlBody);
         const items = [...parsed.items].reverse();
 
-        let lastGuidFound = false;
+        const getItemGuid = (it: (typeof items)[number]): string | undefined =>
+          it.guid || ((it as unknown as Record<string, unknown>)["id"] as string | undefined) || it.link;
+
+        // If feed.last_guid has aged out of the remote feed window, process only the latest items rather than wedging forever
+        const feedContainsLastGuid = Boolean(feed.last_guid && items.some((it) => getItemGuid(it) === feed.last_guid));
+        let lastGuidFound = !feedContainsLastGuid;
+        const candidateItems = feedContainsLastGuid ? items : items.slice(-10);
         let newPostsCount = 0;
 
-        for (const item of items) {
-          const guid =
-            item.guid || ((item as unknown as Record<string, unknown>)["id"] as string | undefined) || item.link;
+        for (const item of candidateItems) {
+          const guid = getItemGuid(item);
           if (!guid) continue;
 
           if (feed.last_guid && !lastGuidFound) {

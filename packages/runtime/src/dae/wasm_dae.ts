@@ -7,7 +7,7 @@
  */
 
 import type { SourceLocation } from "../runtime.js";
-import type { FmuInstanceMetadata } from "../simulation/wasm_fmu_subsystem.js";
+import type { FmuInstanceMetadata } from "../simulation/fmu_subsystem.js";
 import type { StringId } from "../workspace/wasm_string_pool.js";
 import { StringInterner, WasmStringPool } from "../workspace/wasm_string_pool.js";
 import {

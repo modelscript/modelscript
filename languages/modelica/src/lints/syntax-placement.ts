@@ -1400,6 +1400,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       return `Redeclaration of constant component ${eName} is not allowed.`;
     },
     query: (db: CodeGraph, node: u32, $: any) => {
+      if (!isOldFrontendActive(db, $)) return;
       // Disallow `redeclare` clauses targeting an element declared with the `constant` prefix
       let isNestedMod = false;
       for (const anc of db.ast.getAncestors(node, 0)) {

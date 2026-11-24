@@ -38,5 +38,11 @@ export function mountEnterpriseInteropGateways(app: Express, routers: Enterprise
     routers.optionalAuthMiddleware,
     routers.sysml2FeatureGuard,
   );
+  app.use(
+    "/graphql",
+    requireEnterpriseFeature("sysml2_omg_api"),
+    routers.optionalAuthMiddleware,
+    routers.sysml2FeatureGuard,
+  );
   app.use("/", routers.optionalAuthMiddleware, routers.sysml2OmgRouter);
 }

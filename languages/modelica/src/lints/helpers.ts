@@ -134,6 +134,7 @@ export function isLiteralInValuePosition(db: CodeGraph, lit: u32, stopNode: u32,
     const t = db.ast.getType(anc);
     if ($.array_subscripts != 0 && t == $.array_subscripts) return false;
     if ($.function_call_args != 0 && t == $.function_call_args) return false;
+    if (($.for_indices != 0 && t == $.for_indices) || ($.for_index != 0 && t == $.for_index)) return false;
     if ($.primary != 0 && t == $.primary) {
       if (db.ast.getChildByFieldId(anc, "callee") != 0) return false;
       const first = db.ast.getFirstChild(anc);

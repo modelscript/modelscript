@@ -72,9 +72,8 @@ test("OpenAlex Dedicated SQLite + FTS5 Engine, S3 Partition Manager, URN Source 
   await t.test(
     "Admin S3 Partition Manager syncs manifest (unloaded by default) and selectively loads partitions into openalex.db + FTS5",
     async () => {
-      const { parseOpenAlexS3Manifest, s3UriToHttpsUrl, getOpenAlexCacheDirectory } = await import(
-        "../src/services/openalex.js"
-      );
+      const { parseOpenAlexS3Manifest, s3UriToHttpsUrl, getOpenAlexCacheDirectory } =
+        await import("../src/services/openalex.js");
 
       assert.equal(
         s3UriToHttpsUrl("s3://openalex/data/works/updated_date=2025-01-15/part_000.gz"),
@@ -328,10 +327,12 @@ test("OpenAlex Dedicated SQLite + FTS5 Engine, S3 Partition Manager, URN Source 
   );
 
   await t.test(
-    "GET /api/v1/sources/resolve resolves OpenAlex URN, DOI URN, and ArXiv URN with full formatted citations and exports",
+    "GET /api/v1/references/resolve resolves OpenAlex URN, DOI URN, and ArXiv URN with full formatted citations and exports",
     async () => {
       // 1. Resolve by OpenAlex URN
-      const resOpenAlex = await request(app).get("/api/v1/sources/resolve").query({ urn: "urn:openalex:W2108598243" });
+      const resOpenAlex = await request(app)
+        .get("/api/v1/references/resolve")
+        .query({ urn: "urn:openalex:W2108598243" });
       assert.equal(resOpenAlex.status, 200);
       assert.equal(resOpenAlex.body.work.urn, "urn:openalex:W2108598243");
       assert.ok(resOpenAlex.body.citations.apa.includes("1988"));
@@ -343,12 +344,12 @@ test("OpenAlex Dedicated SQLite + FTS5 Engine, S3 Partition Manager, URN Source 
       assert.ok(resOpenAlex.body.exports.enw.includes("%0 "));
 
       // 2. Resolve by DOI URN
-      const resDoi = await request(app).get("/api/v1/sources/resolve").query({ urn: "urn:doi:10.1137/0909014" });
+      const resDoi = await request(app).get("/api/v1/references/resolve").query({ urn: "urn:doi:10.1137/0909014" });
       assert.equal(resDoi.status, 200);
       assert.equal(resDoi.body.work.urn, "urn:openalex:W2108598243");
 
       // 3. Resolve by ArXiv URN (Attention Is All You Need)
-      const resArxiv = await request(app).get("/api/v1/sources/resolve").query({ urn: "urn:arxiv:1706.03762" });
+      const resArxiv = await request(app).get("/api/v1/references/resolve").query({ urn: "urn:arxiv:1706.03762" });
       assert.equal(resArxiv.status, 200);
       assert.equal(resArxiv.body.work.urn, "urn:openalex:W2963403868");
       assert.ok(resArxiv.body.work.title.includes("Attention Is All You Need"));
@@ -445,7 +446,7 @@ test("OpenAlex Dedicated SQLite + FTS5 Engine, S3 Partition Manager, URN Source 
 
       // 5. Batch export in BibTeX & RIS
       const exportBibRes = await request(app)
-        .get("/api/v1/citations/export")
+        .get("/api/v1/references/export")
         .query({ urns: "urn:openalex:W2108598243,urn:doi:10.1007/978-1-4757-3922-0", format: "bibtex" });
       assert.equal(exportBibRes.status, 200);
       assert.ok(exportBibRes.text.includes("Pantelides"));
@@ -468,7 +469,7 @@ test("OpenAlex Dedicated SQLite + FTS5 Engine, S3 Partition Manager, URN Source 
       assert.ok(postId);
 
       // Verify backlink on the cited OpenAlex work's source resolution payload
-      const sourceRes = await request(app).get("/api/v1/sources/resolve").query({ urn: "urn:openalex:W2108598243" });
+      const sourceRes = await request(app).get("/api/v1/references/resolve").query({ urn: "urn:openalex:W2108598243" });
       assert.equal(sourceRes.status, 200);
       assert.ok(Array.isArray(sourceRes.body.citedByPosts));
       assert.ok(
@@ -478,7 +479,7 @@ test("OpenAlex Dedicated SQLite + FTS5 Engine, S3 Partition Manager, URN Source 
 
       // Verify resolving the Ansatz post itself as a citation URN (urn:ansatz:post:<id>)
       const postUrnRes = await request(app)
-        .get("/api/v1/sources/resolve")
+        .get("/api/v1/references/resolve")
         .query({ urn: `urn:ansatz:post:${postId}` });
       assert.equal(postUrnRes.status, 200);
       assert.equal(postUrnRes.body.work.urn, `urn:ansatz:post:${postId}`);

@@ -43,6 +43,7 @@ COPY packages/ide/package.json packages/ide/
 COPY packages/lsp/package.json packages/lsp/
 COPY packages/mcp/package.json packages/mcp/
 COPY packages/react/package.json packages/react/
+COPY packages/native/package.json packages/native/
 COPY packages/runtime/package.json packages/runtime/
 COPY packages/sdk/package.json packages/sdk/
 COPY packages/simulate/package.json packages/simulate/
@@ -151,6 +152,7 @@ COPY languages/three-mf/package.json languages/three-mf/
 COPY languages/topas/package.json languages/topas/
 COPY languages/touchstone/package.json languages/touchstone/
 COPY languages/tough/package.json languages/tough/
+COPY languages/twentysim/package.json languages/twentysim/
 COPY languages/urdf/package.json languages/urdf/
 COPY languages/usd/package.json languages/usd/
 COPY languages/verilog-a/package.json languages/verilog-a/

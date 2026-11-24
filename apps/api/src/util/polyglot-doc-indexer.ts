@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { ClassMetadata, ComponentMetadata } from "../database.js";
+import { escapeXml } from "./escape.js";
 import type { ClassRenderResult } from "./svg-renderer.js";
 
 export interface PolyglotIndexOptions {
@@ -10,15 +11,6 @@ export interface PolyglotIndexOptions {
   packageName: string;
   version: string;
   onClassIndexed?: (result: ClassRenderResult) => void;
-}
-
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
 }
 
 function listFilesRecursive(dir: string, relPrefix = ""): { fullPath: string; relPath: string }[] {

@@ -279,13 +279,30 @@ function resolveSimulateWasmPath(): string | null {
 }
 
 /**
- * Synchronously loads and caches `simulate.wasm` in Node environments.
+ * Registers pre-loaded simulate kernel exports (e.g. from `@modelscript/native` wasm2c addon).
+ */
+export function setSimulateWasmExports(exports: SimulateWasmExports | null): void {
+  _cachedExports = exports;
+  _loadAttempted = exports !== null;
+}
+
+/**
+ * Synchronously loads and caches `simulate.wasm` (or native `wasm2c` kernel if registered) in Node environments.
  * Returns `null` if unavailable (e.g., browser before async init).
  */
 export function getSimulateWasmSync(): SimulateWasmExports | null {
   if (_cachedExports) return _cachedExports;
   if (_loadAttempted) return null;
   _loadAttempted = true;
+
+  if (typeof process !== "undefined" && process.env?.["MODELSCRIPT_BACKEND"] !== "wasm") {
+    const nativeAddon = (globalThis as { __modelscript_native_addon__?: { simulate?: SimulateWasmExports } })
+      .__modelscript_native_addon__;
+    if (nativeAddon?.simulate) {
+      _cachedExports = nativeAddon.simulate;
+      return _cachedExports;
+    }
+  }
 
   const wasmPath = resolveSimulateWasmPath();
   if (!wasmPath) return null;

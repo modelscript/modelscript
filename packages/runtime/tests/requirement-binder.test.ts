@@ -2,14 +2,13 @@
 
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { DaeSystem } from "../src/analysis/wasm_dae_flowpipe.js";
+import { DaeSystem } from "../src/analysis/dae_flowpipe.js";
 import { Interval } from "../src/analysis/wasm_interval.js";
 import { ConservativeLinearizationSolver } from "../src/analysis/wasm_zonotope_reach.js";
 import {
   assertRequirementsToTheoryCoordinator,
   bindRequirementsToModelica,
   extractModelicaTwinAnnotations,
-  getSysmlWasmParser,
   parseSysmlRequirements,
 } from "../src/formal/requirement_binder.js";
 import { SemanticTheoryCoordinator } from "../src/formal/theory_coordinator.js";

@@ -260,10 +260,71 @@ export function createSysml2GraphQLSchema(omgService: SysML2OmgService): GraphQL
   });
 }
 
-export function sysml2GraphQLRouter(omgService: SysML2OmgService): Router {
+export function sysml2GraphQLRouter(
+  omgService: SysML2OmgService,
+  options?: { requireAuthForMutations?: boolean | undefined },
+): Router {
   const router = createRouter();
   const schema = createSysml2GraphQLSchema(omgService);
   const handler = createHandler({ schema });
+  const MAX_QUERY_BYTES = 32 * 1024;
+  const MAX_DEPTH = 12;
+
+  router.use("/", (req, res, next) => {
+    const rawQuery =
+      typeof req.body?.query === "string"
+        ? req.body.query
+        : typeof req.query["query"] === "string"
+          ? req.query["query"]
+          : "";
+
+    if (Buffer.byteLength(rawQuery, "utf8") > MAX_QUERY_BYTES) {
+      res.status(413).json({ errors: [{ message: `GraphQL query exceeds maximum size of ${MAX_QUERY_BYTES} bytes` }] });
+      return;
+    }
+
+    // Enforce nesting depth bound to prevent recursive DoS
+    let depth = 0;
+    let maxDepth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = 0; i < rawQuery.length; i++) {
+      const ch = rawQuery[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\" && inString) {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (!inString) {
+        if (ch === "{") {
+          depth++;
+          if (depth > maxDepth) maxDepth = depth;
+        } else if (ch === "}") {
+          depth = Math.max(0, depth - 1);
+        }
+      }
+    }
+    if (maxDepth > MAX_DEPTH) {
+      res.status(400).json({ errors: [{ message: `GraphQL query exceeds maximum nesting depth of ${MAX_DEPTH}` }] });
+      return;
+    }
+
+    // Require authentication for mutations when enabled (always in production)
+    const enforceMutationAuth = options?.requireAuthForMutations ?? process.env["NODE_ENV"] === "production";
+    if (enforceMutationAuth && /\bmutation\b/i.test(rawQuery) && !(req as { user?: unknown }).user) {
+      res.status(401).json({ errors: [{ message: "Authentication required for GraphQL mutations" }] });
+      return;
+    }
+
+    next();
+  });
 
   router.use("/", handler);
   return router;

@@ -1664,6 +1664,7 @@ export const Lint: CommandModule<{}, LintArgs> = {
 
         const HERITAGE_VALIDATORS: Record<string, [string, string]> = {
           acsl: ["@modelscript/acsl", "validateAcsl"],
+          twentysim: ["@modelscript/twentysim", "validateTwentySim"],
           apdl: ["@modelscript/apdl", "validateApdl"],
           apt: ["@modelscript/apt", "validateApt"],
           cea: ["@modelscript/cea", "validateCea"],

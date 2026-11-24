@@ -67,6 +67,8 @@ export interface StudioHeaderProps {
   onSaveArtifact?: (() => void) | undefined;
   isSavingArtifact?: boolean | undefined;
   hasUnsavedChanges?: boolean | undefined;
+  isVrRotundaMode?: boolean | undefined;
+  onToggleVrRotunda?: (() => void) | undefined;
 }
 
 export const StudioHeader: React.FC<StudioHeaderProps> = ({
@@ -87,6 +89,8 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
   onSaveArtifact,
   isSavingArtifact,
   hasUnsavedChanges,
+  isVrRotundaMode,
+  onToggleVrRotunda,
 }) => {
   const navigate = useNavigate();
   const hasCloudSolverFlag = useFeatureFlag("cae_cloud_solver");
@@ -521,6 +525,52 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
             )}
           </>
         )}
+        {onToggleVrRotunda && (
+          <button
+            type="button"
+            data-testid="studio-header-vr-rotunda-btn"
+            aria-pressed={Boolean(isVrRotundaMode)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleVrRotunda();
+            }}
+            style={{
+              background: isVrRotundaMode
+                ? "linear-gradient(135deg, rgba(99, 102, 241, 0.36), rgba(168, 85, 247, 0.36))"
+                : "linear-gradient(135deg, rgba(99, 102, 241, 0.16), rgba(6, 182, 212, 0.16))",
+              border: isVrRotundaMode ? "1px solid rgba(168, 85, 247, 0.65)" : "1px solid rgba(129, 140, 248, 0.4)",
+              color: isVrRotundaMode ? "#f5d0fe" : "#c7d2fe",
+              borderRadius: "6px",
+              padding: "5px 10px",
+              fontSize: "12px",
+              fontWeight: 600,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              whiteSpace: "nowrap",
+            }}
+            title={
+              isVrRotundaMode
+                ? "Exit Engineering Rotunda VR workstation"
+                : "Open artifact in 3D/WebXR Engineering Rotunda"
+            }
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <rect x="1.5" y="4" width="13" height="8" rx="2.5" stroke="currentColor" strokeWidth="1.4" />
+              <path
+                d="M5.5 12L7 9.8H9L10.5 12"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <circle cx="5.2" cy="7.8" r="1.1" fill="currentColor" />
+              <circle cx="10.8" cy="7.8" r="1.1" fill="currentColor" />
+            </svg>
+            <span className="studio-hide-mobile">{isVrRotundaMode ? "Exit VR" : "VR Rotunda"}</span>
+          </button>
+        )}
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -562,6 +612,11 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
               </ActionMenu.Anchor>
               <ActionMenu.Overlay width="medium" align="end">
                 <ActionList>
+                  {onToggleVrRotunda && (
+                    <ActionList.Item onSelect={() => onToggleVrRotunda()}>
+                      {isVrRotundaMode ? "Exit VR Rotunda" : "VR Rotunda"}
+                    </ActionList.Item>
+                  )}
                   <ActionList.Item
                     onSelect={() => {
                       if (navigator.share) {

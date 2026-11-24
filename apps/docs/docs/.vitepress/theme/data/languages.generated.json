@@ -633,6 +633,36 @@
     "ruleCount": 12
   },
   {
+    "slug": "twentysim",
+    "name": "20-sim",
+    "sidebar": "20-sim Bond Graphs",
+    "ext": ".emx",
+    "role": "Multi-domain Bond Graphs & SIDOPS simulation",
+    "group": "aerospace",
+    "pkgName": "@modelscript/twentysim",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx twentysim",
+    "actions": [
+      "inspect",
+      "lint",
+      "simulate",
+      "render",
+      "to-dae",
+      "to-modelica"
+    ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica"
+      ]
+    },
+    "ruleCount": 8
+  },
+  {
     "slug": "autosar",
     "name": "AUTOSAR",
     "sidebar": "AUTOSAR Architecture",

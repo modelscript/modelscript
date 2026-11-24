@@ -8,13 +8,14 @@ import type { LibraryDatabase } from "../database.js";
 import { isEnterpriseEditionActive } from "../ee-loader.js";
 import {
   JWT_SECRET,
+  isAccountBlocked,
   optionalAuth,
   requireAdmin,
   requireStaffRole,
   type StaffRole,
 } from "../middleware/auth-middleware.js";
 import { defaultLoginLimiter } from "../middleware/login-limiter.js";
-import { defaultApiLimiter } from "../middleware/rate-limiter.js";
+import { authRateLimiter } from "../middleware/rate-limiter.js";
 import { allMigrations } from "../migrations/index.js";
 import type { FeatureFlagService } from "../services/feature-flag-service.js";
 import { FederationWorker } from "../services/federation-worker.js";
@@ -31,6 +32,7 @@ import {
 import { getClientIp } from "../util/client-ip.js";
 import { signEmailVerificationToken } from "../util/email-verification.js";
 import { resolveBrandInstanceName } from "../util/registration-policy.js";
+import { assertSafePublicUrl } from "../util/ssrf.js";
 import { verifyAndConsumeBackupCode, verifyTotpCode } from "../util/totp.js";
 
 function createStaffGuard(...roles: StaffRole[]) {
@@ -40,39 +42,53 @@ function createStaffGuard(...roles: StaffRole[]) {
   };
 }
 
-function verifyAdminSudo(req: Request, res: Response, next: express.NextFunction): void {
-  const rawSudoToken =
-    (req.headers["x-admin-sudo-token"] as string | undefined) ||
-    (typeof req.body?.sudoToken === "string" ? req.body.sudoToken : undefined);
-  const isProd = process.env["NODE_ENV"] === "production";
-  const enforceSudo =
-    process.env["REQUIRE_ADMIN_SUDO"] === "true" || req.headers["x-enforce-sudo"] === "true" || isProd;
+function createAdminSudoVerifier(database: LibraryDatabase) {
+  return function verifyAdminSudo(req: Request, res: Response, next: express.NextFunction): void {
+    const rawSudoToken =
+      (req.headers["x-admin-sudo-token"] as string | undefined) ||
+      (typeof req.body?.sudoToken === "string" ? req.body.sudoToken : undefined);
+    const isProd = process.env["NODE_ENV"] === "production";
+    const enforceSudo =
+      process.env["REQUIRE_ADMIN_SUDO"] === "true" || req.headers["x-enforce-sudo"] === "true" || isProd;
 
-  if (!rawSudoToken) {
-    if (enforceSudo) {
-      res.status(403).json({
-        error: "Administrator step-up sudo verification is required for this operation",
-        code: "SUDO_REQUIRED",
-      });
+    if (!rawSudoToken) {
+      if (enforceSudo) {
+        res.status(403).json({
+          error: "Administrator step-up sudo verification is required for this operation",
+          code: "SUDO_REQUIRED",
+        });
+        return;
+      }
+      next();
       return;
     }
-    next();
-    return;
-  }
 
-  try {
-    const decoded = jwt.verify(rawSudoToken.trim(), JWT_SECRET) as {
-      id?: number | undefined;
-      sudo?: boolean | undefined;
-    };
-    if (!decoded.sudo || (req.user?.id && decoded.id !== req.user.id)) {
-      res.status(403).json({ error: "Invalid administrator sudo token", code: "SUDO_INVALID" });
-      return;
+    try {
+      const decoded = jwt.verify(rawSudoToken.trim(), JWT_SECRET) as {
+        id?: number | undefined;
+        sudo?: boolean | undefined;
+        tokenVersion?: number | undefined;
+      };
+      if (!decoded.sudo || !decoded.id || (req.user?.id && decoded.id !== req.user.id)) {
+        res.status(403).json({ error: "Invalid administrator sudo token", code: "SUDO_INVALID" });
+        return;
+      }
+      const user = database.getUserById(decoded.id);
+      if (!user || isAccountBlocked(user.status)) {
+        res.status(403).json({ error: "Invalid administrator sudo token", code: "SUDO_INVALID" });
+        return;
+      }
+      const currentTokenVersion = user.token_version ?? 1;
+      const tokenVersion = decoded.tokenVersion ?? 1;
+      if (tokenVersion !== currentTokenVersion) {
+        res.status(403).json({ error: "Expired or invalid administrator sudo token", code: "SUDO_EXPIRED" });
+        return;
+      }
+      next();
+    } catch {
+      res.status(403).json({ error: "Expired or invalid administrator sudo token", code: "SUDO_EXPIRED" });
     }
-    next();
-  } catch {
-    res.status(403).json({ error: "Expired or invalid administrator sudo token", code: "SUDO_EXPIRED" });
-  }
+  };
 }
 
 // Enforce staff privileges by tier
@@ -96,7 +112,7 @@ export function adminRouter(
   featureFlagService?: FeatureFlagService,
 ): Router {
   const router = express.Router();
-  router.use(["/instance", "/setup", "/admin"], defaultApiLimiter);
+  const verifyAdminSudo = createAdminSudoVerifier(database);
 
   // ── Public Instance Banner & First-Run Setup Wizard ──
 
@@ -1953,7 +1969,7 @@ export function adminRouter(
    * POST /api/v1/admin/dmca/notices
    * Public intake for DMCA takedown requests
    */
-  router.post("/admin/dmca/notices", express.json(), (req: Request, res: Response) => {
+  router.post("/admin/dmca/notices", authRateLimiter, express.json(), (req: Request, res: Response) => {
     const { claimantName, claimantEmail, copyrightOwner, workDescription, infringingUrl, resourceType, resourceId } =
       req.body;
 
@@ -2746,7 +2762,11 @@ export function adminRouter(
   router.post("/admin/sudo/verify", adminAuth, express.json(), async (req: Request, res: Response): Promise<void> => {
     try {
       const clientIp = getClientIp(req);
-      const userId = req.user?.id ?? 1;
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ error: "Authenticated administrator session required" });
+        return;
+      }
       const userRecord = database.getUserById(userId);
       const userEmail = userRecord?.email || req.user?.email || `admin-${userId}`;
       const bypassRateLimit = process.env["NODE_ENV"] === "test" && req.headers["x-test-bypass-rate-limit"] === "true";
@@ -2854,9 +2874,19 @@ export function adminRouter(
       }
 
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-      const sudoToken = jwt.sign({ id: userId, sudo: true, scope: "admin_sudo", mfaVerified: totpValid }, JWT_SECRET, {
-        expiresIn: "15m",
-      });
+      const sudoToken = jwt.sign(
+        {
+          id: userId,
+          sudo: true,
+          scope: "admin_sudo",
+          mfaVerified: totpValid,
+          tokenVersion: userRecord?.token_version ?? 1,
+        },
+        JWT_SECRET,
+        {
+          expiresIn: "15m",
+        },
+      );
 
       database.logAudit({
         actorId: userId,
@@ -3824,7 +3854,7 @@ export function adminRouter(
     }
 
     try {
-      const parsedInbox = new URL(inboxUrl);
+      const parsedInbox = assertSafePublicUrl(inboxUrl);
       const baseUrl = process.env["PUBLIC_URL"] || `${req.protocol}://${req.get("host") || "hub.modelscript.org"}`;
       const followActivityId = `${baseUrl}/relays/follow-${Date.now()}`;
       const relay = database.addFederationRelay(inboxUrl, actorUrl, followActivityId, initialState);
@@ -4079,9 +4109,7 @@ export function adminRouter(
 
   router.get("/admin/notes", staffAuth, (req: Request, res: Response) => {
     const targetType = String(req.query["targetType"] || req.query["target_type"] || "user") as
-      | "user"
-      | "domain"
-      | "report";
+      "user" | "domain" | "report";
     const targetId = String(req.query["targetId"] || req.query["target_id"] || "");
     if (!targetId) {
       res.status(400).json({ error: "targetId query parameter is required" });

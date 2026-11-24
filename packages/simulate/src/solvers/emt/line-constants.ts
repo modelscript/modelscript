@@ -16,7 +16,70 @@
  *   Vector Fitting", IEEE Trans. Power Delivery, vol. 14, no. 3, 1999.
  */
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
+import { WasmScratchPool, type WasmMemoryHost, type WasmScratchScope } from "@modelscript/solve";
 import type { FrequencyDependentLineConfig, RationalPoleResidue } from "./elements/frequency-dependent-line.js";
+
+interface LineConstantsWasmExports extends WasmMemoryHost {
+  lc_earth_penetration_depth?: (
+    omega: number,
+    mu0: number,
+    rhoHomogeneous: number,
+    useTwoLayer: number,
+    rhoUpper: number,
+    rhoLower: number,
+    upperDepthM: number,
+    outPtr: number,
+  ) => void;
+  lc_assemble_carson_maxwell?: (
+    m: number,
+    condDataPtr: number,
+    omega: number,
+    pRe: number,
+    pIm: number,
+    zReOutPtr: number,
+    zImOutPtr: number,
+    pMatOutPtr: number,
+  ) => void;
+  lc_kron_reduce_complex?: (zRePtr: number, zImPtr: number, m: number, targetN: number) => void;
+  lc_kron_reduce_real?: (pMatPtr: number, m: number, targetN: number) => void;
+  lc_invert_real_matrix?: (aPtr: number, invOutPtr: number, augScratchPtr: number, n: number) => void;
+  lc_sequence_and_wave_props?: (
+    zRePtr: number,
+    zImPtr: number,
+    cPhasePtr: number,
+    omega: number,
+    transposed: number,
+    lPhaseOutPtr: number,
+    seqOutPtr: number,
+  ) => void;
+  lc_compute_multiconductor?: (
+    m: number,
+    condDataPtr: number,
+    freqHz: number,
+    rhoHomogeneous: number,
+    useTwoLayer: number,
+    rhoUpper: number,
+    rhoLower: number,
+    upperDepthM: number,
+    transposed: number,
+    rPhaseOutPtr: number,
+    lPhaseOutPtr: number,
+    cPhaseOutPtr: number,
+    seqOutPtr: number,
+    scratchF64Ptr: number,
+  ) => number;
+}
+
+const _lcScratchPools = new WeakMap<object, WasmScratchPool>();
+function getLineConstantsPool(wasm: WasmMemoryHost): WasmScratchPool {
+  let pool = _lcScratchPools.get(wasm);
+  if (!pool) {
+    pool = new WasmScratchPool(wasm, 65536);
+    _lcScratchPools.set(wasm, pool);
+  }
+  return pool;
+}
 
 export interface OverheadConductorSpec {
   id: string;
@@ -245,6 +308,29 @@ export function computeComplexEarthPenetrationDepth(
   rhoHomogeneous: number,
   twoLayerSoil?: TwoLayerSoilSpec,
 ): { pRe: number; pIm: number } {
+  const wasm = getDefaultWasmExports() as LineConstantsWasmExports | null;
+  if (wasm?.lc_earth_penetration_depth && wasm.memory) {
+    let wasmScope: WasmScratchScope | null = null;
+    try {
+      wasmScope = getLineConstantsPool(wasm).scope();
+      const out = wasmScope.allocF64(2);
+      wasm.lc_earth_penetration_depth(
+        omega,
+        mu0,
+        rhoHomogeneous,
+        twoLayerSoil ? 1 : 0,
+        twoLayerSoil ? twoLayerSoil.upperResistivityOhmM : 0.0,
+        twoLayerSoil ? twoLayerSoil.lowerResistivityOhmM : 0.0,
+        twoLayerSoil ? twoLayerSoil.upperLayerDepthM : 0.0,
+        out.ptr,
+      );
+      const view = new Float64Array(wasm.memory.buffer, out.ptr, 2);
+      return { pRe: view[0]!, pIm: view[1]! };
+    } finally {
+      wasmScope?.dispose();
+    }
+  }
+
   if (!twoLayerSoil) {
     const deltaEarth = Math.sqrt((2.0 * rhoHomogeneous) / (omega * mu0));
     return { pRe: 0.5 * deltaEarth, pIm: -0.5 * deltaEarth };
@@ -337,6 +423,80 @@ export function computeMulticonductorLineConstants(
   const m = ordered.length;
   const bundles = ordered.map(computeBundleEquivalentRadii);
 
+  // WASM-accelerated fused path (zero-GC linear memory)
+  const wasm = getDefaultWasmExports() as LineConstantsWasmExports | null;
+  if (wasm?.lc_compute_multiconductor && wasm.memory) {
+    let wasmScope: WasmScratchScope | null = null;
+    try {
+      wasmScope = getLineConstantsPool(wasm).scope();
+      const condData = wasmScope.allocF64(5 * m);
+      const rPhaseOut = wasmScope.allocF64(9);
+      const lPhaseOut = wasmScope.allocF64(9);
+      const cPhaseOut = wasmScope.allocF64(9);
+      const seqOut = wasmScope.allocF64(12);
+      const scratch = wasmScope.allocF64(3 * m * m + 20);
+
+      const condView = new Float64Array(wasm.memory.buffer, condData.ptr, 5 * m);
+      for (let i = 0; i < m; i++) {
+        const ci = ordered[i]!;
+        const bi = bundles[i]!;
+        const base = i * 5;
+        condView[base] = ci.xM;
+        condView[base + 1] = bi.yEffM;
+        condView[base + 2] = bi.rEqM;
+        condView[base + 3] = bi.gmrEqM;
+        condView[base + 4] = bi.rDcBundleOhmPerKm;
+      }
+
+      const twoLayer = geom.twoLayerSoil;
+      const ok = wasm.lc_compute_multiconductor(
+        m,
+        condData.ptr,
+        f,
+        rhoSoil,
+        twoLayer ? 1 : 0,
+        twoLayer ? twoLayer.upperResistivityOhmM : 0.0,
+        twoLayer ? twoLayer.lowerResistivityOhmM : 0.0,
+        twoLayer ? twoLayer.upperLayerDepthM : 0.0,
+        geom.transposed !== false ? 1 : 0,
+        rPhaseOut.ptr,
+        lPhaseOut.ptr,
+        cPhaseOut.ptr,
+        seqOut.ptr,
+        scratch.ptr,
+      );
+
+      if (ok === 1) {
+        const buf = wasm.memory.buffer;
+        const rPhaseOhmPerKm = new Float64Array(buf, rPhaseOut.ptr, 9).slice();
+        const lPhaseHPerKm = new Float64Array(buf, lPhaseOut.ptr, 9).slice();
+        const cPhaseFPerKm = new Float64Array(buf, cPhaseOut.ptr, 9).slice();
+        const seq = new Float64Array(buf, seqOut.ptr, 12);
+        return {
+          freqHz: f,
+          rPhaseOhmPerKm,
+          lPhaseHPerKm,
+          cPhaseFPerKm,
+          r1OhmPerKm: seq[0]!,
+          l1HPerKm: seq[1]!,
+          c1FPerKm: seq[2]!,
+          zc1Ohm: seq[3]!,
+          v1KmPerSec: seq[4]!,
+          alpha1NeperPerKm: seq[5]!,
+          r0OhmPerKm: seq[6]!,
+          l0HPerKm: seq[7]!,
+          c0FPerKm: seq[8]!,
+          zc0Ohm: seq[9]!,
+          v0KmPerSec: seq[10]!,
+          alpha0NeperPerKm: seq[11]!,
+        };
+      }
+    } finally {
+      wasmScope?.dispose();
+    }
+  }
+
+  // TypeScript fallback path
   // Complex earth penetration depth p = pRe + j * pIm (homogeneous or 2-layer soil)
   const { pRe, pIm } = computeComplexEarthPenetrationDepth(omega, mu0, rhoSoil, geom.twoLayerSoil);
   const kMagFactor = (omega * mu0 * 1000.0) / (2.0 * Math.PI); // Ohm/km scale

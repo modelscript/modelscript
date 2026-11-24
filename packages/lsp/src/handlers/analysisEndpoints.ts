@@ -1575,7 +1575,12 @@ export function registerAnalysisEndpoints(context: LspContext) {
     async (params: {
       uri: string;
       className?: string | undefined;
-    }): Promise<{ parameters: string[]; error?: string | undefined }> => {
+    }): Promise<{
+      parameters: string[];
+      parameterValues?: Record<string, number> | undefined;
+      variables?: string[] | undefined;
+      error?: string | undefined;
+    }> => {
       let instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) {
         const doc = context.documents.get(params.uri);
@@ -1611,21 +1616,28 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
         const arena = flattenArenaFromInstance(classInstance, docContext);
         const parameters: string[] = [];
+        const parameterValues: Record<string, number> = {};
+        const variables: string[] = [];
 
         for (let i = 0; i < arena.varCount; i++) {
           if (arena.isVarRemoved(i)) continue;
-          if (arena.getVarVariability(i) === Variability.Parameter) {
-            // Check if it evaluates to a number
+          const varName = arena.getVarName(i);
+          const variability = arena.getVarVariability(i);
+          if (variability === Variability.Parameter) {
             const val = evaluateArenaExprToNum(arena, arena.getVarBindingExprId(i));
             if (val !== null) {
-              parameters.push(arena.getVarName(i));
+              parameters.push(varName);
+              parameterValues[varName] = val;
             } else if (arena.getVarBindingExprId(i) === undefined) {
-              parameters.push(arena.getVarName(i)); // unassigned parameter
+              parameters.push(varName); // unassigned parameter
+              parameterValues[varName] = arena.getVarStartValue(i);
             }
+          } else if (variability === Variability.Continuous) {
+            variables.push(varName);
           }
         }
 
-        return { parameters };
+        return { parameters, parameterValues, variables };
       } catch (e) {
         return { parameters: [], error: e instanceof Error ? e.message : String(e) };
       }

@@ -249,12 +249,26 @@ export class CaeSweepOrchestrator {
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders?.();
 
+    let closed = false;
+    let heartbeat: NodeJS.Timeout | null = null;
     const emitter = this.streamers.get(sweepId);
     const state = this.sweeps.get(sweepId);
 
+    const safeWrite = (chunk: string): boolean => {
+      if (closed || res.writableEnded || res.destroyed) {
+        return false;
+      }
+      try {
+        res.write(chunk);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
     // Initial snapshot event
     if (state) {
-      res.write(
+      safeWrite(
         `data: ${JSON.stringify({
           type: "sweep_progress",
           status: state.status,
@@ -268,28 +282,44 @@ export class CaeSweepOrchestrator {
     }
 
     if (!emitter || state?.status === "completed" || state?.status === "failed" || state?.status === "cancelled") {
-      res.write(`data: ${JSON.stringify({ type: "phase", phase: "Sweep Execution Finished" })}\n\n`);
-      res.end();
+      safeWrite(`data: ${JSON.stringify({ type: "phase", phase: "Sweep Execution Finished" })}\n\n`);
+      if (!res.writableEnded && !res.destroyed) {
+        try {
+          res.end();
+        } catch {
+          // Ignore end errors on already-closed socket
+        }
+      }
       return () => {};
     }
 
     const onEvent = (data: { eventType: string; payload: unknown }) => {
       const payloadObj =
         typeof data.payload === "object" && data.payload !== null ? data.payload : { value: data.payload };
-      res.write(`data: ${JSON.stringify({ type: data.eventType, ...payloadObj })}\n\n`);
+      if (!safeWrite(`data: ${JSON.stringify({ type: data.eventType, ...payloadObj })}\n\n`)) {
+        cleanup();
+      }
     };
-
-    const heartbeat = setInterval(() => {
-      res.write(": heartbeat\n\n");
-    }, 15000);
-
-    emitter.on("sweep_event", onEvent);
 
     const cleanup = () => {
-      clearInterval(heartbeat);
+      if (closed) return;
+      closed = true;
+      if (heartbeat) {
+        clearInterval(heartbeat);
+        heartbeat = null;
+      }
       emitter.off("sweep_event", onEvent);
+      res.off?.("close", cleanup);
     };
 
+    heartbeat = setInterval(() => {
+      if (!safeWrite(": heartbeat\n\n")) {
+        cleanup();
+      }
+    }, 15000);
+    heartbeat.unref?.();
+
+    emitter.on("sweep_event", onEvent);
     res.on("close", cleanup);
     return cleanup;
   }

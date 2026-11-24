@@ -1,12 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import fsPromises from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 
 import semver from "semver";
+
+const execFileAsync = promisify(execFile);
+const MAX_CHECKED_COMPANIONS = 2_000;
+const SAFE_VERSION_REGEX = /^[0-9]+(\.[0-9]+)*(-[a-zA-Z0-9.-]+)?$/;
 
 import type { StorageDriver } from "./storage/driver.js";
 import { FilesystemStorageDriver } from "./storage/filesystem-driver.js";
@@ -46,6 +52,7 @@ function resolveDefaultDataDir(): string {
 export class LibraryStorage {
   readonly #dataDir: string;
   readonly #driver: StorageDriver;
+  readonly #checkedCompanions = new Set<string>();
 
   constructor(dataDirOrDriver?: string | StorageDriver) {
     if (typeof dataDirOrDriver === "object" && dataDirOrDriver !== null && "driverName" in dataDirOrDriver) {
@@ -94,17 +101,34 @@ export class LibraryStorage {
     return this.#driver;
   }
 
+  #markCompanionChecked(key: string): void {
+    if (!this.#checkedCompanions.has(key) && this.#checkedCompanions.size >= MAX_CHECKED_COMPANIONS) {
+      const oldest = this.#checkedCompanions.values().next().value;
+      if (oldest !== undefined) {
+        this.#checkedCompanions.delete(oldest);
+      }
+    }
+    this.#checkedCompanions.add(key);
+  }
+
   /**
    * Automatically ensure MSL companion packages (Complex, ModelicaServices)
    * exist in storage by extracting them from Modelica's zip if available.
    */
   ensureCompanionPackage(pkgName: string, targetVersion?: string): boolean {
     if (pkgName !== "Complex" && pkgName !== "ModelicaServices") return false;
-    const modelicaDir = path.resolve(this.#dataDir, "Modelica");
-    if (!fs.existsSync(modelicaDir)) return false;
+    if (targetVersion && (!SAFE_VERSION_REGEX.test(targetVersion) || semver.valid(targetVersion) === null)) {
+      return false;
+    }
 
-    const safeVersionRegex = /^[0-9]+(\.[0-9]+)*(-[a-zA-Z0-9.-]+)?$/;
-    if (targetVersion && (!safeVersionRegex.test(targetVersion) || semver.valid(targetVersion) === null)) {
+    const cacheKey = targetVersion ? `${pkgName}:${targetVersion}` : `${pkgName}:*`;
+    if (this.#checkedCompanions.has(cacheKey) || this.#checkedCompanions.has(`${pkgName}:*`)) {
+      return false;
+    }
+
+    const modelicaDir = path.resolve(this.#dataDir, "Modelica");
+    if (!fs.existsSync(modelicaDir)) {
+      this.#markCompanionChecked(cacheKey);
       return false;
     }
 
@@ -115,20 +139,28 @@ export class LibraryStorage {
             .readdirSync(modelicaDir)
             .filter((f) => f.endsWith(".zip"))
             .map((f) => f.replace(/\.zip$/, ""))
-    ).filter((v) => safeVersionRegex.test(v) && semver.valid(v) !== null);
+    ).filter((v) => SAFE_VERSION_REGEX.test(v) && semver.valid(v) !== null);
 
     let createdAny = false;
     for (const ver of versions) {
       const safeVer = this.#safe(ver);
+      const verKey = `${pkgName}:${safeVer}`;
+      if (this.#checkedCompanions.has(verKey)) {
+        continue;
+      }
+
       const targetZip = this.#filePath(pkgName, safeVer);
       if (fs.existsSync(targetZip)) {
+        this.#markCompanionChecked(verKey);
         createdAny = true;
         continue;
       }
 
       const mslZip = path.resolve(modelicaDir, `${safeVer}.zip`);
-      if (!mslZip.startsWith(modelicaDir + path.sep)) continue;
-      if (!fs.existsSync(mslZip)) continue;
+      if (!mslZip.startsWith(modelicaDir + path.sep) || !fs.existsSync(mslZip)) {
+        this.#markCompanionChecked(verKey);
+        continue;
+      }
 
       try {
         const pkgDir = path.dirname(targetZip);
@@ -197,9 +229,145 @@ export class LibraryStorage {
         }
       } catch {
         // Skip extraction failure for this version
+      } finally {
+        this.#markCompanionChecked(verKey);
       }
     }
 
+    this.#markCompanionChecked(cacheKey);
+    return createdAny;
+  }
+
+  /**
+   * Non-blocking variant of `ensureCompanionPackage` using promisified `execFile`
+   * and async filesystem operations for request handlers and background tasks.
+   */
+  async ensureCompanionPackageAsync(pkgName: string, targetVersion?: string): Promise<boolean> {
+    if (pkgName !== "Complex" && pkgName !== "ModelicaServices") return false;
+    if (targetVersion && (!SAFE_VERSION_REGEX.test(targetVersion) || semver.valid(targetVersion) === null)) {
+      return false;
+    }
+
+    const cacheKey = targetVersion ? `${pkgName}:${targetVersion}` : `${pkgName}:*`;
+    if (this.#checkedCompanions.has(cacheKey) || this.#checkedCompanions.has(`${pkgName}:*`)) {
+      return false;
+    }
+
+    const modelicaDir = path.resolve(this.#dataDir, "Modelica");
+    const hasModelicaDir = await fsPromises.access(modelicaDir).then(
+      () => true,
+      () => false,
+    );
+    if (!hasModelicaDir) {
+      this.#markCompanionChecked(cacheKey);
+      return false;
+    }
+
+    const rawVersions = targetVersion
+      ? [targetVersion]
+      : (await fsPromises.readdir(modelicaDir)).filter((f) => f.endsWith(".zip")).map((f) => f.replace(/\.zip$/, ""));
+    const versions = rawVersions.filter((v) => SAFE_VERSION_REGEX.test(v) && semver.valid(v) !== null);
+
+    let createdAny = false;
+    for (const ver of versions) {
+      const safeVer = this.#safe(ver);
+      const verKey = `${pkgName}:${safeVer}`;
+      if (this.#checkedCompanions.has(verKey)) {
+        continue;
+      }
+
+      const targetZip = this.#filePath(pkgName, safeVer);
+      const hasTargetZip = await fsPromises.access(targetZip).then(
+        () => true,
+        () => false,
+      );
+      if (hasTargetZip) {
+        this.#markCompanionChecked(verKey);
+        createdAny = true;
+        continue;
+      }
+
+      const mslZip = path.resolve(modelicaDir, `${safeVer}.zip`);
+      const hasMslZip =
+        mslZip.startsWith(modelicaDir + path.sep) &&
+        (await fsPromises.access(mslZip).then(
+          () => true,
+          () => false,
+        ));
+      if (!hasMslZip) {
+        this.#markCompanionChecked(verKey);
+        continue;
+      }
+
+      try {
+        const pkgDir = path.dirname(targetZip);
+        await fsPromises.mkdir(pkgDir, { recursive: true });
+        const tmpDir = await fsPromises.mkdtemp(path.join(os.tmpdir(), `msx-${pkgName}-`));
+        try {
+          if (pkgName === "Complex") {
+            try {
+              const { stdout: compMo } = await execFileAsync("unzip", ["-q", "-p", mslZip, "Complex.mo"], {
+                encoding: "buffer",
+                maxBuffer: 20 * 1024 * 1024,
+              });
+              await fsPromises.writeFile(path.join(tmpDir, "Complex.mo"), compMo);
+            } catch {
+              continue;
+            }
+            try {
+              const { stdout: lic } = await execFileAsync("unzip", ["-q", "-p", mslZip, "LICENSE"], {
+                encoding: "buffer",
+                maxBuffer: 5 * 1024 * 1024,
+              });
+              await fsPromises.writeFile(path.join(tmpDir, "LICENSE"), lic);
+            } catch {}
+            const compStat = await fsPromises.stat(path.join(tmpDir, "Complex.mo")).catch(() => null);
+            if (compStat && compStat.size > 0) {
+              await execFileAsync("zip", ["-q", "-r", targetZip, "."], { cwd: tmpDir });
+            }
+          } else if (pkgName === "ModelicaServices") {
+            const svcSubDir = path.join(tmpDir, "ModelicaServices");
+            await fsPromises.mkdir(svcSubDir, { recursive: true });
+            try {
+              await execFileAsync("unzip", ["-q", "-j", mslZip, `ModelicaServices ${safeVer}/*`, "-d", svcSubDir]);
+            } catch {
+              try {
+                await execFileAsync("unzip", ["-q", "-j", mslZip, "ModelicaServices/*", "-d", svcSubDir]);
+              } catch {
+                continue;
+              }
+            }
+            try {
+              const { stdout: lic } = await execFileAsync("unzip", ["-q", "-p", mslZip, "LICENSE"], {
+                encoding: "buffer",
+                maxBuffer: 5 * 1024 * 1024,
+              });
+              await fsPromises.writeFile(path.join(tmpDir, "LICENSE"), lic);
+            } catch {}
+            const files = await fsPromises.readdir(svcSubDir);
+            if (files.length > 0) {
+              await execFileAsync("zip", ["-q", "-r", targetZip, "."], { cwd: tmpDir });
+            }
+          }
+
+          const targetStat = await fsPromises.stat(targetZip).catch(() => null);
+          if (targetStat && targetStat.size > 50) {
+            const zipBuf = await fsPromises.readFile(targetZip);
+            const hash = crypto.createHash("sha256").update(zipBuf).digest("hex");
+            await fsPromises.writeFile(path.join(pkgDir, `${safeVer}.sha256`), hash, "utf-8");
+            createdAny = true;
+          }
+        } finally {
+          await fsPromises.rm(tmpDir, { recursive: true, force: true });
+        }
+      } catch {
+        // Skip extraction failure for this version
+      } finally {
+        this.#markCompanionChecked(verKey);
+      }
+    }
+
+    this.#markCompanionChecked(cacheKey);
     return createdAny;
   }
 
@@ -302,6 +470,14 @@ export class LibraryStorage {
       throw new ConflictError(`Library ${name}@${version} already exists`);
     }
 
+    const s3Key = `${this.#safe(name)}/${this.#safe(version)}.zip`;
+    if (this.#driver.driverName === "s3") {
+      if (await this.#driver.exists(s3Key)) {
+        throw new ConflictError(`Library ${name}@${version} already exists in S3 storage`);
+      }
+      await this.#driver.write(s3Key, buffer, { contentType: "application/zip" });
+    }
+
     const dir = path.dirname(filePath);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(filePath, buffer);
@@ -309,13 +485,7 @@ export class LibraryStorage {
     const hash = crypto.createHash("sha256").update(buffer).digest("hex");
     fs.writeFileSync(path.join(dir, `${this.#safe(version)}.sha256`), hash, "utf-8");
 
-    if (this.#driver.driverName === "s3") {
-      const s3Key = `${this.#safe(name)}/${this.#safe(version)}.zip`;
-      if (await this.#driver.exists(s3Key)) {
-        throw new ConflictError(`Library ${name}@${version} already exists in S3 storage`);
-      }
-      await this.#driver.write(s3Key, buffer, { contentType: "application/zip" });
-    }
+    this.#checkedCompanions.clear();
 
     return filePath;
   }
@@ -676,9 +846,13 @@ export class LibraryStorage {
     }
 
     if (this.#driver.driverName === "s3") {
-      const s3Key = `${this.#safe(name)}/${this.#safe(version)}.zip`;
-      this.#driver.delete(s3Key).catch(() => {});
+      const safeName = this.#safe(name);
+      const safeVer = this.#safe(version);
+      this.#driver.delete(`${safeName}/${safeVer}.zip`).catch(() => {});
+      this.#driver.deletePrefix(`${safeName}/${safeVer}/`).catch(() => {});
     }
+
+    this.#checkedCompanions.clear();
 
     return true;
   }

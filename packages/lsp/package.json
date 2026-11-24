@@ -291,6 +291,7 @@
     "@modelscript/tough": "workspace:*",
     "@modelscript/trasys": "workspace:*",
     "@modelscript/trnsys": "workspace:*",
+    "@modelscript/twentysim": "workspace:*",
     "@modelscript/urdf": "workspace:*",
     "@modelscript/usd": "workspace:*",
     "@modelscript/usgs-dem": "workspace:*",

@@ -11,7 +11,13 @@ import {
   createMslShapeMesh,
   createMslTorusMesh,
 } from "@modelscript/modelica/extensions";
-import type { CadAnnotation, CadComponent, CadPortAnnotation, ProceduralMeshData } from "./CadViewer";
+import type {
+  CadAnnotation,
+  CadComponent,
+  CadPortAnnotation,
+  CadSourceMetadata,
+  ProceduralMeshData,
+} from "./CadViewer";
 
 /**
  * Parse a CAD annotation string like:
@@ -159,6 +165,7 @@ export interface RawCadVariableEntry {
   proceduralMesh?: ProceduralMeshData | undefined;
   defaults?: Record<string, unknown> | undefined;
   shapeType?: string | undefined;
+  sourceMetadata?: CadSourceMetadata | undefined;
 }
 
 function parseModifierNum(modStr: string, name: string, fallback: number): number {
@@ -471,6 +478,7 @@ export function extractCadComponents(daeVariables: any[] | string): CadComponent
         proceduralMesh: v.proceduralMesh ?? undefined,
         defaults: v.defaults ?? undefined,
         shapeType: v.shapeType ?? undefined,
+        sourceMetadata: v.sourceMetadata ?? undefined,
       });
       continue;
     }
@@ -488,6 +496,7 @@ export function extractCadComponents(daeVariables: any[] | string): CadComponent
         proceduralMesh: v.proceduralMesh ?? undefined,
         defaults: v.defaults ?? undefined,
         shapeType: v.shapeType ?? undefined,
+        sourceMetadata: v.sourceMetadata ?? undefined,
       });
     } else if (cadStr.startsWith("CADPort(")) {
       // CADPort annotations are on leaf variables like "body.port1"

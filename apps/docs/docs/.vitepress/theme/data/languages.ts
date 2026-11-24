@@ -288,6 +288,15 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     group: "aerospace",
     tier: "beta",
   },
+  {
+    slug: "twentysim",
+    name: "20-sim",
+    sidebar: "20-sim Bond Graphs",
+    ext: ".emx",
+    role: "Multi-domain Bond Graphs & SIDOPS simulation",
+    group: "aerospace",
+    tier: "beta",
+  },
 
   // ── Automotive & mobility ───────────────────────────────────────────────
   {

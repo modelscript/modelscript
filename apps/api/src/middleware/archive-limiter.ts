@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { NextFunction, Request, Response } from "express";
-
-interface ExportRateRecord {
-  count: number;
-  lastExportAt: number;
-  resetAt: number;
-}
+import { DistributedCounterBridge } from "./redis-store.js";
 
 /**
  * Anti-abuse and DoS rate limiter for GDPR / CCPA user data archive exports.
@@ -15,11 +10,12 @@ interface ExportRateRecord {
  * 1. Cooldown interval: Minimum seconds between successive archive requests per user
  *    (preventing rapid burst CPU/memory exhaustion).
  * 2. Window ceiling: Maximum exports allowed per sliding time window (default: 5 per hour).
+ *
+ * Replicates increments/resets to Redis when REDIS_URL is configured.
  */
 export class ArchiveExportRateLimiter {
-  private readonly userRecords = new Map<string | number, ExportRateRecord>();
+  private readonly counter: DistributedCounterBridge;
   private readonly maxPerWindow: number;
-  private readonly windowMs: number;
   private readonly cooldownMs: number;
 
   constructor(
@@ -28,8 +24,11 @@ export class ArchiveExportRateLimiter {
     cooldownMs = process.env["NODE_ENV"] === "test" ? 0 : 15 * 1000,
   ) {
     this.maxPerWindow = maxPerWindow;
-    this.windowMs = windowMs;
     this.cooldownMs = cooldownMs;
+    this.counter = new DistributedCounterBridge({
+      prefix: "rl:archive:",
+      windowMs,
+    });
   }
 
   public check(userId: string | number): {
@@ -39,9 +38,9 @@ export class ArchiveExportRateLimiter {
     remaining: number;
   } {
     const now = Date.now();
-    const record = this.userRecords.get(userId);
+    const record = this.counter.get(String(userId), now);
 
-    if (!record || now >= record.resetAt) {
+    if (!record) {
       return {
         allowed: true,
         remaining: this.maxPerWindow - 1,
@@ -51,7 +50,7 @@ export class ArchiveExportRateLimiter {
 
     // Check cooldown between successive archive generations
     const cooldown = process.env["NODE_ENV"] === "test" ? 0 : this.cooldownMs;
-    const timeSinceLast = now - record.lastExportAt;
+    const timeSinceLast = now - record.lastEventAt;
     if (cooldown > 0 && timeSinceLast < cooldown) {
       const waitSeconds = Math.ceil((cooldown - timeSinceLast) / 1000);
       return {
@@ -80,39 +79,20 @@ export class ArchiveExportRateLimiter {
     };
   }
 
-  private static readonly MAX_RECORDS = 10_000;
-
   public record(userId: string | number): void {
-    const now = Date.now();
-    if (this.userRecords.size >= ArchiveExportRateLimiter.MAX_RECORDS) {
-      for (const [k, v] of this.userRecords) {
-        if (now >= v.resetAt) this.userRecords.delete(k);
-      }
-      if (this.userRecords.size >= ArchiveExportRateLimiter.MAX_RECORDS) {
-        const oldestKey = this.userRecords.keys().next().value;
-        if (oldestKey !== undefined) this.userRecords.delete(oldestKey);
-      }
-    }
-    const record = this.userRecords.get(userId);
-
-    if (!record || now >= record.resetAt) {
-      this.userRecords.set(userId, {
-        count: 1,
-        lastExportAt: now,
-        resetAt: now + this.windowMs,
-      });
-    } else {
-      record.count += 1;
-      record.lastExportAt = now;
-    }
+    this.counter.increment(String(userId));
   }
 
   public reset(userId?: string | number): void {
     if (userId !== undefined) {
-      this.userRecords.delete(userId);
+      this.counter.delete(String(userId));
     } else {
-      this.userRecords.clear();
+      this.counter.clear();
     }
+  }
+
+  public shutdown(): void {
+    this.counter.shutdown();
   }
 
   public middleware() {

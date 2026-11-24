@@ -7,7 +7,7 @@ import { TextDocument } from "vscode-languageserver-textdocument";
 import { DocumentManager } from "./document-manager.js";
 import { ParserService } from "./parser-service.js";
 import { hasWorkspaceLinter, runWorkspaceLinterForDocument } from "./workspace-linter-dispatch.js";
-import { WorkspaceManager } from "./workspace-manager.js";
+import { resolveCstNameSpan, WorkspaceManager } from "./workspace-manager.js";
 
 import { parseXmlSync } from "@modelscript/dsl/xml";
 import {
@@ -1602,7 +1602,8 @@ export class ValidationService {
       return false;
     }
     try {
-      uw.indexDocumentText(uri, text, langId);
+      const cachedTree = this.documentManager?.documentTrees?.get(uri)?.tree;
+      uw.indexDocumentText(uri, text, langId, cachedTree);
       return true;
     } catch (err: any) {
       this.connection?.console?.warn?.(
@@ -2746,23 +2747,81 @@ export class ValidationService {
       for (const td of threadDiags) {
         if (td.domain.toLowerCase() !== domain.toLowerCase()) continue;
 
-        let startLine = Math.max(0, (td.line || meta.line || 1) - 1);
-        let startCol = Math.max(0, (td.column || meta.column || 1) - 1);
-        let len = td.length || meta.length || (meta.name ? meta.name.length : 8);
+        const cachedTree = this.documentManager?.documentTrees?.get(uri)?.tree;
+        const uIdx = this.workspaceManager.unifiedWorkspace?.getFileIndex(uri);
+        const offsetToPos = (src: string, off: number): { line: number; character: number } => {
+          const clamped = Math.max(0, Math.min(src.length, off));
+          let line = 0;
+          let lastNl = -1;
+          for (let i = 0; i < clamped; i++) {
+            if (src.charCodeAt(i) === 10) {
+              line++;
+              lastNl = i;
+            }
+          }
+          return { line, character: clamped - lastNl - 1 };
+        };
 
-        // If textDocument is provided and variable name is found, match exact token position if possible
-        if (text && td.elementName) {
-          const varBase = td.elementName.split(".").pop() || td.elementName;
-          const lineOffsets = text.split("\n");
-          if (startLine < lineOffsets.length) {
-            const lineStr = lineOffsets[startLine] || "";
-            const idx = lineStr.indexOf(varBase);
-            if (idx >= 0) {
-              startCol = idx;
-              len = varBase.length;
+        // 1. Resolve the target SymbolEntry from UnifiedSymbolIndex (preferring a matching child symbol
+        //    such as an attribute/parameter like `K_droop` when `td.elementName` identifies one).
+        let targetSym = meta.symbolId !== undefined ? uIdx?.symbols?.get(meta.symbolId) : undefined;
+        const culpritBase = td.elementName ? td.elementName.split(".").pop() || td.elementName : "";
+        if (targetSym && culpritBase && culpritBase !== targetSym.name && uIdx) {
+          const childIds = uIdx.childrenOf?.get(targetSym.id) ?? [];
+          for (const cid of childIds) {
+            const child = uIdx.symbols.get(cid);
+            if (child && child.name === culpritBase) {
+              targetSym = child;
+              break;
             }
           }
         }
+
+        let startPos: { line: number; character: number } | undefined;
+        let endPos: { line: number; character: number } | undefined;
+
+        // 2. Compute exact LSP range from the symbol's CST span (fieldRanges or CST identifier node)
+        if (targetSym && text) {
+          const cstSpan = resolveCstNameSpan(targetSym, cachedTree);
+          if (cstSpan && cstSpan.endOffset > cstSpan.startOffset) {
+            startPos = offsetToPos(text, cstSpan.startOffset);
+            endPos = offsetToPos(text, cstSpan.endOffset);
+          }
+        }
+
+        // 3. Fallback to CST offsets cached on ThreadElementMetadata, or exact CST token at (line, col)
+        if (
+          !startPos &&
+          text &&
+          typeof meta.startOffset === "number" &&
+          typeof meta.endOffset === "number" &&
+          meta.endOffset > meta.startOffset
+        ) {
+          startPos = offsetToPos(text, meta.startOffset);
+          endPos = offsetToPos(text, meta.endOffset);
+        }
+
+        if (!startPos) {
+          const fallbackLine = Math.max(0, (td.line || meta.line || 1) - 1);
+          const fallbackCol = Math.max(0, (td.column || meta.column || 1) - 1);
+          const cstToken =
+            cachedTree?.rootNode && typeof cachedTree.rootNode.descendantForPosition === "function"
+              ? cachedTree.rootNode.descendantForPosition({ row: fallbackLine, column: fallbackCol })
+              : null;
+          if (cstToken?.startPosition && cstToken?.endPosition) {
+            startPos = { line: cstToken.startPosition.row, character: cstToken.startPosition.column };
+            endPos = { line: cstToken.endPosition.row, character: cstToken.endPosition.column };
+          } else {
+            const len = td.length || meta.length || (meta.name ? meta.name.length : 1);
+            startPos = { line: fallbackLine, character: fallbackCol };
+            endPos = { line: fallbackLine, character: fallbackCol + len };
+          }
+        }
+
+        const startLine = startPos.line;
+        const startCol = startPos.character;
+        const endLine = endPos!.line;
+        const endCol = endPos!.character;
 
         const relatedInformation =
           td.relatedInformation && td.relatedInformation.length > 0
@@ -2777,7 +2836,7 @@ export class ValidationService {
                       uri: el.uri as string,
                       range: {
                         start: { line: relLine, character: relCol },
-                        end: { line: relLine, character: relCol + Math.max(1, (el.name || "").length) },
+                        end: { line: relLine, character: relCol + Math.max(1, el.length ?? (el.name || "").length) },
                       },
                     },
                     message: `Aligned ${String(el.domain || "domain").toUpperCase()} element '${el.name || td.elementName}'`,
@@ -2787,7 +2846,7 @@ export class ValidationService {
         diagnostics.push({
           range: {
             start: { line: startLine, character: startCol },
-            end: { line: startLine, character: startCol + len },
+            end: { line: endLine, character: endCol },
           },
           severity:
             td.severity === "error"
@@ -3410,17 +3469,17 @@ export class ValidationService {
       if (validatedPairs.has(pairKey)) return;
       validatedPairs.add(pairKey);
 
+      const targetDocUri = textDocument?.uri ?? srcEntry.resourceId ?? "";
+      const cachedTree = targetDocUri ? this.documentManager?.documentTrees?.get(targetDocUri)?.tree : undefined;
+      const cstSpan = resolveCstNameSpan(srcEntry, cachedTree);
+      const spanStart = cstSpan?.startOffset ?? srcEntry.startOffset;
+      const spanEnd = cstSpan?.endOffset ?? Math.min(text.length, spanStart + Math.max(1, srcEntry.name.length));
       const startPos = textDocument
-        ? textDocument.positionAt(srcEntry.startOffset)
+        ? textDocument.positionAt(spanStart)
         : { line: Math.max(0, fallbackLine - 1), character: Math.max(0, fallbackCol - 1) };
       const endPos = textDocument
-        ? textDocument.positionAt(
-            Math.max(
-              srcEntry.startOffset + Math.max(1, srcEntry.name.length),
-              Math.min(text.length, srcEntry.startOffset + srcEntry.name.length + 1),
-            ),
-          )
-        : { line: startPos.line, character: startPos.character + Math.max(1, srcEntry.name.length) };
+        ? textDocument.positionAt(spanEnd)
+        : { line: startPos.line, character: startPos.character + Math.max(1, spanEnd - spanStart) };
       const range: Range = { start: startPos, end: endPos };
 
       const srcNode = symbolEntryToPolyglotNode(dbView, srcEntry);
@@ -3600,31 +3659,62 @@ export class ValidationService {
           const aligned = this.workspaceManager.findAlignedElementsBySlot?.(slot) ?? [];
           if (aligned.length > 1) {
             const rawName = stripLeadingKeywordPrefixes(meta.name, ["part def", "model", "package", "def"]).trim();
-            for (let i = 0; i < lines.length; i++) {
-              const line = lines[i]!;
-              const col = rawName ? line.indexOf(rawName) : -1;
-              if (
-                col >= 0 &&
-                (line.includes("part def") ||
-                  line.includes("part ") ||
-                  line.includes("model ") ||
-                  line.includes("package "))
-              ) {
-                const peerList = aligned
-                  .filter((el) => el.domain.toLowerCase() !== entry.domain.toLowerCase())
-                  .map((el) => `${el.domain.toUpperCase()} (${el.name})`)
-                  .join(", ");
-                diagnostics.push({
-                  severity: DiagnosticSeverity.Information,
-                  range: {
-                    start: { line: i, character: col },
-                    end: { line: i, character: col + rawName.length },
-                  },
-                  message: `[Multi-Domain Digital Thread] Architecture bound across ${aligned.length} domains: ${peerList}.`,
-                  source: "modelscript-digital-thread",
-                });
-                break;
-              }
+            const peerList = aligned
+              .filter((el) => el.domain.toLowerCase() !== entry.domain.toLowerCase())
+              .map((el) => `${el.domain.toUpperCase()} (${el.name})`)
+              .join(", ");
+
+            const cachedTree = this.documentManager?.documentTrees?.get(uri)?.tree;
+            const fileIdx = this.workspaceManager.unifiedWorkspace?.getFileIndex(uri);
+            const targetSym =
+              entry.meta.symbolId !== undefined
+                ? fileIdx?.symbols?.get(entry.meta.symbolId)
+                : rawName && fileIdx?.byName?.get(rawName)?.[0] !== undefined
+                  ? fileIdx.symbols.get(fileIdx.byName.get(rawName)![0]!)
+                  : undefined;
+
+            const cstSpan = targetSym
+              ? resolveCstNameSpan(targetSym, cachedTree)
+              : typeof entry.meta.startOffset === "number" &&
+                  typeof entry.meta.endOffset === "number" &&
+                  entry.meta.endOffset > entry.meta.startOffset
+                ? { startOffset: entry.meta.startOffset, endOffset: entry.meta.endOffset }
+                : undefined;
+
+            let infoRange: Range | undefined;
+            if (cstSpan) {
+              const offsetToPos = (src: string, off: number) => {
+                const clamped = Math.max(0, Math.min(src.length, off));
+                let line = 0;
+                let lastNl = -1;
+                for (let i = 0; i < clamped; i++) {
+                  if (src.charCodeAt(i) === 10) {
+                    line++;
+                    lastNl = i;
+                  }
+                }
+                return { line, character: clamped - lastNl - 1 };
+              };
+              infoRange = {
+                start: offsetToPos(text, cstSpan.startOffset),
+                end: offsetToPos(text, cstSpan.endOffset),
+              };
+            } else if (entry.meta.line >= 1) {
+              const line0 = Math.max(0, entry.meta.line - 1);
+              const col0 = Math.max(0, (entry.meta.column || 1) - 1);
+              infoRange = {
+                start: { line: line0, character: col0 },
+                end: { line: line0, character: col0 + Math.max(1, entry.meta.length ?? rawName.length) },
+              };
+            }
+
+            if (infoRange) {
+              diagnostics.push({
+                severity: DiagnosticSeverity.Information,
+                range: infoRange,
+                message: `[Multi-Domain Digital Thread] Architecture bound across ${aligned.length} domains: ${peerList}.`,
+                source: "modelscript-digital-thread",
+              });
             }
           }
         }

@@ -2,8 +2,8 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { PolynomialAbstraction } from "../src/analysis/polynomial_abstraction.js";
 import { Interval } from "../src/analysis/wasm_interval.js";
-import { PolynomialAbstraction } from "../src/analysis/wasm_polynomial_abstraction.js";
 import { SosBarrierSynthesizer } from "../src/analysis/wasm_sos_barrier.js";
 
 describe("Native Higher-Degree SOS & Transcendental Polynomial Abstraction Suite", () => {

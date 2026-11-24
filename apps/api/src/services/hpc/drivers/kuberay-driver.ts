@@ -67,39 +67,32 @@ export class KubeRayDriver implements HpcDriver {
     body?: unknown,
   ): Promise<{ status: number; data: T }> {
     const url = `${this.baseUrl}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-
-    try {
-      const init: RequestInit = {
-        method,
-        headers: this.getHeaders(),
-        signal: controller.signal,
-      };
-      if (body !== undefined) {
-        init.body = JSON.stringify(body);
-      }
-      const res = await this.fetchFn(url, init);
-      const text = await res.text();
-      let data: Record<string, unknown> = {};
-      try {
-        data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
-      } catch {
-        data = { rawText: text };
-      }
-
-      if (!res.ok) {
-        const errMsg =
-          (typeof data["message"] === "string" && data["message"]) ||
-          (typeof data["error"] === "string" && data["error"]) ||
-          `Ray Job API error: HTTP ${res.status} (${method} ${endpoint})`;
-        throw new Error(errMsg);
-      }
-
-      return { status: res.status, data: data as T };
-    } finally {
-      clearTimeout(timer);
+    const init: RequestInit = {
+      method,
+      headers: this.getHeaders(),
+      signal: AbortSignal.timeout(this.timeoutMs),
+    };
+    if (body !== undefined) {
+      init.body = JSON.stringify(body);
     }
+    const res = await this.fetchFn(url, init);
+    const text = await res.text();
+    let data: Record<string, unknown> = {};
+    try {
+      data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+    } catch {
+      data = { rawText: text };
+    }
+
+    if (!res.ok) {
+      const errMsg =
+        (typeof data["message"] === "string" && data["message"]) ||
+        (typeof data["error"] === "string" && data["error"]) ||
+        `Ray Job API error: HTTP ${res.status} (${method} ${endpoint})`;
+      throw new Error(errMsg);
+    }
+
+    return { status: res.status, data: data as T };
   }
 
   public async submit(spec: HpcJobSpec): Promise<HpcSubmissionResult> {

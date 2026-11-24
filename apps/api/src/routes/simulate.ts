@@ -7,14 +7,20 @@ import os from "node:os";
 import path from "node:path";
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
-import { getComputeProfile } from "../services/hpc/compute-profiles.js";
+import {
+  assertComputeJobAccess,
+  completeComputeJob,
+  failComputeJob,
+  formatComputeJobStatus,
+  holdComputeEscrow,
+  runComputePreflight,
+  sendComputeJobResultFile,
+} from "../services/compute-job-lifecycle.js";
 import { HpcEngine } from "../services/hpc/hpc-engine.js";
 import type { HpcJobSpec } from "../services/hpc/hpc-types.js";
-import { checkComputeQuota, resolveRequestUserId } from "../services/hpc/quota-guard.js";
 import { prepareNativeSimulation, type NativeSimPrepResult } from "../services/simulation/native-sim-runner.js";
 import type { LibraryStorage } from "../storage.js";
 import { enforceExportCompliance } from "../util/compliance.js";
-import { checkComputeSandboxing } from "../util/compute-sandboxing.js";
 import { scanModelicaSource } from "../util/package-scanner.js";
 
 /**
@@ -31,13 +37,9 @@ export function simulateRouter(
   const hpcEngine = new HpcEngine();
   const jobOwners = new Map<string, number>();
 
-  const isAuthorizedForSimJob = (req: express.Request, jobId: string): boolean => {
-    if (process.env["NODE_ENV"] === "test" && !process.env["STRICT_SIM_AUTH"]) return true;
-    const reqAny = req as {
-      user?: { id?: number | undefined; role?: string | undefined; accountType?: string | undefined } | undefined;
-    };
-    if (reqAny.user?.role === "admin" || reqAny.user?.accountType === "admin") return true;
-    const reqUserId = database ? resolveRequestUserId(req, database) : (reqAny.user?.id ?? null);
+  const checkSimJobAccess = (req: express.Request, res: express.Response, jobId: string): boolean => {
+    const allowInTest = !process.env["STRICT_SIM_AUTH"];
+    if (allowInTest && process.env["NODE_ENV"] === "test") return true;
 
     let ownerId = jobOwners.get(jobId);
     if (ownerId === undefined && database) {
@@ -47,11 +49,11 @@ export function simulateRouter(
         jobOwners.set(jobId, ownerId);
       }
     }
-    if (ownerId !== undefined) {
-      return reqUserId === ownerId;
-    }
-    const allowAnonymous = process.env["ALLOW_ANONYMOUS_SIMULATION"] === "true";
-    return allowAnonymous;
+    return assertComputeJobAccess(req, res, database, {
+      allowInTest,
+      ownerId,
+      allowWhenUnowned: process.env["ALLOW_ANONYMOUS_SIMULATION"] === "true",
+    });
   };
 
   // POST /api/v1/simulate
@@ -82,43 +84,15 @@ export function simulateRouter(
         }
       }
 
-      // Pre-flight quota check
-      const profile = getComputeProfile(req.body.profile as string | undefined);
-      const userId = database ? resolveRequestUserId(req, database) : null;
-      const allowAnonymous =
-        process.env["ALLOW_ANONYMOUS_SIMULATION"] === "true" ||
-        (process.env["NODE_ENV"] === "test" && !process.env["STRICT_SIM_AUTH"]);
-      if (!allowAnonymous && !userId) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
-
-      // Compute sandboxing guard for community federated accounts
-      if (database && userId) {
-        const user = database.getUserById(userId);
-        const sandbox = checkComputeSandboxing(user);
-        if (sandbox.sandboxed) {
-          return res.status(403).json({
-            error: sandbox.error,
-            code: sandbox.code,
-            fallbackAvailable: sandbox.fallbackAvailable,
-          });
-        }
-      }
-
-      let estimatedCost = 0;
-      if (database && userId) {
-        const quota = checkComputeQuota(userId, profile.id, database);
-        if (!quota.allowed) {
-          return res.status(402).json({
-            error: "Payment Required: Insufficient Compute Credits",
-            message: quota.reason,
-            balance: quota.userBalance,
-            required: quota.estimatedCost,
-            profile: quota.profileId,
-          });
-        }
-        estimatedCost = quota.estimatedCost;
-      }
+      // Pre-flight auth, sandboxing & quota check
+      const preflight = runComputePreflight(req, res, database, {
+        profileId: req.body.profile as string | undefined,
+        allowAnonymous:
+          process.env["ALLOW_ANONYMOUS_SIMULATION"] === "true" ||
+          (process.env["NODE_ENV"] === "test" && !process.env["STRICT_SIM_AUTH"]),
+      });
+      if (!preflight.allowed) return;
+      const { userId, profile, estimatedCost } = preflight;
 
       const allLibraries = dependencies.slice();
       if (libraryName && libraryVersion) {
@@ -182,24 +156,20 @@ export function simulateRouter(
             },
             userId,
           );
-          if (userId && dbJobId && estimatedCost > 0) {
-            const holdRes = database.holdUserCredits(
+          if (
+            !holdComputeEscrow({
+              database,
+              res,
               userId,
-              estimatedCost,
               dbJobId,
-              `HPC Escrow Hold: Simulation ${modelName}`,
-              { jobId, profile: profile.id },
-            );
-            if (!holdRes.success) {
-              database.updateJobStatus(dbJobId, "FAILED");
-              return res.status(402).json({
-                error: "Payment Required:Insufficient Compute Credits",
-                message: holdRes.reason,
-                balance: holdRes.newBalance,
-                required: estimatedCost,
-                profile: profile.id,
-              });
-            }
+              estimatedCost,
+              description: `HPC Escrow Hold: Simulation ${modelName}`,
+              metadata: { jobId, profile: profile.id },
+              errorTitle: "Payment Required:Insufficient Compute Credits",
+              profileId: profile.id,
+            })
+          ) {
+            return;
           }
         } catch {
           // DB tracking is optional
@@ -249,8 +219,6 @@ getErrorString();
 `;
 
           fs.writeFileSync(mosScriptPath, mosContents, "utf8");
-
-          const profile = getComputeProfile(req.body.profile as string | undefined);
 
           // Native ModelScript simulation engine vs OMC
           const enginePreference = req.body.engine ?? "modelscript";
@@ -413,33 +381,25 @@ getErrorString();
             status.usage = usage;
           }
 
-          if (database && dbJobId) {
-            database.updateJobStatus(dbJobId, "SUCCESS");
-            database.updateJobAccounting(dbJobId, usage);
-            if (userId) {
-              database.settleUserEscrow(userId, dbJobId, usage.costCredits ?? 0, `Simulation: ${modelName}`, {
-                profile: profile.id,
-                ...usage,
-              });
-              database.createNotification(userId, userId, "simulation_completed");
-              try {
-                database.grantReferralReward(userId);
-              } catch {
-                // Ignore referral reward errors
-              }
-            }
-          }
+          completeComputeJob({
+            database,
+            dbJobId,
+            userId,
+            costCredits: usage.costCredits ?? 0,
+            description: `Simulation: ${modelName}`,
+            metadata: { profile: profile.id, ...usage },
+            accounting: usage,
+            notificationType: "simulation_completed",
+            grantReferralReward: true,
+          });
         } catch (err) {
-          if (database && dbJobId) {
-            database.updateJobStatus(dbJobId, "FAILED");
-            if (userId) {
-              database.releaseUserEscrow(
-                userId,
-                dbJobId,
-                err instanceof Error ? err.message : "Simulation execution failed",
-              );
-            }
-          }
+          failComputeJob({
+            database,
+            dbJobId,
+            userId,
+            error: err,
+            fallbackMessage: "Simulation execution failed",
+          });
           console.error("Simulation Job %s failed:", jobId, err);
           throw err;
         } finally {
@@ -460,15 +420,11 @@ getErrorString();
     if (!status) {
       return res.status(404).json({ error: "Job not found" });
     }
-    if (!isAuthorizedForSimJob(req, jobId)) {
-      return res.status(403).json({ error: "Forbidden" });
+    if (!checkSimJobAccess(req, res, jobId)) {
+      return;
     }
 
-    res.json({
-      ...status,
-      profile: status.profile,
-      usage: status.usage,
-    });
+    res.json(formatComputeJobStatus(status));
     return;
   });
 
@@ -480,19 +436,14 @@ getErrorString();
     if (!status) {
       return res.status(404).json({ error: "Job not found" });
     }
-    if (!isAuthorizedForSimJob(req, jobId)) {
-      return res.status(403).json({ error: "Forbidden" });
+    if (!checkSimJobAccess(req, res, jobId)) {
+      return;
     }
 
-    if (status.status === "completed" && status.resultPath) {
-      if (fs.existsSync(status.resultPath)) {
-        res.sendFile(status.resultPath);
-      } else {
-        res.status(500).json({ error: "Result file missing but job completed." });
-      }
-    } else {
-      res.status(400).json({ error: "Simulation not completed yet" });
-    }
+    sendComputeJobResultFile(res, status, {
+      notCompleted: "Simulation not completed yet",
+      missingFile: "Result file missing but job completed.",
+    });
     return;
   });
 

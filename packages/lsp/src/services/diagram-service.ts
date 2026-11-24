@@ -12,6 +12,7 @@ import {
   createDiagramDispatch,
 } from "../diagramApi.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
+import type { CstNodeLike, CstTreeLike } from "../utils/ast-utils.js";
 import { isIdentContCode, isWsCode, readIdentAt, skipWs } from "../utils/lexical-utils.js";
 import { DocumentManager } from "./document-manager.js";
 import { WorkspaceManager } from "./workspace-manager.js";
@@ -90,49 +91,213 @@ export interface EmbeddedDiagramPortalRef {
   animateWithSimulation: boolean;
 }
 
+function unwrapPortalCstRoot(
+  rootNodeOrTree: CstNodeLike | CstTreeLike | { tree?: CstTreeLike | null } | null | undefined,
+): CstNodeLike | undefined {
+  if (!rootNodeOrTree || typeof rootNodeOrTree !== "object") return undefined;
+  if ("rootNode" in rootNodeOrTree && rootNodeOrTree.rootNode) {
+    return rootNodeOrTree.rootNode;
+  }
+  if ("tree" in rootNodeOrTree && rootNodeOrTree.tree?.rootNode) {
+    return rootNodeOrTree.tree.rootNode;
+  }
+  if ("type" in rootNodeOrTree && typeof rootNodeOrTree.type === "string") {
+    return rootNodeOrTree as CstNodeLike;
+  }
+  return undefined;
+}
+
+function isPortalCommentNode(type: string): boolean {
+  const lower = type.toLowerCase();
+  return (
+    lower === "line_comment" ||
+    lower === "block_comment" ||
+    lower === "doc_comment" ||
+    lower === "regular_comment" ||
+    lower === "single_line_note" ||
+    lower === "multiline_note"
+  );
+}
+
+function getCstNodeSpanText(node: CstNodeLike, sourceText?: string | null): string {
+  if (
+    sourceText &&
+    typeof node.startIndex === "number" &&
+    typeof node.endIndex === "number" &&
+    node.startIndex >= 0 &&
+    node.endIndex > node.startIndex &&
+    node.endIndex <= sourceText.length
+  ) {
+    return sourceText.slice(node.startIndex, node.endIndex);
+  }
+  return node.text ?? "";
+}
+
+function parsePortalFromAnnotationBody(annBody: string): EmbeddedDiagramPortalRef | undefined {
+  const portalMatch = /\b(CAD|FEA|CFD)\s*\([^)]*\buri\s*=\s*"([^"]+)"/.exec(annBody);
+  if (!portalMatch) return undefined;
+  const rawKind = portalMatch[1]!.toLowerCase();
+  const uri = portalMatch[2]!;
+  const kind: EmbeddedDiagramPortalRef["kind"] =
+    rawKind === "fea"
+      ? "fea"
+      : rawKind === "cfd"
+        ? "cfd"
+        : /\.step$|\.stp$/i.test(uri)
+          ? "step"
+          : /\.usd[azc]?$/i.test(uri)
+            ? "usd"
+            : /\.urdf$/i.test(uri)
+              ? "urdf"
+              : /\.vtk$|\.vtu$/i.test(uri)
+                ? "vtk"
+                : "cad";
+  return {
+    kind,
+    artifactUri: uri,
+    animateWithSimulation: true,
+  };
+}
+
+function extractComponentNameFromCst(declNode: CstNodeLike, sourceText?: string | null): string | undefined {
+  const innerDecl =
+    (declNode.children ?? []).find((c) => c.type === "declaration" || c.type === "component_declaration1") ?? declNode;
+  const nameField = innerDecl.childForFieldName?.("name") ?? declNode.childForFieldName?.("name");
+  if (nameField) {
+    const trimmed = getCstNodeSpanText(nameField, sourceText).trim();
+    if (trimmed) return trimmed;
+  }
+
+  const stack: CstNodeLike[] = [innerDecl];
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    if (!cur || isPortalCommentNode(cur.type)) continue;
+    const lower = cur.type.toLowerCase();
+    if (lower.includes("annotation") || lower === "modification" || lower === "class_modification") continue;
+    if (cur.type === "identifier" || cur.type === "IDENT" || cur.type === "name") {
+      const trimmed = getCstNodeSpanText(cur, sourceText).trim();
+      if (trimmed) return trimmed;
+    }
+    const children = cur.children;
+    if (children) {
+      for (let i = children.length - 1; i >= 0; i--) {
+        const ch = children[i];
+        if (ch) stack.push(ch);
+      }
+    }
+  }
+  return undefined;
+}
+
+function findAnnotationNodesInCst(declNode: CstNodeLike): CstNodeLike[] {
+  const annotations: CstNodeLike[] = [];
+  const stack: CstNodeLike[] = [];
+  const topChildren = declNode.children;
+  if (topChildren) {
+    for (let i = topChildren.length - 1; i >= 0; i--) {
+      const ch = topChildren[i];
+      if (ch) stack.push(ch);
+    }
+  }
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    if (!cur || isPortalCommentNode(cur.type)) continue;
+    if (cur.type === "component_declaration" || cur.type === "component_declaration1") continue;
+    const lower = cur.type.toLowerCase();
+    if (lower === "annotation_clause" || lower === "annotation" || lower.includes("annotation")) {
+      annotations.push(cur);
+      continue;
+    }
+    const children = cur.children;
+    if (children) {
+      for (let i = children.length - 1; i >= 0; i--) {
+        const ch = children[i];
+        if (ch) stack.push(ch);
+      }
+    }
+  }
+  return annotations;
+}
+
+function collectPortalsFromCst(
+  rootNode: CstNodeLike,
+  sourceText: string | null | undefined,
+  portalByComponent: Map<string, EmbeddedDiagramPortalRef>,
+): void {
+  const stack: CstNodeLike[] = [rootNode];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!node || isPortalCommentNode(node.type)) continue;
+
+    const isComponentDecl =
+      node.type === "component_declaration" ||
+      node.type === "component_declaration1" ||
+      node.type === "PartUsage" ||
+      node.type === "part_usage";
+
+    if (isComponentDecl) {
+      const annNodes = findAnnotationNodesInCst(node);
+      if (annNodes.length > 0) {
+        const compName = extractComponentNameFromCst(node, sourceText);
+        if (compName) {
+          for (const annNode of annNodes) {
+            const annText = getCstNodeSpanText(annNode, sourceText);
+            const portal = parsePortalFromAnnotationBody(annText);
+            if (portal) {
+              portalByComponent.set(compName, portal);
+              break;
+            }
+          }
+        }
+      }
+      continue;
+    }
+
+    const children = node.children;
+    if (children) {
+      for (let i = children.length - 1; i >= 0; i--) {
+        const ch = children[i];
+        if (ch) stack.push(ch);
+      }
+    }
+  }
+}
+
 /**
  * Enriches Modelica / polyglot `DiagramData` nodes with `node.portal` metadata whenever
  * the source text declares an embedded `CAD(uri="...")`, `FEA(uri="...")`, or `CFD(uri="...")`
  * annotation on that component — enabling live nested 3D CAD/FEA/CFD viewports inside the schematic canvas.
+ *
+ * Uses CST traversal over component/declaration nodes containing `annotation` children when a
+ * cached CST tree or root node is provided, falling back to regex scanning only when no CST is available.
  */
 export function enrichDiagramWithEmbeddedPortals(
   diagramData: { nodes?: { id?: string; portal?: unknown; data?: Record<string, unknown> }[] } | null | undefined,
   sourceText: string | null | undefined,
+  rootNodeOrTree?: CstNodeLike | CstTreeLike | { tree?: CstTreeLike | null } | null | undefined,
 ): void {
-  if (!diagramData || !Array.isArray(diagramData.nodes) || !sourceText) return;
-  if (!sourceText.includes("CAD(") && !sourceText.includes("FEA(") && !sourceText.includes("CFD(")) return;
+  const cstRoot = unwrapPortalCstRoot(rootNodeOrTree);
+  if (!diagramData || !Array.isArray(diagramData.nodes) || (!sourceText && !cstRoot)) return;
+  if (sourceText && !sourceText.includes("CAD(") && !sourceText.includes("FEA(") && !sourceText.includes("CFD("))
+    return;
 
   const portalByComponent = new Map<string, EmbeddedDiagramPortalRef>();
-  // Match component declaration name followed on the same statement by CAD/FEA/CFD(uri="...")
-  const stmtRe = /\b([A-Za-z_]\w*)\s*(?:\([^;]*\))?\s*(?:"[^"]*"\s*)?annotation\s*\(([^;]*)\)\s*;/g;
-  let match: RegExpExecArray | null;
-  while ((match = stmtRe.exec(sourceText)) !== null) {
-    const compName = match[1];
-    const annBody = match[2];
-    if (!compName || !annBody) continue;
-    const portalMatch = /\b(CAD|FEA|CFD)\s*\([^)]*\buri\s*=\s*"([^"]+)"/.exec(annBody);
-    if (!portalMatch) continue;
-    const rawKind = portalMatch[1]!.toLowerCase();
-    const uri = portalMatch[2]!;
-    const kind: EmbeddedDiagramPortalRef["kind"] =
-      rawKind === "fea"
-        ? "fea"
-        : rawKind === "cfd"
-          ? "cfd"
-          : /\.step$|\.stp$/i.test(uri)
-            ? "step"
-            : /\.usd[azc]?$/i.test(uri)
-              ? "usd"
-              : /\.urdf$/i.test(uri)
-                ? "urdf"
-                : /\.vtk$|\.vtu$/i.test(uri)
-                  ? "vtk"
-                  : "cad";
-    portalByComponent.set(compName, {
-      kind,
-      artifactUri: uri,
-      animateWithSimulation: true,
-    });
+
+  if (cstRoot) {
+    collectPortalsFromCst(cstRoot, sourceText, portalByComponent);
+  } else if (sourceText) {
+    // Fallback regex scan when no cached CST is available
+    const stmtRe = /\b([A-Za-z_]\w*)\s*(?:\([^;]*\))?\s*(?:"[^"]*"\s*)?annotation\s*\(([^;]*)\)\s*;/g;
+    let match: RegExpExecArray | null;
+    while ((match = stmtRe.exec(sourceText)) !== null) {
+      const compName = match[1];
+      const annBody = match[2];
+      if (!compName || !annBody) continue;
+      const portal = parsePortalFromAnnotationBody(annBody);
+      if (portal) {
+        portalByComponent.set(compName, portal);
+      }
+    }
   }
 
   if (portalByComponent.size === 0) return;
@@ -439,7 +604,8 @@ export class DiagramService {
       if (result) {
         (result as any).isLoading = !dependenciesReady;
         const sourceForPortals = indexedText ?? this.documentManager.documents.get(effectiveUri)?.getText();
-        enrichDiagramWithEmbeddedPortals(result, sourceForPortals);
+        const cachedPortalTree = this.documentManager?.documentTrees?.get(effectiveUri)?.tree;
+        enrichDiagramWithEmbeddedPortals(result, sourceForPortals, cachedPortalTree);
       }
       this.connection.console.info(
         `[diagram-perf] ${classInstance.name}: resolve=${tResolve.toFixed(0)}ms build=${tBuild.toFixed(0)}ms nodes=${result?.nodes?.length ?? 0} edges=${result?.edges?.length ?? 0}`,

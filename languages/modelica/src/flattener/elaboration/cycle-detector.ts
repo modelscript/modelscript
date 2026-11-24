@@ -330,6 +330,46 @@ export function checkCyclicConstantsAndParameters(
 
       if (dfs(startNode)) {
         const cycleStr = path.map((id) => vars[id]!).join(",");
+        if (!dae.extensionMetadata?.["isOldFrontend"]) {
+          const vName = vars[startNode]!;
+          const vIdx = dae.getVarIdxByName(vName);
+          const isConst = vIdx >= 0 && dae.getVarVariability(vIdx) === Variability.Constant;
+          const varSym = db.childrenOf(rootClassId).find((c) => c.kind === "Component" && c.name === vName);
+          type CstCycleNode = {
+            type?: string;
+            parent?: CstCycleNode | null;
+            startOffset?: number;
+            endOffset?: number;
+            startPosition?: { row: number; column: number };
+            endPosition?: { row: number; column: number };
+          };
+          const varCst = varSym ? (db.cstNode(varSym.id) as CstCycleNode | null) : null;
+          let clauseNode = varCst;
+          while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.parent) {
+            clauseNode = clauseNode.parent;
+          }
+          const rNode = clauseNode ?? varCst;
+          const rangeObj =
+            rNode &&
+            rNode.startOffset !== undefined &&
+            rNode.endOffset !== undefined &&
+            rNode.startPosition &&
+            rNode.endPosition
+              ? {
+                  startOffset: rNode.startOffset,
+                  endOffset: rNode.endOffset,
+                  startPosition: rNode.startPosition,
+                  endPosition: rNode.endPosition,
+                }
+              : undefined;
+          dae.diagnostics.push({
+            severity: "error",
+            code: ModelicaErrorCode.CYCLIC_CONSTANTS_OR_PARAMETERS.code,
+            message: `Variable '${vName}' has a cyclic dependency and has variability ${isConst ? "constant" : "parameter"}.`,
+            range: rangeObj,
+          });
+          return;
+        }
         dae.diagnostics.push({
           severity: "error",
           code: ModelicaErrorCode.CYCLIC_CONSTANTS_OR_PARAMETERS.code,

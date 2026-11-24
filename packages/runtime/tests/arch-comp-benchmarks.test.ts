@@ -2,14 +2,14 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { ivAdd, ivMul, ivSub } from "../src/analysis/outward_rounding.js";
-import { DaeFlowpipeSolver, type DaeSystem } from "../src/analysis/wasm_dae_flowpipe.js";
+import { DaeFlowpipeSolver, type DaeSystem } from "../src/analysis/dae_flowpipe.js";
 import {
   HybridAutomaton,
   HybridFlowpipeSolver,
   HybridMode,
   HybridTransition,
-} from "../src/analysis/wasm_hybrid_flowpipe.js";
+} from "../src/analysis/hybrid_flowpipe.js";
+import { ivAdd, ivMul, ivSub } from "../src/analysis/outward_rounding.js";
 import { Interval } from "../src/analysis/wasm_interval.js";
 import { TaylorModel, TaylorModelFlowpipeSolver } from "../src/analysis/wasm_taylor_model.js";
 import { Zonotope } from "../src/analysis/wasm_zonotope.js";

@@ -300,6 +300,7 @@ test("Jira Ingestion API & Real-Time Webhook Pipeline", async (t) => {
   // Trigger external simulation report for this ECO
   const simReportRes = await request(app)
     .post(`/api/v1/spaces/${user.username}/${space.slug}/ecos/${eco.id}/workflows/external-report`)
+    .set("Authorization", `Bearer ${authToken}`)
     .send({
       provider: "ansatz",
       status: "passed",

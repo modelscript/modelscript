@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { Text } from "@primer/react";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api/client";
 import Box from "../components/Box";
@@ -18,8 +18,66 @@ const OAuthCallbackPage: React.FC = () => {
   const [useBackupCode, setUseBackupCode] = useState(false);
   const [twoFactorError, setTwoFactorError] = useState("");
   const [verifying2FA, setVerifying2FA] = useState(false);
+  const exchangedCodeRef = useRef<string | null>(null);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (requires2FA) {
+      return undefined;
+    }
+
+    let redirectTimer: ReturnType<typeof setTimeout> | undefined;
+    const scheduleErrorRedirect = (message: string) => {
+      if (!isMountedRef.current) return;
+      setAuthError(message);
+      redirectTimer = setTimeout(() => navigate("/login"), 4000);
+    };
+
+    const code = searchParams.get("code");
+    if (code) {
+      if (exchangedCodeRef.current === code) {
+        return undefined;
+      }
+      exchangedCodeRef.current = code;
+      // Immediately scrub one-time code from address bar and history
+      window.history.replaceState({}, document.title, window.location.pathname);
+
+      api
+        .post<{ token?: string; requires2FA?: boolean }>("/auth/oauth/exchange", { code }, { withCredentials: true })
+        .then((res) => {
+          if (!isMountedRef.current) return;
+          const { token, requires2FA: needs2FA } = res.data || {};
+          if (needs2FA && token) {
+            setTempToken(token);
+            setRequires2FA(true);
+            return;
+          }
+          if (token) {
+            localStorage.setItem("modelscript-auth-token", token);
+            window.location.href = "/"; // Hard reload to re-init auth context and respect onboarding route
+            return;
+          }
+          scheduleErrorRedirect("Authentication failed: invalid exchange response. Redirecting to login...");
+        })
+        .catch((err: unknown) => {
+          const msg =
+            (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+            "Authentication code expired or invalid";
+          scheduleErrorRedirect(`Authentication failed: ${msg}. Redirecting to login...`);
+        });
+
+      return () => {
+        if (redirectTimer) clearTimeout(redirectTimer);
+      };
+    }
+
     const req2fa = searchParams.get("requires2FA") === "true";
     const challengeToken = searchParams.get("tempToken");
     if (req2fa && challengeToken) {
@@ -29,7 +87,7 @@ const OAuthCallbackPage: React.FC = () => {
       return undefined;
     }
 
-    // Check search params or hash fragment for token
+    // Legacy fallback: check search params or hash fragment for token
     let token = searchParams.get("token");
     if (!token && window.location.hash) {
       const match = window.location.hash.match(/token=([^&]+)/);
@@ -42,18 +100,18 @@ const OAuthCallbackPage: React.FC = () => {
       localStorage.setItem("modelscript-auth-token", token);
       window.location.href = "/"; // Hard reload to re-init auth context and respect onboarding route
       return undefined;
-    } else if (!requires2FA) {
-      const errorParam =
-        searchParams.get("message") || searchParams.get("error_description") || searchParams.get("error");
-      setAuthError(
-        errorParam
-          ? `Authentication failed: ${errorParam}. Redirecting to login...`
-          : "Authentication failed or was cancelled. Redirecting to login...",
-      );
-      const timer = setTimeout(() => navigate("/login"), 4000);
-      return () => clearTimeout(timer);
     }
-    return undefined;
+
+    const errorParam =
+      searchParams.get("message") || searchParams.get("error_description") || searchParams.get("error");
+    scheduleErrorRedirect(
+      errorParam
+        ? `Authentication failed: ${errorParam}. Redirecting to login...`
+        : "Authentication failed or was cancelled. Redirecting to login...",
+    );
+    return () => {
+      if (redirectTimer) clearTimeout(redirectTimer);
+    };
   }, [searchParams, navigate, requires2FA]);
 
   const handleTwoFactorSubmit = async (e: React.FormEvent) => {

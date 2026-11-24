@@ -450,6 +450,7 @@ jobs:
     // External runner pushes simulation summary
     const reportRes = await request(server)
       .post(`/api/v1/spaces/${namespace}/${spaceSlug}/ecos/${ecoId}/workflows/external-report`)
+      .set("Authorization", `Bearer ${userToken}`)
       .send({
         provider: "github",
         workflowName: "GitHub Actions HPC Cluster Dispatch",

@@ -12,7 +12,7 @@ import { TggCorrespondenceIndexer, TggSymbolProjectionTable } from "../src/inter
 import { solveWhereConstraints } from "../src/interop/tgg-pattern-interpreter.js";
 import { DigitalThreadHypergraph } from "../src/interop/thread_hypergraph.js";
 import { WasmPolyglotKernelBridge } from "../src/interop/wasm-polyglot-bridge.js";
-import { WasmQueryEngine } from "../src/workspace/wasm_query_engine.js";
+import { WasmQueryEngine } from "../src/workspace/query_engine.js";
 
 const makePolyglotSymbolId = (domain: number, localId: number): number => (((domain & 0x7f) << 24) | localId) >>> 0;
 

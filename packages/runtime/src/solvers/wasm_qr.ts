@@ -31,6 +31,7 @@
  */
 
 import { Interval } from "../analysis/wasm_interval.js";
+import { getDefaultWasmExports } from "../dae/wasm_loader.js";
 
 export interface QRResult {
   /** Orthogonal matrix Q (n x n, row-major arrays) */
@@ -42,26 +43,60 @@ export interface QRResult {
 }
 
 /**
- * Computes Householder QR decomposition of a square n x n matrix A: A = Q * R.
+ * Computes Householder QR decomposition of a square n x n matrix A: A = Q * R
+ * using the compiled AssemblyScript `householderQrWasm` linear-memory kernel.
  *
  * @param A Array of Float64Array rows representing the n x n matrix.
  * @param n Dimension of matrix.
  */
 export function householderQR(A: Float64Array[], n: number): QRResult {
-  // Clone input to form R
-  const R: Float64Array[] = A.map((row) => new Float64Array(row));
+  if (n <= 0) {
+    return { Q: [], R: [], n: 0 };
+  }
 
-  // Initialize Q as identity matrix
+  const w = getDefaultWasmExports();
+  if (w && typeof w.householderQrWasm === "function" && typeof w.alloc === "function" && typeof w.free === "function") {
+    const matBytes = n * n * 8;
+    const vecBytes = n * 8;
+    const aPtr = w.alloc(matBytes);
+    const qPtr = w.alloc(matBytes);
+    const rPtr = w.alloc(matBytes);
+    const workVPtr = w.alloc(vecBytes);
+    try {
+      const aFlat = new Float64Array(w.memory.buffer, aPtr, n * n);
+      for (let i = 0; i < n; i++) {
+        aFlat.set(A[i]!, i * n);
+      }
+
+      w.householderQrWasm(aPtr, qPtr, rPtr, workVPtr, n);
+
+      const qFlat = new Float64Array(w.memory.buffer, qPtr, n * n);
+      const rFlat = new Float64Array(w.memory.buffer, rPtr, n * n);
+      const Q: Float64Array[] = new Array(n);
+      const R: Float64Array[] = new Array(n);
+      for (let i = 0; i < n; i++) {
+        const off = i * n;
+        Q[i] = new Float64Array(qFlat.subarray(off, off + n));
+        R[i] = new Float64Array(rFlat.subarray(off, off + n));
+      }
+      return { Q, R, n };
+    } finally {
+      w.free(aPtr);
+      w.free(qPtr);
+      w.free(rPtr);
+      w.free(workVPtr);
+    }
+  }
+
+  // Fallback when WASM runtime has not been initialized
+  const R: Float64Array[] = A.map((row) => new Float64Array(row));
   const Q: Float64Array[] = [];
   for (let i = 0; i < n; i++) {
     const row = new Float64Array(n);
     row[i] = 1.0;
     Q.push(row);
   }
-
-  // Work arrays for Householder reflections
   for (let k = 0; k < n - 1; k++) {
-    // 1. Compute 2-norm of subcolumn R[k..n-1][k]
     let normSq = 0.0;
     for (let i = k; i < n; i++) {
       const val = R[i]![k]!;
@@ -69,85 +104,105 @@ export function householderQR(A: Float64Array[], n: number): QRResult {
     }
     const norm = Math.sqrt(normSq);
     if (norm < 1e-15) continue;
-
-    // 2. Form Householder vector v
     const alpha = R[k]![k]! >= 0 ? -norm : norm;
     const v = new Float64Array(n);
     v[k] = R[k]![k]! - alpha;
-    for (let i = k + 1; i < n; i++) {
-      v[i] = R[i]![k]!;
-    }
-
-    // Normalize v
+    for (let i = k + 1; i < n; i++) v[i] = R[i]![k]!;
     let vNormSq = 0.0;
-    for (let i = k; i < n; i++) {
-      vNormSq += v[i]! * v[i]!;
-    }
+    for (let i = k; i < n; i++) vNormSq += v[i]! * v[i]!;
     if (vNormSq < 1e-30) continue;
     const beta = 2.0 / vNormSq;
-
-    // 3. Apply reflection to R: R = (I - beta * v * v^T) * R
-    // R[i, j] -= beta * v[i] * (v^T * R[:, j])
     for (let j = k; j < n; j++) {
       let dot = 0.0;
-      for (let i = k; i < n; i++) {
-        dot += v[i]! * R[i]![j]!;
-      }
+      for (let i = k; i < n; i++) dot += v[i]! * R[i]![j]!;
       const scale = beta * dot;
-      for (let i = k; i < n; i++) {
-        R[i]![j] = R[i]![j]! - scale * v[i]!;
-      }
+      for (let i = k; i < n; i++) R[i]![j] = R[i]![j]! - scale * v[i]!;
     }
     R[k]![k] = alpha;
-    for (let i = k + 1; i < n; i++) {
-      R[i]![k] = 0.0;
-    }
-
-    // 4. Accumulate into Q: Q = Q * (I - beta * v * v^T)
-    // Q[i, j] -= beta * (Q[i, :] * v) * v[j]
+    for (let i = k + 1; i < n; i++) R[i]![k] = 0.0;
     for (let i = 0; i < n; i++) {
       let dot = 0.0;
-      for (let j = k; j < n; j++) {
-        dot += Q[i]![j]! * v[j]!;
-      }
+      for (let j = k; j < n; j++) dot += Q[i]![j]! * v[j]!;
       const scale = beta * dot;
-      for (let j = k; j < n; j++) {
-        Q[i]![j] = Q[i]![j]! - scale * v[j]!;
-      }
+      for (let j = k; j < n; j++) Q[i]![j] = Q[i]![j]! - scale * v[j]!;
     }
   }
-
   return { Q, R, n };
 }
 
 /**
- * Computes Q * v for an n x n orthogonal matrix Q and n-vector v.
+ * Computes Q * v for an n x n orthogonal matrix Q and n-vector v using `matVecMulWasm`.
  */
 export function multiplyMatrixVector(Q: Float64Array[], v: Float64Array | number[]): Float64Array {
   const n = Q.length;
+  if (n === 0) return new Float64Array(0);
+
+  const w = getDefaultWasmExports();
+  if (w && typeof w.matVecMulWasm === "function" && typeof w.alloc === "function" && typeof w.free === "function") {
+    const qPtr = w.alloc(n * n * 8);
+    const vPtr = w.alloc(n * 8);
+    const outPtr = w.alloc(n * 8);
+    try {
+      const qFlat = new Float64Array(w.memory.buffer, qPtr, n * n);
+      for (let i = 0; i < n; i++) qFlat.set(Q[i]!, i * n);
+      const vView = new Float64Array(w.memory.buffer, vPtr, n);
+      for (let i = 0; i < n; i++) vView[i] = v[i] ?? 0;
+
+      w.matVecMulWasm(qPtr, vPtr, outPtr, n);
+      return new Float64Array(new Float64Array(w.memory.buffer, outPtr, n));
+    } finally {
+      w.free(qPtr);
+      w.free(vPtr);
+      w.free(outPtr);
+    }
+  }
+
   const res = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     const row = Q[i]!;
     let sum = 0.0;
-    for (let j = 0; j < n; j++) {
-      sum += row[j]! * (v[j] ?? 0);
-    }
+    for (let j = 0; j < n; j++) sum += row[j]! * (v[j] ?? 0);
     res[i] = sum;
   }
   return res;
 }
 
 /**
- * Computes Q^T * v for an n x n orthogonal matrix Q and n-vector v.
+ * Computes Q^T * v for an n x n orthogonal matrix Q and n-vector v using `matTransposeVecMulWasm`.
  */
 export function multiplyTransposeMatrixVector(Q: Float64Array[], v: Float64Array | number[]): Float64Array {
   const n = Q.length;
+  if (n === 0) return new Float64Array(0);
+
+  const w = getDefaultWasmExports();
+  if (
+    w &&
+    typeof w.matTransposeVecMulWasm === "function" &&
+    typeof w.alloc === "function" &&
+    typeof w.free === "function"
+  ) {
+    const qPtr = w.alloc(n * n * 8);
+    const vPtr = w.alloc(n * 8);
+    const outPtr = w.alloc(n * 8);
+    try {
+      const qFlat = new Float64Array(w.memory.buffer, qPtr, n * n);
+      for (let i = 0; i < n; i++) qFlat.set(Q[i]!, i * n);
+      const vView = new Float64Array(w.memory.buffer, vPtr, n);
+      for (let i = 0; i < n; i++) vView[i] = v[i] ?? 0;
+
+      w.matTransposeVecMulWasm(qPtr, vPtr, outPtr, n);
+      return new Float64Array(new Float64Array(w.memory.buffer, outPtr, n));
+    } finally {
+      w.free(qPtr);
+      w.free(vPtr);
+      w.free(outPtr);
+    }
+  }
+
   const res = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     let sum = 0.0;
-    for (let j = 0; j < n; j++) {
-      sum += Q[j]![i]! * (v[j] ?? 0);
-    }
+    for (let j = 0; j < n; j++) sum += Q[j]![i]! * (v[j] ?? 0);
     res[i] = sum;
   }
   return res;
@@ -155,7 +210,7 @@ export function multiplyTransposeMatrixVector(Q: Float64Array[], v: Float64Array
 
 /**
  * Encloses a rotated coordinate interval box y in [-w, w] in axis-aligned coordinates:
- * x = center + Q * y
+ * x = center + Q * y using `encloseRotatedBoxWasm`.
  * The exact axis-aligned bound for x_i is:
  *   [center_i - \sum_j |Q_{ij}| w_j, center_i + \sum_j |Q_{ij}| w_j]
  *
@@ -169,8 +224,49 @@ export function encloseRotatedBox(
   halfWidths: Float64Array | number[],
 ): Interval[] {
   const n = Q.length;
-  const tubes: Interval[] = [];
+  if (n === 0) return [];
 
+  const w = getDefaultWasmExports();
+  if (
+    w &&
+    typeof w.encloseRotatedBoxWasm === "function" &&
+    typeof w.alloc === "function" &&
+    typeof w.free === "function"
+  ) {
+    const cPtr = w.alloc(n * 8);
+    const qPtr = w.alloc(n * n * 8);
+    const hwPtr = w.alloc(n * 8);
+    const loPtr = w.alloc(n * 8);
+    const hiPtr = w.alloc(n * 8);
+    try {
+      const cView = new Float64Array(w.memory.buffer, cPtr, n);
+      const hwView = new Float64Array(w.memory.buffer, hwPtr, n);
+      const qFlat = new Float64Array(w.memory.buffer, qPtr, n * n);
+      for (let i = 0; i < n; i++) {
+        cView[i] = center[i] ?? 0;
+        hwView[i] = halfWidths[i] ?? 0;
+        qFlat.set(Q[i]!, i * n);
+      }
+
+      w.encloseRotatedBoxWasm(cPtr, qPtr, hwPtr, loPtr, hiPtr, n);
+
+      const loView = new Float64Array(w.memory.buffer, loPtr, n);
+      const hiView = new Float64Array(w.memory.buffer, hiPtr, n);
+      const tubes: Interval[] = new Array(n);
+      for (let i = 0; i < n; i++) {
+        tubes[i] = new Interval(loView[i]!, hiView[i]!);
+      }
+      return tubes;
+    } finally {
+      w.free(cPtr);
+      w.free(qPtr);
+      w.free(hwPtr);
+      w.free(loPtr);
+      w.free(hiPtr);
+    }
+  }
+
+  const tubes: Interval[] = [];
   for (let i = 0; i < n; i++) {
     const c = center[i] ?? 0;
     const row = Q[i]!;
@@ -180,7 +276,6 @@ export function encloseRotatedBox(
     }
     tubes.push(new Interval(c - radius, c + radius));
   }
-
   return tubes;
 }
 

@@ -10,8 +10,10 @@ import { GCodeLoader } from "three/examples/jsm/loaders/GCodeLoader.js";
 import Box from "../Box";
 import Spinner from "../Spinner";
 import AutoThumbnailCapture from "./AutoThumbnailCapture";
+import { registerArtifactRotundaGeometry } from "./RotundaGeometryBridge";
 import SafeOrbitControls from "./SafeOrbitControls";
 import ViewportCameraControls, { type CameraPreset } from "./ViewportCameraControls";
+import { XrSceneBridge, XrViewportOverlay } from "./XrViewportOverlay";
 
 interface GCodeViewerProps {
   artifactId?: number | undefined;
@@ -209,6 +211,58 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
   }, [viewConfig]);
 
   useEffect(() => {
+    if (!object) return;
+    const rawViewArtifactId = viewConfig?.artifactId;
+    const bridgeKey =
+      (artifactId !== undefined && artifactId !== 0 ? artifactId : undefined) ??
+      (rawViewArtifactId !== undefined &&
+      rawViewArtifactId !== null &&
+      String(rawViewArtifactId).trim() !== "" &&
+      String(rawViewArtifactId) !== "0"
+        ? (rawViewArtifactId as string | number)
+        : undefined) ??
+      (typeof viewConfig?.url === "string" && viewConfig.url.trim().length > 0 ? viewConfig.url.trim() : undefined);
+
+    if (bridgeKey === undefined) return;
+
+    object.updateMatrixWorld(true);
+    const cutSegments: [number, number, number][] = [];
+    const rapidSegments: [number, number, number][] = [];
+    const tmpVec = new THREE.Vector3();
+    const MAX_POINTS_PER_BUCKET = 24000;
+
+    object.traverse((child: THREE.Object3D) => {
+      const lineObj = child as THREE.LineSegments;
+      if (!(lineObj.isLine || lineObj.isLineSegments) || !lineObj.geometry?.attributes?.position) return;
+      const pos = lineObj.geometry.attributes.position;
+      const mat = Array.isArray(lineObj.material) ? lineObj.material[0] : lineObj.material;
+      const matName = (mat?.name || "").toLowerCase();
+      const target = matName === "extruded" ? cutSegments : rapidSegments;
+      const remaining = MAX_POINTS_PER_BUCKET - target.length;
+      if (remaining < 2) return;
+
+      const usableCount = Math.min(pos.count - (pos.count % 2), remaining - (remaining % 2));
+      for (let i = 0; i < usableCount; i++) {
+        tmpVec.fromBufferAttribute(pos, i).applyMatrix4(lineObj.matrixWorld);
+        target.push([tmpVec.x, tmpVec.y, tmpVec.z]);
+      }
+    });
+
+    // Pure CNC G-code without extrusion (E) places linear moves in the path bucket; promote to cutSegments
+    const resolvedCut = cutSegments.length > 0 ? cutSegments : rapidSegments;
+    const resolvedRapid = cutSegments.length > 0 ? rapidSegments : [];
+
+    if (resolvedCut.length === 0 && resolvedRapid.length === 0) return;
+
+    // Retain snapshot across unmount (LRU-capped in registry) so switching to VR Rotunda renders live G-code toolpaths
+    registerArtifactRotundaGeometry(bridgeKey, {
+      kind: "gcode-path",
+      cutSegments: resolvedCut,
+      rapidSegments: resolvedRapid,
+    });
+  }, [artifactId, viewConfig?.artifactId, viewConfig?.url, object]);
+
+  useEffect(() => {
     return () => {
       if (!object) return;
       object.traverse((child: any) => {
@@ -283,25 +337,28 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
           artifactId={artifactId}
           hasThumbnail={Boolean(viewConfig.thumbnailUrl || viewConfig.thumbnail_url)}
         />
-        <ambientLight intensity={0.5} />
-        <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={0.5} />
+        <XrSceneBridge>
+          <ambientLight intensity={0.5} />
+          <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={0.5} />
 
-        <Suspense fallback={null}>
-          <Environment files="/hdri/studio.hdr" />
-        </Suspense>
-        <Suspense fallback={<Loader />}>
-          <AnimatedGCode
-            object={object}
-            isPlaying={isPlaying}
-            speed={speed}
-            progressRef={progressRef}
-            onProgressUpdate={setSliderValue}
-            onCompleted={() => setIsPlaying(false)}
-          />
-          <CameraController controlsRef={controlsRef} presetTrigger={presetTrigger} />
-        </Suspense>
-        <SafeOrbitControls controlsRef={controlsRef} isFullScreen={isFullScreen} />
+          <Suspense fallback={null}>
+            <Environment files="/hdri/studio.hdr" />
+          </Suspense>
+          <Suspense fallback={<Loader />}>
+            <AnimatedGCode
+              object={object}
+              isPlaying={isPlaying}
+              speed={speed}
+              progressRef={progressRef}
+              onProgressUpdate={setSliderValue}
+              onCompleted={() => setIsPlaying(false)}
+            />
+            <CameraController controlsRef={controlsRef} presetTrigger={presetTrigger} />
+          </Suspense>
+          <SafeOrbitControls controlsRef={controlsRef} isFullScreen={isFullScreen} />
+        </XrSceneBridge>
       </Canvas>
+      <XrViewportOverlay position="top-right" />
 
       {/* Animation Controls Overlay */}
       <Box

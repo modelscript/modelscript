@@ -240,7 +240,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         case "tgg_reconcile_slot": {
           const slotId = String(msg.input["slotId"] ?? msg.input["correspondenceId"] ?? "sharedParameter");
-          const recRes = await this.client.sendRequest("modelscript/reconcileConflict", {
+          const recRes = await this.client.sendRequest("modelscript/reconcileConflicts", {
             conflictId: slotId,
             strategy: msg.input["strategy"] ?? "physics-simplex",
             customValue: msg.input["customValue"],
@@ -258,7 +258,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
         }
         case "rtm_query_matrix": {
-          const rtmRes = await this.client.sendRequest("modelscript/rtmMatrix", msg.input);
+          const rtmRes = await this.client.sendRequest("modelscript/getRtmMatrix", msg.input);
           result = {
             ...(typeof rtmRes === "object" && rtmRes ? rtmRes : {}),
             resultTitle: `Requirements Traceability Matrix (RTM) Audit`,

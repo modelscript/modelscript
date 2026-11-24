@@ -22,8 +22,7 @@ export interface SimpackViewerProps {
     title?: string | undefined;
     modelName?: string | undefined;
     bodies?:
-      | { name: string; mass?: number; position?: [number, number, number]; cg?: [number, number, number] }[]
-      | undefined;
+      { name: string; mass?: number; position?: [number, number, number]; cg?: [number, number, number] }[] | undefined;
     joints?: { name: string; type?: string; from?: string; to?: string }[] | undefined;
     forces?: { name: string; type?: string; from?: string; to?: string }[] | undefined;
     bodyCount?: number | undefined;
@@ -388,7 +387,13 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
               </Text>
             </Box>
             <Box flex={1} minHeight={0} height={isFullScreen ? "100%" : "320px"}>
-              <MultibodyViewport3D nodes={nodes3D} links={links3D} isFullScreen={isFullScreen} height="100%" />
+              <MultibodyViewport3D
+                nodes={nodes3D}
+                links={links3D}
+                isFullScreen={isFullScreen}
+                height="100%"
+                geometryBridgeKey={viewConfig.artifactId || viewConfig.url}
+              />
             </Box>
           </Box>
         ) : (

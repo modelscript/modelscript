@@ -22,6 +22,8 @@ jobs:
   release:
     environment: production
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     permissions:
       contents: write
       packages: write
@@ -193,3 +195,103 @@ jobs:
           image-tag: ${{ steps.version.outputs.version }}
           prune-docker: "false"
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # --- Build Platform-Native VSIXs, Web VSIX & Cloud HPC Binaries ---
+  build-native-artifacts:
+    needs: [release]
+    uses: ./.github/workflows/build-native.yml
+    with:
+      version: ${{ needs.release.outputs.version }}
+
+  # --- Attach Platform VSIXs & HPC Tarballs to GitHub Release + Publish to Marketplaces & GHCR ---
+  publish-native-release:
+    name: Publish Platform VSIXs, HPC Binaries & HPC Images
+    environment: production
+    needs: [release, build-native-artifacts]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Download all platform native & web artifacts
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4
+        with:
+          pattern: release-native-*
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS.txt
+        working-directory: release-artifacts
+        run: |
+          ls -lh
+          sha256sum *.vsix *.tar.gz > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Attach Platform VSIXs & HPC Binaries to GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: v${{ needs.release.outputs.version }}
+          files: |
+            release-artifacts/*.vsix
+            release-artifacts/*.tar.gz
+            release-artifacts/SHA256SUMS.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Platform-Native & Web VSIXs to VS Code Marketplace
+        working-directory: release-artifacts
+        run: |
+          for vsix in modelscript-*.vsix; do
+            echo "Publishing ${vsix} to VS Code Marketplace..."
+            npx --yes @vscode/vsce@3.3.2 publish --skip-duplicate --no-dependencies --packagePath "${vsix}" -p "${VSCE_PAT}"
+          done
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Publish Platform-Native & Web VSIXs to Open VSX
+        working-directory: release-artifacts
+        run: |
+          for vsix in modelscript-*.vsix; do
+            echo "Publishing ${vsix} to Open VSX..."
+            npx --yes ovsx@0.10.1 publish "${vsix}" --skip-duplicate -p "${OVSX_PAT}"
+          done
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+
+      - name: Set up Docker Buildx for HPC images
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Cloud HPC worker image (Linux/Vulkan)
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
+        with:
+          context: .
+          file: Dockerfile.hpc
+          target: hpc-worker
+          push: true
+          tags: |
+            ghcr.io/modelscript/hpc-worker:latest
+            ghcr.io/modelscript/hpc-worker:${{ needs.release.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Cloud HPC CUDA FP64 worker image
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
+        with:
+          context: .
+          file: Dockerfile.hpc
+          target: hpc-worker-cuda
+          push: true
+          tags: |
+            ghcr.io/modelscript/hpc-worker-cuda:latest
+            ghcr.io/modelscript/hpc-worker-cuda:${{ needs.release.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

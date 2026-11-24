@@ -18,9 +18,9 @@
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import { optionalAuth } from "../middleware/auth-middleware.js";
-import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 import { sysml2EventBus } from "../services/sysml2-event-bus.js";
 import { OMG_SYSML2_CONTEXT, SysML2OmgService } from "../services/sysml2-omg-service.js";
+import { initSseStream } from "../util/sse.js";
 import { sysml2GraphQLRouter } from "./sysml2-graphql.js";
 
 function getParam(val: string | string[] | undefined): string {
@@ -31,9 +31,7 @@ function getParam(val: string | string[] | undefined): string {
 export function sysml2OmgRouter(service?: SysML2OmgService): Router {
   const router = createRouter();
   const omgService = service || new SysML2OmgService();
-  router.use("/graphql", sysml2GraphQLRouter(omgService));
-  const projectOwners = new Map<string, number>();
-  router.use("/projects", defaultApiLimiter);
+  router.use("/graphql", optionalAuth, sysml2GraphQLRouter(omgService));
   router.use("/projects", optionalAuth);
   router.use("/projects", (req: Request, res: Response, next) => {
     if (
@@ -55,7 +53,7 @@ export function sysml2OmgRouter(service?: SysML2OmgService): Router {
       !req.path.endsWith("/export/fmu3")
     ) {
       const projectId = getParam(req.params["projectId"]);
-      const ownerId = projectOwners.get(projectId);
+      const ownerId = omgService.getProjectOwner(projectId);
       if (ownerId !== undefined) {
         const user = req.user as { id?: number | undefined; isAdmin?: boolean | undefined } | undefined;
         if (!user?.id || (user.id !== ownerId && !user.isAdmin)) {
@@ -115,7 +113,7 @@ export function sysml2OmgRouter(service?: SysML2OmgService): Router {
 
     const project = omgService.createProject(name, description);
     if (req.user?.id) {
-      projectOwners.set(project["@id"], req.user.id);
+      omgService.setProjectOwner(project["@id"], req.user.id);
     }
     sysml2EventBus.emitEvent({
       type: "commit.created",
@@ -150,24 +148,23 @@ export function sysml2OmgRouter(service?: SysML2OmgService): Router {
       return;
     }
 
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    res.flushHeaders?.();
-
-    res.write(`event: connected\ndata: ${JSON.stringify({ projectId, timestamp: new Date().toISOString() })}\n\n`);
-
-    const unsubscribe = sysml2EventBus.onProjectEvent(projectId, (event) => {
-      res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+    let unsubscribe: (() => void) | null = null;
+    const sse = initSseStream(res, {
+      heartbeatMs: 15_000,
+      onClose: () => {
+        unsubscribe?.();
+        unsubscribe = null;
+      },
     });
 
-    const heartbeatTimer = setInterval(() => {
-      res.write(": heartbeat\n\n");
-    }, 15000);
+    if (!sse.send("connected", { projectId, timestamp: new Date().toISOString() })) {
+      return;
+    }
 
-    req.on("close", () => {
-      clearInterval(heartbeatTimer);
-      unsubscribe();
+    unsubscribe = sysml2EventBus.onProjectEvent(projectId, (event) => {
+      if (!sse.send(event.type, event)) {
+        sse.close();
+      }
     });
   });
 
@@ -181,7 +178,7 @@ export function sysml2OmgRouter(service?: SysML2OmgService): Router {
       res.status(404).json({ error: `Project '${projectId}' not found.` });
       return;
     }
-    projectOwners.delete(projectId);
+    omgService.deleteProjectOwner(projectId);
     res.sendStatus(204);
   });
 

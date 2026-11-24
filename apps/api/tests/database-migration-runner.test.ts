@@ -265,4 +265,72 @@ test("Database Migration Runner Lifecycle & Safety", async (t) => {
       } catch {}
     }
   });
+
+  await t.test(
+    "dual-dialect PostgresMigrationRunner: executes 0001-0004 with DDL translation, checksum parity, and rollback",
+    async () => {
+      const { allMigrations } = await import("../src/migrations/index.js");
+      const { PostgresMigrationRunner, computeMigrationChecksum } = await import("../src/migrations/runner.js");
+
+      const ledger: Array<{ id: number; name: string; checksum: string; applied_at: string; execution_ms: number }> =
+        [];
+      const executedSql: string[] = [];
+
+      const mockPool = {
+        async query(sql: string, params?: unknown[]): Promise<{ rows: unknown[] }> {
+          const trimmed = sql.trim();
+          executedSql.push(trimmed);
+          if (trimmed.startsWith("SELECT id, name, checksum")) {
+            return { rows: [...ledger] };
+          }
+          if (trimmed.startsWith("INSERT INTO _modelscript_migrations")) {
+            ledger.push({
+              id: ledger.length + 1,
+              name: String(params?.[0] ?? ""),
+              checksum: String(params?.[1] ?? ""),
+              applied_at: new Date().toISOString(),
+              execution_ms: Number(params?.[2] ?? 0),
+            });
+            return { rows: [] };
+          }
+          if (trimmed.startsWith("DELETE FROM _modelscript_migrations")) {
+            const target = String(params?.[0] ?? "");
+            const idx = ledger.findIndex((r) => r.name === target);
+            if (idx !== -1) ledger.splice(idx, 1);
+            return { rows: [] };
+          }
+          return { rows: [] };
+        },
+      };
+
+      const pgRunner = new PostgresMigrationRunner(mockPool);
+      const res = await pgRunner.runPending(allMigrations, { silent: true });
+      assert.equal(res.appliedCount, allMigrations.length);
+
+      // Verify no SQLite-only PRAGMA or AUTOINCREMENT leaked to PostgreSQL
+      assert.ok(!executedSql.some((s) => /\bPRAGMA\b/i.test(s)), "PRAGMA statements must not be sent to PostgreSQL");
+      assert.ok(
+        !executedSql.some((s) => /\bAUTOINCREMENT\b/i.test(s)),
+        "AUTOINCREMENT must be translated to SERIAL PRIMARY KEY",
+      );
+      assert.ok(
+        executedSql.some((s) => /ADD COLUMN IF NOT EXISTS "ip_allowlist"/i.test(s)),
+        "0004 migration must emit Postgres ADD COLUMN IF NOT EXISTS",
+      );
+
+      // Verify unified SHA-256 checksum parity with SqliteMigrationRunner
+      const pgStatus = await pgRunner.getStatus(allMigrations);
+      assert.equal(pgStatus.pendingCount, 0);
+      assert.equal(pgStatus.checksumMatch, true);
+      assert.equal(pgStatus.applied[0]!.checksum, computeMigrationChecksum(allMigrations[0]!));
+
+      // Verify rollbackLast on PostgresMigrationRunner
+      const rollback = await pgRunner.rollbackLast(allMigrations, { silent: true });
+      assert.equal(rollback.rolledBack, allMigrations[allMigrations.length - 1]!.name);
+      assert.ok(
+        executedSql.some((s) => /DROP TABLE IF EXISTS sysml2_project_owners/i.test(s)),
+        "0006 rollback must emit DROP TABLE IF EXISTS sysml2_project_owners",
+      );
+    },
+  );
 });

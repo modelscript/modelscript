@@ -210,10 +210,10 @@ test("Ansatz Registry Streaming Catalog: /api/v1/components & /api/v1/models", a
   assert.deepStrictEqual(compRes.body.packageDependencies["@acme/drives"], { Modelica: ">=4.1.0" });
 
   // 2. Pagination (limit=2, offset=0 -> hasMore=true; offset=2 -> remaining 1)
-  const page1 = await request(app).get("/api/v1/registry/components?limit=2&offset=0").expect(200);
+  const page1 = await request(app).get("/api/v1/components?limit=2&offset=0").expect(200);
   assert.strictEqual(page1.body.components.length, 2);
   assert.strictEqual(page1.body.hasMore, true);
-  const page2 = await request(app).get("/api/v1/registry/components?limit=2&offset=2").expect(200);
+  const page2 = await request(app).get("/api/v1/components?limit=2&offset=2").expect(200);
   assert.strictEqual(page2.body.components.length, 1);
   assert.strictEqual(page2.body.hasMore, false);
 

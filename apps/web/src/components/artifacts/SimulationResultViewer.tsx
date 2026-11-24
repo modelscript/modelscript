@@ -32,6 +32,7 @@ import {
   ViewerHeaderBar,
 } from "./simulation-result";
 import ViewportCameraControls, { type ClipAxis } from "./ViewportCameraControls";
+import { XrSceneBridge, XrViewportOverlay } from "./XrViewportOverlay";
 
 function Loader() {
   const { progress } = useProgress();
@@ -308,70 +309,73 @@ export const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
           artifactId={artifactId}
           hasThumbnail={Boolean(viewConfig.thumbnailUrl || viewConfig.thumbnail_url)}
         />
-        <ambientLight intensity={0.4} />
-        <directionalLight position={[5, 10, 8]} intensity={0.6} />
+        <XrSceneBridge>
+          <ambientLight intensity={0.4} />
+          <directionalLight position={[5, 10, 8]} intensity={0.6} />
 
-        <Suspense fallback={<Loader />}>
-          {currentField && geometry && (
-            <group>
-              <ScalarMesh
-                geometry={geometry}
-                scalarData={currentField.data}
-                scalarMin={currentField.range[0]}
-                scalarMax={currentField.range[1]}
-                colormapTexture={colormapTexture}
-                displacementData={displacementField ? displacementField.data : null}
-                displacementScale={normalizedDisplacementScale}
-                loadFactor={loadFactor}
-                activeField={activeField}
-                onPinCreated={onPinCreated}
-                isWireframe={isWireframe}
-                onProbePoint={setProbeData}
-                clipPlane={activeClipPlane}
-              />
-              {probeData && (
-                <Html
-                  position={probeData.point}
-                  style={{ pointerEvents: "none", transform: "translate3d(-50%, -130%, 0)" }}
-                >
-                  <div
-                    style={{
-                      background: "rgba(15, 23, 42, 0.92)",
-                      backdropFilter: "blur(8px)",
-                      color: "#38bdf8",
-                      border: "1px solid rgba(56, 189, 248, 0.5)",
-                      padding: "4px 8px",
-                      borderRadius: "6px",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      fontFamily: "var(--font-mono, monospace)",
-                      whiteSpace: "nowrap",
-                      boxShadow: "0 4px 14px rgba(0, 0, 0, 0.5)",
-                    }}
-                  >
-                    {activeField}: {probeData.value.toFixed(2)} {fieldUnit || ""}
-                  </div>
-                </Html>
-              )}
-              {velocityField && (
-                <FlowStreaks
+          <Suspense fallback={<Loader />}>
+            {currentField && geometry && (
+              <group>
+                <ScalarMesh
                   geometry={geometry}
-                  velocityData={velocityField.data}
-                  association={velocityField.association}
-                  vMin={velocityField.range[0]}
-                  vMax={velocityField.range[1]}
+                  scalarData={currentField.data}
+                  scalarMin={currentField.range[0]}
+                  scalarMax={currentField.range[1]}
                   colormapTexture={colormapTexture}
-                  scale={0.02}
-                  animate={animateFlow}
-                  downsampleFactor={isThumbnail ? 100 : 1}
+                  displacementData={displacementField ? displacementField.data : null}
+                  displacementScale={normalizedDisplacementScale}
+                  loadFactor={loadFactor}
+                  activeField={activeField}
+                  onPinCreated={onPinCreated}
+                  isWireframe={isWireframe}
+                  onProbePoint={setProbeData}
+                  clipPlane={activeClipPlane}
                 />
-              )}
-            </group>
-          )}
-          <CameraController orbitControlsRef={orbitControlsRef} presetTrigger={presetTrigger} />
-        </Suspense>
-        <SafeOrbitControls controlsRef={orbitControlsRef} isFullScreen={isFullScreen} />
+                {probeData && (
+                  <Html
+                    position={probeData.point}
+                    style={{ pointerEvents: "none", transform: "translate3d(-50%, -130%, 0)" }}
+                  >
+                    <div
+                      style={{
+                        background: "rgba(15, 23, 42, 0.92)",
+                        backdropFilter: "blur(8px)",
+                        color: "#38bdf8",
+                        border: "1px solid rgba(56, 189, 248, 0.5)",
+                        padding: "4px 8px",
+                        borderRadius: "6px",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        fontFamily: "var(--font-mono, monospace)",
+                        whiteSpace: "nowrap",
+                        boxShadow: "0 4px 14px rgba(0, 0, 0, 0.5)",
+                      }}
+                    >
+                      {activeField}: {probeData.value.toFixed(2)} {fieldUnit || ""}
+                    </div>
+                  </Html>
+                )}
+                {velocityField && (
+                  <FlowStreaks
+                    geometry={geometry}
+                    velocityData={velocityField.data}
+                    association={velocityField.association}
+                    vMin={velocityField.range[0]}
+                    vMax={velocityField.range[1]}
+                    colormapTexture={colormapTexture}
+                    scale={0.02}
+                    animate={animateFlow}
+                    downsampleFactor={isThumbnail ? 100 : 1}
+                  />
+                )}
+              </group>
+            )}
+            <CameraController orbitControlsRef={orbitControlsRef} presetTrigger={presetTrigger} />
+          </Suspense>
+          <SafeOrbitControls controlsRef={orbitControlsRef} isFullScreen={isFullScreen} />
+        </XrSceneBridge>
       </Canvas>
+      {!isThumbnail && <XrViewportOverlay position="top-right" style={{ top: 52, right: 86 }} />}
 
       {/* Bottom control bar */}
       {!isThumbnail && (

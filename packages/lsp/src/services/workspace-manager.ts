@@ -70,18 +70,104 @@ export interface ThreadElementMetadata {
   name: string;
   /** Document URI containing the element declaration. */
   uri: string;
-  /** 1-based source line number of the declaration. */
+  /** 1-based source line number of the declaration identifier. */
   line: number;
-  /** 1-based source column number of the declaration. */
+  /** 1-based source column number of the declaration identifier. */
   column: number;
   /** Optional character length of the declaration identifier. */
   length?: number | undefined;
+  /** Originating SymbolId in the UnifiedSymbolIndex for CST span resolution. */
+  symbolId?: number | undefined;
+  /** Exact CST start offset of the declaration identifier. */
+  startOffset?: number | undefined;
+  /** Exact CST end offset of the declaration identifier. */
+  endOffset?: number | undefined;
   /** Engineering domain key (e.g., `"sysml2"`, `"modelica"`, `"cad"`, `"fea"`). */
   domain?: string | undefined;
   /** Optional key-value map of extracted engineering parameters (e.g., `mass`, `frontalArea`). */
   properties?: Record<string, any> | undefined;
   /** Marks entries created by automatic workspace discovery so manual test seeders remain untouched. */
   autoDiscovered?: boolean | undefined;
+}
+
+/**
+ * Resolves the exact CST byte/character span of a `SymbolEntry`'s name identifier token.
+ * Checks CST-indexed `fieldRanges` first, then walks the parsed CST subtree rooted at
+ * `[entry.startOffset, entry.endOffset]` to locate the identifier token node.
+ */
+export function resolveCstNameSpan(
+  entry: SymbolEntry,
+  tree?: { rootNode?: any } | null,
+): { startOffset: number; endOffset: number } | undefined {
+  const fieldRanges = (entry as { fieldRanges?: Record<string, { startOffset: number; endOffset: number }> })
+    .fieldRanges;
+  const namePath = (entry as { namePath?: string }).namePath;
+  const indexedRange = fieldRanges?.["name"] ?? (namePath ? fieldRanges?.[namePath] : undefined);
+  if (indexedRange && indexedRange.endOffset > indexedRange.startOffset) {
+    return { startOffset: indexedRange.startOffset, endOffset: indexedRange.endOffset };
+  }
+
+  const root = tree?.rootNode;
+  if (root && typeof entry.startOffset === "number" && typeof root.descendantForIndex === "function") {
+    const endBound =
+      typeof entry.endOffset === "number" && entry.endOffset > entry.startOffset
+        ? entry.endOffset - 1
+        : entry.startOffset;
+    const declNode = root.descendantForIndex(entry.startOffset, endBound);
+    if (declNode) {
+      const nameField = typeof declNode.childForFieldName === "function" ? declNode.childForFieldName("name") : null;
+      if (nameField && typeof nameField.startIndex === "number" && nameField.endIndex > nameField.startIndex) {
+        return { startOffset: nameField.startIndex, endOffset: nameField.endIndex };
+      }
+
+      // BFS the declaration CST subtree (bounded depth) for the exact identifier leaf matching entry.name
+      const targetName = entry.name;
+      if (targetName) {
+        const queue: Array<{ node: any; depth: number }> = [{ node: declNode, depth: 0 }];
+        let firstIdentFallback: { startOffset: number; endOffset: number } | undefined;
+        while (queue.length > 0) {
+          const { node, depth } = queue.shift()!;
+          const childCount = typeof node.childCount === "number" ? node.childCount : (node.children?.length ?? 0);
+          if (childCount === 0) {
+            const nodeText = node.text;
+            if (
+              typeof node.startIndex === "number" &&
+              typeof node.endIndex === "number" &&
+              node.endIndex > node.startIndex
+            ) {
+              if (nodeText === targetName) {
+                return { startOffset: node.startIndex, endOffset: node.endIndex };
+              }
+              const kind = String(node.type ?? "").toLowerCase();
+              if (
+                !firstIdentFallback &&
+                (kind === "identifier" || kind === "ident" || kind === "name" || kind === "id")
+              ) {
+                firstIdentFallback = { startOffset: node.startIndex, endOffset: node.endIndex };
+              }
+            }
+            continue;
+          }
+          if (depth < 6) {
+            for (let i = 0; i < childCount; i++) {
+              const ch = typeof node.child === "function" ? node.child(i) : node.children?.[i];
+              if (ch) queue.push({ node: ch, depth: depth + 1 });
+            }
+          }
+        }
+        if (firstIdentFallback) return firstIdentFallback;
+      }
+    }
+  }
+
+  if (
+    typeof entry.startOffset === "number" &&
+    typeof entry.endOffset === "number" &&
+    entry.endOffset > entry.startOffset
+  ) {
+    return { startOffset: entry.startOffset, endOffset: entry.endOffset };
+  }
+  return undefined;
 }
 
 /**
@@ -249,6 +335,7 @@ export class WorkspaceManager {
           uri: meta?.uri,
           line: meta?.line ?? 1,
           column: meta?.column ?? 1,
+          length: meta?.length,
           properties: meta?.properties,
           status,
         });
@@ -1557,22 +1644,19 @@ export class WorkspaceManager {
             ? (this.globalSysML2QueryEngine ??
               (
                 this.unifiedWorkspace as
-                  | { getQueryEngine?: (lang: string) => WorkspaceManager["globalModelicaQueryEngine"] }
-                  | undefined
+                  { getQueryEngine?: (lang: string) => WorkspaceManager["globalModelicaQueryEngine"] } | undefined
               )?.getQueryEngine?.("sysml2"))
             : (this.globalModelicaQueryEngine ??
               (
                 this.unifiedWorkspace as
-                  | { getQueryEngine?: (lang: string) => WorkspaceManager["globalModelicaQueryEngine"] }
-                  | undefined
+                  { getQueryEngine?: (lang: string) => WorkspaceManager["globalModelicaQueryEngine"] } | undefined
               )?.getQueryEngine?.("modelica"));
         if (!engine) {
           engine =
             this.globalModelicaQueryEngine ??
             (
               this.unifiedWorkspace as
-                | { getQueryEngine?: (lang: string) => WorkspaceManager["globalModelicaQueryEngine"] }
-                | undefined
+                { getQueryEngine?: (lang: string) => WorkspaceManager["globalModelicaQueryEngine"] } | undefined
             )?.getQueryEngine?.("modelica");
         }
         const db = {
@@ -1777,11 +1861,58 @@ export class WorkspaceManager {
           break;
         }
       }
-      if (props[sym.name] === undefined && docText && sym.endOffset > sym.startOffset) {
-        const slice = docText.slice(Math.max(0, sym.startOffset), Math.min(docText.length, sym.endOffset + 40));
-        const span = findAssignedNumberInLine(slice, { allowSign: true, allowExponent: true });
-        if (span?.text) {
-          recordNumeric(sym.name, span.text);
+      if (props[sym.name] === undefined && sym.endOffset > sym.startOffset) {
+        const symUri = sym.resourceId ?? entry.resourceId;
+        const rootCst = symUri ? this.documentManager?.documentTrees?.get(symUri)?.tree?.rootNode : undefined;
+        if (rootCst && typeof rootCst.descendantForIndex === "function") {
+          const declNode = rootCst.descendantForIndex(sym.startOffset, Math.max(sym.startOffset, sym.endOffset - 1));
+          if (declNode) {
+            type CstLeafNode = {
+              childCount?: number;
+              children?: CstLeafNode[];
+              child?: (i: number) => CstLeafNode | null;
+              text?: string;
+            };
+            const leaves: CstLeafNode[] = [];
+            const collect = (n: CstLeafNode) => {
+              const cnt = typeof n.childCount === "number" ? n.childCount : (n.children?.length ?? 0);
+              if (cnt === 0) {
+                leaves.push(n);
+              } else {
+                for (let i = 0; i < cnt; i++) {
+                  const ch = typeof n.child === "function" ? n.child(i) : n.children?.[i];
+                  if (ch) collect(ch);
+                }
+              }
+            };
+            collect(declNode);
+            let seenOp = false;
+            let sign = 1;
+            for (const leaf of leaves) {
+              const txt = String(leaf.text ?? "").trim();
+              if (!seenOp) {
+                if (txt === "=" || txt === ":=" || txt === "::=") seenOp = true;
+                continue;
+              }
+              if (txt === "-") {
+                sign = -sign;
+                continue;
+              }
+              if (txt === "+") continue;
+              const num = Number(txt);
+              if (txt !== "" && Number.isFinite(num)) {
+                recordNumeric(sym.name, sign * num);
+              }
+              break;
+            }
+          }
+        }
+        if (props[sym.name] === undefined && docText) {
+          const slice = docText.slice(Math.max(0, sym.startOffset), Math.min(docText.length, sym.endOffset + 40));
+          const span = findAssignedNumberInLine(slice, { allowSign: true, allowExponent: true });
+          if (span?.text) {
+            recordNumeric(sym.name, span.text);
+          }
         }
       }
     };
@@ -2076,7 +2207,11 @@ export class WorkspaceManager {
         for (const m of memberEntries) {
           const symUri = m.entry.resourceId ?? m.entry.documentUri ?? "";
           const symText = symUri && normUri(symUri) === targetNormUri ? text : this.getDocTextForUri(symUri);
-          const pos = symUri ? computeLineCol(symText, m.entry.startOffset) : { line: 1, column: 1 };
+          const symTree = symUri ? this.documentManager?.documentTrees?.get(symUri)?.tree : undefined;
+          const cstSpan = resolveCstNameSpan(m.entry, symTree);
+          const startOff = cstSpan?.startOffset ?? m.entry.startOffset;
+          const endOff = cstSpan?.endOffset ?? startOff + m.entry.name.length;
+          const pos = symUri ? computeLineCol(symText, startOff) : { line: 1, column: 1 };
           const props = this.extractNumericScalarProperties(uIdx, m.entry, symText);
           const domName = DOMAIN_INDEX_TO_NAME[m.domIdx] ?? "unknown";
           const metaKey = `${domName}:${m.entry.id}`;
@@ -2086,7 +2221,10 @@ export class WorkspaceManager {
               uri: symUri,
               line: pos.line,
               column: pos.column,
-              length: m.entry.name.length,
+              length: Math.max(1, endOff - startOff),
+              symbolId: m.entry.id,
+              startOffset: startOff,
+              endOffset: endOff,
               domain: m.lang || domName,
               properties: props,
               autoDiscovered: true,

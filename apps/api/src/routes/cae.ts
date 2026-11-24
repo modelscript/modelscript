@@ -7,15 +7,21 @@ import fs from "node:fs";
 import path from "node:path";
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
-import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 import { CaeResultProcessor } from "../services/cae-result-processor.js";
 import { CaeSolverRunner, type CaeJobSpec } from "../services/cae-solver-runner.js";
 import { CaeSweepOrchestrator, type CaeSweepSpec } from "../services/cae-sweep-orchestrator.js";
 import { CaeTelemetryStreamer, type CaeSolverType } from "../services/cae-telemetry-streamer.js";
+import {
+  assertComputeJobAccess,
+  failComputeJob,
+  holdComputeEscrow,
+  resolveComputeActor,
+  runComputePreflight,
+} from "../services/compute-job-lifecycle.js";
 import { listComputeProfiles } from "../services/hpc/compute-profiles.js";
 import { SlurmRestDriver } from "../services/hpc/drivers/slurm-rest-driver.js";
 import { HpcEngine } from "../services/hpc/hpc-engine.js";
-import { checkComputeQuota, resolveRequestUserId } from "../services/hpc/quota-guard.js";
+import { checkComputeQuota } from "../services/hpc/quota-guard.js";
 import { enforceExportCompliance } from "../util/compliance.js";
 import { checkComputeSandboxing } from "../util/compute-sandboxing.js";
 
@@ -66,32 +72,9 @@ function getSafeCaeUploadPath(filePath: string | undefined): string | null {
 
 export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router {
   const router = express.Router();
-  router.use("/cae", defaultApiLimiter);
   const runner = new CaeSolverRunner();
   const activeStreamers = new Map<string, CaeTelemetryStreamer>();
   const sweepOrchestrator = new CaeSweepOrchestrator(runner, CAE_CACHE_DIR);
-
-  const isAuthorizedForCaeJob = (req: express.Request, dbJob: { user_id?: number | null | undefined }): boolean => {
-    if (process.env["NODE_ENV"] === "test") return true;
-    if (!dbJob.user_id) return true;
-    const reqAny = req as {
-      user?: { id?: number | undefined; role?: string | undefined; accountType?: string | undefined } | undefined;
-    };
-    if (reqAny.user?.role === "admin" || reqAny.user?.accountType === "admin") return true;
-    const reqUserId = resolveRequestUserId(req, database);
-    return reqUserId === dbJob.user_id;
-  };
-
-  const isAuthorizedForCaeSweep = (req: express.Request, sweep: { userId?: number | null | undefined }): boolean => {
-    if (process.env["NODE_ENV"] === "test") return true;
-    if (!sweep.userId) return true;
-    const reqAny = req as {
-      user?: { id?: number | undefined; role?: string | undefined; accountType?: string | undefined } | undefined;
-    };
-    if (reqAny.user?.role === "admin" || reqAny.user?.accountType === "admin") return true;
-    const reqUserId = resolveRequestUserId(req, database);
-    return reqUserId === sweep.userId;
-  };
 
   ensureCaeDir();
 
@@ -104,7 +87,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
   router.post("/cae/upload", upload.single("file"), (req, res) => {
     const tmpPath = getSafeCaeUploadPath(req.file?.path);
     try {
-      const userId = resolveRequestUserId(req, database);
+      const { userId } = resolveComputeActor(req, database);
       if (process.env["NODE_ENV"] === "production" && !userId) {
         return res.status(401).json({ error: "Authentication required" });
       }
@@ -182,40 +165,16 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
           }
         }
 
-        // Pre-flight quota check
+        // Pre-flight authentication, sandboxing, and quota check
         const profile = options.profile || "standard";
-        const userId = resolveRequestUserId(req, database);
-        if (process.env["NODE_ENV"] === "production" && !userId) {
-          return res.status(401).json({ error: "Authentication required" });
+        const preflight = runComputePreflight(req, res, database, {
+          profileId: profile,
+          allowAnonymous: process.env["NODE_ENV"] !== "production",
+        });
+        if (!preflight.allowed) {
+          return;
         }
-
-        // Sandboxing check for federated community accounts
-        if (database && userId) {
-          const user = database.getUserById(userId);
-          const sandbox = checkComputeSandboxing(user);
-          if (sandbox.sandboxed) {
-            return res.status(403).json({
-              error: sandbox.error,
-              code: sandbox.code,
-              fallbackAvailable: sandbox.fallbackAvailable,
-            });
-          }
-        }
-
-        let estimatedCost = 0;
-        if (userId) {
-          const quota = checkComputeQuota(userId, profile, database);
-          if (!quota.allowed) {
-            return res.status(402).json({
-              error: "Payment Required: Insufficient Compute Credits",
-              message: quota.reason,
-              balance: quota.userBalance,
-              required: quota.estimatedCost,
-              profile: quota.profileId,
-            });
-          }
-          estimatedCost = quota.estimatedCost;
-        }
+        const { userId, estimatedCost } = preflight;
 
         // Create DB job with isolated per-run resultDir
         const deckHash = sha256(`${deckContent}:${geometry?.casHash || ""}`);
@@ -233,23 +192,18 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
           userId,
         );
 
-        if (userId && estimatedCost > 0) {
-          const holdRes = database.holdUserCredits(
+        if (
+          !holdComputeEscrow({
+            database,
+            res,
             userId,
-            estimatedCost,
             dbJobId,
-            `HPC Escrow Hold: CAE ${solverType.toUpperCase()}`,
-            { profile, solver: solverType },
-          );
-          if (!holdRes.success) {
-            database.updateJobStatus(dbJobId, "FAILED");
-            return res.status(402).json({
-              error: "Payment Required: Escrow Hold Failed",
-              message: holdRes.reason,
-              balance: holdRes.newBalance,
-              required: estimatedCost,
-            });
-          }
+            estimatedCost,
+            description: `HPC Escrow Hold: CAE ${solverType.toUpperCase()}`,
+            metadata: { profile, solver: solverType },
+          })
+        ) {
+          return;
         }
 
         const streamer = new CaeTelemetryStreamer(solverType);
@@ -312,17 +266,10 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
                 database.releaseUserEscrow(userId, dbJobId, "CAE job cancelled");
               }
             } else {
-              database.updateJobStatus(dbJobId, "FAILED");
-              if (userId) {
-                database.releaseUserEscrow(userId, dbJobId, result.error || "CAE job failed");
-              }
+              failComputeJob({ database, dbJobId, userId, error: result.error, fallbackMessage: "CAE job failed" });
             }
           } catch (err: unknown) {
-            database.updateJobStatus(dbJobId, "FAILED");
-            if (userId) {
-              const message = err instanceof Error ? err.message : "CAE execution exception";
-              database.releaseUserEscrow(userId, dbJobId, message || "CAE execution exception");
-            }
+            failComputeJob({ database, dbJobId, userId, error: err, fallbackMessage: "CAE execution exception" });
           } finally {
             activeStreamers.delete(dbJobId.toString());
           }
@@ -349,8 +296,8 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     if (!dbJob) {
       return res.status(404).json({ error: "Job not found." });
     }
-    if (!isAuthorizedForCaeJob(req, dbJob)) {
-      return res.status(403).json({ error: "Forbidden" });
+    if (!assertComputeJobAccess(req, res, database, { ownerId: dbJob.user_id, allowWhenUnowned: true })) {
+      return;
     }
 
     const queueStatus = jobQueue.getStatus(`cae-${req.params.id}`);
@@ -378,7 +325,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
   // 3b. List User's Completed HPC Jobs with Artifacts
   router.get("/cae/user-jobs", (req, res) => {
     try {
-      const userId = resolveRequestUserId(req, database);
+      const { userId } = resolveComputeActor(req, database);
       if (!userId) {
         return res.status(401).json({ error: "Unauthorized" });
       }
@@ -521,8 +468,8 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     try {
       const dbJob = database.getJob(parseInt(req.params.id, 10));
       if (!dbJob) return res.status(404).json({ error: "Job not found." });
-      if (!isAuthorizedForCaeJob(req, dbJob)) {
-        return res.status(403).json({ error: "Forbidden" });
+      if (!assertComputeJobAccess(req, res, database, { ownerId: dbJob.user_id, allowWhenUnowned: true })) {
+        return;
       }
 
       const metadata = (dbJob.metadata ? JSON.parse(dbJob.metadata) : {}) as {
@@ -573,8 +520,8 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     const idParam = String(req.params["id"] || "");
     const jobId = parseInt(idParam, 10);
     const dbJob = !Number.isNaN(jobId) ? database.getJob(jobId) : undefined;
-    if (dbJob && !isAuthorizedForCaeJob(req, dbJob)) {
-      return res.status(403).json({ error: "Forbidden" });
+    if (dbJob && !assertComputeJobAccess(req, res, database, { ownerId: dbJob.user_id, allowWhenUnowned: true })) {
+      return;
     }
     const cancelled = runner.cancelJob(idParam);
     if (dbJob && dbJob.status !== "SUCCESS" && dbJob.status !== "FAILED" && dbJob.status !== "CANCELLED") {
@@ -595,8 +542,8 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     const jobId = parseInt(idParam, 10);
     const dbJob = !Number.isNaN(jobId) ? database.getJob(jobId) : undefined;
     if (!dbJob) return res.status(404).json({ error: "Job not found." });
-    if (!isAuthorizedForCaeJob(req, dbJob)) {
-      return res.status(403).json({ error: "Forbidden" });
+    if (!assertComputeJobAccess(req, res, database, { ownerId: dbJob.user_id, allowWhenUnowned: true })) {
+      return;
     }
 
     const metadata = (dbJob.metadata ? JSON.parse(dbJob.metadata) : {}) as {
@@ -626,8 +573,8 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     const jobId = parseInt(idParam, 10);
     const dbJob = !Number.isNaN(jobId) ? database.getJob(jobId) : undefined;
     if (!dbJob) return res.status(404).json({ error: "Job not found." });
-    if (!isAuthorizedForCaeJob(req, dbJob)) {
-      return res.status(403).json({ error: "Forbidden" });
+    if (!assertComputeJobAccess(req, res, database, { ownerId: dbJob.user_id, allowWhenUnowned: true })) {
+      return;
     }
 
     const metadata = (dbJob.metadata ? JSON.parse(dbJob.metadata) : {}) as {
@@ -636,7 +583,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
       profile?: string | undefined;
     };
 
-    const userId = dbJob.user_id ?? resolveRequestUserId(req, database);
+    const userId = dbJob.user_id ?? resolveComputeActor(req, database).userId;
     const retryProfile = metadata.profile || dbJob.compute_profile || "standard";
     let estimatedCost = 0;
     if (userId) {
@@ -663,23 +610,18 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
       userId ?? null,
     );
 
-    if (userId && estimatedCost > 0) {
-      const holdRes = database.holdUserCredits(
+    if (
+      !holdComputeEscrow({
+        database,
+        res,
         userId,
+        dbJobId: newJobId,
         estimatedCost,
-        newJobId,
-        `HPC Escrow Hold (Retry): ${dbJob.name}`,
-        { profile: retryProfile, previousJobId: dbJob.id },
-      );
-      if (!holdRes.success) {
-        database.updateJobStatus(newJobId, "FAILED");
-        return res.status(402).json({
-          error: "Payment Required: Escrow Hold Failed",
-          message: holdRes.reason,
-          balance: holdRes.newBalance,
-          required: estimatedCost,
-        });
-      }
+        description: `HPC Escrow Hold (Retry): ${dbJob.name}`,
+        metadata: { profile: retryProfile, previousJobId: dbJob.id },
+      })
+    ) {
+      return;
     }
 
     if (metadata.resultDir) {
@@ -720,20 +662,22 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
                     database.releaseUserEscrow(userId, newJobId, "CAE retry job cancelled");
                   }
                 } else {
-                  database.updateJobStatus(newJobId, "FAILED");
-                  if (userId) {
-                    database.releaseUserEscrow(userId, newJobId, result.error || "CAE retry job failed");
-                  }
+                  failComputeJob({
+                    database,
+                    dbJobId: newJobId,
+                    userId,
+                    error: result.error,
+                    fallbackMessage: "CAE retry job failed",
+                  });
                 }
               } catch (err: unknown) {
-                database.updateJobStatus(newJobId, "FAILED");
-                if (userId) {
-                  database.releaseUserEscrow(
-                    userId,
-                    newJobId,
-                    err instanceof Error ? err.message : "CAE retry execution exception",
-                  );
-                }
+                failComputeJob({
+                  database,
+                  dbJobId: newJobId,
+                  userId,
+                  error: err,
+                  fallbackMessage: "CAE retry execution exception",
+                });
               } finally {
                 activeStreamers.delete(newJobId.toString());
               }
@@ -754,8 +698,8 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
   // 5. Real-Time Telemetry Stream (Server-Sent Events)
   router.get("/cae/jobs/:id/events", (req, res) => {
     const dbJob = database.getJob(parseInt(req.params.id, 10));
-    if (dbJob && !isAuthorizedForCaeJob(req, dbJob)) {
-      return res.status(403).json({ error: "Forbidden" });
+    if (dbJob && !assertComputeJobAccess(req, res, database, { ownerId: dbJob.user_id, allowWhenUnowned: true })) {
+      return;
     }
     const streamer = activeStreamers.get(req.params.id);
     if (!streamer) {
@@ -775,8 +719,8 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
   router.get("/cae/jobs/:id/results", (req, res) => {
     const dbJob = database.getJob(parseInt(req.params.id, 10));
     if (!dbJob) return res.status(404).json({ error: "Job not found." });
-    if (!isAuthorizedForCaeJob(req, dbJob)) {
-      return res.status(403).json({ error: "Forbidden" });
+    if (!assertComputeJobAccess(req, res, database, { ownerId: dbJob.user_id, allowWhenUnowned: true })) {
+      return;
     }
 
     const metadata = (dbJob.metadata ? JSON.parse(dbJob.metadata) : {}) as { resultDir?: string | undefined };
@@ -813,8 +757,8 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
   router.get("/cae/jobs/:id/scalars", (req, res) => {
     const dbJob = database.getJob(parseInt(req.params.id, 10));
     if (!dbJob) return res.status(404).json({ error: "Job not found." });
-    if (!isAuthorizedForCaeJob(req, dbJob)) {
-      return res.status(403).json({ error: "Forbidden" });
+    if (!assertComputeJobAccess(req, res, database, { ownerId: dbJob.user_id, allowWhenUnowned: true })) {
+      return;
     }
 
     const metadata = (dbJob.metadata ? JSON.parse(dbJob.metadata) : {}) as { resultDir?: string | undefined };
@@ -834,8 +778,8 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
   router.get("/cae/jobs/:id/mesh-payload", (req, res) => {
     const dbJob = database.getJob(parseInt(req.params.id, 10));
     if (!dbJob) return res.status(404).json({ error: "Job not found." });
-    if (!isAuthorizedForCaeJob(req, dbJob)) {
-      return res.status(403).json({ error: "Forbidden" });
+    if (!assertComputeJobAccess(req, res, database, { ownerId: dbJob.user_id, allowWhenUnowned: true })) {
+      return;
     }
 
     const metadata = (dbJob.metadata ? JSON.parse(dbJob.metadata) : {}) as { resultDir?: string | undefined };
@@ -888,7 +832,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
 
       const solverType: CaeSolverType = solver === "su2" ? "su2" : solver === "openfoam" ? "openfoam" : "calculix";
       const profile = options?.profile || "standard";
-      const userId = resolveRequestUserId(req, database);
+      const { userId } = resolveComputeActor(req, database);
       if (process.env["NODE_ENV"] === "production" && !userId) {
         return res.status(401).json({ error: "Authentication required" });
       }
@@ -932,23 +876,18 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
           userId,
         );
 
-        if (estimatedCost > 0) {
-          const holdRes = database.holdUserCredits(
+        if (
+          !holdComputeEscrow({
+            database,
+            res,
             userId,
-            estimatedCost,
             dbJobId,
-            `HPC Escrow Hold: CAE DoE Sweep (${sampleCount} runs)`,
-            { profile, solver: solverType, sampleCount },
-          );
-          if (!holdRes.success) {
-            database.updateJobStatus(dbJobId, "FAILED");
-            return res.status(402).json({
-              error: "Payment Required: Escrow Hold Failed",
-              message: holdRes.reason,
-              balance: holdRes.newBalance,
-              required: estimatedCost,
-            });
-          }
+            estimatedCost,
+            description: `HPC Escrow Hold: CAE DoE Sweep (${sampleCount} runs)`,
+            metadata: { profile, solver: solverType, sampleCount },
+          })
+        ) {
+          return;
         }
       }
 
@@ -990,10 +929,13 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
               });
             }
           } else if (finalState.status === "failed") {
-            database.updateJobStatus(dbJobId, "FAILED");
-            if (userId && userExists) {
-              database.releaseUserEscrow(userId, dbJobId, "CAE DoE Sweep failed");
-            }
+            failComputeJob({
+              database,
+              dbJobId,
+              userId: userExists ? userId : null,
+              error: undefined,
+              fallbackMessage: "CAE DoE Sweep failed",
+            });
           }
         },
       });
@@ -1012,8 +954,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
 
   // 10. List All Sweeps
   router.get("/cae/sweeps", (req, res) => {
-    const reqAny = req as { user?: { id?: number | undefined } | undefined; userId?: number | undefined };
-    const authUserId = reqAny.user?.id ?? reqAny.userId ?? resolveRequestUserId(req, database) ?? undefined;
+    const authUserId = resolveComputeActor(req, database).userId ?? undefined;
     if (process.env["NODE_ENV"] === "production" && !authUserId) {
       res.status(401).json({ error: "Authentication required" });
       return;
@@ -1044,8 +985,8 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     if (!sweep) {
       return res.status(404).json({ error: `Sweep '${req.params.id}' not found.` });
     }
-    if (!isAuthorizedForCaeSweep(req, sweep)) {
-      return res.status(403).json({ error: "Forbidden" });
+    if (!assertComputeJobAccess(req, res, database, { ownerId: sweep.userId, allowWhenUnowned: true })) {
+      return;
     }
     res.json(sweep);
     return;
@@ -1057,8 +998,8 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     if (!sweep) {
       return res.status(404).json({ error: `Sweep '${req.params.id}' not found.` });
     }
-    if (!isAuthorizedForCaeSweep(req, sweep)) {
-      return res.status(403).json({ error: "Forbidden" });
+    if (!assertComputeJobAccess(req, res, database, { ownerId: sweep.userId, allowWhenUnowned: true })) {
+      return;
     }
     const wasAlreadyTerminal =
       sweep.status === "cancelled" ||
@@ -1085,8 +1026,8 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
     if (!sweep) {
       return res.status(404).json({ error: `Sweep '${req.params.id}' not found.` });
     }
-    if (!isAuthorizedForCaeSweep(req, sweep)) {
-      return res.status(403).json({ error: "Forbidden" });
+    if (!assertComputeJobAccess(req, res, database, { ownerId: sweep.userId, allowWhenUnowned: true })) {
+      return;
     }
     sweepOrchestrator.attachSseStream(req.params.id, res);
     return;
@@ -1099,8 +1040,8 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
       if (!sweep) {
         return res.status(404).json({ error: `Sweep '${req.params.id}' not found.` });
       }
-      if (!isAuthorizedForCaeSweep(req, sweep)) {
-        return res.status(403).json({ error: "Forbidden" });
+      if (!assertComputeJobAccess(req, res, database, { ownerId: sweep.userId, allowWhenUnowned: true })) {
+        return;
       }
       const targetField = (req.query["targetField"] as string) || "vonMisesStress";
       const dataset = sweepOrchestrator.extractDataset(req.params.id, targetField);
@@ -1130,8 +1071,8 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
       if (!sweep) {
         return res.status(404).json({ error: `Sweep '${req.params.id}' not found.` });
       }
-      if (!isAuthorizedForCaeSweep(req, sweep)) {
-        return res.status(403).json({ error: "Forbidden" });
+      if (!assertComputeJobAccess(req, res, database, { ownerId: sweep.userId, allowWhenUnowned: true })) {
+        return;
       }
       const options = req.body || {};
       const trainResult = await sweepOrchestrator.trainSurrogate(req.params.id, options);

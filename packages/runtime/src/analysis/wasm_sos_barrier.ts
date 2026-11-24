@@ -11,6 +11,7 @@
  */
 
 import { BinOp, DAEBuilder, EqKind, ExprKind, UnaryOp, Variability } from "../dae/wasm_dae.js";
+import { getDefaultWasmExports } from "../dae/wasm_loader.js";
 import type { VerificationVerdict } from "../formal/verdict.js";
 import { SdpSolver, type SdpProblem } from "../solvers/wasm_sdp_solver.js";
 import { addUp, ivAdd, ivMul, ivSqrt, ivSub, subDown } from "./outward_rounding.js";
@@ -41,6 +42,37 @@ export interface ExactPolynomialSystem {
 export function certifyPsdInterval(M: number[][], margin = 0): { certified: boolean; minPivotLo: number } {
   const n = M.length;
   if (n === 0) return { certified: true, minPivotLo: Infinity };
+
+  const w = getDefaultWasmExports();
+  if (
+    w &&
+    typeof w.sos_certifyPsdInterval === "function" &&
+    typeof w.alloc === "function" &&
+    typeof w.free === "function"
+  ) {
+    const matBytes = n * n * 8;
+    const mPtr = w.alloc(matBytes);
+    const lLoPtr = w.alloc(matBytes);
+    const lHiPtr = w.alloc(matBytes);
+    const outMinPtr = w.alloc(8);
+    try {
+      const mView = new Float64Array(w.memory.buffer, mPtr, n * n);
+      for (let i = 0; i < n; i++) {
+        const row = M[i];
+        const off = i * n;
+        for (let j = 0; j < n; j++) mView[off + j] = row?.[j] ?? 0;
+      }
+      const ok: number = w.sos_certifyPsdInterval(mPtr, n, margin, lLoPtr, lHiPtr, outMinPtr);
+      const minPivotLo = new Float64Array(w.memory.buffer, outMinPtr, 1)[0]!;
+      return { certified: ok === 1, minPivotLo };
+    } finally {
+      w.free(mPtr);
+      w.free(lLoPtr);
+      w.free(lHiPtr);
+      w.free(outMinPtr);
+    }
+  }
+
   const L: Interval[][] = Array.from({ length: n }, () => Array.from({ length: n }, () => new Interval(0, 0)));
   let minPivotLo = Infinity;
 

@@ -11,7 +11,7 @@ Welcome to **ModelScript**, the open-core **computable digital thread** platform
 
 ## What is the Computable Digital Thread?
 
-Modern cyber-physical systems — from electric vehicles, utility power grids, and satellites to surgical robots, proton therapy nozzles, and subsea flowlines — require tight coordination across **168 documented engineering formats** (**95 Beta, 72 Alpha, 1 Pre-Alpha**) spanning **12 industry verticals**:
+Modern cyber-physical systems — from electric vehicles, utility power grids, and satellites to surgical robots, proton therapy nozzles, and subsea flowlines — require tight coordination across **169 documented engineering formats** (**96 Beta, 72 Alpha, 1 Pre-Alpha**) spanning **12 industry verticals**:
 
 - **System Architecture, Requirements, Security & Ontologies** (`SysML v2`, `KerML`, `ReqIF`, `NIST OSCAL`, `OSLC 3.0`, `OWL2`, `AAS / DDP`)
 - **Multi-Domain Acausal, Optimization & Block-Diagram Simulation** (`Modelica 3.x`, `ModelScript .msx`, `AMPL`, `MATLAB Simulink`, `EASY5`, `FMI 2.0/3.0 FMU`, `SSP 1.0/2.0`)
@@ -50,7 +50,7 @@ flowchart LR
 
 ## Core Pillars of ModelScript
 
-### 1. Code-First Engineering Across 168 Documented Formats (95 Beta, 72 Alpha, 1 Pre-Alpha)
+### 1. Code-First Engineering Across 169 Documented Formats (96 Beta, 72 Alpha, 1 Pre-Alpha)
 
 Every model, schematic, requirement, netlist, and mesh configuration lives as clean text in Git. Engineers diff, review, merge, and gate physical hardware designs using standard pull requests, SARIF code scanning, and reproducible CI/CD pipelines.
 

@@ -226,6 +226,10 @@ export interface ExtensionOptions {
   vscodeEngine?: string | undefined;
   /** Output mode: "web" (pure browser) | "node" (desktop) | "universal" (both) */
   target?: "web" | "node" | "universal" | undefined;
+  /** VS Code Marketplace platform target for native desktop VSIX packaging */
+  platformTarget?: "web" | "darwin-arm64" | "darwin-x64" | "win32-x64" | "linux-x64" | "linux-arm64" | undefined;
+  /** Explicit path to compiled modelscript_native.node addon to bundle into desktop VSIX */
+  nativeAddonPath?: string | undefined;
   /** Minify bundled JavaScript assets (default: true in buildIdeExtension) */
   minify?: boolean | undefined;
   /** Emit source maps for bundled JavaScript assets (default: false in buildIdeExtension) */
@@ -2714,8 +2718,15 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
     },
   });
 
-  // Set browser client entry point
+  // Set browser client entry point (always present for VS Code for Web & fallback)
   pkg["browser"] = "./dist/browserClientMain.js";
+  const isDesktopTarget = Boolean(options?.platformTarget && options.platformTarget !== "web");
+  if (isDesktopTarget) {
+    pkg["main"] = "./dist/desktopClientMain.js";
+  } else {
+    delete pkg["main"];
+  }
+  fs.rmSync(path.join(outDir, "native"), { recursive: true, force: true });
   fs.writeFileSync(path.join(outDir, "package.json"), JSON.stringify(pkg, null, 2), "utf-8");
   fs.writeFileSync(path.join(outDir, "package.nls.json"), "{}", "utf-8");
   fs.writeFileSync(path.join(outDir, ".vscodeignore"), DEFAULT_VSCODEIGNORE, "utf-8");
@@ -2806,6 +2817,45 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
         "empty-import-meta": "silent",
       },
     });
+  }
+
+  // Build desktop Node extension host client & stage native addon (only for platform-native VSIXs)
+  if (isDesktopTarget) {
+    const desktopMainPath = path.join(ideDir, "desktop-client-main.ts");
+    if (fs.existsSync(desktopMainPath)) {
+      await esbuild.build({
+        entryPoints: [desktopMainPath],
+        outfile: path.join(outDir, "dist", "desktopClientMain.js"),
+        bundle: true,
+        format: "cjs",
+        platform: "node",
+        target: "node20",
+        minify: shouldMinify,
+        sourcemap: shouldSourcemap,
+        external: ["vscode"],
+        logOverride: {
+          "duplicate-object-key": "silent",
+          "empty-import-meta": "silent",
+        },
+      });
+    }
+
+    const platformTarget = options!.platformTarget!;
+    const addonCandidate =
+      options?.nativeAddonPath ||
+      path.join(repoRoot, "packages", "native", "prebuilds", platformTarget, "modelscript_native.node");
+    if (fs.existsSync(addonCandidate)) {
+      const nativeOutDir = path.join(outDir, "native");
+      fs.mkdirSync(nativeOutDir, { recursive: true });
+      fs.copyFileSync(addonCandidate, path.join(nativeOutDir, "modelscript_native.node"));
+      // Copy any sibling shared libraries (e.g. libwebgpu_dawn.so/.dylib/.dll)
+      const srcDir = path.dirname(addonCandidate);
+      for (const entry of fs.readdirSync(srcDir)) {
+        if (entry.endsWith(".so") || entry.endsWith(".dylib") || entry.endsWith(".dll")) {
+          fs.copyFileSync(path.join(srcDir, entry), path.join(nativeOutDir, entry));
+        }
+      }
+    }
   }
 
   // Build webviews

@@ -1150,8 +1150,11 @@ export class OntologyStore {
 
     let queue = this.scratchA;
     queue.clear();
+    let seen = this.visitedMap;
+    seen.clear();
     let head: u32 = 0;
     queue.push(sourceHash);
+    seen.set(sourceHash as u64, 1);
 
     let matchCount: u32 = 0;
 
@@ -1168,19 +1171,11 @@ export class OntologyStore {
 
           if (axiomType == AXIOM_OBJ_PROP_ASSERT && (propertyHash == 0 || propertyHash == WILDCARD_PATTERN || p == propertyHash)) {
             let target = this.axiomTable.get(baseIdx + 3);
-            if (target != 0) {
-              let visited = false;
-              for (let k: u32 = 0; k < queue.length; k++) {
-                if (queue.get(k) == target) {
-                  visited = true;
-                  break;
-                }
-              }
-              if (!visited) {
-                queue.push(target);
-                outBuffer.push(target);
-                matchCount++;
-              }
+            if (target != 0 && !seen.has(target as u64)) {
+              seen.set(target as u64, 1);
+              queue.push(target);
+              outBuffer.push(target);
+              matchCount++;
             }
           }
         }
@@ -1685,8 +1680,11 @@ export class OntologyStore {
 
     let queue = this.scratchA;
     queue.clear();
+    let seen = this.visitedMap;
+    seen.clear();
     let head: u32 = 0;
     queue.push(sourceHash);
+    seen.set(sourceHash as u64, 1);
 
     let reachable = this.scratchB;
     reachable.clear();
@@ -1709,20 +1707,12 @@ export class OntologyStore {
             (propertyHash == 0 || propertyHash == WILDCARD_PATTERN || p == propertyHash)
           ) {
             let target = this.axiomTable.get(baseIdx + 3);
-            if (target != 0) {
-              let visited = false;
-              for (let k: u32 = 0; k < queue.length; k++) {
-                if (queue.get(k) == target) {
-                  visited = true;
-                  break;
-                }
-              }
-              if (!visited) {
-                queue.push(target);
-                reachable.push(target);
-                pathEdges.push(current);
-                pathEdges.push(target);
-              }
+            if (target != 0 && !seen.has(target as u64)) {
+              seen.set(target as u64, 1);
+              queue.push(target);
+              reachable.push(target);
+              pathEdges.push(current);
+              pathEdges.push(target);
             }
           }
         }
@@ -1984,6 +1974,8 @@ export class OntologyStore {
 
     let reachable = this.scratchA;
     reachable.clear();
+    let seen = this.visitedMap;
+    seen.clear();
 
     switch (pathOp) {
       case PATH_OP_DIRECT: {
@@ -1995,7 +1987,10 @@ export class OntologyStore {
             let p = this.axiomTable.get(bIdx + 2);
             if (aType == AXIOM_OBJ_PROP_ASSERT && (propertyHash == 0 || propertyHash == WILDCARD_PATTERN || p == propertyHash)) {
               let o = this.axiomTable.get(bIdx + 3);
-              if (o != 0) reachable.push(o);
+              if (o != 0 && !seen.has(o as u64)) {
+                seen.set(o as u64, 1);
+                reachable.push(o);
+              }
             }
           }
           axId = this.nextSpo.get(axId);
@@ -2012,7 +2007,10 @@ export class OntologyStore {
             let p = this.axiomTable.get(bIdx + 2);
             if (aType == AXIOM_OBJ_PROP_ASSERT && (propertyHash == 0 || propertyHash == WILDCARD_PATTERN || p == propertyHash)) {
               let s = this.axiomTable.get(bIdx + 1);
-              if (s != 0) reachable.push(s);
+              if (s != 0 && !seen.has(s as u64)) {
+                seen.set(s as u64, 1);
+                reachable.push(s);
+              }
             }
           }
           axId = this.nextOsp.get(axId);
@@ -2025,6 +2023,7 @@ export class OntologyStore {
         if (pathOp == PATH_OP_STAR) {
           reachable.push(sourceHash);
         }
+        seen.set(sourceHash as u64, 1);
         let queue = this.scratchB;
         queue.clear();
         let head: u32 = 0;
@@ -2040,15 +2039,10 @@ export class OntologyStore {
               let p = this.axiomTable.get(bIdx + 2);
               if (aType == AXIOM_OBJ_PROP_ASSERT && (propertyHash == 0 || propertyHash == WILDCARD_PATTERN || p == propertyHash)) {
                 let tgt = this.axiomTable.get(bIdx + 3);
-                if (tgt != 0) {
-                  let visited = false;
-                  for (let k: u32 = 0; k < reachable.length; k++) {
-                    if (reachable.get(k) == tgt) { visited = true; break; }
-                  }
-                  if (!visited) {
-                    reachable.push(tgt);
-                    queue.push(tgt);
-                  }
+                if (tgt != 0 && !seen.has(tgt as u64)) {
+                  seen.set(tgt as u64, 1);
+                  reachable.push(tgt);
+                  queue.push(tgt);
                 }
               }
             }
@@ -2059,6 +2053,7 @@ export class OntologyStore {
       }
 
       case PATH_OP_INVERSE_PLUS: {
+        seen.set(sourceHash as u64, 1);
         let queue = this.scratchB;
         queue.clear();
         let head: u32 = 0;
@@ -2074,15 +2069,10 @@ export class OntologyStore {
               let p = this.axiomTable.get(bIdx + 2);
               if (aType == AXIOM_OBJ_PROP_ASSERT && (propertyHash == 0 || propertyHash == WILDCARD_PATTERN || p == propertyHash)) {
                 let src = this.axiomTable.get(bIdx + 1);
-                if (src != 0) {
-                  let visited = false;
-                  for (let k: u32 = 0; k < reachable.length; k++) {
-                    if (reachable.get(k) == src) { visited = true; break; }
-                  }
-                  if (!visited) {
-                    reachable.push(src);
-                    queue.push(src);
-                  }
+                if (src != 0 && !seen.has(src as u64)) {
+                  seen.set(src as u64, 1);
+                  reachable.push(src);
+                  queue.push(src);
                 }
               }
             }
@@ -2119,12 +2109,9 @@ export class OntologyStore {
               let p2 = this.axiomTable.get(bIdx2 + 2);
               if (aType2 == AXIOM_OBJ_PROP_ASSERT && (stepPropertyHash2 == 0 || stepPropertyHash2 == WILDCARD_PATTERN || p2 == stepPropertyHash2)) {
                 let tgt2 = this.axiomTable.get(bIdx2 + 3);
-                if (tgt2 != 0) {
-                  let visited = false;
-                  for (let k: u32 = 0; k < reachable.length; k++) {
-                    if (reachable.get(k) == tgt2) { visited = true; break; }
-                  }
-                  if (!visited) reachable.push(tgt2);
+                if (tgt2 != 0 && !seen.has(tgt2 as u64)) {
+                  seen.set(tgt2 as u64, 1);
+                  reachable.push(tgt2);
                 }
               }
             }
@@ -2141,14 +2128,11 @@ export class OntologyStore {
             let bIdx = axId * AXIOM_STRIDE;
             let aType = (this.axiomTable.get(bIdx + 0) & 0xffff) as u16;
             let p = this.axiomTable.get(bIdx + 2);
-            if (aType == AXIOM_OBJ_PROP_ASSERT && (p == propertyHash || p == stepPropertyHash2)) {
+            if (aType == AXIOM_OBJ_PROP_ASSERT && (p == propertyHash || (stepPropertyHash2 != 0 && p == stepPropertyHash2))) {
               let tgt = this.axiomTable.get(bIdx + 3);
-              if (tgt != 0) {
-                let visited = false;
-                for (let k: u32 = 0; k < reachable.length; k++) {
-                  if (reachable.get(k) == tgt) { visited = true; break; }
-                }
-                if (!visited) reachable.push(tgt);
+              if (tgt != 0 && !seen.has(tgt as u64)) {
+                seen.set(tgt as u64, 1);
+                reachable.push(tgt);
               }
             }
           }

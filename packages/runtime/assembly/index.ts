@@ -105,6 +105,26 @@ export * from "../src/wasm/diagram/wasm_layout";
 export * from "../src/wasm/solvers/wasm_advanced_solvers";
 export * from "../src/wasm/polyglot/dbsp_zset";
 export * from "../src/wasm/polyglot/tgg_pic";
+export * from "../src/wasm/dae/table";
+export * from "../src/wasm/dae/neural";
+export * from "../src/wasm/gpu/memory_planner";
+export * from "../src/wasm/analysis/hji";
+export * from "../src/wasm/analysis/star_set";
+export * from "../src/wasm/analysis/pbox";
+export * from "../src/wasm/analysis/sos_barrier";
+export * from "../src/wasm/autodiff/event_relaxer";
+export * from "../src/wasm/solvers/sdp_admm";
+export * from "../src/wasm/solvers/radau_iia";
+export * from "../src/wasm/solvers/quasi_dynamic";
+export * from "../src/wasm/solvers/trbdf2";
+export * from "../src/wasm/solvers/ac_opf";
+export * from "../src/wasm/solvers/line_constants";
+export * from "../src/wasm/solvers/qss";
+export * from "../src/wasm/solvers/rodas5p";
+export * from "../src/wasm/solvers/dc_opf";
+export * from "../src/wasm/solvers/distributed_krylov";
+export * from "../src/wasm/solvers/fd_line";
+export * from "../src/wasm/solvers/jump_process";
 export * from "./flattener";
 
 

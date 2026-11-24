@@ -3,6 +3,7 @@
 import assert from "node:assert";
 import {
   CanvasContextPool,
+  ModelScriptEmbed,
   compressEmbedPayload,
   decompressEmbedPayload,
   getLaunchUrl,
@@ -170,6 +171,78 @@ async function runTests() {
   assert.strictEqual(decompressedGensys?.lang, "gensys");
   assert.strictEqual(decompressedGensys?.morselId, "morsel-abc123def456");
   assert.strictEqual(decompressedGensys?.embedToken, "signed.token.123");
+
+  // 8. Test ModelScriptEmbed iframe grants WebXR & fullscreen permissions
+  const globalRecord = globalThis as unknown as {
+    document?: unknown;
+    window?: unknown;
+  };
+  const origDocument = globalRecord.document;
+  const origWindow = globalRecord.window;
+  try {
+    const iframeAttrs = new Map<string, string>();
+    let removed = false;
+    const mockIframe = {
+      src: "",
+      style: {} as Record<string, string>,
+      contentWindow: null,
+      setAttribute: (name: string, value: string) => {
+        iframeAttrs.set(name, value);
+      },
+      getAttribute: (name: string) => iframeAttrs.get(name) ?? null,
+      remove: () => {
+        removed = true;
+      },
+    };
+    const appended: unknown[] = [];
+    const mockContainer = {
+      appendChild: (child: unknown) => {
+        appended.push(child);
+        return child;
+      },
+    } as unknown as HTMLElement;
+    const messageListeners = new Set<unknown>();
+
+    globalRecord.document = {
+      createElement: (tag: string) => {
+        assert.strictEqual(tag, "iframe");
+        return mockIframe;
+      },
+    };
+    globalRecord.window = {
+      location: { origin: "https://docs.example.org" },
+      addEventListener: (_type: string, fn: unknown) => {
+        messageListeners.add(fn);
+      },
+      removeEventListener: (_type: string, fn: unknown) => {
+        messageListeners.delete(fn);
+      },
+    };
+
+    const embed = new ModelScriptEmbed({
+      container: mockContainer,
+      dialect: "step",
+      code: "ISO-10303-21; END-ISO-10303-21;",
+      view: "cad",
+      embedOrigin: "https://ansatz.social",
+    });
+
+    assert.strictEqual(appended.length, 1);
+    assert.strictEqual(appended[0], mockIframe);
+    assert.ok(mockIframe.src.startsWith("https://ansatz.social/embed/playground#m="));
+    const allowAttr = mockIframe.getAttribute("allow");
+    assert.strictEqual(allowAttr, "clipboard-read; clipboard-write; xr-spatial-tracking; fullscreen");
+    assert.ok(allowAttr.includes("xr-spatial-tracking"), "iframe allow attribute must include xr-spatial-tracking");
+    assert.ok(allowAttr.includes("fullscreen"), "iframe allow attribute must include fullscreen");
+    assert.strictEqual(messageListeners.size, 1);
+
+    embed.destroy();
+    assert.strictEqual(removed, true);
+    assert.strictEqual(messageListeners.size, 0);
+  } finally {
+    globalRecord.document = origDocument;
+    globalRecord.window = origWindow;
+  }
 
   console.log("✓ All @modelscript/embed unit tests passed successfully!");
 }

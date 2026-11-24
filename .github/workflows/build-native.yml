@@ -1,0 +1,255 @@
+name: Build Native Binaries & Platform VSIXs
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Release version to stamp into VSIXs and HPC tarballs"
+        required: false
+        type: string
+        default: ""
+      enable_dawn:
+        description: "Link prebuilt Dawn WebGPU runtime when available"
+        required: false
+        type: boolean
+        default: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Optional version override"
+        required: false
+        type: string
+        default: ""
+      enable_dawn:
+        description: "Link prebuilt Dawn WebGPU runtime"
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  build-platform-native:
+    name: Build Native (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            os: ubuntu-24.04
+            hpc: true
+          - target: linux-arm64
+            os: ubuntu-24.04-arm
+            hpc: true
+          - target: darwin-arm64
+            os: macos-14
+            hpc: false
+          - target: darwin-x64
+            os: macos-15-intel
+            hpc: false
+          - target: win32-x64
+            os: windows-latest
+            hpc: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Node.js & pnpm
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache WABT, SIMDe & Dawn
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            .cache/wabt-*
+            .cache/simde-*
+            .cache/dawn-*
+            .cache/node-lib-*
+          key: ${{ runner.os }}-${{ matrix.target }}-native-deps-v2
+
+      - name: Download Node.js import library (Windows MSVC N-API)
+        if: ${{ runner.os == 'Windows' }}
+        shell: bash
+        run: |
+          NODE_VER="$(node -v)"
+          mkdir -p ".cache/node-lib-${NODE_VER}"
+          if [ ! -f ".cache/node-lib-${NODE_VER}/node.lib" ]; then
+            curl -fsSL "https://nodejs.org/dist/${NODE_VER}/win-x64/node.lib" -o ".cache/node-lib-${NODE_VER}/node.lib"
+          fi
+          echo "NODE_LIB_FILE=$(pwd)/.cache/node-lib-${NODE_VER}/node.lib" >> "$GITHUB_ENV"
+
+      - name: Fetch prebuilt Dawn WebGPU (with graceful fallback)
+        if: ${{ inputs.enable_dawn }}
+        shell: bash
+        run: |
+          if npx tsx scripts/build/fetch-dawn.ts && [ -f "packages/native/generated/dawn_paths.cmake" ]; then
+            echo "MS_ENABLE_DAWN=1" >> "$GITHUB_ENV"
+          else
+            echo "Dawn prebuilt archive unavailable for ${{ matrix.target }}; continuing with CPU wasm2c build."
+            echo "MS_ENABLE_DAWN=0" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build core packages & native AssemblyScript targets
+        shell: bash
+        run: |
+          pnpm --filter @modelscript/dsl run build
+          pnpm --filter @modelscript/runtime run build
+          pnpm --filter @modelscript/runtime run asbuild:native
+          pnpm --filter @modelscript/simulate run build
+          pnpm --filter @modelscript/simulate run asbuild:native
+
+      - name: Transpile wasm2c & compile native addon + HPC worker
+        shell: bash
+        run: |
+          pnpm --filter @modelscript/native run build:native
+          pnpm --filter @modelscript/native run build
+
+      - name: Run native vs WASM bit-exact parity & HPC worker tests
+        shell: bash
+        run: |
+          npx tsx --test packages/native/tests/native-parity.test.ts
+          if [ -f "packages/native/tests/hpc-worker.test.ts" ]; then
+            npx tsx --test packages/native/tests/hpc-worker.test.ts
+          fi
+
+      - name: Run msx-hpc-worker self-test (Linux HPC)
+        if: ${{ matrix.hpc }}
+        shell: bash
+        run: |
+          ./packages/native/prebuilds/${{ matrix.target }}/msx-hpc-worker --version --info --selftest
+          mkdir -p dist/release-artifacts
+          tar -czf "dist/release-artifacts/msx-hpc-worker-${{ matrix.target }}.tar.gz" \
+            -C "packages/native/prebuilds/${{ matrix.target }}" msx-hpc-worker
+
+      - name: Build platform-native VS Code extension (${{ matrix.target }})
+        shell: bash
+        run: |
+          npx tsx apps/ide/scripts/build-extension.ts \
+            --target="${{ matrix.target }}" \
+            --outdir="apps/ide/dist/extension-${{ matrix.target }}" \
+            --native-addon="packages/native/prebuilds/${{ matrix.target }}/modelscript_native.node"
+          if [ -n "${{ inputs.version }}" ]; then
+            node -e "const fs=require('fs'),p='apps/ide/dist/extension-${{ matrix.target }}/package.json',j=JSON.parse(fs.readFileSync(p,'utf8'));j.version='${{ inputs.version }}';fs.writeFileSync(p,JSON.stringify(j,null,2));"
+          fi
+
+      - name: Package platform-native VSIX (${{ matrix.target }})
+        shell: bash
+        working-directory: apps/ide/dist/extension-${{ matrix.target }}
+        run: |
+          mkdir -p ../../../../dist/release-artifacts
+          npx --yes @vscode/vsce@3.3.2 package \
+            --target "${{ matrix.target }}" \
+            --no-dependencies \
+            -o "../../../../dist/release-artifacts/modelscript-${{ matrix.target }}.vsix"
+
+      - name: Verify desktop VSIX bundles native addon
+        shell: bash
+        run: |
+          test -f "apps/ide/dist/extension-${{ matrix.target }}/native/modelscript_native.node"
+          test -f "apps/ide/dist/extension-${{ matrix.target }}/dist/desktopClientMain.js"
+          test -f "dist/release-artifacts/modelscript-${{ matrix.target }}.vsix"
+
+      - name: Upload platform artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-native-${{ matrix.target }}
+          path: dist/release-artifacts/*
+          retention-days: 14
+
+  build-web-vsix:
+    name: Build Pure-WASM Web VSIX (web)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build core packages (WASM)
+        run: |
+          pnpm --filter @modelscript/dsl run build
+          pnpm --filter @modelscript/runtime run build
+          pnpm --filter @modelscript/simulate run build
+
+      - name: Build pure-WASM web extension
+        run: |
+          npx tsx apps/ide/scripts/build-extension.ts \
+            --target=web \
+            --outdir="apps/ide/dist/extension-web"
+          if [ -n "${{ inputs.version }}" ]; then
+            node -e "const fs=require('fs'),p='apps/ide/dist/extension-web/package.json',j=JSON.parse(fs.readFileSync(p,'utf8'));j.version='${{ inputs.version }}';fs.writeFileSync(p,JSON.stringify(j,null,2));"
+          fi
+
+      - name: Verify web VSIX contains zero native binaries
+        run: |
+          test ! -d "apps/ide/dist/extension-web/native"
+          test ! -f "apps/ide/dist/extension-web/dist/desktopClientMain.js"
+          test -f "apps/ide/dist/extension-web/dist/browserClientMain.js"
+
+      - name: Package web VSIX
+        working-directory: apps/ide/dist/extension-web
+        run: |
+          mkdir -p ../../../../dist/release-artifacts
+          npx --yes @vscode/vsce@3.3.2 package \
+            --target web \
+            --no-dependencies \
+            -o "../../../../dist/release-artifacts/modelscript-web.vsix"
+
+      - name: Upload web VSIX artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-native-web
+          path: dist/release-artifacts/modelscript-web.vsix
+          retention-days: 14
+
+  build-hpc-cuda-fp64:
+    name: Build HPC Worker (linux-x64-cuda FP64)
+    runs-on: ubuntu-24.04
+    container:
+      image: nvidia/cuda:12.6.3-devel-ubuntu24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install build prerequisites
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends curl ca-certificates cmake ninja-build git
+          curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+          apt-get install -y --no-install-recommends nodejs
+          corepack enable
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build native AssemblyScript targets & CUDA FP64 HPC worker
+        env:
+          MS_ENABLE_CUDA: "1"
+        run: |
+          pnpm --filter @modelscript/runtime run asbuild:native
+          pnpm --filter @modelscript/simulate run asbuild:native
+          npx tsx scripts/build/wasm2c-codegen.ts --skip-asc
+          cmake -S packages/native -B packages/native/build-cuda -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DMS_BUILD_NAPI=OFF \
+            -DMS_BUILD_HPC_WORKER=ON \
+            -DMS_ENABLE_CUDA=ON
+          cmake --build packages/native/build-cuda --parallel
+          ./packages/native/build-cuda/msx-hpc-worker --version --info --selftest
+          mkdir -p dist/release-artifacts
+          tar -czf dist/release-artifacts/msx-hpc-worker-linux-x64-cuda.tar.gz \
+            -C packages/native/build-cuda msx-hpc-worker
+
+      - name: Upload CUDA HPC worker artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-native-linux-x64-cuda
+          path: dist/release-artifacts/msx-hpc-worker-linux-x64-cuda.tar.gz
+          retention-days: 14

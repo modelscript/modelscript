@@ -61,18 +61,18 @@ export function evalMathBuiltin(funcId: i32, arg1: f64, arg2: f64 = 0.0): f64 {
   if (funcId == BuiltinMathFunc.Cosh)  return Math.cosh(arg1);
   if (funcId == BuiltinMathFunc.Tanh)  return Math.tanh(arg1);
   if (funcId == BuiltinMathFunc.Exp)   return Math.exp(arg1);
-  if (funcId == BuiltinMathFunc.Log)   return arg1 > 0.0 ? Math.log(arg1)   : 0.0;
-  if (funcId == BuiltinMathFunc.Log10) return arg1 > 0.0 ? Math.log10(arg1) : 0.0;
-  if (funcId == BuiltinMathFunc.Sqrt)  return arg1 >= 0.0 ? Math.sqrt(arg1) : 0.0;
+  if (funcId == BuiltinMathFunc.Log)   return arg1 > 0.0 ? Math.log(arg1)   : NaN;
+  if (funcId == BuiltinMathFunc.Log10) return arg1 > 0.0 ? Math.log10(arg1) : NaN;
+  if (funcId == BuiltinMathFunc.Sqrt)  return arg1 >= 0.0 ? Math.sqrt(arg1) : NaN;
   if (funcId == BuiltinMathFunc.Abs)   return Math.abs(arg1);
   if (funcId == BuiltinMathFunc.Sign)  return arg1 > 0.0 ? 1.0 : arg1 < 0.0 ? -1.0 : 0.0;
   if (funcId == BuiltinMathFunc.Min)   return Math.min(arg1, arg2);
   if (funcId == BuiltinMathFunc.Max)   return Math.max(arg1, arg2);
   if (funcId == BuiltinMathFunc.Floor) return Math.floor(arg1);
   if (funcId == BuiltinMathFunc.Ceil)  return Math.ceil(arg1);
-  if (funcId == BuiltinMathFunc.Fmod)  return arg2 != 0.0 ? arg1 % arg2 : 0.0;
+  if (funcId == BuiltinMathFunc.Fmod)  return arg2 != 0.0 ? arg1 % arg2 : NaN;
   if (funcId == BuiltinMathFunc.Pow)   return Math.pow(arg1, arg2);
-  return 0.0;
+  return NaN;
 }
 
 /**
@@ -148,7 +148,7 @@ export function isLiteralFalse(dae: DaeBuilder, exprId: u32): bool {
  * Evaluates an expression node in linear memory to a constant scalar if possible.
  * Uses ExprAccessor and VarAccessor for all field access — no raw SoA arithmetic.
  */
-export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32 = 0, useVarIds: i32 = -1): EvalResult {
+export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32 = 0, useVarIds: i32 = -1, onlyConstants: bool = false): EvalResult {
   if (exprId >= dae.exprCount || visitedDepth > 100) {
     staticResult.isConstant = false;
     return staticResult;
@@ -198,7 +198,7 @@ export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32
     if (resolved >= 0 && (resolved as u32) < dae.varCount) {
       let varId = resolved as u32;
       let v = VarAccessor.at(dae.getVarData(), varId);
-      if (v.variability == Variability.Constant || v.variability == Variability.Parameter) {
+      if (v.variability == Variability.Constant || (!onlyConstants && v.variability == Variability.Parameter)) {
         let bindingExpr = dae.getVarAttrExpr(varId, VarAttrKind.Binding as u32);
         if (bindingExpr == 0xffffffff) {
           bindingExpr = dae.getVarAttrExpr(varId, VarAttrKind.Start as u32);
@@ -210,7 +210,7 @@ export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32
               staticResult.isConstant = false;
               return staticResult;
             }
-            let bRes = evalConstantExpr(dae, bindingExpr, visitedDepth + 1, useVarIds);
+            let bRes = evalConstantExpr(dae, bindingExpr, visitedDepth + 1, useVarIds, onlyConstants);
             if (bRes.isConstant) {
               dae.setVarStartValue(varId, bRes.valReal);
               let litId: u32 = bRes.valType == 1
@@ -241,7 +241,7 @@ export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32
   }
 
   if (kind == ExprKind.Negate) {
-    let res = evalConstantExpr(dae, left, visitedDepth + 1, useVarIds);
+    let res = evalConstantExpr(dae, left, visitedDepth + 1, useVarIds, onlyConstants);
     if (!res.isConstant) return res;
     staticResult.isConstant = true;
     staticResult.valReal    = -res.valReal;
@@ -252,7 +252,7 @@ export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32
   }
 
   if (kind == ExprKind.Unary) {
-    let res = evalConstantExpr(dae, left, visitedDepth + 1, useVarIds);
+    let res = evalConstantExpr(dae, left, visitedDepth + 1, useVarIds, onlyConstants);
     if (!res.isConstant) return res;
 
     if (unaryOp == UnaryOp.Not) {
@@ -274,14 +274,14 @@ export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32
   if (kind == ExprKind.Binary) {
     let op = binOp;
 
-    let resLeft = evalConstantExpr(dae, left, visitedDepth + 1, useVarIds);
+    let resLeft = evalConstantExpr(dae, left, visitedDepth + 1, useVarIds, onlyConstants);
     if (!resLeft.isConstant) { staticResult.isConstant = false; return staticResult; }
     let vL_Real = resLeft.valReal;
     let vL_Int  = resLeft.valInt;
     let vL_Bool = resLeft.valBool;
     let vL_Type = resLeft.valType;
 
-    let resRight = evalConstantExpr(dae, right, visitedDepth + 1, useVarIds);
+    let resRight = evalConstantExpr(dae, right, visitedDepth + 1, useVarIds, onlyConstants);
     if (!resRight.isConstant) { staticResult.isConstant = false; return staticResult; }
     let vR_Real = resRight.valReal;
     let vR_Int  = resRight.valInt;
@@ -331,15 +331,15 @@ export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32
   }
 
   if (kind == ExprKind.IfElse) {
-    let condRes = evalConstantExpr(dae, data1u, visitedDepth + 1, useVarIds);
+    let condRes = evalConstantExpr(dae, data1u, visitedDepth + 1, useVarIds, onlyConstants);
     if (condRes.isConstant) {
       let branchId = condRes.valBool ? left : right;
-      return evalConstantExpr(dae, branchId, visitedDepth + 1, useVarIds);
+      return evalConstantExpr(dae, branchId, visitedDepth + 1, useVarIds, onlyConstants);
     }
   }
 
   if (kind == ExprKind.Der) {
-    let argRes = evalConstantExpr(dae, left != 0xffffffff ? left : data1u, visitedDepth + 1, useVarIds);
+    let argRes = evalConstantExpr(dae, left != 0xffffffff ? left : data1u, visitedDepth + 1, useVarIds, onlyConstants);
     if (argRes.isConstant) {
       staticResult.isConstant = true;
       staticResult.valReal    = 0.0;
@@ -351,7 +351,7 @@ export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32
   }
 
   if (kind == ExprKind.Pre) {
-    return evalConstantExpr(dae, left != 0xffffffff ? left : data1u, visitedDepth + 1, useVarIds);
+    return evalConstantExpr(dae, left != 0xffffffff ? left : data1u, visitedDepth + 1, useVarIds, onlyConstants);
   }
 
   if (kind == ExprKind.Call) {
@@ -364,26 +364,32 @@ export function evalConstantExpr(dae: DaeBuilder, exprId: u32, visitedDepth: i32
     let argCount   = right;
 
     if (argCount >= 1) {
-      let res1 = evalConstantExpr(dae, firstArgId, visitedDepth + 1, useVarIds);
+      let res1 = evalConstantExpr(dae, firstArgId, visitedDepth + 1, useVarIds, onlyConstants);
       if (res1.isConstant) {
         let arg1_val: f64 = res1.valReal;
         let res2_val: f64 = 0.0;
         if (argCount >= 2) {
           let secondArgId = dae.getCallArgExprId(exprId, 1);
-          let res2 = evalConstantExpr(dae, secondArgId, visitedDepth + 1, useVarIds);
+          let res2 = evalConstantExpr(dae, secondArgId, visitedDepth + 1, useVarIds, onlyConstants);
           if (!res2.isConstant) { staticResult.isConstant = false; return staticResult; }
           res2_val = res2.valReal;
         }
-        staticResult.isConstant = true;
+        let val: f64;
         if (funcId == BuiltinMathFunc.NoEvent || funcId == BuiltinMathFunc.Homotopy) {
-          staticResult.valReal = arg1_val;
+          val = arg1_val;
         } else if (funcId == BuiltinMathFunc.Smooth) {
-          staticResult.valReal = res2_val;
+          val = res2_val;
         } else {
-          staticResult.valReal = evalMathBuiltin(funcId, arg1_val, res2_val);
+          val = evalMathBuiltin(funcId, arg1_val, res2_val);
         }
-        staticResult.valInt     = staticResult.valReal as i32;
-        staticResult.valBool    = staticResult.valReal != 0.0;
+        if (isNaN(val)) {
+          staticResult.isConstant = false;
+          return staticResult;
+        }
+        staticResult.isConstant = true;
+        staticResult.valReal    = val;
+        staticResult.valInt     = val as i32;
+        staticResult.valBool    = val != 0.0;
         staticResult.valType    = 0;
         return staticResult;
       }
@@ -742,7 +748,9 @@ export function foldDaeConstants(dae: DaeBuilder, maxIterations: u32 = 100, omcC
           } else if (evalRes.valType == 0 && be.kind == ExprKind.RealLiteral && be.realValue == evalRes.valReal) {
             isAlreadyLit = true;
           }
-          if (!isAlreadyLit) {
+          let vPass1 = VarAccessor.at(dae.getVarData(), varIdx);
+          let allowBindRewrite = !omcCompatibility || vPass1.variability == Variability.Constant || (dae.getVarData().get(varIdx * VAR_STRIDE + VAR_FLAGS) & FLAG_VAR_FINAL) != 0;
+          if (!isAlreadyLit && allowBindRewrite) {
             let litId: u32 = evalRes.valType == 1
               ? dae.addIntLiteral(evalRes.valInt)
               : evalRes.valType == 2
@@ -933,7 +941,10 @@ export function dae_foldConstantsEx(daePtr: u32, maxIterations: u32, omcCompatib
 }
 
 export function dae_simplifyAlgebraicExpr(daePtr: u32, exprId: u32, onlyConstants: bool): u32 {
-  return simplifyAlgebraicExpr(changetype<DaeBuilder>(daePtr), exprId, onlyConstants);
+  if (daePtr == 0) return exprId;
+  let dae = changetype<DaeBuilder>(daePtr);
+  g_daeUsesVarIds = daeUsesVarIds(dae);
+  return simplifyAlgebraicExpr(dae, exprId, onlyConstants);
 }
 
 export function dae_evalExpressionAsReal(daePtr: u32, exprId: u32): f64 {
@@ -944,4 +955,25 @@ export function dae_evalExpressionAsReal(daePtr: u32, exprId: u32): f64 {
 export function dae_evalExpressionAsInt(daePtr: u32, exprId: u32): i32 {
   let res = evalConstantExpr(changetype<DaeBuilder>(daePtr), exprId);
   return res.isConstant ? res.valInt : 0;
+}
+
+/**
+ * Evaluates a constant scalar expression in linear memory.
+ * Returns `NaN` if the expression is not a compile-time scalar constant.
+ * Call `dae_getLastEvalType()` immediately after to inspect the scalar kind (`0=Real, 1=Int, 2=Bool`).
+ */
+export function dae_evalConstantScalar(daePtr: u32, exprId: u32, onlyConstants: bool): f64 {
+  if (daePtr == 0) {
+    staticResult.isConstant = false;
+    return NaN;
+  }
+  let dae = changetype<DaeBuilder>(daePtr);
+  let res = evalConstantExpr(dae, exprId, 0, daeUsesVarIds(dae) ? 1 : 0, onlyConstants);
+  if (!res.isConstant) return NaN;
+  return res.valReal;
+}
+
+/** Returns the scalar kind of the last `dae_evalConstantScalar` call (`0=Real, 1=Int, 2=Bool`, or `-1`). */
+export function dae_getLastEvalType(): i32 {
+  return staticResult.isConstant ? staticResult.valType : -1;
 }

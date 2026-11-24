@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import {
+  extractModelsFromCanvasDocument,
+  type RotundaModelEntry,
+} from "@modelscript/editor/workbench/vr-rotunda/types.js";
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
@@ -25,9 +29,14 @@ import {
   ViewerDispatcher,
 } from "./card";
 import { CardFooterSlotDisabled, CardFooterSlotProvider } from "./card/CardFooterSlot";
+import { buildArtifactRotundaDocument, parseRotundaEnvironmentId } from "./rotunda-board-adapter";
+import { buildLiveArtifactRotundaRenderer, useArtifactRotundaGeometry } from "./RotundaGeometryBridge";
 
 const ArtifactDiffModal = React.lazy(() => import("./ArtifactDiffModal"));
 const CloudSimulationModal = React.lazy(() => import("../cloud-sim/CloudSimulationModal"));
+const EngineeringRotundaLazy = React.lazy(
+  () => import("@modelscript/editor/workbench/vr-rotunda/EngineeringRotunda.js"),
+);
 
 const FullScreenBackdrop = styled.div`
   position: fixed;
@@ -98,6 +107,7 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
     [isFullScreen, propOnFullScreenChange],
   );
   const [isStudioSidebarOpen, setIsStudioSidebarOpen] = useState(false);
+  const [isVrRotundaMode, setIsVrRotundaMode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [isDiffOpen, setIsDiffOpen] = useState(false);
   const [isHpcModalOpen, setIsHpcModalOpen] = useState(false);
@@ -105,6 +115,12 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!isFullScreen) {
+      setIsVrRotundaMode(false);
+    }
+  }, [isFullScreen]);
 
   const viewConfig: any = useMemo(
     () => ({
@@ -115,6 +131,35 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
     }),
     [artifact, artifactId],
   );
+
+  const rotundaDocument = useMemo(() => {
+    if (!isVrRotundaMode || !artifact) return null;
+    return buildArtifactRotundaDocument({
+      title: artifact?.title || artifact?.name || viewConfig?.title,
+      viewType: artifact?.view_type,
+      viewConfig,
+      artifactId,
+    });
+  }, [isVrRotundaMode, artifact, viewConfig, artifactId]);
+
+  const geometryBridgeKey =
+    validArtifactId ?? (typeof viewConfig?.url === "string" && viewConfig.url.trim() ? viewConfig.url.trim() : null);
+
+  const liveRotundaGeometry = useArtifactRotundaGeometry(isVrRotundaMode ? geometryBridgeKey : null);
+
+  const rotundaModels = useMemo<readonly RotundaModelEntry[] | undefined>(() => {
+    if (!rotundaDocument) return undefined;
+    const baseModels = extractModelsFromCanvasDocument(rotundaDocument);
+    if (!liveRotundaGeometry || baseModels.length === 0) return baseModels;
+    const primary = baseModels[0]!;
+    return [
+      {
+        ...primary,
+        renderCustomContent: buildLiveArtifactRotundaRenderer(liveRotundaGeometry),
+      },
+      ...baseModels.slice(1),
+    ];
+  }, [rotundaDocument, liveRotundaGeometry]);
 
   const handleCopyLink = useCallback(() => {
     const permalink = `${window.location.origin}/render-artifact/${artifactId}`;
@@ -148,7 +193,7 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
       if (e.key === "i" || e.key === "I") {
         e.preventDefault();
         setIsStudioSidebarOpen((prev) => !prev);
-      } else if ((e.key === "r" || e.key === "R") && isEditableCodeOrModelArtifact(artifact)) {
+      } else if (!isVrRotundaMode && (e.key === "r" || e.key === "R") && isEditableCodeOrModelArtifact(artifact)) {
         e.preventDefault();
         navigate(
           buildEditorUrlForArtifact({
@@ -169,6 +214,7 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     isFullScreen,
+    isVrRotundaMode,
     isDiffOpen,
     isHpcModalOpen,
     artifactId,
@@ -530,6 +576,8 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
             paramDeltaCount={paramDeltaCount}
             copiedLink={copiedLink}
             isStudioSidebarOpen={isStudioSidebarOpen}
+            isVrRotundaMode={isVrRotundaMode}
+            onToggleVrRotunda={() => setIsVrRotundaMode((prev) => !prev)}
             onExitFullScreen={() => setIsFullScreen(false)}
             onCopyLink={handleCopyLink}
             onOpenDiff={() => setIsDiffOpen(true)}
@@ -539,7 +587,36 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
 
           <Box flex={1} display="flex" overflow="hidden" position="relative">
             <Box flex={1} height="100%" bg="var(--color-canvas-default)" overflow="auto" position="relative">
-              <CardFooterSlotDisabled>{viewerContent}</CardFooterSlotDisabled>
+              {isVrRotundaMode && rotundaDocument ? (
+                <Suspense
+                  fallback={
+                    <Box
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="center"
+                      width="100%"
+                      height="100%"
+                      bg="#060b16"
+                    >
+                      <Spinner size="large" />
+                    </Box>
+                  }
+                >
+                  <EngineeringRotundaLazy
+                    document={rotundaDocument}
+                    models={rotundaModels}
+                    mode="spatial-3d"
+                    initialEnvironment={parseRotundaEnvironmentId(
+                      viewConfig?.environment ?? viewConfig?.env,
+                      "dark-lab",
+                    )}
+                    onExitTo2D={() => setIsVrRotundaMode(false)}
+                    title={String(artifact?.title || artifact?.name || viewConfig?.title || `Artifact #${artifactId}`)}
+                  />
+                </Suspense>
+              ) : (
+                <CardFooterSlotDisabled>{viewerContent}</CardFooterSlotDisabled>
+              )}
             </Box>
 
             <StudioInspectorSidebar

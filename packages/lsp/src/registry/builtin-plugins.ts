@@ -434,6 +434,13 @@ import {
 } from "@modelscript/touchstone";
 import { getToughDocumentSymbols, getToughHover, toughLanguage, validateTough } from "@modelscript/tough";
 import {
+  getTwentySimCompletions,
+  getTwentySimDocumentSymbols,
+  getTwentySimHover,
+  twentySimLanguage,
+  validateTwentySim,
+} from "@modelscript/twentysim";
+import {
   extractUrdfTheoryConstraints,
   getUrdfDocumentSymbols,
   getUrdfHover,
@@ -1719,6 +1726,20 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         const text = docText(doc);
         return validateTough(text);
       },
+    },
+  });
+
+  // 20-sim (Bond Graphs & SIDOPS Multi-Domain Simulation)
+  registerStandardPlugin({
+    id: "twentysim",
+    name: "20-sim",
+    extensions: [".emx", ".emxz", ".sid"],
+    languageDef: twentySimLanguage,
+    symbols: getTwentySimDocumentSymbols,
+    customHandlers: {
+      validate: (doc: Parameters<typeof docText>[0]) => validateTwentySim(docText(doc)),
+      hover: (offset: number, text: string) => getTwentySimHover(text, offset),
+      complete: () => getTwentySimCompletions(),
     },
   });
 

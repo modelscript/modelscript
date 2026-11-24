@@ -1,0 +1,92 @@
+{
+  "name": "@modelscript/twentysim",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./language": {
+      "types": "./dist/src/language.d.ts",
+      "default": "./dist/src/language.js"
+    },
+    "./types": {
+      "types": "./dist/src/types.d.ts",
+      "default": "./dist/src/types.js"
+    },
+    "./parser": {
+      "types": "./dist/src/parser/index.d.ts",
+      "default": "./dist/src/parser/index.js"
+    },
+    "./catalog": {
+      "types": "./dist/src/catalog/index.d.ts",
+      "default": "./dist/src/catalog/index.js"
+    },
+    "./errors": {
+      "types": "./dist/src/errors.d.ts",
+      "default": "./dist/src/errors.js"
+    },
+    "./lints": {
+      "types": "./dist/src/lints/index.d.ts",
+      "default": "./dist/src/lints/index.js"
+    },
+    "./dae": {
+      "types": "./dist/src/dae/index.d.ts",
+      "default": "./dist/src/dae/index.js"
+    },
+    "./solver": {
+      "types": "./dist/src/solver/index.d.ts",
+      "default": "./dist/src/solver/index.js"
+    },
+    "./diagram": {
+      "types": "./dist/src/diagram/index.d.ts",
+      "default": "./dist/src/diagram/index.js"
+    },
+    "./projections": {
+      "types": "./dist/src/projections/index.d.ts",
+      "default": "./dist/src/projections/index.js"
+    },
+    "./tgg": {
+      "types": "./dist/src/tgg/index.d.ts",
+      "default": "./dist/src/tgg/index.js"
+    },
+    "./lsp": {
+      "types": "./dist/src/lsp.d.ts",
+      "default": "./dist/src/lsp.js"
+    },
+    "./parser.wasm": "./dist/parser.wasm",
+    "./wasm-parser": {
+      "types": "./src-gen/bindings.d.ts",
+      "default": "./src-gen/bindings.js"
+    }
+  },
+  "files": [
+    "dist/**",
+    "src-gen/**"
+  ],
+  "scripts": {
+    "build": "node ../../scripts/build/build-language-parser.js && tsc",
+    "build:parser": "node ../../scripts/build/build-language-parser.js --force",
+    "clean": "rimraf dist",
+    "lint": "eslint src tests --no-warn-ignored",
+    "test": "node ../../scripts/ci/test-runner.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelscript/dsl": "workspace:*",
+    "@modelscript/runtime": "workspace:*",
+    "adm-zip": "^0.6.1"
+  },
+  "devDependencies": {
+    "@modelscript/simulate": "workspace:*",
+    "@types/adm-zip": "^0.5.7",
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  },
+  "modelscript": {
+    "tier": "beta",
+    "category": "language"
+  }
+}

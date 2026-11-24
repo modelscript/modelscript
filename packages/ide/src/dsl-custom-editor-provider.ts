@@ -2,6 +2,7 @@
 
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
+import { handleOpenInVrWebviewMessage } from "./vr-handoff.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 
 export interface DslUiManifestPanel {
@@ -177,6 +178,16 @@ export class DslCustomEditorProvider extends BaseCustomEditorProvider {
           if (typeof msg.url === "string") {
             await vscode.env.openExternal(vscode.Uri.parse(msg.url));
           }
+          break;
+        }
+        case "openInVr": {
+          await handleOpenInVrWebviewMessage(msg, {
+            artifactUri: document.uri.toString(),
+            title: this.panelMeta.title || document.uri.path.split("/").pop(),
+            kind: this.panelMeta.languageId,
+            fileContent: () => (typeof document.getText === "function" ? document.getText() : undefined),
+            languageId: document.languageId || this.panelMeta.languageId,
+          });
           break;
         }
       }

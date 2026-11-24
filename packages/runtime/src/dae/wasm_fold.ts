@@ -175,6 +175,36 @@ export function evaluateConstantArenaExpression(
     return arena.interner.resolve(arena.getExprData1(exprId)) ?? "";
   }
 
+  // --- 1b. Zero-GC WASM scalar fast-path for pure arithmetic/logic/if-else/math trees ---
+  if (
+    visitedDepth === 0 &&
+    !paramMap &&
+    !db &&
+    arena.ptr !== 0 &&
+    (kind === ExprKind.Binary ||
+      kind === ExprKind.Unary ||
+      kind === ExprKind.Negate ||
+      kind === ExprKind.IfElse ||
+      kind === ExprKind.Call) &&
+    (typeof process === "undefined" || process.env?.["MSX_WASM_FOLD"] !== "ts")
+  ) {
+    const exp = arena.exports as
+      | {
+          dae_evalConstantScalar?: (ptr: number, id: number, onlyConst: boolean) => number;
+          dae_getLastEvalType?: () => number;
+        }
+      | undefined;
+    if (typeof exp?.dae_evalConstantScalar === "function" && typeof exp?.dae_getLastEvalType === "function") {
+      const val = exp.dae_evalConstantScalar(arena.ptr, exprId, onlyConstants);
+      if (!Number.isNaN(val)) {
+        const evalType = exp.dae_getLastEvalType();
+        if (evalType === 2) return val !== 0;
+        if (evalType === 1) return Math.trunc(val);
+        if (evalType === 0) return val;
+      }
+    }
+  }
+
   /**
    * Resolves a constant or parameter reference through the Salsa `QueryDB` when the symbol
    * is not directly present in the flattened `arena` (e.g., package constants, `extends`
@@ -1839,6 +1869,83 @@ export function evaluateConstantArenaExpression(
             );
             if (typeof fillCount === "number") return Math.trunc(fillCount);
           }
+          if (innerFn && arena.functions.has(innerFn)) {
+            const fnDae = arena.functions.get(innerFn)!;
+            let outVar = -1;
+            const fnInputs: string[] = [];
+            for (let vi = 0; vi < fnDae.varCount; vi++) {
+              if (fnDae.isVarRemoved(vi)) continue;
+              const c = fnDae.getVarCausality(vi);
+              if (c === Causality.Input) fnInputs.push(fnDae.getVarName(vi));
+              else if (c === Causality.Output && outVar < 0) outVar = vi;
+            }
+            if (outVar >= 0 && dim >= 1) {
+              const outShape = fnDae.getVarShape(outVar);
+              if (outShape && outShape.length >= dim && outShape[dim - 1]! > 0) {
+                return outShape[dim - 1]!;
+              }
+              const outShapeExprs = fnDae.getVarShapeExprs(outVar);
+              if (outShapeExprs && outShapeExprs.length >= dim) {
+                const dimExpr = outShapeExprs[dim - 1]!;
+                if (dimExpr >= 0) {
+                  const dk = fnDae.getExprKind(dimExpr);
+                  if (dk === ExprKind.IntLiteral) return fnDae.getExprData1(dimExpr);
+                  if (dk === ExprKind.Name) {
+                    const pName = fnDae.interner.resolve(fnDae.getExprData1(dimExpr));
+                    const pIdx = pName ? fnInputs.indexOf(pName) : -1;
+                    if (pIdx >= 0 && pIdx < innerArgCount) {
+                      const argExpr = pIdx === 0 ? arena.getExprLeft(arrArg) : arena.getExprLeft(arrArg + pIdx);
+                      const v = evaluateConstantArenaExpression(
+                        arena,
+                        argExpr,
+                        paramMap,
+                        nameToIdx,
+                        visitedDepth + 1,
+                        db,
+                        scopeId,
+                        false,
+                      );
+                      if (typeof v === "number") return Math.trunc(v);
+                    }
+                  } else if (dk === ExprKind.Call) {
+                    const dFn = fnDae.interner.resolve(fnDae.getExprData1(dimExpr));
+                    const dArgc = fnDae.getExprRight(dimExpr);
+                    if (dFn === "size" && dArgc >= 1) {
+                      const targetExpr = fnDae.getExprLeft(dimExpr);
+                      if (targetExpr >= 0 && fnDae.getExprKind(targetExpr) === ExprKind.Name) {
+                        const pName = fnDae.interner.resolve(fnDae.getExprData1(targetExpr));
+                        const pIdx = pName ? fnInputs.indexOf(pName) : -1;
+                        if (pIdx >= 0 && pIdx < innerArgCount) {
+                          const argExpr = pIdx === 0 ? arena.getExprLeft(arrArg) : arena.getExprLeft(arrArg + pIdx);
+                          let subDim = 1;
+                          if (dArgc >= 2) {
+                            const subDimExpr = fnDae.getExprLeft(dimExpr + 1);
+                            if (subDimExpr >= 0 && fnDae.getExprKind(subDimExpr) === ExprKind.IntLiteral) {
+                              subDim = fnDae.getExprData1(subDimExpr);
+                            }
+                          }
+                          const sizeCall = arena.addCallExpr(arena.interner.intern("size"), [
+                            argExpr,
+                            arena.addIntLiteral(subDim),
+                          ]);
+                          return evaluateConstantArenaExpression(
+                            arena,
+                            sizeCall,
+                            paramMap,
+                            nameToIdx,
+                            visitedDepth + 1,
+                            db,
+                            scopeId,
+                            onlyConstants,
+                          );
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
       return null;
@@ -3287,6 +3394,37 @@ export function foldSingleArenaEquation(
   paramMap?: Map<string, number>,
 ): boolean {
   if (eq < 0 || eq >= arena.eqCount) return false;
+  const eqKind = arena.getEqKind(eq);
+  if (
+    !db &&
+    !paramMap &&
+    (eqKind === EqKind.Simple || eqKind === EqKind.InitialSimple || eqKind === EqKind.Array) &&
+    canPreFoldInWasm(arena) &&
+    typeof (arena.exports as { dae_simplifyAlgebraicExpr?: (p: number, id: number, onlyConst: boolean) => number })
+      ?.dae_simplifyAlgebraicExpr === "function"
+  ) {
+    const simplifyWasm = (
+      arena.exports as { dae_simplifyAlgebraicExpr: (p: number, id: number, onlyConst: boolean) => number }
+    ).dae_simplifyAlgebraicExpr;
+    const lhsExpr = arena.getEqLhs(eq);
+    const origRhs = (arena as { getOrigEqRhs?: (eqIdx: number) => number }).getOrigEqRhs
+      ? (arena as { getOrigEqRhs: (eqIdx: number) => number }).getOrigEqRhs(eq)
+      : arena.getEqRhs(eq);
+    const rhsExpr = origRhs >= 0 ? origRhs : arena.getEqRhs(eq);
+    if (rhsExpr >= 0) {
+      const simpRhs = simplifyWasm(arena.ptr, rhsExpr, omcCompatibility);
+      if (simpRhs !== rhsExpr) arena.setEqRhs(eq, simpRhs);
+      if (lhsExpr >= 0) {
+        const lhsKind = arena.getExprKind(lhsExpr);
+        if (lhsKind !== ExprKind.Name && lhsKind !== ExprKind.Der) {
+          const simpLhs = simplifyWasm(arena.ptr, lhsExpr, omcCompatibility);
+          if (simpLhs !== lhsExpr) arena.setEqLhs(eq, simpLhs);
+        }
+      }
+      return true;
+    }
+  }
+
   const nameToIdx = new Map<string, number>();
   if (!paramMap) {
     paramMap = new Map<string, number>();
@@ -3302,7 +3440,6 @@ export function foldSingleArenaEquation(
     }
   }
 
-  const eqKind = arena.getEqKind(eq);
   if (eqKind === EqKind.Simple || eqKind === EqKind.InitialSimple || eqKind === EqKind.Array) {
     let lhsExpr = arena.getEqLhs(eq);
     const origRhs = (arena as any).getOrigEqRhs ? (arena as any).getOrigEqRhs(eq) : arena.getEqRhs(eq);
@@ -3442,6 +3579,33 @@ function isExprAlreadyLiteral(arena: DAEBuilder, exprId: number, val: any): bool
   return false;
 }
 
+const WASM_FOLDABLE_MATH_BUILTINS = new Set<string>([
+  "sin",
+  "cos",
+  "tan",
+  "asin",
+  "acos",
+  "atan",
+  "atan2",
+  "sinh",
+  "cosh",
+  "tanh",
+  "exp",
+  "log",
+  "log10",
+  "sqrt",
+  "abs",
+  "sign",
+  "min",
+  "max",
+  "floor",
+  "ceil",
+  "pow",
+  "noevent",
+  "smooth",
+  "homotopy",
+]);
+
 function canPreFoldInWasm(arena: DAEBuilder): boolean {
   if (arena.ptr === 0 || !arena.exports || typeof (arena.exports as any).dae_foldConstantsEx !== "function") {
     return false;
@@ -3452,23 +3616,47 @@ function canPreFoldInWasm(arena: DAEBuilder): boolean {
   for (let i = 0; i < arena.varCount; i++) {
     if (arena.isVarRemoved(i)) continue;
     if (arena.isVarEvaluate(i)) return false;
+    if (arena.getVarCausality(i) === Causality.Input) return false;
     const vt = arena.getVarType(i);
     if (vt !== VarType.Real && vt !== VarType.Integer && vt !== VarType.Boolean) return false;
     if (arena.getVarShapeDim(i, 0) > 0) return false;
-    // Skip WASM pre-pass if any variable has explicit attribute expressions (e.g., fixed=false)
-    if (arena.getVarAttrExprIds(i) !== undefined) return false;
+    const vari = arena.getVarVariability(i);
+    if (vari === Variability.Parameter && !arena.isVarFixed(i) && !arena.hasExplicitVarExpression(i)) {
+      return false;
+    }
+    // Skip WASM pre-pass if any variable has non-binding/start attribute expressions (e.g., fixed=false, min/max)
+    const attrs = arena.getVarAttrExprIds(i);
+    if (attrs !== undefined) {
+      for (const k of attrs.keys()) {
+        if (k !== "binding" && k !== "start") return false;
+      }
+    }
+  }
+  for (let eq = 0; eq < arena.eqCount; eq++) {
+    if (arena.isEqRemoved(eq)) continue;
+    const ek = arena.getEqKind(eq);
+    if (ek !== EqKind.Simple && ek !== EqKind.InitialSimple && ek !== EqKind.Array && ek !== EqKind.Boundary) {
+      return false;
+    }
   }
   for (let e = 0; e < arena.exprCount; e++) {
     const k = arena.getExprKind(e);
     if (
       k === ExprKind.ArrayCtor ||
       k === ExprKind.StringLiteral ||
-      k === ExprKind.Call ||
       k === ExprKind.Range ||
       k === ExprKind.Subscript ||
       k === ExprKind.EnumLiteral
     ) {
       return false;
+    }
+    if (k === ExprKind.Call) {
+      const argc = arena.getExprRight(e);
+      if (argc < 1 || argc > 2) return false;
+      const funcName = arena.interner.resolve(arena.getExprData1(e));
+      if (!funcName || !WASM_FOLDABLE_MATH_BUILTINS.has(funcName.toLowerCase())) {
+        return false;
+      }
     }
   }
   return true;
@@ -3486,11 +3674,30 @@ export function foldArenaConstants(
   maxIterations = 100,
 ): number {
   let wasmFolded = 0;
-  if (!db && canPreFoldInWasm(arena)) {
-    wasmFolded = (arena.exports as any).dae_foldConstantsEx(arena.ptr, maxIterations, omcCompatibility) as number;
+  const wasmEligible = !db && canPreFoldInWasm(arena);
+  if (wasmEligible) {
+    wasmFolded = arena.exports.dae_foldConstantsEx(arena.ptr, maxIterations, omcCompatibility) as number;
+    if (wasmFolded > 0 && typeof arena.exports.dae_getVarAttrExpr === "function") {
+      const getAttr = arena.exports.dae_getVarAttrExpr as (p: number, v: number, k: number) => number;
+      for (let i = 0; i < arena.varCount; i++) {
+        if (arena.isVarRemoved(i)) continue;
+        const v = arena.getVarVariability(i);
+        if (v !== Variability.Constant && v !== Variability.Parameter) continue;
+        const wasmBind = getAttr(arena.ptr, i, 7 /* VarAttrKind.Binding */) >>> 0;
+        if (wasmBind !== 0xffffffff && wasmBind < arena.exprCount && wasmBind !== arena.getVarExpression(i)) {
+          arena.setVarExpression(i, wasmBind);
+        }
+      }
+    }
+    const extMeta = (arena as { extensionMetadata?: Record<string, unknown> }).extensionMetadata;
+    const hasEvalParams =
+      extMeta?.["evaluatedParams"] instanceof Set && (extMeta["evaluatedParams"] as Set<string>).size > 0;
+    if (!omcCompatibility && wasmFolded > 0 && arena.stmtCount === 0 && !extMeta?.["isOldFrontend"] && !hasEvalParams) {
+      return wasmFolded;
+    }
   }
 
-  // Residual TypeScript pass handles fixed=false parameters, arrays, strings, records, and Salsa db functions
+  // Residual TypeScript pass handles fixed=false parameters, arrays, strings, records, statements, and Salsa db functions
 
   const nameToIdx = new Map<string, number>();
   const bindingIndices: number[] = [];

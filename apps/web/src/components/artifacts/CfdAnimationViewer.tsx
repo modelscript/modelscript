@@ -16,6 +16,7 @@ import Box from "../Box";
 import Spinner from "../Spinner";
 import AutoThumbnailCapture from "./AutoThumbnailCapture";
 import SafeOrbitControls from "./SafeOrbitControls";
+import { XrSceneBridge, XrViewportOverlay } from "./XrViewportOverlay";
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -504,33 +505,36 @@ const CfdAnimationViewer: React.FC<CfdAnimationViewerProps> = ({ artifactId, vie
           artifactId={artifactId}
           hasThumbnail={Boolean(viewConfig.thumbnailUrl || viewConfig.thumbnail_url)}
         />
-        <ambientLight intensity={0.5} />
-        <directionalLight position={[1, 2, 3]} intensity={0.6} />
-        <directionalLight position={[-1, -1, 2]} intensity={0.3} />
+        <XrSceneBridge>
+          <ambientLight intensity={0.5} />
+          <directionalLight position={[1, 2, 3]} intensity={0.6} />
+          <directionalLight position={[-1, -1, 2]} intensity={0.3} />
 
-        <AnimatedMesh baseGeometry={baseGeometry} colorArrays={colorArrays} frameIndex={frameIndex} />
+          <AnimatedMesh baseGeometry={baseGeometry} colorArrays={colorArrays} frameIndex={frameIndex} />
 
-        <MoldOutline
-          length={moldGeo.length}
-          width={moldGeo.width}
-          height={moldGeo.height}
-          center={new THREE.Vector3(0, 0, 0)}
-        />
+          <MoldOutline
+            length={moldGeo.length}
+            width={moldGeo.width}
+            height={moldGeo.height}
+            center={new THREE.Vector3(0, 0, 0)}
+          />
 
-        {Boolean(viewConfig?.moldDimensions || viewConfig?.moldGeometry || viewConfig?.showGateInlet) && (
-          <GateInlet position={[-moldGeo.length / 2, 0, 0]} />
-        )}
+          {Boolean(viewConfig?.moldDimensions || viewConfig?.moldGeometry || viewConfig?.showGateInlet) && (
+            <GateInlet position={[-moldGeo.length / 2, 0, 0]} />
+          )}
 
-        <PlaybackController
-          playing={playing}
-          frameIndex={frameIndex}
-          totalFrames={frames.length}
-          speed={speed}
-          setFrameIndex={handleSetFrame}
-        />
+          <PlaybackController
+            playing={playing}
+            frameIndex={frameIndex}
+            totalFrames={frames.length}
+            speed={speed}
+            setFrameIndex={handleSetFrame}
+          />
 
-        <SafeOrbitControls isFullScreen={isFullScreen} enableDamping dampingFactor={0.1} />
+          <SafeOrbitControls isFullScreen={isFullScreen} enableDamping dampingFactor={0.1} />
+        </XrSceneBridge>
       </Canvas>
+      {!isThumbnail && <XrViewportOverlay position="bottom-right" style={{ bottom: 58, right: 72 }} />}
 
       {/* Bottom control bar */}
       {!isThumbnail && (

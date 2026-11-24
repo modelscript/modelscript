@@ -316,6 +316,18 @@ export async function activate(context: vscode.ExtensionContext) {
     verificationGatesTreeProvider,
     vscode.window.registerTreeDataProvider("modelscript.verificationGatesView", verificationGatesTreeProvider),
   );
+  const simProgressStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
+  let simProgressHideTimer: ReturnType<typeof setTimeout> | undefined;
+  context.subscriptions.push(
+    simProgressStatusBar,
+    new vscode.Disposable(() => {
+      if (simProgressHideTimer) {
+        clearTimeout(simProgressHideTimer);
+        simProgressHideTimer = undefined;
+      }
+    }),
+  );
+
   let isScmRegistered = false;
   lspManager.onBindNotifications((targetClient) => {
     targetClient.onNotification(
@@ -349,6 +361,30 @@ export async function activate(context: vscode.ExtensionContext) {
     targetClient.onNotification("modelscript/warning", (params: { message: string }) => {
       vscode.window.showWarningMessage(params.message);
     });
+
+    targetClient.onNotification(
+      "modelscript/simulationProgress",
+      (params: {
+        uri?: string | undefined;
+        timeSec?: number | undefined;
+        stepIndex?: number | undefined;
+        voltages?: Record<string, number> | undefined;
+      }) => {
+        const timeText = typeof params.timeSec === "number" ? `t=${params.timeSec.toFixed(4)}s` : "";
+        const stepText = typeof params.stepIndex === "number" ? `step ${params.stepIndex}` : "";
+        const detail = [timeText, stepText].filter(Boolean).join(" · ");
+        simProgressStatusBar.text = detail ? `$(sync~spin) Simulating (${detail})` : "$(sync~spin) Simulating...";
+        simProgressStatusBar.tooltip = params.uri ? `Simulation progress for ${params.uri}` : "Simulation progress";
+        simProgressStatusBar.show();
+        if (simProgressHideTimer) {
+          clearTimeout(simProgressHideTimer);
+        }
+        simProgressHideTimer = setTimeout(() => {
+          simProgressStatusBar.hide();
+          simProgressHideTimer = undefined;
+        }, 5000);
+      },
+    );
 
     targetClient.onNotification(
       "modelscript/verificationStatus",
@@ -835,8 +871,7 @@ export async function activate(context: vscode.ExtensionContext) {
     safeRegisterCommand("modelscript.configureLanguages", async () => {
       const contributedLanguages =
         (context.extension?.packageJSON?.contributes?.languages as
-          | { id: string; aliases?: string[] | undefined; extensions?: string[] | undefined }[]
-          | undefined) || [];
+          { id: string; aliases?: string[] | undefined; extensions?: string[] | undefined }[] | undefined) || [];
       if (contributedLanguages.length === 0) {
         vscode.commands.executeCommand("workbench.action.openSettings", "modelscript.languages");
         return;

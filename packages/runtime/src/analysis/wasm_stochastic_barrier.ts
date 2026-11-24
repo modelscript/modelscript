@@ -13,6 +13,7 @@
  *     on failure probability: P(exists t >= 0 : x(t) \in X_u) <= B(x0) / \lambda.
  */
 
+import { getDefaultWasmExports } from "../dae/wasm_loader.js";
 import {
   probabilisticVerdictFromBounds,
   type ProbabilisticVerdict,
@@ -146,15 +147,50 @@ export class StochasticBarrierSynthesizer {
       P = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (__, j) => (i === j ? 1.0 : 0.0)));
     }
 
-    // Evaluate drift dissipation matrix Q = -(A^T P + P A)
+    // Evaluate drift dissipation matrix Q = -(A^T P + P A) in WASM linear memory
     const Q: number[][] = Array.from({ length: n }, () => new Array<number>(n).fill(0));
-    for (let i = 0; i < n; i++) {
-      for (let j = 0; j < n; j++) {
-        let sum = 0;
-        for (let k = 0; k < n; k++) {
-          sum += (A[k]?.[i] ?? 0) * (P[k]?.[j] ?? 0) + (P[i]?.[k] ?? 0) * (A[k]?.[j] ?? 0);
+    const w = getDefaultWasmExports();
+    if (
+      w &&
+      typeof w.sos_lyapunovDrift === "function" &&
+      typeof w.alloc === "function" &&
+      typeof w.free === "function" &&
+      n > 0
+    ) {
+      const matBytes = n * n * 8;
+      const aPtr = w.alloc(matBytes);
+      const pPtr = w.alloc(matBytes);
+      const qPtr = w.alloc(matBytes);
+      try {
+        const aFlat = new Float64Array(w.memory.buffer, aPtr, n * n);
+        const pFlat = new Float64Array(w.memory.buffer, pPtr, n * n);
+        for (let i = 0; i < n; i++) {
+          const off = i * n;
+          for (let j = 0; j < n; j++) {
+            aFlat[off + j] = A[i]?.[j] ?? 0;
+            pFlat[off + j] = P[i]?.[j] ?? 0;
+          }
         }
-        Q[i]![j] = -sum;
+        w.sos_lyapunovDrift(aPtr, pPtr, n, qPtr);
+        const qFlat = new Float64Array(w.memory.buffer, qPtr, n * n);
+        for (let i = 0; i < n; i++) {
+          const off = i * n;
+          for (let j = 0; j < n; j++) Q[i]![j] = qFlat[off + j]!;
+        }
+      } finally {
+        w.free(aPtr);
+        w.free(pPtr);
+        w.free(qPtr);
+      }
+    } else {
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+          let sum = 0;
+          for (let k = 0; k < n; k++) {
+            sum += (A[k]?.[i] ?? 0) * (P[k]?.[j] ?? 0) + (P[i]?.[k] ?? 0) * (A[k]?.[j] ?? 0);
+          }
+          Q[i]![j] = -sum;
+        }
       }
     }
 

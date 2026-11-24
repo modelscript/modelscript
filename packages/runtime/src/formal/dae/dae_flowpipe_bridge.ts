@@ -12,14 +12,14 @@
  * Interval Krawczyk algebraic manifold certification, and guaranteed safety invariant verification.
  */
 
-import { ivSub } from "../../analysis/outward_rounding.js";
 import {
   DaeFlowpipeOptions,
   DaeFlowpipeRequirement,
   DaeFlowpipeResult,
   DaeFlowpipeSolver,
   DaeSystem,
-} from "../../analysis/wasm_dae_flowpipe.js";
+} from "../../analysis/dae_flowpipe.js";
+import { ivSub } from "../../analysis/outward_rounding.js";
 import { Interval } from "../../analysis/wasm_interval.js";
 import { BinOp, DAEBuilder, EqKind, ExprKind, Variability, differentiateArenaExpression } from "../../dae/wasm_dae.js";
 import { NumericalInterval } from "../abstract_interpretation/interval_domain.js";

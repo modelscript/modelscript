@@ -21,7 +21,6 @@ import { Router, type Request, type Response } from "express";
 import crypto from "node:crypto";
 import type { Database, ThreadAuditLogEntry, ThreadProposal } from "../database.js";
 import { optionalAuth } from "../middleware/auth-middleware.js";
-import { defaultApiLimiter } from "../middleware/rate-limiter.js";
 
 export interface ThreadMetadata {
   name?: string | undefined;
@@ -58,7 +57,6 @@ export function threadRouter(
   arg3?: ThreadRouterOptions,
 ): Router {
   const router = Router();
-  router.use(defaultApiLimiter);
   router.use(optionalAuth);
   let hypergraph: DigitalThreadHypergraph;
   let db: Database | undefined;

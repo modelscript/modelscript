@@ -1,70 +1,274 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * VR mode wrapper — adds WebXR support to the CadViewer canvas.
+ * VR mode wrapper — adds WebXR VR/AR support and VS Code webview external VR handoff
+ * to 3D CAD, STEP, FEA, CFD, GCode, and Multibody viewports.
  *
  * Wraps Three.js scene contents in `<XR>` from @react-three/xr and renders
- * a VR button overlay. Controller grip/trigger events map to the same
- * selection callbacks used by the desktop mouse controls.
+ * native "Enter VR" / "Enter AR" controls when WebXR is available, or a sleek
+ * "Open in VR Headset ↗" handoff button when running inside VS Code's sandboxed
+ * cross-origin webview iframe.
  */
 
 import { XR, createXRStore } from "@react-three/xr";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
-const store = createXRStore();
+type VrXrStore = ReturnType<typeof createXRStore>;
 
-interface VrModeProps {
-  children: React.ReactNode;
-  enabled?: boolean;
+let cachedStore: VrXrStore | null = null;
+
+/** Lazily constructs the shared `@react-three/xr` store so Node/SSR imports remain safe. */
+export function getVrStore(): VrXrStore {
+  if (!cachedStore) {
+    cachedStore = createXRStore({ emulate: false });
+  }
+  return cachedStore;
 }
 
-/** VR toggle button overlay. */
-export function VrButton() {
-  const [supported, setSupported] = useState<boolean | null>(null);
+interface VsCodeWebviewApiLike {
+  postMessage(message: unknown): void;
+}
 
-  // Check WebXR support once
-  if (supported === null && typeof navigator !== "undefined" && "xr" in navigator) {
-    navigator.xr?.isSessionSupported("immersive-vr").then((s) => setSupported(s));
+const VSCODE_API_CACHE_KEY = "__modelscriptVsCodeApi";
+
+/**
+ * Registers an already-acquired VS Code webview API instance on `window` so shared
+ * child components (such as `ModelScript3DViewport` or `CadViewer`) can safely post
+ * messages without invoking `acquireVsCodeApi()` a second time.
+ */
+export function registerSharedVsCodeApi(api: VsCodeWebviewApiLike | undefined): void {
+  if (api && typeof window !== "undefined") {
+    (window as unknown as Record<string, unknown>)[VSCODE_API_CACHE_KEY] = api;
+  }
+}
+
+/**
+ * Returns the VS Code webview API if available in the current environment, caching it
+ * on `window` so repeated lookups never throw "already acquired" errors.
+ */
+export function getSharedVsCodeApi(): VsCodeWebviewApiLike | undefined {
+  if (typeof window === "undefined") return undefined;
+  const win = window as unknown as Record<string, unknown> & {
+    acquireVsCodeApi?: () => VsCodeWebviewApiLike;
+  };
+  const existing = win[VSCODE_API_CACHE_KEY] as VsCodeWebviewApiLike | undefined;
+  if (existing && typeof existing.postMessage === "function") {
+    return existing;
+  }
+  if (typeof win.acquireVsCodeApi === "function") {
+    try {
+      const acquired = win.acquireVsCodeApi();
+      win[VSCODE_API_CACHE_KEY] = acquired;
+      return acquired;
+    } catch {
+      // Already acquired by a parent entry point that did not call registerSharedVsCodeApi
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Detects whether the current window is executing inside a cross-origin or sandboxed
+ * iframe (such as VS Code / VS Code for Web webviews) where `navigator.xr` is blocked.
+ */
+export function detectSandboxedIframe(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (window.self === window.top) return false;
+    // Reading window.top.location.href throws SecurityError in cross-origin iframes (vscode-webview://)
+    void window.top?.location.href;
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+export interface VrModeProps {
+  children: React.ReactNode;
+  enabled?: boolean | undefined;
+}
+
+export interface VrButtonProps {
+  /** Triggered when launching a top-level browser WebXR VR session outside a sandboxed webview iframe. */
+  onOpenExternalVr?: (() => void) | undefined;
+  /** Optional callback to toggle the inline 3D Engineering Rotunda presentation mode. */
+  onToggleRotunda3D?: (() => void) | undefined;
+  /** Optional style overrides for the floating button container. */
+  style?: React.CSSProperties | undefined;
+}
+
+interface XrSupportState {
+  checked: boolean;
+  vrSupported: boolean;
+  arSupported: boolean;
+  isSandboxed: boolean;
+}
+
+const baseButtonStyle: React.CSSProperties = {
+  padding: "7px 14px",
+  border: "1px solid rgba(255, 255, 255, 0.18)",
+  borderRadius: 8,
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: "pointer",
+  color: "#fff",
+  letterSpacing: "0.3px",
+  transition: "transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  whiteSpace: "nowrap",
+  backdropFilter: "blur(8px)",
+};
+
+/**
+ * Floating WebXR VR/AR & External VR Headset handoff overlay button group.
+ *
+ * - Probes `immersive-vr` and `immersive-ar` inside `useEffect` (with cancellation guard).
+ * - Renders native `"Enter VR"` / `"Enter AR"` when WebXR is natively available.
+ * - Renders `"Open in VR Headset ↗"` when inside a sandboxed VS Code webview iframe
+ *   (or when WebXR is unavailable) and `onOpenExternalVr` is provided.
+ */
+export function VrButton({ onOpenExternalVr, onToggleRotunda3D, style }: VrButtonProps = {}) {
+  const [xrState, setXrState] = useState<XrSupportState>(() => ({
+    checked: false,
+    vrSupported: false,
+    arSupported: false,
+    isSandboxed: detectSandboxedIframe(),
+  }));
+
+  useEffect(() => {
+    let cancelled = false;
+    const isSandboxed = detectSandboxedIframe();
+
+    const nav = typeof navigator !== "undefined" ? navigator : undefined;
+    const xr = nav && "xr" in nav ? nav.xr : undefined;
+
+    if (!xr || typeof xr.isSessionSupported !== "function") {
+      setXrState({
+        checked: true,
+        vrSupported: false,
+        arSupported: false,
+        isSandboxed,
+      });
+      return;
+    }
+
+    void Promise.all([
+      xr.isSessionSupported("immersive-vr").catch(() => false),
+      xr.isSessionSupported("immersive-ar").catch(() => false),
+    ]).then(([vr, ar]) => {
+      if (!cancelled) {
+        setXrState({
+          checked: true,
+          vrSupported: Boolean(vr),
+          arSupported: Boolean(ar),
+          isSandboxed,
+        });
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const canEnterNativeVr = !xrState.isSandboxed && xrState.vrSupported;
+  const canEnterNativeAr = !xrState.isSandboxed && xrState.arSupported;
+  const showExternalVr =
+    Boolean(onOpenExternalVr) &&
+    (xrState.isSandboxed || (xrState.checked && !xrState.vrSupported && !xrState.arSupported));
+
+  if (!canEnterNativeVr && !canEnterNativeAr && !showExternalVr && !onToggleRotunda3D) {
+    return null;
   }
 
-  if (!supported) return null;
-
   return (
-    <button
-      onClick={() => store.enterVR()}
+    <div
       style={{
         position: "absolute",
         bottom: 16,
         left: "50%",
         transform: "translateX(-50%)",
-        padding: "8px 20px",
-        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-        color: "#fff",
-        border: "none",
-        borderRadius: 8,
-        fontSize: 13,
-        fontWeight: 600,
-        cursor: "pointer",
-        boxShadow: "0 4px 14px rgba(102, 126, 234, 0.4)",
-        zIndex: 10,
-        letterSpacing: "0.5px",
-        transition: "transform 0.15s, box-shadow 0.15s",
-      }}
-      onMouseEnter={(e) => {
-        (e.target as HTMLElement).style.transform = "translateX(-50%) scale(1.05)";
-      }}
-      onMouseLeave={(e) => {
-        (e.target as HTMLElement).style.transform = "translateX(-50%)";
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        zIndex: 20,
+        fontFamily: "system-ui, -apple-system, sans-serif",
+        ...style,
       }}
     >
-      Enter VR
-    </button>
+      {canEnterNativeVr && (
+        <button
+          type="button"
+          onClick={() => void getVrStore().enterVR()}
+          title="Enter native WebXR VR headset session"
+          style={{
+            ...baseButtonStyle,
+            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+            boxShadow: "0 4px 14px rgba(102, 126, 234, 0.45)",
+          }}
+        >
+          <span>🥽</span>
+          <span>Enter VR</span>
+        </button>
+      )}
+
+      {canEnterNativeAr && (
+        <button
+          type="button"
+          onClick={() => void getVrStore().enterAR()}
+          title="Enter native WebXR AR passthrough session"
+          style={{
+            ...baseButtonStyle,
+            background: "linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)",
+            boxShadow: "0 4px 14px rgba(6, 182, 212, 0.4)",
+          }}
+        >
+          <span>✨</span>
+          <span>Enter AR</span>
+        </button>
+      )}
+
+      {showExternalVr && onOpenExternalVr && (
+        <button
+          type="button"
+          onClick={onOpenExternalVr}
+          title="Launch in a top-level browser tab for WebXR VR/AR headset access (bypasses VS Code webview iframe sandbox)"
+          style={{
+            ...baseButtonStyle,
+            background: "linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%)",
+            boxShadow: "0 4px 14px rgba(99, 102, 241, 0.45)",
+          }}
+        >
+          <span>🥽</span>
+          <span>Open in VR Headset ↗</span>
+        </button>
+      )}
+
+      {onToggleRotunda3D && (
+        <button
+          type="button"
+          onClick={onToggleRotunda3D}
+          title="Toggle 3D Engineering Rotunda view"
+          style={{
+            ...baseButtonStyle,
+            background: "rgba(15, 23, 42, 0.82)",
+            boxShadow: "0 4px 12px rgba(15, 23, 42, 0.35)",
+          }}
+        >
+          <span>🌐</span>
+          <span>3D Rotunda</span>
+        </button>
+      )}
+    </div>
   );
 }
 
-/** VR wrapper — wraps scene children in XR context. */
+/** VR wrapper — wraps Three.js / R3F scene children in `<XR>` context. */
 export default function VrMode({ children, enabled = true }: VrModeProps) {
   if (!enabled) return <>{children}</>;
 
-  return <XR store={store}>{children}</XR>;
+  return <XR store={getVrStore()}>{children}</XR>;
 }

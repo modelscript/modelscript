@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import * as vscode from "vscode";
+import { attachVrHandoffListener } from "./vr-handoff.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 
 export class GCodeEditorProvider extends BaseCustomEditorProvider {
@@ -32,6 +33,14 @@ export class GCodeEditorProvider extends BaseCustomEditorProvider {
       }
     };
 
+    const vrSubscription = attachVrHandoffListener(webviewPanel, {
+      artifactUri: document.uri.toString(),
+      title: document.uri.path.split("/").pop() || "GCode Toolpath",
+      kind: "gcode",
+      fileContent: () => (typeof document.getText === "function" ? document.getText() : undefined),
+      languageId: document.languageId || "gcode",
+    });
+
     const msgSubscription = webviewPanel.webview.onDidReceiveMessage((message) => {
       switch (message.type) {
         case "ready":
@@ -46,6 +55,7 @@ export class GCodeEditorProvider extends BaseCustomEditorProvider {
 
     webviewPanel.onDidDispose(() => {
       disposed = true;
+      vrSubscription.dispose();
       msgSubscription.dispose();
       changeSubscription.dispose();
     });

@@ -14,8 +14,10 @@
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { LibraryDatabase } from "../database.js";
+import { optionalAuth } from "../middleware/auth-middleware.js";
 import { sysml2EventBus } from "../services/sysml2-event-bus.js";
 import { OMG_SYSML2_CONTEXT, SysML2OmgService } from "../services/sysml2-omg-service.js";
+import { initSseStream } from "../util/sse.js";
 import { sysml2GraphQLRouter } from "./sysml2-graphql.js";
 
 function getParam(val: string | string[] | undefined): string {
@@ -58,7 +60,11 @@ export function createSpaceSysml2Router(database?: LibraryDatabase | null, servi
     res.json(payload);
   }
 
-  // Middleware: resolve space & ensure OMG project exists
+  if (database) {
+    router.use(optionalAuth);
+  }
+
+  // Middleware: resolve space, enforce visibility/write ACLs, and ensure OMG project exists
   router.use((req: SpaceSysmlRequest, res: Response, next) => {
     const namespace = getParam(req.params["namespace"]);
     const slug = getParam(req.params["slug"]);
@@ -68,27 +74,51 @@ export function createSpaceSysml2Router(database?: LibraryDatabase | null, servi
       return;
     }
 
+    let spaceName = `${namespace}/${slug}`;
+    let description = "Ansatz Collaborative Engineering Space";
+
+    if (database) {
+      const space = database.getSpaceByNamespaceAndSlug(namespace, slug);
+      if (!space) {
+        res.status(404).json({ error: "Space not found" });
+        return;
+      }
+      spaceName = space.name || spaceName;
+      description = space.description || description;
+
+      const userId = req.user?.id;
+      const isAdmin = req.user?.role === "admin" || req.user?.accountType === "admin";
+      if (space.visibility === "private" && !isAdmin) {
+        const canRead = database.canUserViewSpace(space, userId, isAdmin);
+        if (!canRead) {
+          res.status(userId ? 403 : 401).json({ error: "Access denied to private space" });
+          return;
+        }
+      }
+
+      const isMutation =
+        req.method === "POST" || req.method === "PUT" || req.method === "PATCH" || req.method === "DELETE";
+      const isGraphqlReadQuery =
+        req.path === "/graphql" && typeof req.body?.query === "string" && !/\bmutation\b/i.test(req.body.query);
+
+      if (isMutation && !isGraphqlReadQuery && !isAdmin) {
+        if (!userId) {
+          res.status(401).json({ error: "Authentication required" });
+          return;
+        }
+        if (!database.canUserWriteSpace(space, userId, isAdmin)) {
+          res.status(403).json({ error: "Forbidden: write access to space required" });
+          return;
+        }
+      }
+    }
+
     const projectId = `urn:ansatz:space:${namespace.replace(/^@/, "")}:${slug}`;
     req.spaceProjectId = projectId;
     req.params["projectId"] = projectId;
 
     let project = omgService.getProject(projectId);
     if (!project) {
-      let spaceName = `${namespace}/${slug}`;
-      let description = "Ansatz Collaborative Engineering Space";
-
-      if (database) {
-        try {
-          const space = database.getSpaceByNamespaceAndSlug(namespace, slug);
-          if (space) {
-            spaceName = space.name || spaceName;
-            description = space.description || description;
-          }
-        } catch {
-          // Fall back to generated defaults
-        }
-      }
-
       project = omgService.createProject(spaceName, description, projectId);
     }
 
@@ -97,7 +127,7 @@ export function createSpaceSysml2Router(database?: LibraryDatabase | null, servi
   });
 
   // Mount GraphQL under space after project resolution
-  router.use("/graphql", sysml2GraphQLRouter(omgService));
+  router.use("/graphql", sysml2GraphQLRouter(omgService, { requireAuthForMutations: Boolean(database) }));
 
   /**
    * GET /: Get Space OMG Project descriptor
@@ -212,24 +242,18 @@ export function createSpaceSysml2Router(database?: LibraryDatabase | null, servi
   router.get("/events", (req: Request, res: Response) => {
     const projectId = getProjectId(req);
 
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    res.flushHeaders?.();
-
-    res.write(`event: connected\ndata: ${JSON.stringify({ projectId, timestamp: new Date().toISOString() })}\n\n`);
-
-    const unsubscribe = sysml2EventBus.onProjectEvent(projectId, (event) => {
-      res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+    let unsubscribe: (() => void) | null = null;
+    const sse = initSseStream(res, {
+      heartbeatMs: 15_000,
+      onClose: () => {
+        unsubscribe?.();
+      },
     });
 
-    const heartbeatTimer = setInterval(() => {
-      res.write(": heartbeat\n\n");
-    }, 15000);
+    sse.send("connected", { projectId, timestamp: new Date().toISOString() });
 
-    req.on("close", () => {
-      clearInterval(heartbeatTimer);
-      unsubscribe();
+    unsubscribe = sysml2EventBus.onProjectEvent(projectId, (event) => {
+      sse.send(event.type, event);
     });
   });
 

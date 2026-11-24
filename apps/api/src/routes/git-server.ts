@@ -10,6 +10,9 @@ import fs from "node:fs";
 import path from "node:path";
 import type { LibraryDatabase } from "../database.js";
 import { JWT_SECRET, isAccountBlocked } from "../middleware/auth-middleware.js";
+import { LocalGitVaultService, SAFE_GIT_SEGMENT_RE } from "../services/local-git-vault.js";
+import { isIpInAllowlist } from "../util/cidr-matcher.js";
+import { getClientIp } from "../util/client-ip.js";
 import {
   GitBodyLimitError,
   ReceivePackGate,
@@ -46,6 +49,7 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
   if (!fs.existsSync(baseDir)) {
     fs.mkdirSync(baseDir, { recursive: true });
   }
+  const localGitVault = new LocalGitVaultService({ gitReposBaseDirs: [path.resolve(baseDir)] });
 
   function resolveRepoPath(namespace: string, project: string): string | null {
     if (
@@ -60,15 +64,12 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
     }
 
     const rawProj = project.replace(/\.git$/i, "");
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}$/.test(namespace) || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}$/.test(rawProj)) {
+    if (!SAFE_GIT_SEGMENT_RE.test(namespace) || !SAFE_GIT_SEGMENT_RE.test(rawProj)) {
       return null;
     }
 
-    const cleanNs = namespace;
-    const cleanProj = rawProj;
-
     const resolvedBase = path.resolve(baseDir);
-    const resolved = path.resolve(resolvedBase, cleanNs, `${cleanProj}.git`);
+    const resolved = path.resolve(resolvedBase, namespace, `${rawProj}.git`);
     if (!resolved.startsWith(resolvedBase + path.sep)) {
       return null;
     }
@@ -98,12 +99,18 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
     return ["*"];
   }
 
-  function verifyPatOrBotToken(token: string): AuthResult | null {
+  function verifyPatOrBotToken(token: string, req: Request): AuthResult | null {
     if (token.startsWith("ms_pat_")) {
       const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
       const tokenRecord = database.getApiTokenByHash(tokenHash);
       if (!tokenRecord) return null;
       if (tokenRecord.expires_at && new Date(tokenRecord.expires_at).getTime() < Date.now()) return null;
+      if (tokenRecord.ip_allowlist) {
+        const clientIp = getClientIp(req);
+        if (!isIpInAllowlist(clientIp, tokenRecord.ip_allowlist)) {
+          return null;
+        }
+      }
       const user = database.getUserById(tokenRecord.user_id);
       if (!user || isAccountBlocked(user.status)) return null;
       return {
@@ -117,9 +124,13 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
       const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
       const botUser = database.getUserByBotTokenHash(tokenHash);
       if (!botUser || isAccountBlocked(botUser.status)) return null;
+      if (botUser.owner_id) {
+        const owner = database.getUserById(botUser.owner_id);
+        if (owner && isAccountBlocked(owner.status)) return null;
+      }
       const user = database.getUserById(botUser.id) ?? null;
       if (!user) return null;
-      return { user, isBot: true };
+      return { user, tokenScopes: ["repos:read", "repos:write"], isBot: true };
     }
     return null;
   }
@@ -137,7 +148,7 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
         const username = credentials.slice(0, sepIndex);
         const authSecret = credentials.slice(sepIndex + 1);
 
-        const patAuth = verifyPatOrBotToken(authSecret);
+        const patAuth = verifyPatOrBotToken(authSecret, req);
         if (patAuth) return patAuth;
 
         const user = database.getUserByUsername(username) || database.getUserByEmail(username);
@@ -178,7 +189,7 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
     } else if (authHeader.startsWith("Bearer ")) {
       try {
         const token = authHeader.slice(7);
-        const patAuth = verifyPatOrBotToken(token);
+        const patAuth = verifyPatOrBotToken(token, req);
         if (patAuth) return patAuth;
         const decoded = jwt.verify(token, JWT_SECRET) as
           | {
@@ -236,25 +247,8 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
   }
 
   function checkRepoReadAccess(req: Request, res: Response, namespace: string, project: string): boolean {
-    const cleanNsLower = namespace.trim().toLowerCase();
-    const cleanProjLower = project
-      .trim()
-      .replace(/\.git$/i, "")
-      .toLowerCase();
-    const ownerUser = database.getUserByUsername(namespace);
-    const org = database.getOrganizationBySlug(cleanNsLower);
-    let matchedRepo = ownerUser
-      ? database.getUserRepos(ownerUser.id).find((r) => {
-          const rProj = (r.project || "").replace(/\.git$/i, "").toLowerCase();
-          const rFull = `${r.namespace || ""}/${r.project || ""}`.replace(/\.git$/i, "").toLowerCase();
-          return rProj === cleanProjLower || rFull === `${cleanNsLower}/${cleanProjLower}`;
-        })
-      : undefined;
-    if (!matchedRepo) {
-      matchedRepo = database.getLinkedRepoById(`${cleanNsLower}/${cleanProjLower}`);
-    }
-    const vis = (matchedRepo as { visibility?: string | undefined } | undefined)?.visibility;
-    if (vis !== "private" && vis !== "internal") {
+    const unauthAccess = localGitVault.checkLocalRepoAccess(database, undefined, namespace, project);
+    if (unauthAccess.allowed) {
       return true;
     }
     const { user } = authenticate(req);
@@ -263,20 +257,9 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
       res.status(401).send("Authentication required to access private repository");
       return false;
     }
-    const isAdmin = user.account_type === "admin" || (user as { role?: string | undefined }).role === "admin";
-    if (isAdmin) {
-      return true;
-    }
-    const isOwner =
-      (ownerUser !== undefined && user.id === ownerUser.id) ||
-      (matchedRepo !== undefined && user.id === matchedRepo.user_id);
-    const isOrgMember = org != null && Boolean(database.getOrganizationMemberRole(org.id, user.id));
-    if (vis === "private" && !isOwner && !isOrgMember) {
-      res.status(403).send("Forbidden: Repository is private");
-      return false;
-    }
-    if (vis === "internal" && user.account_type === "community_federated" && !isOwner && !isOrgMember) {
-      res.status(403).send("Forbidden: Internal repository is restricted to organization and instance members");
+    const access = localGitVault.checkLocalRepoAccess(database, user as Request["user"], namespace, project);
+    if (!access.allowed) {
+      res.status(access.status ?? 403).send(access.message || "Forbidden: Repository is private");
       return false;
     }
     return true;

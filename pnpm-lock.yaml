@@ -904,6 +904,9 @@ importers:
       '@modelscript/trnsys':
         specifier: workspace:*
         version: link:../../languages/trnsys
+      '@modelscript/twentysim':
+        specifier: workspace:*
+        version: link:../../languages/twentysim
       '@modelscript/urdf':
         specifier: workspace:*
         version: link:../../languages/urdf
@@ -4747,6 +4750,31 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  languages/twentysim:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../../packages/dsl
+      '@modelscript/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      adm-zip:
+        specifier: ^0.6.1
+        version: 0.6.1
+    devDependencies:
+      '@modelscript/simulate':
+        specifier: workspace:*
+        version: link:../../packages/simulate
+      '@types/adm-zip':
+        specifier: ^0.5.7
+        version: 0.5.8
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   languages/urdf:
     dependencies:
       '@modelscript/adams':
@@ -5160,6 +5188,9 @@ importers:
       '@modelscript/dsl':
         specifier: workspace:*
         version: link:../dsl
+      '@modelscript/editor':
+        specifier: workspace:*
+        version: link:../editor
       '@modelscript/exchange':
         specifier: workspace:*
         version: link:../exchange
@@ -5202,6 +5233,15 @@ importers:
       '@modelscript/sysml2':
         specifier: workspace:*
         version: link:../../languages/sysml2
+      '@react-three/drei':
+        specifier: ^10.7.7
+        version: 10.7.9(@react-three/fiber@9.8.2(@types/react@19.3.0)(immer@11.2.10)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.184.0))(@types/react@19.3.0)(@types/three@0.184.1)(immer@11.2.10)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.184.0)
+      '@react-three/fiber':
+        specifier: ^9.6.1
+        version: 9.8.2(@types/react@19.3.0)(immer@11.2.10)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.184.0)
+      '@react-three/xr':
+        specifier: ^6.6.29
+        version: 6.6.32(@react-three/fiber@9.8.2(@types/react@19.3.0)(immer@11.2.10)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.184.0))(@types/react@19.3.0)(immer@11.2.10)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.184.0)
       '@vscode/debugadapter':
         specifier: ^1.68.0
         version: 1.68.0
@@ -5214,6 +5254,9 @@ importers:
       pako:
         specifier: ^2.1.0
         version: 2.2.0
+      three:
+        specifier: ^0.184.0
+        version: 0.184.0
       vscode-languageclient:
         specifier: ^9.0.1
         version: 9.0.1
@@ -5737,6 +5780,9 @@ importers:
       '@modelscript/trnsys':
         specifier: workspace:*
         version: link:../../languages/trnsys
+      '@modelscript/twentysim':
+        specifier: workspace:*
+        version: link:../../languages/twentysim
       '@modelscript/urdf':
         specifier: workspace:*
         version: link:../../languages/urdf
@@ -5930,6 +5976,18 @@ importers:
       zod:
         specifier: ^4.6.7
         version: 4.6.7
+    devDependencies:
+      '@types/node':
+        specifier: ^25.3.2
+        version: 25.9.9
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  packages/native:
     devDependencies:
       '@types/node':
         specifier: ^25.3.2

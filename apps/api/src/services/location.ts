@@ -4,6 +4,7 @@ import crypto from "crypto";
 import type { Request } from "express";
 import fs from "fs";
 import * as maxmind from "maxmind";
+import net from "node:net";
 import path from "path";
 
 const ISO_COUNTRY_RE = /^[A-Z]{2}$/;
@@ -109,14 +110,21 @@ class LocationService {
   }
 
   public isCloudflareRequest(req: Request): boolean {
+    const configuredCfTrust =
+      process.env["MSX_INGRESS_MODE"] === "cloudflare" ||
+      process.env["TRUST_CLOUDFLARE_HEADERS"] === "true" ||
+      Boolean(process.env["CLOUDFLARE_TUNNEL_TOKEN"]?.trim() && req.headers["cf-ray"]);
+
+    if (process.env["NODE_ENV"] === "production") {
+      return configuredCfTrust;
+    }
+
     return Boolean(
+      configuredCfTrust ||
       req.headers["cf-ray"] ||
       req.headers["cf-ipcountry"] ||
       req.headers["cf-connecting-ip"] ||
-      req.headers["cf-visitor"] ||
-      process.env["MSX_INGRESS_MODE"] === "cloudflare" ||
-      process.env["TRUST_CLOUDFLARE_HEADERS"] === "true" ||
-      process.env["CLOUDFLARE_TUNNEL_TOKEN"],
+      req.headers["cf-visitor"],
     );
   }
 
@@ -127,6 +135,32 @@ class LocationService {
       cleaned = cleaned.slice(countryCode.length + 1);
     }
     return ISO_REGION_RE.test(cleaned) ? cleaned : undefined;
+  }
+
+  private isPrivateOrLoopbackIp(rawIp: string): boolean {
+    const ip = rawIp
+      .replace(/^::ffff:/i, "")
+      .trim()
+      .toLowerCase();
+    const ipVersion = net.isIP(ip);
+    if (ipVersion === 4) {
+      const octets = ip.split(".").map((n) => Number(n));
+      const a = octets[0] ?? 0;
+      const b = octets[1] ?? 0;
+      if (a === 127 || a === 10 || a === 0) return true;
+      if (a === 172 && b >= 16 && b <= 31) return true;
+      if (a === 192 && b === 168) return true;
+      if (a === 169 && b === 254) return true;
+      if (a === 100 && b >= 64 && b <= 127) return true;
+      return false;
+    }
+    if (ipVersion === 6) {
+      if (ip === "::1" || ip === "::") return true;
+      if (ip.startsWith("fc") || ip.startsWith("fd")) return true;
+      if (ip.startsWith("fe8") || ip.startsWith("fe9") || ip.startsWith("fea") || ip.startsWith("feb")) return true;
+      return false;
+    }
+    return true;
   }
 
   // Helper to extract IP from an Express request
@@ -140,19 +174,30 @@ class LocationService {
       Boolean(req.app?.get("trust proxy"));
 
     if (trustProxyHeaders) {
-      // 1. Prefer explicit Cloudflare / CDN eyeball IP headers when present
-      const cfConnectingIp = req.headers["cf-connecting-ip"] || req.headers["true-client-ip"];
-      if (typeof cfConnectingIp === "string" && cfConnectingIp.trim()) {
-        return cfConnectingIp.trim();
+      // 1. Prefer explicit Cloudflare / CDN eyeball IP headers when Cloudflare trust is active
+      if (this.isCloudflareRequest(req)) {
+        const cfConnectingIp = req.headers["cf-connecting-ip"] || req.headers["true-client-ip"];
+        if (typeof cfConnectingIp === "string" && cfConnectingIp.trim()) {
+          return cfConnectingIp.trim();
+        }
       }
 
-      // 2. Look for X-Forwarded-For if behind a reverse proxy
+      // 2. Look for X-Forwarded-For if behind a reverse proxy (walk from right to left to avoid client spoofing)
       const forwarded = req.headers["x-forwarded-for"];
       if (forwarded) {
-        const parts = forwarded.toString().split(",");
-        const firstPart = parts[0];
-        if (firstPart) {
-          return firstPart.trim();
+        const parts = forwarded
+          .toString()
+          .split(",")
+          .map((p) => p.trim())
+          .filter((p) => net.isIP(p) !== 0);
+        if (parts.length > 0) {
+          for (let i = parts.length - 1; i >= 0; i--) {
+            const candidate = parts[i]!;
+            if (!this.isPrivateOrLoopbackIp(candidate)) {
+              return candidate;
+            }
+          }
+          return parts[parts.length - 1]!;
         }
       }
       const realIp = req.headers["x-real-ip"];
@@ -176,12 +221,15 @@ class LocationService {
     req: Request,
     fallbackProfileLocation?: string | null,
   ): { countryCode?: string | undefined; regionCode?: string | undefined } {
+    const isCfRequest = this.isCloudflareRequest(req);
     const trustProxyHeaders =
-      process.env["TRUST_PROXY"] === "true" || process.env["NODE_ENV"] === "test" || this.isCloudflareRequest(req);
+      process.env["TRUST_PROXY"] === "true" || process.env["NODE_ENV"] === "test" || isCfRequest;
 
     // 1. Cloudflare edge geolocation headers first (prevents proxy/tunnel hop IP from corrupting geo data)
     const cfCountry =
-      typeof req.headers["cf-ipcountry"] === "string" ? req.headers["cf-ipcountry"].trim().toUpperCase() : "";
+      isCfRequest && typeof req.headers["cf-ipcountry"] === "string"
+        ? req.headers["cf-ipcountry"].trim().toUpperCase()
+        : "";
     if (cfCountry && cfCountry !== "XX" && cfCountry !== "T1" && ISO_COUNTRY_RE.test(cfCountry)) {
       const rawCfRegion = (req.headers["cf-region-code"] ||
         req.headers["cf-region"] ||

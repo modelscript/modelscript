@@ -19,13 +19,37 @@ import { runLanguageWasmBuild } from "./build-language-wasm.js";
  */
 
 /**
+ * Formats generated TypeScript with the repository's Prettier config (when available)
+ * and writes `outTsPath` only when the contents differ.
+ *
+ * @param {string} outTsPath
+ * @param {string} content
+ */
+export async function writeFormattedTsIfChanged(outTsPath, content) {
+  let finalContent = content;
+  try {
+    const prettierMod = await import("prettier");
+    const prettier = prettierMod.default ?? prettierMod;
+    const config = await prettier.resolveConfig(outTsPath);
+    finalContent = await prettier.format(content, { ...(config ?? {}), filepath: outTsPath });
+  } catch {
+    // Prettier may not be installed in minimal/packaged environments; fall back to raw output.
+  }
+
+  fs.mkdirSync(path.dirname(outTsPath), { recursive: true });
+  if (!fs.existsSync(outTsPath) || fs.readFileSync(outTsPath, "utf-8") !== finalContent) {
+    fs.writeFileSync(outTsPath, finalContent, "utf-8");
+  }
+}
+
+/**
  * Builds a cleanroom standard library package (`modelscript.yaml` + `dist/symbols.json` +
  * `dist/diagrams.json` + `dist/runtime.wasm`) and emits a zero-I/O isomorphic TypeScript bundle
  * for Browsers, Web Workers, and Node.js.
  *
  * @param {CleanroomStdLibBuildOptions} options
  */
-export function buildCleanroomStdLib(options) {
+export async function buildCleanroomStdLib(options) {
   const {
     langName,
     packageName,
@@ -142,8 +166,5 @@ export function buildCleanroomStdLib(options) {
     "",
   ].join("\n");
 
-  fs.mkdirSync(path.dirname(outTsPath), { recursive: true });
-  if (!fs.existsSync(outTsPath) || fs.readFileSync(outTsPath, "utf-8") !== content) {
-    fs.writeFileSync(outTsPath, content, "utf-8");
-  }
+  await writeFormattedTsIfChanged(outTsPath, content);
 }

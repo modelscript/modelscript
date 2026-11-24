@@ -6,10 +6,22 @@
  * Indexes junctions, reservoirs, tanks, pipes, pumps, and valves across US EPA EPANET (.inp) files.
  */
 
-import type { DslIndexFileContext } from "@modelscript/dsl";
+import {
+  extractValidWasmCstRoot,
+  indexSymbolsFromWasmCst,
+  type DslIndexFileContext,
+  type WasmCstIndexedSymbol,
+} from "@modelscript/dsl";
 import type { UnifiedWorkspace } from "@modelscript/runtime";
 import { parseInp } from "./parser/index.js";
 import type { EpanetNetwork } from "./types.js";
+
+const EPANET_CST_KIND_MAP: Record<string, string> = {
+  IniSectionHeader: "section",
+  IniRecord: "record",
+};
+
+const EPANET_CST_NAME_FIELDS = ["head", "sectionName", "name", "id"];
 
 export function canIndexEpanet(uri: string, text?: string): boolean {
   const lower = uri.toLowerCase();
@@ -22,6 +34,21 @@ export function canIndexEpanet(uri: string, text?: string): boolean {
 
 export function indexEpanetDocument(ctx: DslIndexFileContext): void {
   const { uri, text } = ctx;
+  const cstRoot = extractValidWasmCstRoot(ctx.tree);
+  const cstSymbols = cstRoot
+    ? indexSymbolsFromWasmCst(cstRoot, text, {
+        kindMap: EPANET_CST_KIND_MAP,
+        nameFields: EPANET_CST_NAME_FIELDS,
+      })
+    : null;
+  const cstByName = new Map<string, WasmCstIndexedSymbol>();
+  if (cstSymbols) {
+    for (const sym of cstSymbols) {
+      const lower = sym.name.toLowerCase();
+      if (!cstByName.has(lower)) cstByName.set(lower, sym);
+    }
+  }
+
   const net = parseInp(text, uri);
   ctx.setParsedModel(net);
 
@@ -31,9 +58,17 @@ export function indexEpanetDocument(ctx: DslIndexFileContext): void {
     parentId: number | null = null,
     extra?: Record<string, unknown>,
   ): number => {
-    return ctx.addSymbol(name, kind, parentId, 0, 0, extra ?? {}, {
+    const cst = cstByName.get(name.toLowerCase());
+    return ctx.addSymbol(name, kind, parentId, cst?.startOffset ?? 0, cst?.endOffset ?? 0, extra ?? {}, {
       ruleName: kind,
       namePath: name,
+      ...(cst
+        ? {
+            nameStartOffset: cst.nameStartOffset,
+            nameEndOffset: cst.nameEndOffset,
+            fieldRanges: { name: { startOffset: cst.nameStartOffset, endOffset: cst.nameEndOffset } },
+          }
+        : {}),
     });
   };
 

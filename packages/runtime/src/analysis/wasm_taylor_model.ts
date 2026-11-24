@@ -10,6 +10,7 @@
  */
 
 import { addDown, addUp, nextUp, subDown, subUp } from "@modelscript/solve";
+import { getDefaultWasmExports } from "../dae/wasm_loader.js";
 import type { VerificationVerdict } from "../formal/verdict.js";
 import { MonomialBasis } from "./monomial_basis.js";
 import { ivAdd, ivMul, ivPowInt, ivSub } from "./outward_rounding.js";
@@ -423,42 +424,102 @@ export class TaylorModel {
 
     if (mulTable) {
       const M = this.basis.totalMonomials;
-      let fpErrAcc = 0;
-      for (let i = 0; i < M; i++) {
-        const c1 = this.coeffs[i]!;
-        if (c1 === 0) continue;
-        const rowOffset = i * M;
-        for (let j = 0; j < M; j++) {
-          const c2 = other.coeffs[j]!;
-          if (c2 === 0) continue;
-          const coeff = c1 * c2;
-          const absCoeff = Math.abs(coeff);
-          const mulUlp = absCoeff > 0 && Number.isFinite(absCoeff) ? nextUp(absCoeff) - absCoeff : 0;
-          const k = mulTable[rowOffset + j]!;
-          if (k >= 0) {
-            const prev = res.coeffs[k]!;
-            const next = prev + coeff;
-            res.coeffs[k] = next;
-            const addErr = prev !== 0 ? Math.max(addUp(prev, coeff) - next, next - addDown(prev, coeff)) : 0;
-            const totalErr = addUp(mulUlp, addErr);
-            if (totalErr > 0) {
-              const mRange = res.evaluateMonomialRangeIndex(k);
-              fpErrAcc = addUp(fpErrAcc, nextUp(totalErr * Math.max(Math.abs(mRange.lo), Math.abs(mRange.hi))));
+      const w = getDefaultWasmExports();
+      if (
+        w &&
+        typeof w.tm_mulDenseRigorous === "function" &&
+        typeof w.alloc === "function" &&
+        typeof w.free === "function" &&
+        M > 0
+      ) {
+        const nv = this.numVars;
+        const cAPtr = w.alloc(M * 8);
+        const cBPtr = w.alloc(M * 8);
+        const mtPtr = w.alloc(M * M * 4);
+        const mAbsPtr = w.alloc(M * 8);
+        const expPtr = w.alloc(Math.max(1, M * nv) * 4);
+        const dLoPtr = w.alloc(Math.max(1, nv) * 8);
+        const dHiPtr = w.alloc(Math.max(1, nv) * 8);
+        const outCPtr = w.alloc(M * 8);
+        const outExPtr = w.alloc(16);
+        try {
+          new Float64Array(w.memory.buffer, cAPtr, M).set(this.coeffs);
+          new Float64Array(w.memory.buffer, cBPtr, M).set(other.coeffs);
+          new Int32Array(w.memory.buffer, mtPtr, M * M).set(mulTable);
+          const mAbsView = new Float64Array(w.memory.buffer, mAbsPtr, M);
+          for (let k = 0; k < M; k++) {
+            const mRange = res.evaluateMonomialRangeIndex(k);
+            mAbsView[k] = Math.max(Math.abs(mRange.lo), Math.abs(mRange.hi));
+          }
+          if (nv > 0) {
+            const expView = new Int32Array(w.memory.buffer, expPtr, M * nv);
+            for (let i = 0; i < M; i++) {
+              const exps = this.basis.exponents[i]!;
+              const off = i * nv;
+              for (let v = 0; v < nv; v++) expView[off + v] = exps[v]!;
             }
-          } else {
-            const exps1 = this.basis.exponents[i]!;
-            const exps2 = this.basis.exponents[j]!;
-            const sumExps = new Array(this.numVars);
-            for (let v = 0; v < this.numVars; v++) sumExps[v] = exps1[v]! + exps2[v]!;
-            const mRange = this.evaluateMonomialRangeExponents(sumExps);
-            const coeffIv =
-              mulUlp > 0 ? new Interval(subDown(coeff, mulUlp), addUp(coeff, mulUlp)) : new Interval(coeff, coeff);
-            excessRemainder = addInterval(excessRemainder, mulInterval(mRange, coeffIv));
+            const dLoView = new Float64Array(w.memory.buffer, dLoPtr, nv);
+            const dHiView = new Float64Array(w.memory.buffer, dHiPtr, nv);
+            for (let v = 0; v < nv; v++) {
+              dLoView[v] = this.domain[v]!.lo;
+              dHiView[v] = this.domain[v]!.hi;
+            }
+          }
+
+          w.tm_mulDenseRigorous(M, nv, cAPtr, cBPtr, mtPtr, mAbsPtr, expPtr, dLoPtr, dHiPtr, outCPtr, outExPtr);
+
+          res.coeffs.set(new Float64Array(w.memory.buffer, outCPtr, M));
+          const exView = new Float64Array(w.memory.buffer, outExPtr, 2);
+          excessRemainder = new Interval(exView[0]!, exView[1]!);
+        } finally {
+          w.free(cAPtr);
+          w.free(cBPtr);
+          w.free(mtPtr);
+          w.free(mAbsPtr);
+          w.free(expPtr);
+          w.free(dLoPtr);
+          w.free(dHiPtr);
+          w.free(outCPtr);
+          w.free(outExPtr);
+        }
+      } else {
+        let fpErrAcc = 0;
+        for (let i = 0; i < M; i++) {
+          const c1 = this.coeffs[i]!;
+          if (c1 === 0) continue;
+          const rowOffset = i * M;
+          for (let j = 0; j < M; j++) {
+            const c2 = other.coeffs[j]!;
+            if (c2 === 0) continue;
+            const coeff = c1 * c2;
+            const absCoeff = Math.abs(coeff);
+            const mulUlp = absCoeff > 0 && Number.isFinite(absCoeff) ? nextUp(absCoeff) - absCoeff : 0;
+            const k = mulTable[rowOffset + j]!;
+            if (k >= 0) {
+              const prev = res.coeffs[k]!;
+              const next = prev + coeff;
+              res.coeffs[k] = next;
+              const addErr = prev !== 0 ? Math.max(addUp(prev, coeff) - next, next - addDown(prev, coeff)) : 0;
+              const totalErr = addUp(mulUlp, addErr);
+              if (totalErr > 0) {
+                const mRange = res.evaluateMonomialRangeIndex(k);
+                fpErrAcc = addUp(fpErrAcc, nextUp(totalErr * Math.max(Math.abs(mRange.lo), Math.abs(mRange.hi))));
+              }
+            } else {
+              const exps1 = this.basis.exponents[i]!;
+              const exps2 = this.basis.exponents[j]!;
+              const sumExps = new Array(this.numVars);
+              for (let v = 0; v < this.numVars; v++) sumExps[v] = exps1[v]! + exps2[v]!;
+              const mRange = this.evaluateMonomialRangeExponents(sumExps);
+              const coeffIv =
+                mulUlp > 0 ? new Interval(subDown(coeff, mulUlp), addUp(coeff, mulUlp)) : new Interval(coeff, coeff);
+              excessRemainder = addInterval(excessRemainder, mulInterval(mRange, coeffIv));
+            }
           }
         }
-      }
-      if (fpErrAcc > 0) {
-        excessRemainder = addInterval(excessRemainder, new Interval(-fpErrAcc, fpErrAcc));
+        if (fpErrAcc > 0) {
+          excessRemainder = addInterval(excessRemainder, new Interval(-fpErrAcc, fpErrAcc));
+        }
       }
     } else {
       let fpErrAcc = 0;

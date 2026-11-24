@@ -447,7 +447,7 @@ export function startNodeServer(input?: any, output?: any) {
         ],
       },
       codeLensProvider: {
-        resolveProvider: false,
+        resolveProvider: true,
       },
       inlayHintProvider: {
         resolveProvider: false,

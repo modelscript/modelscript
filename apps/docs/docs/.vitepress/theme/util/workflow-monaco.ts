@@ -131,7 +131,7 @@ async function loadMonaco(): Promise<typeof import("monaco-editor")> {
 
       const [workerMod, monaco] = await Promise.all([
         import("monaco-editor/esm/vs/editor/editor.worker?worker").catch(() => null),
-        import("monaco-editor"),
+        import("monaco-editor/esm/vs/editor/edcore.main"),
         ensureBrowserWasmParsers(modelicaWasmUrl, sysml2WasmUrl).catch(() => {}),
       ]);
 

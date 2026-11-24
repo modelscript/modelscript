@@ -9,6 +9,7 @@ import { AnimationController, type DynamicDeformationConfig } from "./cad-viewer
 import { AnimationTimeline } from "./cad-viewer/animation-timeline.js";
 import type { CadComponent } from "./cad-viewer/cad-viewer.js";
 import { extractCadComponents } from "./cad-viewer/parse-cad-annotations.js";
+import { VrButton, registerSharedVsCodeApi } from "./cad-viewer/vr-mode.js";
 import type { StepMeshPayload } from "./step-viewer/step-viewer.js";
 
 const vscode = (
@@ -20,6 +21,8 @@ const vscode = (
     };
   }
 ).acquireVsCodeApi?.();
+
+registerSharedVsCodeApi(vscode);
 
 interface RawStepMesh {
   id: number;
@@ -617,6 +620,17 @@ function App() {
               />
             )}
           </Canvas>
+          <VrButton
+            style={{ bottom: animationControllerRef.current ? 76 : 16 }}
+            onOpenExternalVr={() => {
+              vscode?.postMessage({
+                type: "openInVr",
+                environment: "dark-lab",
+                kind: "multibody",
+                title: "3D Multi-Body Animation",
+              });
+            }}
+          />
           {animationControllerRef.current && <AnimationTimeline controller={animationControllerRef.current} />}
         </>
       )}

@@ -2,6 +2,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { writeFormattedTsIfChanged } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { runLanguageWasmBuild } from "../../../scripts/build/build-language-wasm.js";
 
 const pscadDir = new URL("..", import.meta.url).pathname;
@@ -69,9 +70,7 @@ if (fs.existsSync(symbolsPath) && fs.existsSync(diagramsPath)) {
     `export const PSCAD_MASTER_LIB_DIAGRAMS = ${diagramsText} as DiagramComponentSpec[];`,
     "",
   ].join("\n");
-  if (!fs.existsSync(outTsPath) || fs.readFileSync(outTsPath, "utf-8") !== banner) {
-    fs.writeFileSync(outTsPath, banner, "utf-8");
-  }
+  await writeFormattedTsIfChanged(outTsPath, banner);
 }
 
 runLanguageWasmBuild({

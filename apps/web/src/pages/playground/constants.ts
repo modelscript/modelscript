@@ -79,6 +79,7 @@ export const ALL_PLAYGROUND_LANGUAGES: PlaygroundLanguageOption[] = [
   { id: "swmm", label: "SWMM Stormwater", ext: ".swmm" },
   { id: "gtsuite", label: "GT-SUITE Powertrain", ext: ".gtm" },
   { id: "easy5", label: "Easy5 Controls", ext: ".ez5" },
+  { id: "twentysim", label: "20-sim Bond Graphs", ext: ".emx" },
   { id: "rocets", label: "ROCETS Rocket Propulsion", ext: ".roc" },
   { id: "relap5", label: "RELAP5 Thermal-Hydraulics", ext: ".r5" },
   { id: "energyplus", label: "EnergyPlus Building HVAC", ext: ".idf" },
@@ -294,7 +295,7 @@ export const PLAYGROUND_LANGUAGE_DOMAINS: ReadonlyArray<{ title: string; ids: re
   },
   {
     title: "Aerospace & Controls",
-    ids: ["simulink", "easy5", "jsbsim", "rocets", "ccsds", "plcopen", "automationml"],
+    ids: ["simulink", "easy5", "twentysim", "jsbsim", "rocets", "ccsds", "plcopen", "automationml"],
   },
   {
     title: "3D CAD, Metrology & Physics",
@@ -975,8 +976,6 @@ end ThermalPlant;`,
     lang: "sysml2",
     activeFile: "GridRequirements.sysml",
     code: `package IBRGridDigitalThread {
-  import PlantController::*;
-
   part def GridArchitecture {
     attribute pcc_bus_kv = 230.0 [kV];
     attribute nominal_freq_hz = 60.0 [Hz];
@@ -984,8 +983,10 @@ end ThermalPlant;`,
   }
 
   part def PlantController {
-    attribute K_droop = 4.0;
-    attribute T_avr = 0.20 [s];
+    // Baseline uncalibrated estimates (aligned with PlantController.mo).
+    // Calibrating PlantController.mo against FaultRecord.cff updates K_droop -> 4.0, T_avr -> 0.20 s.
+    attribute K_droop = 2.0;
+    attribute T_avr = 0.45 [s];
     attribute Vt_min_pu = 0.90 [pu];
   }
 
@@ -1002,8 +1003,6 @@ end ThermalPlant;`,
 }`,
     files: {
       "GridRequirements.sysml": `package IBRGridDigitalThread {
-  import PlantController::*;
-
   part def GridArchitecture {
     attribute pcc_bus_kv = 230.0 [kV];
     attribute nominal_freq_hz = 60.0 [Hz];
@@ -1011,8 +1010,10 @@ end ThermalPlant;`,
   }
 
   part def PlantController {
-    attribute K_droop = 4.0;
-    attribute T_avr = 0.20 [s];
+    // Baseline uncalibrated estimates (aligned with PlantController.mo).
+    // Calibrating PlantController.mo against FaultRecord.cff updates K_droop -> 4.0, T_avr -> 0.20 s.
+    attribute K_droop = 2.0;
+    attribute T_avr = 0.45 [s];
     attribute Vt_min_pu = 0.90 [pu];
   }
 
@@ -1168,6 +1169,565 @@ ASCII
 30,1450000,9942,233
 31,1500000,9942,232`,
     },
+  },
+  {
+    id: "urdf-hexacopter-drone",
+    title: "Autonomous Hexacopter UAV (URDF)",
+    category: "URDF Robotics",
+    domain: "Mechanics & Multibody",
+    description:
+      "6-rotor autonomous carbon-fiber hexacopter UAV with central avionics hub, 6 radial carbon arms, 6 continuous brushless rotor joints, 2-axis stabilized optical camera gimbal, and underslung 6S LiPo battery pack.",
+    tags: ["VR", "URDF", "Drone", "UAV", "Hexacopter", "Robotics", "Multibody"],
+    lang: "urdf",
+    code: `<?xml version="1.0"?>
+<robot name="autonomous_hexacopter_uav">
+  <material name="carbon_matte">
+    <color rgba="0.12 0.14 0.18 1.0"/>
+  </material>
+  <material name="aerospace_cyan">
+    <color rgba="0.06 0.72 0.94 1.0"/>
+  </material>
+  <material name="safety_amber">
+    <color rgba="0.96 0.62 0.04 1.0"/>
+  </material>
+  <material name="lipo_graphite">
+    <color rgba="0.22 0.25 0.32 1.0"/>
+  </material>
+
+  <link name="base_link">
+    <inertial>
+      <mass value="1.85"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.024" ixy="0" ixz="0" iyy="0.024" iyz="0" izz="0.041"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.07" radius="0.14"/>
+      </geometry>
+      <material name="carbon_matte"/>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder length="0.08" radius="0.15"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="battery_pack">
+    <inertial>
+      <mass value="1.45"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.0042" ixy="0" ixz="0" iyy="0.0068" iyz="0" izz="0.0075"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.19 0.085 0.065"/>
+      </geometry>
+      <material name="lipo_graphite"/>
+    </visual>
+  </link>
+
+  <joint name="battery_mount_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="battery_pack"/>
+    <origin xyz="0 0 -0.068" rpy="0 0 0"/>
+  </joint>
+
+  <link name="gimbal_yaw_link">
+    <inertial>
+      <mass value="0.18"/>
+      <origin xyz="0 0 -0.03" rpy="0 0 0"/>
+      <inertia ixx="0.0004" ixy="0" ixz="0" iyy="0.0004" iyz="0" izz="0.0005"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 -0.025" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.05" radius="0.032"/>
+      </geometry>
+      <material name="aerospace_cyan"/>
+    </visual>
+  </link>
+
+  <joint name="gimbal_yaw_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="gimbal_yaw_link"/>
+    <origin xyz="0.095 0 -0.055" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="2.5" velocity="6.0"/>
+    <dynamics damping="0.02" friction="0.005"/>
+  </joint>
+
+  <link name="camera_gimbal_link">
+    <inertial>
+      <mass value="0.34"/>
+      <origin xyz="0.01 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.0006" ixy="0" ixz="0" iyy="0.0007" iyz="0" izz="0.0006"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.075 0.065 0.058"/>
+      </geometry>
+      <material name="carbon_matte"/>
+    </visual>
+  </link>
+
+  <joint name="gimbal_pitch_joint" type="revolute">
+    <parent link="gimbal_yaw_link"/>
+    <child link="camera_gimbal_link"/>
+    <origin xyz="0 0 -0.058" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.5708" upper="0.5236" effort="2.0" velocity="5.0"/>
+    <dynamics damping="0.015" friction="0.004"/>
+  </joint>
+
+  <link name="arm_1">
+    <inertial>
+      <mass value="0.16"/>
+      <origin xyz="0.21 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.0002" ixy="0" ixz="0" iyy="0.0024" iyz="0" izz="0.0024"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.21 0 0" rpy="0 1.5708 0"/>
+      <geometry>
+        <cylinder length="0.42" radius="0.014"/>
+      </geometry>
+      <material name="carbon_matte"/>
+    </visual>
+  </link>
+  <joint name="arm_1_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="arm_1"/>
+    <origin xyz="0 0 0.01" rpy="0 0 0"/>
+  </joint>
+
+  <link name="rotor_1">
+    <inertial>
+      <mass value="0.14"/>
+      <origin xyz="0 0 0.02" rpy="0 0 0"/>
+      <inertia ixx="0.0005" ixy="0" ixz="0" iyy="0.0005" iyz="0" izz="0.0009"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.012" radius="0.19"/>
+      </geometry>
+      <material name="aerospace_cyan"/>
+    </visual>
+  </link>
+  <joint name="rotor_1_joint" type="continuous">
+    <parent link="arm_1"/>
+    <child link="rotor_1"/>
+    <origin xyz="0.42 0 0.02" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <dynamics damping="0.002" friction="0.001"/>
+  </joint>
+
+  <link name="arm_2">
+    <inertial>
+      <mass value="0.16"/>
+      <origin xyz="0.21 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.0002" ixy="0" ixz="0" iyy="0.0024" iyz="0" izz="0.0024"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.21 0 0" rpy="0 1.5708 0"/>
+      <geometry>
+        <cylinder length="0.42" radius="0.014"/>
+      </geometry>
+      <material name="carbon_matte"/>
+    </visual>
+  </link>
+  <joint name="arm_2_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="arm_2"/>
+    <origin xyz="0 0 0.01" rpy="0 0 1.0472"/>
+  </joint>
+
+  <link name="rotor_2">
+    <inertial>
+      <mass value="0.14"/>
+      <origin xyz="0 0 0.02" rpy="0 0 0"/>
+      <inertia ixx="0.0005" ixy="0" ixz="0" iyy="0.0005" iyz="0" izz="0.0009"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.012" radius="0.19"/>
+      </geometry>
+      <material name="safety_amber"/>
+    </visual>
+  </link>
+  <joint name="rotor_2_joint" type="continuous">
+    <parent link="arm_2"/>
+    <child link="rotor_2"/>
+    <origin xyz="0.42 0 0.02" rpy="0 0 0"/>
+    <axis xyz="0 0 -1"/>
+    <dynamics damping="0.002" friction="0.001"/>
+  </joint>
+
+  <link name="arm_3">
+    <inertial>
+      <mass value="0.16"/>
+      <origin xyz="0.21 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.0002" ixy="0" ixz="0" iyy="0.0024" iyz="0" izz="0.0024"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.21 0 0" rpy="0 1.5708 0"/>
+      <geometry>
+        <cylinder length="0.42" radius="0.014"/>
+      </geometry>
+      <material name="carbon_matte"/>
+    </visual>
+  </link>
+  <joint name="arm_3_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="arm_3"/>
+    <origin xyz="0 0 0.01" rpy="0 0 2.0944"/>
+  </joint>
+
+  <link name="rotor_3">
+    <inertial>
+      <mass value="0.14"/>
+      <origin xyz="0 0 0.02" rpy="0 0 0"/>
+      <inertia ixx="0.0005" ixy="0" ixz="0" iyy="0.0005" iyz="0" izz="0.0009"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.012" radius="0.19"/>
+      </geometry>
+      <material name="aerospace_cyan"/>
+    </visual>
+  </link>
+  <joint name="rotor_3_joint" type="continuous">
+    <parent link="arm_3"/>
+    <child link="rotor_3"/>
+    <origin xyz="0.42 0 0.02" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <dynamics damping="0.002" friction="0.001"/>
+  </joint>
+
+  <link name="arm_4">
+    <inertial>
+      <mass value="0.16"/>
+      <origin xyz="0.21 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.0002" ixy="0" ixz="0" iyy="0.0024" iyz="0" izz="0.0024"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.21 0 0" rpy="0 1.5708 0"/>
+      <geometry>
+        <cylinder length="0.42" radius="0.014"/>
+      </geometry>
+      <material name="carbon_matte"/>
+    </visual>
+  </link>
+  <joint name="arm_4_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="arm_4"/>
+    <origin xyz="0 0 0.01" rpy="0 0 3.14159"/>
+  </joint>
+
+  <link name="rotor_4">
+    <inertial>
+      <mass value="0.14"/>
+      <origin xyz="0 0 0.02" rpy="0 0 0"/>
+      <inertia ixx="0.0005" ixy="0" ixz="0" iyy="0.0005" iyz="0" izz="0.0009"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.012" radius="0.19"/>
+      </geometry>
+      <material name="safety_amber"/>
+    </visual>
+  </link>
+  <joint name="rotor_4_joint" type="continuous">
+    <parent link="arm_4"/>
+    <child link="rotor_4"/>
+    <origin xyz="0.42 0 0.02" rpy="0 0 0"/>
+    <axis xyz="0 0 -1"/>
+    <dynamics damping="0.002" friction="0.001"/>
+  </joint>
+
+  <link name="arm_5">
+    <inertial>
+      <mass value="0.16"/>
+      <origin xyz="0.21 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.0002" ixy="0" ixz="0" iyy="0.0024" iyz="0" izz="0.0024"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.21 0 0" rpy="0 1.5708 0"/>
+      <geometry>
+        <cylinder length="0.42" radius="0.014"/>
+      </geometry>
+      <material name="carbon_matte"/>
+    </visual>
+  </link>
+  <joint name="arm_5_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="arm_5"/>
+    <origin xyz="0 0 0.01" rpy="0 0 4.18879"/>
+  </joint>
+
+  <link name="rotor_5">
+    <inertial>
+      <mass value="0.14"/>
+      <origin xyz="0 0 0.02" rpy="0 0 0"/>
+      <inertia ixx="0.0005" ixy="0" ixz="0" iyy="0.0005" iyz="0" izz="0.0009"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.012" radius="0.19"/>
+      </geometry>
+      <material name="aerospace_cyan"/>
+    </visual>
+  </link>
+  <joint name="rotor_5_joint" type="continuous">
+    <parent link="arm_5"/>
+    <child link="rotor_5"/>
+    <origin xyz="0.42 0 0.02" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <dynamics damping="0.002" friction="0.001"/>
+  </joint>
+
+  <link name="arm_6">
+    <inertial>
+      <mass value="0.16"/>
+      <origin xyz="0.21 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.0002" ixy="0" ixz="0" iyy="0.0024" iyz="0" izz="0.0024"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.21 0 0" rpy="0 1.5708 0"/>
+      <geometry>
+        <cylinder length="0.42" radius="0.014"/>
+      </geometry>
+      <material name="carbon_matte"/>
+    </visual>
+  </link>
+  <joint name="arm_6_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="arm_6"/>
+    <origin xyz="0 0 0.01" rpy="0 0 5.23599"/>
+  </joint>
+
+  <link name="rotor_6">
+    <inertial>
+      <mass value="0.14"/>
+      <origin xyz="0 0 0.02" rpy="0 0 0"/>
+      <inertia ixx="0.0005" ixy="0" ixz="0" iyy="0.0005" iyz="0" izz="0.0009"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.012" radius="0.19"/>
+      </geometry>
+      <material name="safety_amber"/>
+    </visual>
+  </link>
+  <joint name="rotor_6_joint" type="continuous">
+    <parent link="arm_6"/>
+    <child link="rotor_6"/>
+    <origin xyz="0.42 0 0.02" rpy="0 0 0"/>
+    <axis xyz="0 0 -1"/>
+    <dynamics damping="0.002" friction="0.001"/>
+  </joint>
+</robot>`,
+  },
+  {
+    id: "modelica-wind-turbine",
+    title: "5 MW Offshore Wind Turbine Drivetrain",
+    category: "Energy & Aerospace",
+    domain: "Mechanics & Multibody",
+    description:
+      "5 MW variable-speed pitch-controlled offshore wind turbine coupling aerodynamic rotor torque, 2-mass flexible drivetrain + 1:97 nacelle planetary gearbox, generator torque control, and PI blade pitch regulation.",
+    tags: ["VR", "Modelica", "Wind Turbine", "Drivetrain", "Pitch Control", "Renewable"],
+    lang: "modelica",
+    code: `model OffshoreWindTurbine5MW "5 MW variable-speed wind turbine drivetrain, nacelle gearbox & blade pitch controller"
+  parameter Real rho = 1.225 "Air density (kg/m3)";
+  parameter Real R_blade = 63.0 "Rotor blade radius (m)";
+  parameter Real N_gear = 97.0 "Nacelle planetary gearbox ratio";
+  parameter Real J_rotor = 3.54e7 "Low-speed rotor inertia (kg*m2)";
+  parameter Real J_gen = 534.0 "High-speed generator inertia (kg*m2)";
+  parameter Real K_shaft = 8.67e8 "Main shaft torsional stiffness (N*m/rad)";
+  parameter Real D_shaft = 6.21e6 "Main shaft torsional damping (N*m*s/rad)";
+  parameter Real eta_gear = 0.965 "Gearbox & converter efficiency";
+  parameter Real v_wind_mean = 13.5 "Mean hub-height wind speed (m/s)";
+  parameter Real v_gust_amp = 2.6 "Turbulent gust amplitude (m/s)";
+  parameter Real omega_ref = 1.267 "Rated rotor speed setpoint (rad/s, ~12.1 rpm)";
+  parameter Real P_rated = 5.0e6 "Rated electrical output (W)";
+  parameter Real Kp_pitch = 22.0 "Blade pitch proportional gain (deg*s/rad)";
+  parameter Real Ki_pitch = 5.5 "Blade pitch integral gain (deg/rad)";
+  parameter Real tau_pitch = 0.35 "Hydraulic pitch actuator lag (s)";
+
+  Real omega_r(start = 1.18) "Rotor low-speed shaft velocity (rad/s)";
+  Real omega_g(start = 114.46) "Generator high-speed shaft velocity (rad/s)";
+  Real theta_twist(start = 0.0042) "Drivetrain torsional shaft twist (rad)";
+  Real beta_deg(start = 4.5) "Collective blade pitch angle (deg)";
+  Real pitch_int(start = 4.5) "Blade pitch PI integrator state (deg)";
+
+  Real v_wind "Hub-height wind speed (m/s)";
+  Real tsr "Rotor tip-speed ratio";
+  Real Cp "Aerodynamic power coefficient";
+  Real T_aero "Aerodynamic rotor torque (N*m)";
+  Real T_shaft "Low-speed shaft torsional torque (N*m)";
+  Real T_gen "High-speed generator reaction torque (N*m)";
+  Real beta_raw "Unclamped blade pitch command (deg)";
+  Real beta_cmd "Clamped blade pitch command (deg)";
+  Real P_elec_MW "Net electrical power output (MW)";
+  Real rpm_rotor "Rotor speed (rpm)";
+equation
+  v_wind = v_wind_mean + v_gust_amp * sin(0.35 * time);
+  tsr = omega_r * R_blade / (if v_wind > 1.0 then v_wind else 1.0);
+  Cp = max(0.05, 0.48 * exp(-0.045 * (tsr - 7.5) * (tsr - 7.5)) * exp(-0.058 * beta_deg));
+
+  T_aero = 0.5 * rho * 3.14159265 * R_blade * R_blade * v_wind * v_wind * v_wind * Cp
+           / (if omega_r > 0.2 then omega_r else 0.2);
+
+  T_shaft = K_shaft * theta_twist + D_shaft * (omega_r - omega_g / N_gear);
+  T_gen = P_rated / (eta_gear * (if omega_g > 10.0 then omega_g else 10.0));
+
+  der(theta_twist) = omega_r - omega_g / N_gear;
+  J_rotor * der(omega_r) = T_aero - T_shaft;
+  J_gen * der(omega_g) = (T_shaft / N_gear) - T_gen;
+
+  der(pitch_int) = Ki_pitch * (omega_r - omega_ref);
+  beta_raw = pitch_int + Kp_pitch * (omega_r - omega_ref);
+  beta_cmd = if beta_raw < 0.0 then 0.0 else (if beta_raw > 28.0 then 28.0 else beta_raw);
+  tau_pitch * der(beta_deg) = beta_cmd - beta_deg;
+
+  P_elec_MW = eta_gear * T_gen * omega_g * 1.0e-6;
+  rpm_rotor = omega_r * 9.54929659;
+
+  annotation(experiment(StartTime = 0, StopTime = 30, Interval = 0.1));
+end OffshoreWindTurbine5MW;`,
+  },
+  {
+    id: "modelica-ev-battery-cooling",
+    title: "800V EV Battery Electro-Thermal Pack",
+    category: "Automotive & Thermal",
+    domain: "Fluids & Process",
+    description:
+      "800V 100 kWh EV traction battery pack coupling OCV + RC polarization electro-chemistry, Joule heat generation, serpentine liquid cold-plate conduction, and proportional glycol pump cooling under high-load transients.",
+    tags: ["VR", "Modelica", "EV Battery", "800V", "Thermal", "Cold Plate", "Automotive"],
+    lang: "modelica",
+    code: `model EVBatteryPackCooling800V "800V EV traction battery electro-thermal & liquid cold-plate cooling model"
+  parameter Real Q_nom_Ah = 125.0 "Nominal pack capacity (Ah, ~100 kWh at 800V)";
+  parameter Real R0_ref = 0.042 "Pack ohmic internal resistance at 25 degC (Ohm)";
+  parameter Real R1 = 0.018 "RC polarization resistance (Ohm)";
+  parameter Real C1 = 1800.0 "RC polarization capacitance (F)";
+  parameter Real C_cell = 4.2e5 "Prismatic cell stack thermal mass (J/K)";
+  parameter Real C_plate = 6.5e4 "Serpentine aluminum cold-plate thermal mass (J/K)";
+  parameter Real UA_cell_plate = 950.0 "Cell-to-cold-plate thermal conductance (W/K)";
+  parameter Real UA_amb = 18.0 "Pack enclosure ambient conductance (W/K)";
+  parameter Real cp_coolant = 3450.0 "50/50 water-glycol specific heat (J/(kg*K))";
+  parameter Real T_inlet = 293.15 "Chiller coolant inlet temperature (K, 20 degC)";
+  parameter Real T_target = 306.15 "Target cell temperature setpoint (K, 33 degC)";
+  parameter Real T_amb = 298.15 "Ambient underbody air temperature (K, 25 degC)";
+  parameter Real I_base = 260.0 "Sustained highway/fast-charge current (A)";
+  parameter Real I_pulse = 140.0 "Acceleration/regen current modulation (A)";
+
+  Real soc(start = 0.85) "Pack State of Charge (0..1)";
+  Real V_rc(start = 0.0) "RC polarization overpotential (V)";
+  Real T_cell(start = 298.15) "Cell core temperature (K)";
+  Real T_plate(start = 295.15) "Liquid cold-plate temperature (K)";
+
+  Real I_pack "Pack discharge current (A)";
+  Real V_ocv "Pack open-circuit voltage (V)";
+  Real R0 "Temperature-dependent ohmic resistance (Ohm)";
+  Real V_term "Pack terminal voltage (V)";
+  Real P_elec_kW "Pack electrical power output (kW)";
+  Real Q_gen "Total electrochemical Joule heat generation (W)";
+  Real m_dot_raw "Unclamped glycol coolant pump flow command (kg/s)";
+  Real m_dot_coolant "Clamped coolant mass flow rate (kg/s)";
+  Real Q_cooling "Heat rejected into liquid cold-plate loop (W)";
+  Real T_cell_C "Cell core temperature (degC)";
+  Real T_plate_C "Cold-plate temperature (degC)";
+equation
+  I_pack = I_base + I_pulse * sin(0.04 * time);
+  der(soc) = -I_pack / (Q_nom_Ah * 3600.0);
+
+  V_ocv = 720.0 + 135.0 * soc - 28.0 * (1.0 - soc) * (1.0 - soc);
+  R0 = R0_ref * (1.0 - 0.004 * (T_cell - 298.15));
+  C1 * der(V_rc) = I_pack - V_rc / R1;
+  V_term = V_ocv - I_pack * R0 - V_rc;
+  P_elec_kW = V_term * I_pack * 1.0e-3;
+
+  Q_gen = I_pack * I_pack * R0 + (V_rc * V_rc) / R1;
+
+  m_dot_raw = 0.12 + 0.045 * (T_cell - T_target);
+  m_dot_coolant = if m_dot_raw < 0.08 then 0.08 else (if m_dot_raw > 0.65 then 0.65 else m_dot_raw);
+  Q_cooling = m_dot_coolant * cp_coolant * (T_plate - T_inlet) * 0.72;
+
+  C_cell * der(T_cell) = Q_gen - UA_cell_plate * (T_cell - T_plate) - UA_amb * (T_cell - T_amb);
+  C_plate * der(T_plate) = UA_cell_plate * (T_cell - T_plate) - Q_cooling;
+
+  T_cell_C = T_cell - 273.15;
+  T_plate_C = T_plate - 273.15;
+
+  annotation(experiment(StartTime = 0, StopTime = 600, Interval = 2));
+end EVBatteryPackCooling800V;`,
+  },
+  {
+    id: "modelica-orbital-satellite",
+    title: "LEO Satellite ADCS & Eclipse Thermal",
+    category: "Aerospace & Orbital",
+    domain: "Systems & Controls",
+    description:
+      "Low-Earth-Orbit (LEO) spacecraft combining reaction-wheel attitude slew control (ADCS), wheel momentum exchange, and sunlit-to-eclipse radiative thermal balance.",
+    tags: ["VR", "Modelica", "Satellite", "ADCS", "Reaction Wheel", "Orbital", "Thermal"],
+    lang: "modelica",
+    code: `model OrbitalSatelliteADCS "LEO spacecraft reaction-wheel ADCS slew & solar eclipse thermal balance"
+  parameter Real I_sc = 42.0 "Spacecraft bus moment of inertia (kg*m2)";
+  parameter Real I_rw = 0.035 "Reaction wheel rotor inertia (kg*m2)";
+  parameter Real theta_cmd = 0.5236 "Target attitude slew angle (rad, 30 deg)";
+  parameter Real Kp_adcs = 6.4 "ADCS attitude proportional gain (N*m/rad)";
+  parameter Real Kd_adcs = 14.5 "ADCS angular rate derivative gain (N*m*s/rad)";
+  parameter Real tau_rw_max = 0.25 "Reaction wheel peak torque limit (N*m)";
+  parameter Real T_orbit = 5400.0 "LEO orbital period (s, 90 min)";
+  parameter Real S_solar = 1361.0 "AM0 solar constant (W/m2)";
+  parameter Real A_panel = 2.4 "Projected solar wing area (m2)";
+  parameter Real alpha_s = 0.72 "Solar absorptivity";
+  parameter Real eps_ir = 0.82 "Radiator infrared emissivity";
+  parameter Real A_rad = 1.6 "Thermal radiator louver area (m2)";
+  parameter Real sigma_sb = 5.670374e-8 "Stefan-Boltzmann constant (W/(m2*K4))";
+  parameter Real C_bus = 38000.0 "Spacecraft thermal capacitance (J/K)";
+  parameter Real Q_avionics = 185.0 "Internal payload & ADCS heat load (W)";
+
+  Real theta(start = 0.0) "Spacecraft attitude angle (rad)";
+  Real omega_sc(start = 0.0) "Spacecraft angular rate (rad/s)";
+  Real omega_rw(start = 0.0) "Reaction wheel angular speed (rad/s)";
+  Real T_bus(start = 295.0) "Spacecraft bus temperature (K)";
+
+  Real tau_cmd "Unclamped PD attitude torque command (N*m)";
+  Real tau_rw "Reaction wheel applied torque (N*m)";
+  Real sunlight "Orbital solar illumination factor (1=sunlit, 0=eclipse)";
+  Real Q_solar "Absorbed solar flux (W)";
+  Real Q_rad "Deep-space infrared radiation (W)";
+  Real theta_deg "Spacecraft pointing angle (deg)";
+  Real rpm_rw "Reaction wheel speed (rpm)";
+  Real T_bus_C "Spacecraft bus temperature (degC)";
+equation
+  tau_cmd = Kp_adcs * (theta_cmd - theta) - Kd_adcs * omega_sc;
+  tau_rw = if tau_cmd > tau_rw_max then tau_rw_max else (if tau_cmd < -tau_rw_max then -tau_rw_max else tau_cmd);
+
+  der(theta) = omega_sc;
+  I_sc * der(omega_sc) = tau_rw - 0.002 * omega_sc;
+  I_rw * der(omega_rw) = -tau_rw - 1.0e-5 * omega_rw;
+
+  sunlight = if sin(2.0 * 3.14159265 * time / T_orbit) > -0.35 then 1.0 else 0.0;
+  Q_solar = sunlight * alpha_s * S_solar * A_panel * 0.28;
+  Q_rad = eps_ir * sigma_sb * A_rad * T_bus * T_bus * T_bus * T_bus;
+  C_bus * der(T_bus) = Q_solar + Q_avionics - Q_rad;
+
+  theta_deg = theta * 57.2957795;
+  rpm_rw = omega_rw * 9.54929659;
+  T_bus_C = T_bus - 273.15;
+
+  annotation(experiment(StartTime = 0, StopTime = 5400, Interval = 10));
+end OrbitalSatelliteADCS;`,
   },
   ...EXTENDED_LANGUAGE_EXAMPLES,
 ];

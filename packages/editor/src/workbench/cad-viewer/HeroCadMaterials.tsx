@@ -413,11 +413,12 @@ export const StencilSectionCapQuad: React.FC<{
 
   const zAxis = useMemo(() => new THREE.Vector3(0, 0, 1), []);
   const targetCenter = useMemo(() => new THREE.Vector3(...center), [center]);
+  const projectedRef = useRef(new THREE.Vector3());
 
   useFrame(() => {
     if (!meshRef.current) return;
     // Project `targetCenter` onto `plane` so the finite cap quad always covers the clipped assembly
-    const projected = plane.projectPoint(targetCenter, new THREE.Vector3());
+    const projected = plane.projectPoint(targetCenter, projectedRef.current);
     meshRef.current.position.copy(projected);
     meshRef.current.quaternion.setFromUnitVectors(zAxis, plane.normal);
   });

@@ -158,6 +158,24 @@ export async function didChange(uri: string, text: string): Promise<void> {
   });
 }
 
+/** Notify the LSP that a document was saved. */
+export async function didSave(uri: string, text?: string): Promise<void> {
+  const existing = openedDocuments.get(uri);
+  const langId = existing?.languageId ?? inferLanguageIdFromUri(uri);
+  if (text !== undefined) {
+    if (existing) {
+      openedDocuments.set(uri, { ...existing, text });
+    } else {
+      openedDocuments.set(uri, { text, languageId: langId ?? "modelica" });
+    }
+  }
+  const c = await lsp(langId);
+  c.sendNotification("textDocument/didSave", {
+    textDocument: { uri },
+    ...(text !== undefined ? { text } : {}),
+  });
+}
+
 /** Notify the LSP that a document was closed. */
 export function didClose(uri: string): void {
   openedDocuments.delete(uri);
@@ -344,10 +362,25 @@ export async function simulate(uri: string, params: SimulateParams = {}): Promis
   const opened = openedDocuments.get(uri);
   const isPscad = /\.(pscx|pslx|pswx|psmx)$/i.test(uri) || opened?.languageId === "pscad";
 
+  let effectiveClassName = params.className;
+  if (!effectiveClassName && !isPscad) {
+    if (hasActiveLspTransport()) {
+      try {
+        const listed = await listClasses();
+        const matchingClass = listed?.classes?.find((cls) => cls.uri === uri);
+        if (matchingClass?.name) {
+          effectiveClassName = matchingClass.name;
+        }
+      } catch {
+        // Fall back to local class name extraction
+      }
+    }
+    if (!effectiveClassName && opened?.text) {
+      effectiveClassName = extractPrimaryModelicaClassName(opened.text) ?? undefined;
+    }
+  }
+
   const conn = await lsp();
-  const effectiveClassName =
-    params.className ||
-    (!isPscad && opened?.text ? (extractPrimaryModelicaClassName(opened.text) ?? undefined) : undefined);
   const reqParams = { uri, ...params, className: effectiveClassName };
 
   let res: SimulateResult = await conn.sendRequest("modelscript/simulate", reqParams);
@@ -370,6 +403,40 @@ export async function simulate(uri: string, params: SimulateParams = {}): Promis
 
 export async function calibrate(uri: string, params: Omit<CalibrateParams, "uri">): Promise<CalibrateResult> {
   return (await lsp()).sendRequest("modelscript/calibrate", { uri, ...params });
+}
+
+export async function computeWritebackEdit(params: {
+  documentUri?: string | undefined;
+  target: string;
+  newValue: string;
+}): Promise<{
+  success: boolean;
+  workspaceEdit?:
+    | {
+        changes?: Record<
+          string,
+          Array<{
+            range: { start: { line: number; character: number }; end: { line: number; character: number } };
+            newText: string;
+          }>
+        >;
+      }
+    | undefined;
+  error?: string | undefined;
+}> {
+  return (await lsp()).sendRequest("modelscript/computeWritebackEdit", params);
+}
+
+export async function getModelParameters(
+  uri: string,
+  className?: string,
+): Promise<{
+  parameters: string[];
+  parameterValues?: Record<string, number> | undefined;
+  variables?: string[] | undefined;
+  error?: string | undefined;
+}> {
+  return (await lsp()).sendRequest("modelscript/getParameters", { uri, className });
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -563,6 +630,31 @@ export async function getCadComponents(
   });
 }
 
+export interface ApplyCadEditParams {
+  uri: string;
+  documentText?: string | undefined;
+  languageId?: string | undefined;
+  kind: "gizmo" | "dimension" | "face_tag" | "assembly_joint";
+  payload: Record<string, unknown>;
+}
+
+export interface ApplyCadEditResult {
+  applied: boolean;
+  updatedSource?: string | undefined;
+  replacedRange?: { startOffset: number; endOffset: number } | undefined;
+  newText?: string | undefined;
+  locked?: boolean | undefined;
+  lockReason?: string | undefined;
+  error?: string | undefined;
+}
+
+export async function applyCadEditInMorsel(params: ApplyCadEditParams): Promise<ApplyCadEditResult> {
+  return (await lsp(params.languageId ?? inferLanguageIdFromUri(params.uri))).sendRequest(
+    "modelscript/applyCadEdit",
+    params,
+  );
+}
+
 export interface DiagramPreviewRequestItem {
   id: string;
   className?: string | undefined;
@@ -650,6 +742,17 @@ export async function getCodeActionsInLsp(
 
 export async function getDocumentSymbols(uri: string): Promise<any[]> {
   return (await lsp()).sendRequest("textDocument/documentSymbol", { textDocument: { uri } });
+}
+
+export async function getWorkspaceSymbols(query: string): Promise<unknown[]> {
+  const res = await (await lsp()).sendRequest<unknown[] | null>("workspace/symbol", { query });
+  return Array.isArray(res) ? res : [];
+}
+
+export async function updateLspSettings(settings: Record<string, unknown>): Promise<void> {
+  const c = await lsp();
+  c.sendNotification("workspace/didChangeConfiguration", { settings });
+  c.sendNotification("modelscript/updateSettings", settings);
 }
 
 export interface MountedLibraryEntry {
@@ -1310,4 +1413,173 @@ export async function runFormalLints(
     includeFormal: options?.includeFormal ?? true,
     includeCompilerLints: options?.includeCompilerLints ?? true,
   });
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Domain Analysis, Requirements, Actions, REPL & Ontology RPCs
+// ────────────────────────────────────────────────────────────────────
+
+export interface MorselBltAnalysisResult {
+  variables?: unknown[] | undefined;
+  equations?: unknown[] | undefined;
+  blocks?: unknown[] | undefined;
+  error?: string | undefined;
+  [key: string]: unknown;
+}
+
+export interface MorselOptimizeModelResult {
+  success?: boolean | undefined;
+  status?: string | undefined;
+  objectiveValue?: number | undefined;
+  parameters?: Record<string, number> | undefined;
+  messages?: string | undefined;
+  error?: string | undefined;
+  [key: string]: unknown;
+}
+
+export interface MorselMonteCarloResult {
+  success?: boolean | undefined;
+  numSamples?: number | undefined;
+  statistics?: Record<string, unknown> | undefined;
+  samples?: unknown[] | undefined;
+  error?: string | undefined;
+  [key: string]: unknown;
+}
+
+export interface MorselTrainSurrogateResult {
+  success: boolean;
+  metrics?: { trainMSE: number; valMSE: number; r2: number } | undefined;
+  inputNames?: string[] | undefined;
+  outputNames?: string[] | undefined;
+  architecture?: string | undefined;
+  wasmC?: string | undefined;
+  modelDescriptionXml?: string | undefined;
+  emccFlags?: string[] | undefined;
+  exportedFunctions?: string[] | undefined;
+  error?: string | undefined;
+  [key: string]: unknown;
+}
+
+export interface MorselRequirementItem {
+  id?: string | undefined;
+  name?: string | undefined;
+  text?: string | undefined;
+  status?: string | undefined;
+  uri?: string | undefined;
+  [key: string]: unknown;
+}
+
+export interface MorselRtmMatrixResult {
+  rowDomain?: string | undefined;
+  colDomain?: string | undefined;
+  rows: unknown[];
+  cols: unknown[];
+  links: Record<string, unknown>;
+  analytics?: Record<string, unknown> | undefined;
+  [key: string]: unknown;
+}
+
+export interface MorselContractHierarchyResult {
+  contracts?: unknown[] | undefined;
+  root?: unknown | undefined;
+  error?: string | undefined;
+  [key: string]: unknown;
+}
+
+export interface MorselLspActionInfo {
+  id: string;
+  languageId: string;
+  command: string;
+  title?: string | undefined;
+  description?: string | undefined;
+  category?: string | undefined;
+  inputs?: unknown[] | undefined;
+  output?: unknown | undefined;
+  ui?: unknown | undefined;
+  [key: string]: unknown;
+}
+
+export interface MorselReplEvaluateResult {
+  status: "ok" | "error" | "incomplete" | string;
+  result?: unknown | undefined;
+  output?: string | undefined;
+  error?: string | undefined;
+  [key: string]: unknown;
+}
+
+export interface MorselOwl2ClassNode {
+  iri?: string | undefined;
+  label?: string | undefined;
+  children?: MorselOwl2ClassNode[] | undefined;
+  [key: string]: unknown;
+}
+
+export async function analyzeBltInMorsel(uri: string, className?: string): Promise<MorselBltAnalysisResult | null> {
+  const c = await lsp(inferLanguageIdFromUri(uri));
+  return c.sendRequest<MorselBltAnalysisResult | null>("modelscript/analyzeBlt", {
+    uri,
+    ...(className !== undefined ? { className } : {}),
+  });
+}
+
+export async function optimizeModelInMorsel(params: Record<string, unknown>): Promise<MorselOptimizeModelResult> {
+  const uri = typeof params.uri === "string" ? params.uri : undefined;
+  const c = await lsp(inferLanguageIdFromUri(uri));
+  return c.sendRequest<MorselOptimizeModelResult>("modelscript/optimizeModel", params);
+}
+
+export async function runMonteCarloInMorsel(params: Record<string, unknown>): Promise<MorselMonteCarloResult> {
+  const uri = typeof params.uri === "string" ? params.uri : undefined;
+  const c = await lsp(inferLanguageIdFromUri(uri));
+  return c.sendRequest<MorselMonteCarloResult>("modelscript/montecarlo", params);
+}
+
+export async function trainSurrogateInMorsel(params: Record<string, unknown>): Promise<MorselTrainSurrogateResult> {
+  const uri = typeof params.uri === "string" ? params.uri : undefined;
+  const c = await lsp(inferLanguageIdFromUri(uri));
+  return c.sendRequest<MorselTrainSurrogateResult>("modelscript/trainSurrogate", params);
+}
+
+export async function getRequirementsInMorsel(uri?: string): Promise<MorselRequirementItem[]> {
+  const c = await lsp(inferLanguageIdFromUri(uri));
+  const res = await c.sendRequest<MorselRequirementItem[] | null>("modelscript/getRequirements", {
+    uri: uri ?? "",
+  });
+  return Array.isArray(res) ? res : [];
+}
+
+export async function getRtmMatrixInMorsel(params?: Record<string, unknown>): Promise<MorselRtmMatrixResult> {
+  const uri = typeof params?.uri === "string" ? params.uri : undefined;
+  const c = await lsp(inferLanguageIdFromUri(uri));
+  return c.sendRequest<MorselRtmMatrixResult>("modelscript/getRtmMatrix", params ?? {});
+}
+
+export async function getContractHierarchyInMorsel(uri?: string): Promise<MorselContractHierarchyResult | null> {
+  const c = await lsp(inferLanguageIdFromUri(uri));
+  return c.sendRequest<MorselContractHierarchyResult | null>("modelscript/getContractHierarchy", {
+    ...(uri !== undefined ? { uri } : {}),
+  });
+}
+
+export async function listLspActionsInMorsel(uri?: string, languageId?: string): Promise<MorselLspActionInfo[]> {
+  const c = await lsp(languageId ?? inferLanguageIdFromUri(uri));
+  const res = await c.sendRequest<MorselLspActionInfo[] | null>("modelscript/listActions", {
+    ...(uri !== undefined ? { uri } : {}),
+    ...(languageId !== undefined ? { languageId } : {}),
+  });
+  return Array.isArray(res) ? res : [];
+}
+
+export async function evaluateReplInMorsel(code: string, uri?: string): Promise<MorselReplEvaluateResult> {
+  const c = await lsp(inferLanguageIdFromUri(uri));
+  return c.sendRequest<MorselReplEvaluateResult>("modelscript/repl/evaluate", {
+    input: code,
+    ...(uri !== undefined ? { uri } : {}),
+  });
+}
+
+export async function getOwl2ClassHierarchyInMorsel(uri: string): Promise<MorselOwl2ClassNode[]> {
+  const c = await lsp(inferLanguageIdFromUri(uri) ?? "owl2");
+  const res = await c.sendRequest<MorselOwl2ClassNode[] | null>("modelscript/owl2/classHierarchy", { uri });
+  return Array.isArray(res) ? res : [];
 }

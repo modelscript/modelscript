@@ -1,6 +1,6 @@
 ---
 title: Linter Rules Reference
-description: Every diagnostic rule ModelScript ships — 2384 rules across 148 languages, with codes, severities and message templates generated from the source.
+description: Every diagnostic rule ModelScript ships — 2392 rules across 149 languages, with codes, severities and message templates generated from the source.
 outline: [2, 2]
 pageClass: lint-reference
 ---
@@ -9,7 +9,7 @@ pageClass: lint-reference
 
 # Linter Rules Reference
 
-ModelScript ships **2384 diagnostic rules** across **148 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
+ModelScript ships **2392 diagnostic rules** across **149 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
 
 ## Running the linters
 
@@ -51,6 +51,7 @@ The **CLI** column below shows which command reports each language's rules.
 | [NASA ROCETS](#rocets)                    | `@modelscript/rocets`       |    14 | `msx lint`              |
 | [CCSDS](#ccsds)                           | `@modelscript/ccsds`        |     8 | `msx ccsds lint`        |
 | [EASY5](#easy5)                           | `@modelscript/easy5`        |    12 | `msx lint`              |
+| [20-sim](#twentysim)                      | `@modelscript/twentysim`    |     8 | `msx twentysim lint`    |
 | [AUTOSAR](#autosar)                       | `@modelscript/autosar`      |    15 | `msx autosar lint`      |
 | [MATLAB Simulink](#simulink)              | `@modelscript/simulink`     |    10 | `msx simulink lint`     |
 | [GT-SUITE](#gtsuite)                      | `@modelscript/gtsuite`      |    15 | `msx lint`              |
@@ -1064,6 +1065,21 @@ Dynamic simulation & linear control. **12 rules** · `@modelscript/easy5` · Sou
 | <span id="easy5-m7010"></span>`M7010` | `user-fortran-syntax-error`  | <Badge type="danger" text="error" />    | User Fortran subroutine in '<code>&lt;comp&gt;</code>' has defect: <code>&lt;detail&gt;</code>                                                                                    |
 | <span id="easy5-m7011"></span>`M7011` | `unstable-linear-pole`       | <Badge type="warning" text="warning" /> | Component '<code>&lt;comp&gt;</code>' has open-loop pole in right-half plane (Re = +<code>&lt;value&gt;</code>), indicating open-loop instability.                                |
 | <span id="easy5-m7012"></span>`M7012` | `table-extrapolation-hazard` | <Badge type="warning" text="warning" /> | Component '<code>&lt;comp&gt;</code>' references table '<code>&lt;tableName&gt;</code>' without bounded extrapolation protection.                                                 |
+
+## 20-sim {#twentysim}
+
+Multi-domain Bond Graphs & SIDOPS simulation. **8 rules** · `@modelscript/twentysim` · Source: `languages/twentysim/src/errors.ts` · [Language guide](../languages/twentysim.md)
+
+| Code                                      | Rule                   | Severity                                | Message                                                                                                                                        |
+| :---------------------------------------- | :--------------------- | :-------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="twentysim-m1001"></span>`M1001` | `syntax-error`         | <Badge type="danger" text="error" />    | 20-sim syntax error: <code>&lt;detail&gt;</code>.                                                                                              |
+| <span id="twentysim-m2001"></span>`M2001` | `unresolved-reference` | <Badge type="danger" text="error" />    | Unresolved submodel or port reference '<code>&lt;ref&gt;</code>' in connection.                                                                |
+| <span id="twentysim-m2002"></span>`M2002` | `duplicate-submodel`   | <Badge type="danger" text="error" />    | Duplicate submodel declaration '<code>&lt;name&gt;</code>' in current scope.                                                                   |
+| <span id="twentysim-m3001"></span>`M3001` | `port-kind-mismatch`   | <Badge type="danger" text="error" />    | Port kind mismatch between '<code>&lt;fromRef&gt;</code>' and '<code>&lt;toRef&gt;</code>' (cannot connect power bond port to signal port).    |
+| <span id="twentysim-m4001"></span>`M4001` | `causality-conflict`   | <Badge type="danger" text="error" />    | SCAP causality conflict at '<code>&lt;node&gt;</code>': <code>&lt;detail&gt;</code>.                                                           |
+| <span id="twentysim-m4002"></span>`M4002` | `derivative-causality` | <Badge type="warning" text="warning" /> | Storage element '<code>&lt;element&gt;</code>' (<code>&lt;kind&gt;</code>) assigned derivative causality (dependent state / index &gt; 1 DAE). |
+| <span id="twentysim-m4003"></span>`M4003` | `algebraic-loop`       | <Badge type="warning" text="warning" /> | Algebraic loop detected in causal signal graph: <code>&lt;cycle&gt;</code>.                                                                    |
+| <span id="twentysim-m5001"></span>`M5001` | `unconnected-port`     | <Badge type="warning" text="warning" /> | Power port '<code>&lt;element&gt;</code>.<code>&lt;port&gt;</code>' is unconnected.                                                            |
 
 ## AUTOSAR {#autosar}
 

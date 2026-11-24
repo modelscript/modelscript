@@ -31,16 +31,16 @@
       "default": "./dist/dae/wasm_dae.js"
     },
     "./dae-printer": {
-      "types": "./dist/dae/wasm_dae_printer.d.ts",
-      "default": "./dist/dae/wasm_dae_printer.js"
+      "types": "./dist/dae/dae_printer.d.ts",
+      "default": "./dist/dae/dae_printer.js"
     },
     "./workspace": {
-      "types": "./dist/workspace/wasm_workspace.d.ts",
-      "default": "./dist/workspace/wasm_workspace.js"
+      "types": "./dist/workspace/workspace.d.ts",
+      "default": "./dist/workspace/workspace.js"
     },
     "./query-engine": {
-      "types": "./dist/workspace/wasm_query_engine.d.ts",
-      "default": "./dist/workspace/wasm_query_engine.js"
+      "types": "./dist/workspace/query_engine.d.ts",
+      "default": "./dist/workspace/query_engine.js"
     },
     "./solvers": {
       "types": "./dist/solvers/solvers_bridge.d.ts",
@@ -67,8 +67,8 @@
       "default": "./dist/dae/wasm_dae.js"
     },
     "./wasm_dae_printer.js": {
-      "types": "./dist/dae/wasm_dae_printer.d.ts",
-      "default": "./dist/dae/wasm_dae_printer.js"
+      "types": "./dist/dae/dae_printer.d.ts",
+      "default": "./dist/dae/dae_printer.js"
     },
     "./wasm_evaluator.js": {
       "types": "./dist/dae/wasm_evaluator.d.ts",
@@ -107,24 +107,24 @@
       "default": "./dist/analysis/octagon_dbm.js"
     },
     "./wasm_workspace.js": {
-      "types": "./dist/workspace/wasm_workspace.d.ts",
-      "default": "./dist/workspace/wasm_workspace.js"
+      "types": "./dist/workspace/workspace.d.ts",
+      "default": "./dist/workspace/workspace.js"
     },
     "./wasm_query_engine.js": {
-      "types": "./dist/workspace/wasm_query_engine.d.ts",
-      "default": "./dist/workspace/wasm_query_engine.js"
+      "types": "./dist/workspace/query_engine.d.ts",
+      "default": "./dist/workspace/query_engine.js"
     },
     "./wasm_cache_store.js": {
-      "types": "./dist/workspace/wasm_cache_store.d.ts",
-      "default": "./dist/workspace/wasm_cache_store.js"
+      "types": "./dist/workspace/cache_store.d.ts",
+      "default": "./dist/workspace/cache_store.js"
     },
     "./wasm_string_pool.js": {
       "types": "./dist/workspace/wasm_string_pool.d.ts",
       "default": "./dist/workspace/wasm_string_pool.js"
     },
     "./wasm_container.js": {
-      "types": "./dist/workspace/wasm_container.d.ts",
-      "default": "./dist/workspace/wasm_container.js"
+      "types": "./dist/workspace/container.d.ts",
+      "default": "./dist/workspace/container.js"
     },
     "./wasm_bdf.js": {
       "types": "./dist/solvers/wasm_bdf.d.ts",
@@ -167,8 +167,8 @@
       "default": "./dist/autodiff/wasm_isolation.js"
     },
     "./wasm_fused_kernel.js": {
-      "types": "./dist/autodiff/wasm_fused_kernel.d.ts",
-      "default": "./dist/autodiff/wasm_fused_kernel.js"
+      "types": "./dist/autodiff/fused_kernel.d.ts",
+      "default": "./dist/autodiff/fused_kernel.js"
     },
     "./wasm_ontology.js": {
       "types": "./dist/ontology/wasm_ontology.d.ts",
@@ -183,16 +183,16 @@
       "default": "./dist/statemachine/wasm_rtc_statemachine.js"
     },
     "./wasm_fuml_engine.js": {
-      "types": "./dist/statemachine/wasm_fuml_engine.d.ts",
-      "default": "./dist/statemachine/wasm_fuml_engine.js"
+      "types": "./dist/statemachine/fuml_engine.d.ts",
+      "default": "./dist/statemachine/fuml_engine.js"
     },
     "./wasm_cosim.js": {
       "types": "./dist/simulation/wasm_cosim.d.ts",
       "default": "./dist/simulation/wasm_cosim.js"
     },
     "./wasm_fmu_subsystem.js": {
-      "types": "./dist/simulation/wasm_fmu_subsystem.d.ts",
-      "default": "./dist/simulation/wasm_fmu_subsystem.js"
+      "types": "./dist/simulation/fmu_subsystem.d.ts",
+      "default": "./dist/simulation/fmu_subsystem.js"
     },
     "./wasm_verifier.js": {
       "types": "./dist/simulation/wasm_verifier.d.ts",
@@ -293,6 +293,7 @@
     "asbuild": "node scripts/build-as.js",
     "asbuild:debug": "asc assembly/index.ts --target debug",
     "asbuild:force": "node scripts/build-as.js --force",
+    "asbuild:native": "asc assembly/index.ts --target native",
     "asbuild:release": "asc assembly/index.ts --target release",
     "benchmark:scale": "tsx tests/benchmark-dae-scale.ts",
     "build": "npm run asbuild && tsc",

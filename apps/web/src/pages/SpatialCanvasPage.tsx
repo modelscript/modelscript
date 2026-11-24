@@ -5,6 +5,7 @@ import {
   CanvasIndexedDbCache,
   CanvasWebSocketClient,
   createCanonicalPolyglotDemoBoard,
+  deserializeCanvasDocument,
   exportCanvasToSspXml,
   exportCanvasToSvg,
   propagateParameterEdit,
@@ -18,14 +19,200 @@ import {
   type SurfacePresentationMode,
   type TileLodTier,
 } from "@modelscript/canvas";
+import {
+  getRotundaScenarioById,
+  ROTUNDA_SHOWCASE_SCENARIOS,
+} from "@modelscript/editor/workbench/vr-rotunda/showcase-catalog.js";
+import { buildRotundaCanvasDocument } from "@modelscript/editor/workbench/vr-rotunda/types.js";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useLocation, useParams, useSearchParams } from "react-router-dom";
 import { renderLiveWebTileContent } from "../components/canvas/LivePolyglotTileRenderer";
 import { SharedScissor3DHost } from "../components/canvas/SharedScissor3DHost";
-import { SpatialVrSurface } from "../components/canvas/SpatialVrSurface";
+import {
+  SpatialVrSurface,
+  type RotundaEnvironmentId,
+  type RotundaScenarioPreset,
+} from "../components/canvas/SpatialVrSurface";
+import { parseModelicaParameters } from "../util/modelica-params";
+
+const VALID_ROTUNDA_ENVIRONMENTS: readonly RotundaEnvironmentId[] = [
+  "warehouse",
+  "office",
+  "outdoors",
+  "dark-lab",
+  "passthrough",
+];
+
+const DEFAULT_SHOWCASE_SCENARIO_ID = "all-showcase";
+const VR_HANDOFF_CHANNEL_NAME = "modelscript-vr-handoff";
+const MAX_VR_BOARD_HASH_CHARS = 2 * 1024 * 1024;
+
+function resolveShowcaseScenario(rawId: string | null | undefined): RotundaScenarioPreset | undefined {
+  return (
+    getRotundaScenarioById(rawId) ??
+    getRotundaScenarioById(DEFAULT_SHOWCASE_SCENARIO_ID) ??
+    ROTUNDA_SHOWCASE_SCENARIOS[0]
+  );
+}
 
 function generatePeerId(): string {
   return `web_${crypto.randomUUID().slice(0, 8)}`;
+}
+
+function parseSurfaceModeParam(raw: string | null): SurfacePresentationMode {
+  const normalized = raw?.trim().toLowerCase();
+  if (normalized === "webxr-vr") return "webxr-vr";
+  if (normalized === "spatial-3d") return "spatial-3d";
+  return "desktop-2d";
+}
+
+function tryParseRotundaEnvironmentParam(raw: unknown): RotundaEnvironmentId | null {
+  if (typeof raw === "string") {
+    const normalized = raw.trim().toLowerCase();
+    for (const env of VALID_ROTUNDA_ENVIRONMENTS) {
+      if (normalized === env) {
+        return env;
+      }
+    }
+  }
+  return null;
+}
+
+function resolveCanvasSessionState(params: {
+  boardId: string | undefined;
+  vrHandoffBoard: CanvasDocument | null;
+  handoffId: string | null;
+  handoffEnvironment: RotundaEnvironmentId | null;
+  scenarioOverrideActive: boolean;
+  activeScenarioId: string;
+  scenarioEnvironmentOverride: RotundaEnvironmentId | null;
+  envParam: string | null;
+}): {
+  isVrHandoffBoard: boolean;
+  isHandoffActive: boolean;
+  activeScenario: RotundaScenarioPreset | undefined;
+  initialEnvironment: RotundaEnvironmentId;
+  activeBoardId: string;
+} {
+  const isVrHandoffBoard = params.vrHandoffBoard !== null;
+  const isHandoffActive = !params.scenarioOverrideActive && (isVrHandoffBoard || params.handoffId !== null);
+  const activeScenario = resolveShowcaseScenario(params.activeScenarioId);
+  const explicitEnvParam = tryParseRotundaEnvironmentParam(params.envParam);
+  const initialEnvironment: RotundaEnvironmentId =
+    params.handoffEnvironment ??
+    (!isHandoffActive && params.scenarioEnvironmentOverride ? params.scenarioEnvironmentOverride : null) ??
+    explicitEnvParam ??
+    (!isHandoffActive && activeScenario ? activeScenario.recommendedEnvironment : null) ??
+    "dark-lab";
+  const activeBoardId =
+    params.boardId ||
+    params.vrHandoffBoard?.id ||
+    (!isHandoffActive && activeScenario && activeScenario.id !== DEFAULT_SHOWCASE_SCENARIO_ID
+      ? `scenario-${activeScenario.id}`
+      : "demo-polyglot-actuator");
+  return {
+    isVrHandoffBoard,
+    isHandoffActive,
+    activeScenario,
+    initialEnvironment,
+    activeBoardId,
+  };
+}
+
+function resolveBroadcastHandoffDocument(msg: Record<string, unknown>): CanvasDocument | null {
+  const boardJson = typeof msg["boardJson"] === "string" ? msg["boardJson"].trim() : "";
+  if (boardJson.length > 0) {
+    try {
+      return deserializeCanvasDocument(boardJson);
+    } catch {
+      // Fall through to fileContent / synthesized board
+    }
+  }
+
+  const fileContent = typeof msg["fileContent"] === "string" ? msg["fileContent"] : "";
+  const trimmedFileContent = fileContent.trim();
+  if (trimmedFileContent.startsWith("{")) {
+    try {
+      return deserializeCanvasDocument(trimmedFileContent);
+    } catch {
+      // Not a .mscanvas JSON payload; synthesize a live Rotunda board below
+    }
+  }
+
+  const title = typeof msg["title"] === "string" && msg["title"].trim() ? msg["title"].trim() : "";
+  const languageId = typeof msg["languageId"] === "string" && msg["languageId"].trim() ? msg["languageId"].trim() : "";
+  const artifactUri =
+    typeof msg["artifactUri"] === "string" && msg["artifactUri"].trim() ? msg["artifactUri"].trim() : "";
+
+  if (!title && !languageId && !artifactUri && !trimmedFileContent) {
+    return null;
+  }
+
+  const parsedParams =
+    trimmedFileContent.length > 0
+      ? Object.entries(parseModelicaParameters(trimmedFileContent)).map(([name, value]) => ({ name, value }))
+      : [];
+
+  const synthesized = buildRotundaCanvasDocument({
+    title: title || artifactUri || "Local Engineering Model",
+    ...(languageId ? { languageId } : {}),
+    ...(artifactUri ? { artifactUri } : {}),
+    ...(parsedParams.length > 0 ? { parameters: parsedParams } : {}),
+  });
+
+  if (trimmedFileContent.length > 0 && synthesized.tiles["tile_primary_schematic"]) {
+    const schem = synthesized.tiles["tile_primary_schematic"];
+    synthesized.tiles["tile_primary_schematic"] = {
+      ...schem,
+      viewState: {
+        ...schem.viewState,
+        code: fileContent,
+      },
+    };
+  }
+
+  return synthesized;
+}
+
+function decodeUtf8Base64Url(encoded: string): string | null {
+  const trimmed = encoded.trim();
+  if (!trimmed || trimmed.length > MAX_VR_BOARD_HASH_CHARS) return null;
+  if (!/^[A-Za-z0-9\-_]+={0,2}$/.test(trimmed)) return null;
+
+  const base64 = trimmed.replace(/-/g, "+").replace(/_/g, "/");
+  const padLen = (4 - (base64.length % 4)) % 4;
+  const padded = base64 + "=".repeat(padLen);
+
+  try {
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+function decodeVrBoardFromHash(hash: string): CanvasDocument | null {
+  if (!hash) return null;
+  const hashIdx = hash.indexOf("#");
+  const fragment = (hashIdx >= 0 ? hash.slice(hashIdx + 1) : hash).trim();
+  if (!fragment) return null;
+
+  const params = new URLSearchParams(fragment);
+  const encoded = params.get("vrBoard");
+  if (!encoded) return null;
+
+  const json = decodeUtf8Base64Url(encoded);
+  if (!json) return null;
+
+  try {
+    return deserializeCanvasDocument(json);
+  } catch {
+    return null;
+  }
 }
 
 function extractHydratedDiagramData(payload: unknown): Record<string, unknown> | null {
@@ -69,28 +256,190 @@ function isEditableKeyboardTarget(target: EventTarget | null): boolean {
  * Full-screen Polyglot Infinite Spatial Canvas page (`/canvas` and `/canvas/:boardId`).
  * Connects to `/api/v1/canvas/stream` for real-time CRDT multiplayer sync while
  * persisting edits offline in IndexedDB for instant local-first resilience.
+ * Supports direct VR Rotunda launch via `?mode=webxr-vr|spatial-3d`, `?env=...`,
+ * and VS Code for Web `#vrBoard=<base64url>` board handoff.
  */
 export default function SpatialCanvasPage(): React.ReactElement {
   const { boardId } = useParams<{ boardId?: string }>();
-  const activeBoardId = boardId || "demo-polyglot-actuator";
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
 
+  const { initialHash, modeParam, envParam, scenarioParam, handoffId } = useMemo(() => {
+    const hash = location.hash || (typeof window !== "undefined" ? window.location.hash : "");
+    return {
+      initialHash: hash,
+      modeParam: searchParams.get("mode"),
+      envParam: searchParams.get("env"),
+      scenarioParam: searchParams.get("scenario"),
+      handoffId: searchParams.get("handoffId")?.trim() || null,
+    };
+  }, [location.hash, searchParams]);
+
+  const [handoffEnvironment, setHandoffEnvironment] = useState<RotundaEnvironmentId | null>(null);
+  const [handoffTitle, setHandoffTitle] = useState<string | null>(null);
   const [peerId] = useState<string>(generatePeerId);
   const [cache] = useState<CanvasIndexedDbCache>(() => new CanvasIndexedDbCache());
-  const [store] = useState<CanvasCrdtStore>(() => new CanvasCrdtStore(peerId, createCanonicalPolyglotDemoBoard()));
-
+  const [vrHandoffBoard, setVrHandoffBoard] = useState<CanvasDocument | null>(() => decodeVrBoardFromHash(initialHash));
+  const [scenarioOverrideActive, setScenarioOverrideActive] = useState<boolean>(false);
+  const [activeScenarioId, setActiveScenarioId] = useState<string>(
+    () => resolveShowcaseScenario(scenarioParam)?.id ?? DEFAULT_SHOWCASE_SCENARIO_ID,
+  );
+  const [scenarioEnvironmentOverride, setScenarioEnvironmentOverride] = useState<RotundaEnvironmentId | null>(null);
+  const [store, setStore] = useState<CanvasCrdtStore>(() => {
+    if (vrHandoffBoard) {
+      return new CanvasCrdtStore(peerId, vrHandoffBoard);
+    }
+    const initialScenario = handoffId === null ? resolveShowcaseScenario(scenarioParam) : undefined;
+    return new CanvasCrdtStore(peerId, initialScenario?.createDocument() ?? createCanonicalPolyglotDemoBoard());
+  });
   const [doc, setDoc] = useState<CanvasDocument>(() => store.toDocument());
   const [peers, setPeers] = useState<CanvasPeerPresence[]>([]);
   const [connected, setConnected] = useState(false);
   const [canUndo, setCanUndo] = useState<boolean>(() => store.canUndo());
   const [canRedo, setCanRedo] = useState<boolean>(() => store.canRedo());
-  const [surfaceMode, setSurfaceMode] = useState<SurfacePresentationMode>("desktop-2d");
+  const [surfaceMode, setSurfaceMode] = useState<SurfacePresentationMode>(() => parseSurfaceModeParam(modeParam));
   const [simulationTime, setSimulationTime] = useState<number>(0);
   const [highlightedRowIds, setHighlightedRowIds] = useState<string[]>([]);
   const [viewport, setViewport] = useState(() => ({
     width: typeof window !== "undefined" ? window.innerWidth : 1280,
     height: typeof window !== "undefined" ? Math.max(480, window.innerHeight - 48) : 800,
   }));
+
   const hydratedSchematicsRef = useRef<Set<string>>(new Set());
+  const prevModeParamRef = useRef<string | null>(modeParam);
+  const prevScenarioParamRef = useRef<string | null>(scenarioParam);
+  const lastAppliedHashRef = useRef<string>(initialHash);
+
+  const { isVrHandoffBoard, isHandoffActive, activeScenario, initialEnvironment, activeBoardId } =
+    resolveCanvasSessionState({
+      boardId,
+      vrHandoffBoard,
+      handoffId,
+      handoffEnvironment,
+      scenarioOverrideActive,
+      activeScenarioId,
+      scenarioEnvironmentOverride,
+      envParam,
+    });
+
+  useEffect(() => {
+    if (modeParam !== prevModeParamRef.current) {
+      prevModeParamRef.current = modeParam;
+      setSurfaceMode(parseSurfaceModeParam(modeParam));
+    }
+  }, [modeParam]);
+
+  const handleSelectScenario = useCallback(
+    (scenarioId: string) => {
+      const nextScenario = getRotundaScenarioById(scenarioId);
+      if (!nextScenario) return;
+      const nextDoc = nextScenario.createDocument();
+      const nextStore = new CanvasCrdtStore(peerId, nextDoc);
+      hydratedSchematicsRef.current.clear();
+      setScenarioOverrideActive(true);
+      setVrHandoffBoard(null);
+      setHandoffTitle(null);
+      setHandoffEnvironment(null);
+      setActiveScenarioId(nextScenario.id);
+      setScenarioEnvironmentOverride(nextScenario.recommendedEnvironment);
+      setStore(nextStore);
+      setDoc(nextStore.toDocument());
+      setCanUndo(nextStore.canUndo());
+      setCanRedo(nextStore.canRedo());
+    },
+    [peerId],
+  );
+
+  useEffect(() => {
+    if (scenarioParam !== prevScenarioParamRef.current) {
+      prevScenarioParamRef.current = scenarioParam;
+      if (!isHandoffActive) {
+        const nextScenario = resolveShowcaseScenario(scenarioParam);
+        if (nextScenario && nextScenario.id !== activeScenarioId) {
+          handleSelectScenario(nextScenario.id);
+        }
+      }
+    }
+  }, [scenarioParam, isHandoffActive, activeScenarioId, handleSelectScenario]);
+
+  const applyHandoffDocument = useCallback(
+    (decoded: CanvasDocument) => {
+      const nextStore = new CanvasCrdtStore(peerId, decoded);
+      hydratedSchematicsRef.current.clear();
+      setScenarioOverrideActive(false);
+      setScenarioEnvironmentOverride(null);
+      setVrHandoffBoard(decoded);
+      setStore(nextStore);
+      setDoc(nextStore.toDocument());
+      setPeers([]);
+      setConnected(false);
+      setCanUndo(nextStore.canUndo());
+      setCanRedo(nextStore.canRedo());
+    },
+    [peerId],
+  );
+
+  const applyVrBoardHash = useCallback(
+    (nextHash: string) => {
+      if (nextHash === lastAppliedHashRef.current) return;
+      lastAppliedHashRef.current = nextHash;
+      const decoded = decodeVrBoardFromHash(nextHash);
+      if (!decoded) return;
+      applyHandoffDocument(decoded);
+    },
+    [applyHandoffDocument],
+  );
+
+  useEffect(() => {
+    if (location.hash) {
+      applyVrBoardHash(location.hash);
+    }
+  }, [location.hash, applyVrBoardHash]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onHashChange = () => {
+      applyVrBoardHash(window.location.hash);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, [applyVrBoardHash]);
+
+  // Same-origin local-file BroadcastChannel relay for `?handoffId=<id>` launches (e.g., from VS Code for Web / Ansatz)
+  useEffect(() => {
+    if (!handoffId || typeof BroadcastChannel === "undefined") return;
+    const channel = new BroadcastChannel(VR_HANDOFF_CHANNEL_NAME);
+
+    const handleMessage = (event: MessageEvent<unknown>) => {
+      const data = event.data;
+      if (!data || typeof data !== "object") return;
+      const msg = data as Record<string, unknown>;
+      if (msg["type"] !== "vr-handoff-payload") return;
+      const msgHandoffId = typeof msg["handoffId"] === "string" ? msg["handoffId"].trim() : "";
+      if (msgHandoffId !== handoffId) return;
+
+      const nextDoc = resolveBroadcastHandoffDocument(msg);
+      if (!nextDoc) return;
+
+      const parsedEnv = tryParseRotundaEnvironmentParam(msg["environment"]);
+      if (parsedEnv) {
+        setHandoffEnvironment(parsedEnv);
+      }
+      if (typeof msg["title"] === "string" && msg["title"].trim()) {
+        setHandoffTitle(msg["title"].trim());
+      }
+      applyHandoffDocument(nextDoc);
+      setSurfaceMode((prev) => (prev === "desktop-2d" ? "spatial-3d" : prev));
+    };
+
+    channel.onmessage = handleMessage;
+    channel.postMessage({ type: "vr-handoff-request", handoffId });
+
+    return () => {
+      channel.onmessage = null;
+      channel.close();
+    };
+  }, [handoffId, applyHandoffDocument]);
 
   useEffect(() => {
     const onResize = () => {
@@ -104,20 +453,31 @@ export default function SpatialCanvasPage(): React.ReactElement {
   }, []);
 
   useEffect(() => {
-    // Hydrate offline IndexedDB snapshot if present
-    void cache.load(activeBoardId).then((cachedDelta) => {
-      if (cachedDelta) {
-        store.mergeDelta(cachedDelta);
-      }
-    });
+    const skipRemoteBoardSync = isHandoffActive;
+    // Hydrate offline IndexedDB snapshot if present (skip when landing from a fresh VS Code #vrBoard or ?handoffId= handoff)
+    if (!skipRemoteBoardSync) {
+      void cache.load(activeBoardId).then((cachedDelta) => {
+        if (cachedDelta) {
+          store.mergeDelta(cachedDelta);
+        }
+      });
+    }
 
     const unsub = store.onChange(() => {
       setDoc(store.toDocument());
       setPeers(store.getActivePeers());
       setCanUndo(store.canUndo());
       setCanRedo(store.canRedo());
-      void cache.save(activeBoardId, store.exportFullDelta());
+      if (!skipRemoteBoardSync) {
+        void cache.save(activeBoardId, store.exportFullDelta());
+      }
     });
+
+    if (skipRemoteBoardSync) {
+      return () => {
+        unsub();
+      };
+    }
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/api/v1/canvas/stream`;
@@ -134,7 +494,7 @@ export default function SpatialCanvasPage(): React.ReactElement {
       unsub();
       wsClient.dispose();
     };
-  }, [activeBoardId, cache, peerId, store]);
+  }, [activeBoardId, cache, isHandoffActive, peerId, store]);
 
   const schematicHydrationKey = useMemo(
     () =>
@@ -377,11 +737,15 @@ export default function SpatialCanvasPage(): React.ReactElement {
               padding: "2px 8px",
               borderRadius: 999,
               fontSize: 11,
-              backgroundColor: connected ? "#05966933" : "#47556933",
-              color: connected ? "#34d399" : "#94a3b8",
+              backgroundColor: connected ? "#05966933" : isVrHandoffBoard ? "#6366f133" : "#47556933",
+              color: connected ? "#34d399" : isVrHandoffBoard ? "#a5b4fc" : "#94a3b8",
             }}
           >
-            {connected ? `Live Multiplayer (${peers.length + 1} online)` : "Offline-First Local Mode"}
+            {connected
+              ? `Live Multiplayer (${peers.length + 1} online)`
+              : isVrHandoffBoard
+                ? "VR Handoff · Local Mode"
+                : "Offline-First Local Mode"}
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -455,6 +819,82 @@ export default function SpatialCanvasPage(): React.ReactElement {
           >
             Save .mscanvas
           </button>
+          <select
+            data-testid="canvas-scenario-select"
+            aria-label="Engineering Scenario"
+            title="Switch curated multi-physics VR & 2D engineering scenario"
+            value={isHandoffActive ? "" : activeScenarioId}
+            onChange={(e) => {
+              if (e.target.value) {
+                handleSelectScenario(e.target.value);
+              }
+            }}
+            style={{
+              padding: "4px 8px",
+              borderRadius: 6,
+              border: "1px solid #334155",
+              background: "#1e293b",
+              color: "#f8fafc",
+              fontSize: 12,
+              cursor: "pointer",
+              maxWidth: 195,
+            }}
+          >
+            {isHandoffActive && (
+              <option value="" disabled>
+                Custom VR Handoff
+              </option>
+            )}
+            {ROTUNDA_SHOWCASE_SCENARIOS.map((scenario) => (
+              <option key={scenario.id} value={scenario.id}>
+                {scenario.shortLabel}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            data-testid="canvas-vr-rotunda-toggle"
+            aria-pressed={surfaceMode !== "desktop-2d"}
+            onClick={() => setSurfaceMode((prev) => (prev === "desktop-2d" ? "spatial-3d" : "desktop-2d"))}
+            title={
+              surfaceMode === "desktop-2d" ? "Enter 3D / WebXR Engineering Rotunda" : "Return to 2D Spatial Canvas"
+            }
+            style={{
+              padding: "4px 11px",
+              borderRadius: 6,
+              border: surfaceMode !== "desktop-2d" ? "1px solid #38bdf8" : "1px solid rgba(99, 102, 241, 0.7)",
+              background:
+                surfaceMode !== "desktop-2d"
+                  ? "linear-gradient(135deg, #0284c7, #6366f1)"
+                  : "linear-gradient(135deg, rgba(99, 102, 241, 0.28), rgba(6, 182, 212, 0.24))",
+              color: "#f8fafc",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              boxShadow: surfaceMode !== "desktop-2d" ? "0 0 12px rgba(56, 189, 248, 0.35)" : "none",
+            }}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="2" y="7" width="20" height="10" rx="3" />
+              <path d="M9 17l1.5-2.5a1.8 1.8 0 0 1 3 0L15 17" />
+              <circle cx="8" cy="12" r="1.5" />
+              <circle cx="16" cy="12" r="1.5" />
+            </svg>
+            <span>VR Rotunda</span>
+          </button>
         </div>
       </header>
       <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
@@ -493,7 +933,19 @@ export default function SpatialCanvasPage(): React.ReactElement {
           <SpatialVrSurface
             document={doc}
             mode={surfaceMode}
+            initialEnvironment={initialEnvironment}
             simulationTime={simulationTime}
+            onSimulationTimeChange={setSimulationTime}
+            {...(!isHandoffActive && activeScenario
+              ? {
+                  models: activeScenario.models,
+                  scenarios: ROTUNDA_SHOWCASE_SCENARIOS,
+                  activeScenarioId,
+                  onSelectScenario: handleSelectScenario,
+                }
+              : {})}
+            peers={peers}
+            title={searchParams.get("title") || handoffTitle || doc.name}
             onExitTo2D={() => setSurfaceMode("desktop-2d")}
             onMoveTile={handleTileMove}
             onCreateSpatialWire={handleCreateSpatialWire}
