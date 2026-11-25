@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { DdpPackager, type DdpArtifactDescriptor, type DdpFileEntry, type DdpManifest } from "@modelscript/exchange";
+import {
+  DdpPackager,
+  type DdpArtifactDescriptor,
+  type DdpFileEntry,
+  type DdpManifest,
+  type PowerFlowSnapshot,
+} from "@modelscript/exchange";
+import { parseOpenDss, solveDistributionPowerFlow } from "@modelscript/opendss";
+import { extractEmtNetlist, extractPscadSteadyStateSnapshot, parsePscx } from "@modelscript/pscad";
+import { parseDyr, parseRaw, pssePowerFlowToSnapshot, psseToEmtNetlist, solvePowerFlowAsync } from "@modelscript/psse";
 import {
   compileAssemblyScript,
   discoverImplementationForDefinition,
@@ -16,9 +25,11 @@ import {
   coerceSysmlValue,
   evaluateSysmlAssumptions,
   evaluateSysmlDefinition,
+  extractSysML2SeasonalSpec,
   parseSysmlDefinitions,
   resolveDefinitionInputs,
   resolveSysmlExecutionOrder,
+  runSysML2SeasonalVerificationSweep,
   type SysmlDefinitionBlock,
 } from "@modelscript/sysml2";
 import { createHash, sign as cryptoSign } from "node:crypto";
@@ -33,6 +44,8 @@ export interface SysmlRunArgs {
   json?: boolean;
   timeout?: number;
   param?: string[];
+  seasonal?: boolean;
+  variant?: string;
   bundle?: string;
   "sign-key"?: string;
   signKey?: string;
@@ -321,6 +334,15 @@ export const SysmlRunCommand: CommandModule<object, SysmlRunArgs> = {
         array: true,
         describe: "Override SysML attribute inputs (e.g. --param GridStrengthGate.ibrRatedMw=350)",
       })
+      .option("seasonal", {
+        type: "boolean",
+        default: false,
+        describe: "Execute SysML v2 seasonal variation / multi-tool powerflow verification sweep",
+      })
+      .option("variant", {
+        type: "string",
+        describe: "Filter seasonal sweep to a specific SysML v2 variant name (e.g. SummerPeak)",
+      })
       .option("bundle", {
         type: "string",
         describe: "Write a PSI 21 Digital Data Package (.ddp.zip) provenance bundle to this path",
@@ -335,6 +357,153 @@ export const SysmlRunCommand: CommandModule<object, SysmlRunArgs> = {
     const pkg = parseSysmlDefinitions(sysmlSource);
     const rootDir = findPackageRoot(absFile);
     const defs = selectDefinitionsForExecution(pkg.definitions, argv.def);
+    const seasonalSpec = extractSysML2SeasonalSpec(sysmlSource);
+
+    if (argv.seasonal || argv.variant || (defs.length === 0 && seasonalSpec.variants.length > 0)) {
+      const matrix = await runSysML2SeasonalVerificationSweep(sysmlSource, async (variant) => {
+        if (argv.variant && variant.name.toLowerCase() !== argv.variant.toLowerCase()) {
+          return { metrics: { skippedVariant: true } };
+        }
+        const rawRel = typeof variant.attributes["rawFile"] === "string" ? variant.attributes["rawFile"] : undefined;
+        const dyrRel = typeof variant.attributes["dyrFile"] === "string" ? variant.attributes["dyrFile"] : undefined;
+        const pscxRel = typeof variant.attributes["pscxFile"] === "string" ? variant.attributes["pscxFile"] : undefined;
+        const dssRel = typeof variant.attributes["dssFile"] === "string" ? variant.attributes["dssFile"] : undefined;
+
+        let baseline: PowerFlowSnapshot | undefined;
+        const comparators: PowerFlowSnapshot[] = [];
+        const metrics: Record<string, number | boolean | string> = {};
+
+        if (rawRel) {
+          const rawAbs = resolveConfinedPath(rootDir, rawRel);
+          const psseCase = parseRaw(fs.readFileSync(rawAbs, "utf8"));
+          if (dyrRel) {
+            psseCase.dyr = parseDyr(fs.readFileSync(resolveConfinedPath(rootDir, dyrRel), "utf8"));
+          }
+          const pf = await solvePowerFlowAsync(psseCase);
+          baseline = pssePowerFlowToSnapshot(psseCase, pf, variant.name);
+          const vms = baseline.buses.map((b) => b.vmPu);
+          if (vms.length > 0) {
+            metrics["minVmPu"] = Math.min(...vms);
+            metrics["maxVmPu"] = Math.max(...vms);
+          }
+          metrics["convergedPowerFlow"] = pf.converged;
+
+          if (pscxRel) {
+            const pscxAbs = resolveConfinedPath(rootDir, pscxRel);
+            const emt = extractEmtNetlist(parsePscx(fs.readFileSync(pscxAbs, "utf8")));
+            comparators.push(
+              extractPscadSteadyStateSnapshot(emt, {
+                solver: `pscad:${path.basename(pscxRel)}`,
+                nominalFrequencyHz: baseline.frequencyHz,
+              }),
+            );
+          } else {
+            comparators.push(
+              extractPscadSteadyStateSnapshot(psseToEmtNetlist(psseCase, { dyrCase: psseCase.dyr }), {
+                solver: "pscad (projected)",
+                nominalFrequencyHz: baseline.frequencyHz,
+              }),
+            );
+          }
+        }
+
+        if (dssRel) {
+          const dssSol = solveDistributionPowerFlow(
+            parseOpenDss(fs.readFileSync(resolveConfinedPath(rootDir, dssRel), "utf8")),
+          );
+          comparators.push({
+            solver: `opendss:${path.basename(dssRel)}`,
+            converged: dssSol.converged,
+            frequencyHz: baseline?.frequencyHz ?? 60,
+            sbaseMva: baseline?.sbaseMva ?? 100,
+            buses: Array.from(dssSol.buses.entries()).map(([busId, b]) => ({
+              busId,
+              vmPu: b.vMagPu,
+              vaDeg: b.vAngleDeg,
+            })),
+            branches: [],
+          });
+        }
+
+        return {
+          baseline,
+          comparators,
+          comparisonOptions: { vmTolerancePu: 0.01, vaToleranceDeg: 3.0 },
+          metrics,
+        };
+      });
+
+      const filteredVariants = argv.variant
+        ? matrix.variants.filter((v) => v.name.toLowerCase() === argv.variant!.toLowerCase())
+        : matrix.variants;
+      const outMatrix = {
+        ...matrix,
+        variants: filteredVariants,
+        totalVariants: filteredVariants.length,
+        passedVariants: filteredVariants.filter((v) => v.allSatisfied).length,
+        overallPassed: filteredVariants.every((v) => v.allSatisfied),
+      };
+
+      if (argv.bundle) {
+        const seasonalReportRel = "reports/seasonal-matrix.json";
+        const seasonalReportAbs = resolveConfinedPath(rootDir, seasonalReportRel);
+        fs.mkdirSync(path.dirname(seasonalReportAbs), { recursive: true });
+        const seasonalJson = JSON.stringify(outMatrix, null, 2);
+        fs.writeFileSync(seasonalReportAbs, seasonalJson, "utf8");
+        const seasonalResults: ExecutedDefinitionRecord[] = outMatrix.variants.map((v) => ({
+          definition: v.name,
+          skipped: false,
+          result: {
+            ok: v.allSatisfied,
+            kernelId: v.name,
+            parameters: v.metrics,
+            summary: v.powerFlowComparison?.summaryText ?? `${v.name}: ${v.allSatisfied ? "PASS" : "FAIL"}`,
+            artifacts: [],
+          },
+        }));
+        writeProvenanceDdpBundle({
+          bundlePath: argv.bundle,
+          signKeyPath: argv.signKey ?? argv["sign-key"],
+          packageName: outMatrix.packageName ?? pkg.packageName,
+          sysmlAbsPath: absFile,
+          sysmlSource,
+          rootDir,
+          referencedRelPaths: new Set<string>(),
+          recordedArtifacts: [
+            { relPath: seasonalReportRel, absPath: seasonalReportAbs, sizeBytes: Buffer.byteLength(seasonalJson) },
+          ],
+          allOk: outMatrix.overallPassed,
+          paramOverrides: parseParamOverrides(argv.param),
+          results: seasonalResults,
+        });
+      }
+
+      if (argv.json) {
+        console.log(
+          JSON.stringify(
+            {
+              ...outMatrix,
+              ...(argv.bundle ? { bundle: path.resolve(argv.bundle) } : {}),
+            },
+            null,
+            2,
+          ),
+        );
+      } else {
+        for (const v of outMatrix.variants) {
+          const tag = v.allSatisfied ? "PASS" : "FAIL";
+          const pfInfo = v.powerFlowComparison ? ` | ${v.powerFlowComparison.summaryText}` : "";
+          console.log(
+            `[${tag}] ${outMatrix.packageName ?? "Seasonal"}.${v.name} (${v.verification.results.filter((r) => r.satisfied).length}/${v.verification.results.length} reqs)${pfInfo}`,
+          );
+        }
+        if (argv.bundle) {
+          console.log(`[DDP] Wrote seasonal provenance bundle: ${path.resolve(argv.bundle)}`);
+        }
+      }
+      if (!outMatrix.overallPassed) process.exitCode = 1;
+      return;
+    }
 
     if (defs.length === 0) {
       console.error(`No matching SysML v2 definitions found in ${argv.file}`);

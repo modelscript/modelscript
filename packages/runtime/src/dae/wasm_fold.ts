@@ -690,7 +690,16 @@ export function foldArenaConstants(
             if (v === Variability.Constant || (v === Variability.Parameter && arena.isVarFinal(i))) {
               finalParamOrConstMap.set(arena.getVarName(i), foldedValue);
             }
-          } else if (!match && Array.isArray(foldedValue) && arena.getExprKind(exprId) !== ExprKind.ArrayCtor) {
+          } else if (
+            !match &&
+            Array.isArray(foldedValue) &&
+            arena.getExprKind(exprId) !== ExprKind.ArrayCtor &&
+            !(
+              arena.getExprKind(exprId) === ExprKind.Call &&
+              arena.getVarCustomType(i) &&
+              !/^(?:Real|Integer|Boolean|String)\b/.test(arena.getVarCustomType(i)!)
+            )
+          ) {
             const arrExpr = arrayValueToArenaExpr(arena, foldedValue, arena.getVarType(i));
             if (arrExpr !== exprId) {
               arena.setVarExpression(i, arrExpr);

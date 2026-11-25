@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { QueryEngine as ComunicaQueryEngine } from "@comunica/query-sparql-rdfjs";
 import Database from "better-sqlite3";
 import { DataFactory, Store as N3Store } from "n3";
 import assert from "node:assert/strict";
@@ -484,18 +483,31 @@ describe("Triplestore Scalability & Performance Benchmark Suite", () => {
     const n3IngestMs = performance.now() - tN3Ingest0;
     const n3Matches = n3Store.getQuads(null, namedNode(rdfTypeIri), namedNode(targetClassIri), null);
 
-    // 4. Comunica SPARQL 1.1 Query over N3.Store
-    const comunica = new ComunicaQueryEngine();
-    const comStream = await comunica.queryBindings(`SELECT ?s WHERE { ?s <${rdfTypeIri}> <${targetClassIri}> }`, {
-      sources: [n3Store],
-    });
-    const comMatches = await comStream.toArray();
+    // 4. Comunica SPARQL 1.1 Query over N3.Store (when optional package is installed)
+    let comunica: {
+      queryBindings: (q: string, opts: { sources: unknown[] }) => Promise<{ toArray: () => Promise<unknown[]> }>;
+      queryBoolean: (q: string, opts: { sources: unknown[] }) => Promise<boolean>;
+    } | null = null;
+    try {
+      const comunicaMod = (await import("@comunica/query-sparql-rdfjs")) as {
+        QueryEngine: new () => NonNullable<typeof comunica>;
+      };
+      comunica = new comunicaMod.QueryEngine();
+    } catch {
+      // Optional benchmark baseline not installed
+    }
 
-    // Verify 100% result parity across all 4 engines
+    // Verify 100% result parity across engines
     assert.equal(msMatches, N / 4);
     assert.equal(sqlMatches.length, msMatches);
     assert.equal(n3Matches.length, msMatches);
-    assert.equal(comMatches.length, msMatches);
+    if (comunica) {
+      const comStream = await comunica.queryBindings(`SELECT ?s WHERE { ?s <${rdfTypeIri}> <${targetClassIri}> }`, {
+        sources: [n3Store],
+      });
+      const comMatches = await comStream.toArray();
+      assert.equal(comMatches.length, msMatches);
+    }
 
     // ModelScript pure-WASM columnar ingestion should outperform SQLite3 and N3.js
     assert.ok(
@@ -554,23 +566,24 @@ describe("Triplestore Scalability & Performance Benchmark Suite", () => {
       .all("http://modelscript.org/scale#Part_0", partOfIri, partOfIri);
     sqliteDb.close();
 
-    const comSubsumed = await comunica.queryBoolean(
-      `ASK { <http://modelscript.org/scale#Class_${hops}> <${subClassIri}>+ <http://modelscript.org/scale#Class_0> }`,
-      { sources: [n3Store] },
-    );
-    const comPathStream = await comunica.queryBindings(
-      `SELECT ?t WHERE { <http://modelscript.org/scale#Part_0> <${partOfIri}>+ ?t }`,
-      { sources: [n3Store] },
-    );
-    const comPathRows = await comPathStream.toArray();
-
     assert.equal(msSubsumed, true);
     assert.equal(sqlSubRow?.ok === 1, true);
-    assert.equal(comSubsumed, true);
-
     assert.equal(msPathCount, hops);
     assert.equal(sqlPathRows.length, hops);
-    assert.equal(comPathRows.length, hops);
+
+    if (comunica) {
+      const comSubsumed = await comunica.queryBoolean(
+        `ASK { <http://modelscript.org/scale#Class_${hops}> <${subClassIri}>+ <http://modelscript.org/scale#Class_0> }`,
+        { sources: [n3Store] },
+      );
+      const comPathStream = await comunica.queryBindings(
+        `SELECT ?t WHERE { <http://modelscript.org/scale#Part_0> <${partOfIri}>+ ?t }`,
+        { sources: [n3Store] },
+      );
+      const comPathRows = await comPathStream.toArray();
+      assert.equal(comSubsumed, true);
+      assert.equal(comPathRows.length, hops);
+    }
   });
 
   it("8. Head-to-Head Apache Jena TDB2 (MVCC B+Tree In-Memory & Disk) + RDFS Reasoner + ARQ SPARQL 1.1 Comparison", async () => {

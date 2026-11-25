@@ -3705,6 +3705,70 @@ export const AnsatzVisualizerPane: React.FC<AnsatzVisualizerPaneProps> = ({
                 models={rotundaModels}
                 mode="spatial-3d"
                 title={rotundaTitle}
+                languageId={dialect || "modelica"}
+                diagramType={diagramType}
+                sourceCode={editorValue}
+                initialActiveView={
+                  showResultsView
+                    ? "simulation"
+                    : showCadView
+                      ? "3d"
+                      : showAnalysisView
+                        ? "inspector"
+                        : view === AnsatzView.CODE
+                          ? "code"
+                          : "diagram"
+                }
+                initialCodeOverlayOpen={
+                  view === AnsatzView.CODE || view === AnsatzView.SPLIT_COLUMNS || view === AnsatzView.SPLIT_ROWS
+                }
+                workspaceFiles={Object.keys(projectFiles ?? {})
+                  .filter((p) => !p.endsWith(".layout"))
+                  .map((p) => {
+                    const lower = p.toLowerCase();
+                    const lang = lower.endsWith(".sysml")
+                      ? "sysml2"
+                      : lower.endsWith(".cir") || lower.endsWith(".sp") || lower.endsWith(".spice")
+                        ? "spice"
+                        : lower.endsWith(".scad")
+                          ? "scad"
+                          : lower.endsWith(".urdf")
+                            ? "urdf"
+                            : lower.endsWith(".pscx")
+                              ? "pscad"
+                              : lower.endsWith(".raw")
+                                ? "psse"
+                                : lower.endsWith(".mod")
+                                  ? "ampl"
+                                  : lower.endsWith(".mo")
+                                    ? "modelica"
+                                    : dialect || "modelica";
+                    const name = p.split("/").pop() ?? p;
+                    return { path: p, name, languageId: lang };
+                  })}
+                activeFilePath={activeFileName}
+                onSelectWorkspaceFile={onSelectProjectFile}
+                inspectorData={{
+                  selectedComponent,
+                  parameters: rotundaParameters?.map((p) => ({
+                    name: p.name,
+                    value: String(p.value),
+                    unit: p.unit,
+                  })),
+                }}
+                simulationData={{
+                  onRunSimulation: onSimulate,
+                  status: simulationStatus,
+                  variables: simulationVariables,
+                  selectedVariables: selectedSimulationVariables,
+                  onToggleVariable: onToggleSimulationVariable,
+                  rows: localSimulationData,
+                }}
+                onDiagramEdit={(actions) => {
+                  for (const action of actions) {
+                    enqueueDiagramAction(action as unknown as Record<string, unknown>);
+                  }
+                }}
                 animationController={animationControllerRef.current}
                 topOverlayInset={isAnsatzEditorRoute || isFloatingLayout ? 72 : 12}
                 onExitTo2D={() => setShowVrRotunda(false)}

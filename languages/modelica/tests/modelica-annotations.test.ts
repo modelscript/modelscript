@@ -124,9 +124,9 @@ end DiffusionTest;
 
     const xIdx = arena.findVar("x");
     assert.ok(xIdx >= 0);
-    assert.ok(arena.diffusionExprIds.has(xIdx), "x should have a registered diffusion expression ID");
-    const diffExprId = arena.diffusionExprIds.get(xIdx)!;
-    assert.strictEqual(arena.getExprRealValue(diffExprId), 0.75);
+    const diffSpec = arena.stochastic.getDiffusions().find((d) => d.stateVarId === xIdx);
+    assert.ok(diffSpec, "x should have a registered diffusion expression ID");
+    assert.strictEqual(arena.getExprRealValue(diffSpec.exprId), 0.75);
   });
 
   it("5. extracts __modelscript_webgpu and __modelscript_bvp domain annotations", () => {

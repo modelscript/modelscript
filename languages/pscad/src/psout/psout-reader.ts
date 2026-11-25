@@ -100,11 +100,11 @@ export function readPscadPsout(rawInput: Uint8Array | ArrayBuffer): PscadPsoutDo
     }
 
     const explicitName =
-      nameMap.get(id) ??
-      props.get("Name") ??
-      props.get("Component") ??
-      props.get("DataName") ??
-      props.get("Description") ??
+      nameMap.get(id) ||
+      props.get("Name") ||
+      props.get("Component") ||
+      props.get("DataName") ||
+      props.get("Description") ||
       `Call_${id}`;
 
     const call: PscadPsoutCall = {
@@ -191,8 +191,8 @@ export function readPscadPsout(rawInput: Uint8Array | ArrayBuffer): PscadPsoutDo
     if (!Number.isFinite(min)) min = max = 0;
 
     const unit = call.properties.get("Unit") ?? "";
-    const group = call.properties.get("Group") ?? (call.parentId === 3 ? "Currents" : "Voltages");
-    const description = call.properties.get("Description") ?? call.name;
+    const group = call.properties.get("Group") || (call.parentId === 3 ? "Currents" : "Voltages");
+    const description = call.properties.get("Description") || call.name;
 
     const traceObj: PscadPsoutTrace = {
       id: call.id,
@@ -377,7 +377,9 @@ function scanMetadataPages(
                 propertyMap.set(id, new Map<string, string>());
               }
               const props = propertyMap.get(id)!;
-              props.set(key, val);
+              if (val || !props.has(key)) {
+                props.set(key, val);
+              }
               if (key === "Name" && val) {
                 nameMap.set(id, val);
               }

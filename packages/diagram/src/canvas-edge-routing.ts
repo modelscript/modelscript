@@ -182,7 +182,7 @@ export function rerouteEdgeOrthogonal(
 export function getConnectedEdges(
   g: Graph,
   node: Node,
-): { source: string; target: string; points: { x: number; y: number }[] }[] {
+): { id?: string | undefined; source: string; target: string; points: { x: number; y: number }[] }[] {
   return g.getConnectedEdges(node).map((edge: Edge) => {
     const source = edge.getSource();
     const target = edge.getTarget();
@@ -214,6 +214,7 @@ export function getConnectedEdges(
     const srcStr = source.port ? `${source.cell}.${source.port}` : String(source.cell ?? "");
     const tgtStr = target.port ? `${target.cell}.${target.port}` : String(target.cell ?? "");
     return {
+      id: edge.id,
       source: srcStr,
       target: tgtStr,
       points,

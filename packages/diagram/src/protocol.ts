@@ -31,6 +31,7 @@ export interface Point {
 }
 
 export interface EdgeUpdate {
+  id?: string | undefined;
   source: string;
   target: string;
   points: Point[];
@@ -482,6 +483,7 @@ export type DiagramEditAction =
     }
   | {
       type: "disconnect";
+      id?: string | undefined;
       source: string;
       target: string;
       sourcePort?: string | undefined;
@@ -876,3 +878,14 @@ export function computeMinimalTextEdit(origText: string, nextText: string): Diag
     newText: nextText.slice(prefix, newEnd),
   };
 }
+
+export {
+  evaluateModelScriptPortCompatibility,
+  inferCanonicalPortDomain,
+  normalizeConnectorTypeFamily,
+  type CanonicalPortDomain,
+  type CanonicalPortPolarity,
+  type ModelScriptPortCompatibilityOptions,
+  type ModelScriptPortCompatibilityResult,
+  type ModelScriptPortDescriptor,
+} from "./port-compatibility.js";

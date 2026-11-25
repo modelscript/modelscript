@@ -115,8 +115,8 @@ describe("msx install CLI command", () => {
     process.chdir(testDir);
 
     try {
-      // Create initial package.json
-      writeFileSync("package.json", JSON.stringify({ name: "my-project", dependencies: {} }, null, 2));
+      // Create initial modelscript.yaml
+      writeFileSync("modelscript.yaml", `name: my-project\nversion: "0.1.0"\ndependencies: {}\n`);
 
       await (Install.handler as any)({
         package: "TestPkg",
@@ -124,12 +124,13 @@ describe("msx install CLI command", () => {
       });
 
       // Check extracted directory
-      assert.ok(existsSync(path.join(testDir, "libraries", "TestPkg", "package.mo")));
-      assert.ok(existsSync(path.join(testDir, "libraries", "TestPkg", "TestPkg", "Model.mo")));
+      assert.ok(existsSync(path.join(testDir, ".modelscript", "packages", "TestPkg", "package.mo")));
+      assert.ok(existsSync(path.join(testDir, ".modelscript", "packages", "TestPkg", "TestPkg", "Model.mo")));
 
-      // Check package.json was updated
-      const updatedPkg = JSON.parse(readFileSync("package.json", "utf-8"));
-      assert.equal(updatedPkg.dependencies["TestPkg"], "^1.2.0");
+      // Check modelscript.yaml was updated
+      const updatedManifest = readFileSync("modelscript.yaml", "utf-8");
+      assert.ok(updatedManifest.includes("TestPkg"));
+      assert.ok(updatedManifest.includes("^1.2.0"));
     } finally {
       process.chdir(originalCwd);
     }
@@ -146,7 +147,7 @@ describe("msx install CLI command", () => {
         save: false,
       });
 
-      assert.ok(existsSync(path.join(testDir, "libraries", "@scope__scoped-pkg", "package.mo")));
+      assert.ok(existsSync(path.join(testDir, ".modelscript", "packages", "@scope", "scoped-pkg", "package.mo")));
     } finally {
       process.chdir(originalCwd);
     }

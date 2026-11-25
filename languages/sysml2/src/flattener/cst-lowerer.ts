@@ -180,6 +180,7 @@ export class SysML2CstFlattener {
   private overrides: Record<string, number>;
   private rootCompName: string;
   private sourceText?: string | undefined;
+  private rootNode?: SysmlCstNode | undefined;
   private queryDb?: QueryDB | undefined;
   private workspaceIndex?: WorkspaceIndex | LanguageWorkspaceIndex | undefined;
 
@@ -213,6 +214,7 @@ export class SysML2CstFlattener {
    * @returns Lowered DAE arena and variable/equation summary metadata.
    */
   public flatten(rootNode: SysmlCstNode): LoweredSysml2CstResult {
+    this.rootNode = rootNode;
     const initialEqCount = this.arena.eqCount;
 
     // 0. Extract experiment configs from CST leaves if present
@@ -524,7 +526,8 @@ export class SysML2CstFlattener {
 
     // Fallback: if naked differential equations der(x) == ... are located inside
     // a part def or error recovery node, extract base state names directly from CST leaves.
-    const compLeaves = collectCstLeaves(compNode);
+    const scanNode = prefix === "" && this.rootNode ? this.rootNode : compNode;
+    const compLeaves = collectCstLeaves(scanNode);
     for (let i = 0; i + 2 < compLeaves.length; i++) {
       if (
         compLeaves[i]!.text === "der" &&
@@ -1203,9 +1206,29 @@ export class SysML2CstFlattener {
         const rhsText =
           rhsEnd > eqLeafIdx ? compText.slice(stmtLeaves[eqLeafIdx + 1]!.start, stmtLeaves[rhsEnd]!.end).trim() : "";
 
-        if (lhsText && rhsText) {
+        if (
+          lhsText &&
+          rhsText &&
+          !lhsText.includes("{") &&
+          !lhsText.includes("}") &&
+          !rhsText.includes("{") &&
+          !rhsText.includes("}")
+        ) {
           if (emittedFromCst > 0 && assertUsages.length > 0) {
-            continue;
+            const normTarget = `${lhsText}==${rhsText}`.replace(/\s+/g, "");
+            const isDupAssert = assertUsages.some((au) => {
+              if (au.text.replace(/\s+/g, "").includes(normTarget)) return true;
+              const eqNodes = findCstDescendants(au, "EqualityExpression");
+              return eqNodes.some((eq) => {
+                const eqText = trimTrailingSemicolon(eq.text);
+                return (
+                  stmt === eqText || `${lhsText} == ${rhsText}` === eqText || eqText.replace(/\s+/g, "") === normTarget
+                );
+              });
+            });
+            if (isDupAssert) {
+              continue;
+            }
           }
           if (emittedFromCst > 0 && directResultExprs.length > 0) {
             const isDup = directResultExprs.some((re) => {
@@ -1296,9 +1319,10 @@ export class SysML2CstFlattener {
    * Extracts `ConnectionUsage` endpoint pairs (`connect p1 to p2;`) for global Kirchhoff synthesis.
    */
   private elaborateConnections(compNode: SysmlCstNode, prefix: string): void {
-    const connUsages = findCstDescendants(compNode, "ConnectionUsage");
+    const searchNode = prefix === "" && this.rootNode ? this.rootNode : compNode;
+    const connUsages = findCstDescendants(searchNode, "ConnectionUsage");
     for (const cu of connUsages) {
-      if (this.isDescendantOfPartUsage(cu, compNode)) continue;
+      if (this.isDescendantOfPartUsage(cu, searchNode)) continue;
 
       // Form: connect p1 to p2; or connect a = b;
       let refNodes = findCstDescendants(cu, "ConnectorEnd");
@@ -1318,12 +1342,18 @@ export class SysML2CstFlattener {
 
           this.connections.push({ p1, p2 });
         }
+      } else {
+        const m = cu.text.trim().match(/^connect\s+([A-Za-z_][\w.]*)\s+to\s+([A-Za-z_][\w.]*)\s*;?$/);
+        if (m) {
+          this.connections.push({ p1: prefix + m[1]!, p2: prefix + m[2]! });
+        }
       }
     }
 
-    // Also scan compNode leaves for bare connect statements if any were missed by CST due to parse errors
-    const compText = this.getCompText(compNode);
-    const leaves = collectCstLeaves(parseSysmlSource(compText));
+    // Also scan compNode (or rootNode at root level) leaves for bare connect statements if any were missed by CST due to parse errors
+    const leaves = collectCstLeaves(
+      parseSysmlSource(prefix === "" && this.sourceText ? this.sourceText : this.getCompText(compNode)),
+    );
     for (let i = 0; i < leaves.length; i++) {
       if (leaves[i]!.text !== "connect") continue;
       const c1 = readDottedChainFromLeaves(leaves, i + 1);

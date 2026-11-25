@@ -42,7 +42,7 @@ export const AnsatzEditorLoadingScreen: React.FC<AnsatzEditorLoadingScreenProps>
   >
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
       <img
-        src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"}
+        src="/ansatz-logo.svg"
         alt="Ansatz"
         height={36}
         style={{ height: "36px", width: "auto", display: "block" }}

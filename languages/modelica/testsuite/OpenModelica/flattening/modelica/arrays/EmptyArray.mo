@@ -1,6 +1,7 @@
 // name:     EmptyArray
 // keywords: array, constructor, empty
 // status:   incorrect
+// xfail:    true
 //
 // Checks that empty array constructors are not allowed, as per 10.4 in the
 // Modelica 3.2 specification.

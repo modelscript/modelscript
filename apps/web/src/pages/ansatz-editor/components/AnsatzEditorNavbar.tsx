@@ -302,10 +302,10 @@ export const AnsatzEditorNavbar: React.FC<AnsatzEditorNavbarProps> = ({
           }
         >
           <img
-            src={customLogoSrc || (theme === "dark" ? "/brand-dark.png" : "/brand.png")}
+            src={customLogoSrc || "/ansatz-logo.svg"}
             alt="Ansatz"
-            height={20}
-            style={{ height: "20px", width: "auto", flexShrink: 0, display: "block" }}
+            height={22}
+            style={{ height: "22px", width: "auto", flexShrink: 0, display: "block" }}
             data-testid="ansatz-brand-icon"
           />
           {Boolean(customLogoSrc) && (

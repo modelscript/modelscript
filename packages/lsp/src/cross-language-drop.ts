@@ -388,9 +388,10 @@ export function resolveCrossLanguageComponentDrop(
     const qualSegs = rawSegs.map((s) => sanitizeIdentifier(s, "Item"));
     const leaf = qualSegs[qualSegs.length - 1] || fallbackLeaf;
     const normalizedName = targetLang === "modelica" ? qualSegs.join(".") : qualSegs.join("::");
+    const baseName = targetLang === "sysml2" ? leaf.charAt(0).toLowerCase() + leaf.slice(1) : leaf;
     return {
       className: normalizedName,
-      baseName: leaf,
+      baseName,
       ...(targetLang === "sysml2" ? { sysmlUsageKind: "part" as const } : {}),
       sourceLanguage: srcLang,
     };

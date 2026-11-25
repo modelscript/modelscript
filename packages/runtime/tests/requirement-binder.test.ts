@@ -122,7 +122,8 @@ end DroneSimulation;
       requirements: boundReqs,
     });
 
-    assert.strictEqual(res.verdict.kind, "proven");
+    assert.strictEqual(res.verdict.kind, "unknown");
+    assert.strictEqual(res.verdict.reason, "not-rigorous");
     assert.strictEqual(res.violations.length, 0);
   });
 

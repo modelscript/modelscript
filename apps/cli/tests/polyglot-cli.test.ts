@@ -242,8 +242,8 @@ PropellerGuard();`,
       [cliPath, "polyglot", "index", `--workspace=${scratchDir}`, `--out=${dbPath}`],
       { encoding: "utf-8", timeout: 60000 },
     );
-    assert.ok(stdout.includes("Polyglot Salsa Index Generation"));
-    assert.ok(stdout.includes("Exported SQLite database"));
+    assert.ok(stdout.includes("Polyglot Package Index Generation"));
+    assert.ok(stdout.includes("Exported sqlite index"));
     assert.ok(fs.existsSync(dbPath));
     assert.ok(fs.statSync(dbPath).size > 0);
   });

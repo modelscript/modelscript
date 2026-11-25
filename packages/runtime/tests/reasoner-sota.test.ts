@@ -277,6 +277,7 @@ describe("SOTA Reasoning Enhancements Suite", () => {
         "RotatingMachine",
         "hasPart",
         "HighSpeedRotor",
+        2, // AXIOM_FLAG_LHS_EXISTENTIAL
       );
 
       // 2. CR3: hasSubsystem ∘ hasComponent ⊑ containsComponent

@@ -13,7 +13,9 @@ import {
 import {
   computeMatrixEntranceState,
   computeStockroomSlotPose,
+  INITIAL_STOCKROOM_MAGNET_STATE,
   resolveStockroomSlotItem,
+  stepStockroomMagnetLock,
   stepStockroomScroll,
   STOCKROOM_CARD_H,
   STOCKROOM_CARD_W,
@@ -26,6 +28,7 @@ import {
   STOCKROOM_VISIBLE_ROWS,
   STOCKROOM_WALL_TOE_IN_RAD,
   STOCKROOM_WALL_X,
+  type StockroomMagnetState,
   type StockroomScrollState,
   type StockroomSide,
 } from "./matrix-stockroom-logic.js";
@@ -453,6 +456,8 @@ export function MatrixStockroom3D({
   const wasVisibleRef = useRef<boolean>(false);
   const lastHeaderPressRef = useRef<{ id: string; atMs: number }>({ id: "", atMs: 0 });
   const lastGrabMsRef = useRef<number>(0);
+  const rawHoverSlotRef = useRef<number | null>(null);
+  const magnetStateRef = useRef<StockroomMagnetState>(INITIAL_STOCKROOM_MAGNET_STATE);
 
   // Direct refs to the 30 interactive bay groups & instanced shelf hardware
   const slotGroupRefs = useRef<(THREE.Group | null)[]>(new Array(STOCKROOM_TOTAL_VISIBLE_SLOTS).fill(null));
@@ -466,6 +471,7 @@ export function MatrixStockroom3D({
 
   // Pre-allocate all 30 UV-sliced slot geometries ONCE (disposed on unmount)
   const slotGeometries = useMemo(() => SLOT_DESCRIPTORS.map((s) => createAtlasSlotGeometry(s.slotIndex)), []);
+  const magnetPadGeom = useMemo(() => new THREE.PlaneGeometry(STOCKROOM_CARD_W * 1.18, STOCKROOM_CARD_H * 1.18), []);
   const ledgeGeom = useMemo(() => new THREE.BoxGeometry(STOCKROOM_CARD_W + 0.06, 0.022, 0.14), []);
   const ledStripGeom = useMemo(() => new THREE.BoxGeometry(STOCKROOM_CARD_W + 0.04, 0.008, 0.012), []);
   const placeholderCardGeom = useMemo(() => new THREE.BoxGeometry(STOCKROOM_CARD_W, STOCKROOM_CARD_H, 0.014), []);
@@ -474,12 +480,13 @@ export function MatrixStockroom3D({
   useEffect(() => {
     return () => {
       for (const g of slotGeometries) g.dispose();
+      magnetPadGeom.dispose();
       ledgeGeom.dispose();
       ledStripGeom.dispose();
       placeholderCardGeom.dispose();
       placeholderAccentGeom.dispose();
     };
-  }, [slotGeometries, ledgeGeom, ledStripGeom, placeholderCardGeom, placeholderAccentGeom]);
+  }, [slotGeometries, magnetPadGeom, ledgeGeom, ledStripGeom, placeholderCardGeom, placeholderAccentGeom]);
 
   // ONE shared high-DPI CanvasTexture Atlas for all 30 visible component bays
   const atlasBundle = useMemo(() => {
@@ -616,6 +623,21 @@ export function MatrixStockroom3D({
 
     const stickX = Math.abs(rx) >= Math.abs(lx) ? rx : lx;
     const stickY = Math.abs(ry) >= Math.abs(ly) ? ry : ly;
+    const stickMag = Math.hypot(stickX, stickY);
+
+    // 1b. Magnetic bay lock with sticky hold + scroll brake so hand jitter never drops or slips a grab
+    const magnet = stepStockroomMagnetLock(magnetStateRef.current, rawHoverSlotRef.current, dt, stickMag);
+    const prevLockedSlot = magnetStateRef.current.lockedSlotIndex;
+    magnetStateRef.current = magnet.next;
+    if (magnet.next.lockedSlotIndex !== prevLockedSlot) {
+      setHoveredSlotIndex(magnet.next.lockedSlotIndex);
+      if (magnet.justLocked) {
+        onCue?.("hover");
+        if (isInXr) {
+          pulseXrHaptics(getSharedXrStore(), 0.08, 6);
+        }
+      }
+    }
 
     const impCol = pendingImpulseRef.current.col;
     const impRow = pendingImpulseRef.current.row;
@@ -624,7 +646,12 @@ export function MatrixStockroom3D({
 
     const step = stepStockroomScroll(
       scrollStateRef.current,
-      { stickX, stickY, impulseCol: impCol, impulseRow: impRow },
+      {
+        stickX: stickX * magnet.scrollBrake,
+        stickY: stickY * magnet.scrollBrake,
+        impulseCol: impCol,
+        impulseRow: impRow,
+      },
       dt,
     );
     scrollStateRef.current = step.next;
@@ -648,6 +675,7 @@ export function MatrixStockroom3D({
     let peakStreak = 0;
     const ledgeMesh = shelfLedgeInstRef.current;
     const ledMesh = shelfLedInstRef.current;
+    const activeMagnetSlot = magnet.next.lockedSlotIndex;
 
     for (let i = 0; i < SLOT_DESCRIPTORS.length; i++) {
       const slot = SLOT_DESCRIPTORS[i]!;
@@ -663,11 +691,16 @@ export function MatrixStockroom3D({
         ent.zOffsetMeters,
       );
 
+      const isMagnetized = activeMagnetSlot === slot.slotIndex;
+      const inwardX = slot.side === "left" ? 1 : -1;
+      const magnetPopX = isMagnetized ? inwardX * 0.044 : 0;
+      const magnetScale = isMagnetized ? 1.07 : 1.0;
+
       const grp = slotGroupRefs.current[i];
       if (grp) {
-        grp.position.set(pose.position[0], pose.position[1], pose.position[2]);
+        grp.position.set(pose.position[0] + magnetPopX, pose.position[1], pose.position[2]);
         grp.rotation.set(0, pose.yawRad, 0);
-        grp.scale.setScalar(pose.edgeScale);
+        grp.scale.setScalar(pose.edgeScale * magnetScale);
       }
 
       if (ledgeMesh) {
@@ -678,7 +711,6 @@ export function MatrixStockroom3D({
         ledgeMesh.setMatrixAt(i, dummy.matrix);
       }
       if (ledMesh) {
-        const inwardX = slot.side === "left" ? 1 : -1;
         dummy.position.set(
           pose.position[0] + inwardX * 0.068,
           pose.position[1] - STOCKROOM_CARD_H * 0.52,
@@ -746,7 +778,7 @@ export function MatrixStockroom3D({
     if (streakRightRef.current) streakRightRef.current.opacity = railOpacity;
   });
 
-  // Immediate grab-to-materialize on onPointerDown (never waits for racing pointerup/selectend in Quest 2)
+  // Immediate grab-to-materialize on onPointerDown (honors magnetic lock so hand jitter never grabs wrong bay)
   const handleSlotPointerDown = useCallback(
     (slot: SlotDescriptor, e: ThreeEvent<PointerEvent>) => {
       if (!visible) return;
@@ -755,13 +787,16 @@ export function MatrixStockroom3D({
       if (nowMs - lastGrabMsRef.current < 160) return;
       lastGrabMsRef.current = nowMs;
 
+      const lockedIdx = magnetStateRef.current.lockedSlotIndex;
+      const effectiveSlot = lockedIdx !== null && SLOT_DESCRIPTORS[lockedIdx] ? SLOT_DESCRIPTORS[lockedIdx]! : slot;
+
       const baseCol = Math.floor(scrollStateRef.current.scrollCol);
       const baseRow = Math.floor(scrollStateRef.current.scrollRow);
       const item = resolveStockroomSlotItem(
         filteredItemsRef.current,
-        slot.side,
-        baseCol + slot.visibleCol,
-        baseRow + slot.visibleRow,
+        effectiveSlot.side,
+        baseCol + effectiveSlot.visibleCol,
+        baseRow + effectiveSlot.visibleRow,
       );
       if (!item) return;
 
@@ -913,21 +948,33 @@ export function MatrixStockroom3D({
               slotGroupRefs.current[slot.slotIndex] = el;
             }}
           >
+            <mesh geometry={slotGeometries[slot.slotIndex]} material={atlasMaterial} raycast={NOOP_RAYCAST} />
+            {/* Forgiving 1.18× invisible magnetic grab pad so VR laser jitter never slips off the bay */}
             <mesh
-              geometry={slotGeometries[slot.slotIndex]}
-              material={atlasMaterial}
+              geometry={magnetPadGeom}
+              position={[0, 0, 0.008]}
               onPointerOver={(e) => {
                 if (!visible) return;
                 e.stopPropagation();
-                setHoveredSlotIndex(slot.slotIndex);
+                rawHoverSlotRef.current = slot.slotIndex;
               }}
               onPointerOut={(e) => {
                 if (!visible) return;
                 e.stopPropagation();
-                setHoveredSlotIndex((prev) => (prev === slot.slotIndex ? null : prev));
+                if (rawHoverSlotRef.current === slot.slotIndex) {
+                  rawHoverSlotRef.current = null;
+                }
               }}
               onPointerDown={(e) => handleSlotPointerDown(slot, e)}
-            />
+            >
+              <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+            </mesh>
+            {hoveredSlotIndex === slot.slotIndex && (
+              <mesh position={[0, 0, -0.004]} raycast={NOOP_RAYCAST}>
+                <planeGeometry args={[STOCKROOM_CARD_W + 0.032, STOCKROOM_CARD_H + 0.032]} />
+                <meshBasicMaterial color="#38bdf8" transparent opacity={0.45} depthWrite={false} toneMapped={false} />
+              </mesh>
+            )}
             {realisticKind && (
               <group position={[0, 0.036, 0.044]} rotation={[0.16, slot.side === "left" ? -0.24 : 0.24, 0]}>
                 <RealisticComponentMesh3D

@@ -54,11 +54,11 @@ const pillars: { icon: IconName; title: string; body: string }[] = [
               target="_blank"
               rel="noopener noreferrer"
             >
-              <MsIcon name="play" :size="16" /> Try Ansatz
+              <MsIcon name="play" :size="16" /> Ansatz Editor
             </a>
           </div>
           <nav class="cta-links" aria-label="More ways to get started">
-            <a :href="`${ansatzOrigin}/studio`" target="_blank" rel="noopener noreferrer">Launch Studio</a>
+            <a :href="`${ansatzOrigin}/studio`" target="_blank" rel="noopener noreferrer">Ansatz Studio</a>
             <a href="/pricing">Plans &amp; Pricing</a>
             <a href="https://github.com/modelscript/modelscript" target="_blank" rel="noopener noreferrer">GitHub</a>
           </nav>

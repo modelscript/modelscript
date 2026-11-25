@@ -41,7 +41,7 @@ jobs:
             os: ubuntu-24.04-arm
             hpc: true
           - target: darwin-arm64
-            os: macos-14
+            os: macos-latest
             hpc: false
           - target: darwin-x64
             os: macos-15-intel
@@ -99,8 +99,8 @@ jobs:
           pnpm --filter @modelscript/dsl run build
           pnpm --filter @modelscript/solve run build
           pnpm --filter @modelscript/runtime run build
-          pnpm --filter @modelscript/runtime run asbuild:native
-          pnpm --filter @modelscript/simulate run build
+          pnpm --filter @modelscript/runtime asbuild:native
+          pnpm --filter @modelscript/simulate... run build
           pnpm --filter @modelscript/simulate run asbuild:native
 
       - name: Transpile wasm2c & compile native addon + HPC worker
@@ -180,7 +180,7 @@ jobs:
           pnpm --filter @modelscript/dsl run build
           pnpm --filter @modelscript/solve run build
           pnpm --filter @modelscript/runtime run build
-          pnpm --filter @modelscript/simulate run build
+          pnpm --filter @modelscript/simulate... run build
 
       - name: Build pure-WASM web extension
         run: |

@@ -80,7 +80,11 @@ export const componentLintQueries: ModelicaQueryHooks = {
           e.kind === "Package" ||
           e.kind === "Function" ||
           e.kind === "Def" ||
-          isTypeLikeSymbol(e),
+          isTypeLikeSymbol(e) ||
+          (Boolean(e.language) &&
+            e.language!.toLowerCase() !== "modelica" &&
+            e.kind !== "Import" &&
+            e.kind !== "Extends"),
       );
       if (found) return null;
     }

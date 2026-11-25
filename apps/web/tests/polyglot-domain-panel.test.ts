@@ -14,6 +14,7 @@ import { analyzeCaeContinuum } from "../../../packages/editor/src/workbench/pane
 import { analyzeDaePhysics } from "../../../packages/editor/src/workbench/panels/inspectors/DaeAdvancedInspector.js";
 import { analyzeMultibodyKinematics } from "../../../packages/editor/src/workbench/panels/inspectors/MultibodyInspector.js";
 import { PowerGridInspector } from "../../../packages/editor/src/workbench/panels/inspectors/PowerGridInspector.js";
+import { RequirementsOntologyInspector } from "../../../packages/editor/src/workbench/panels/inspectors/RequirementsOntologyInspector.js";
 import { indexLocalSymbolLines } from "../../../packages/editor/src/workbench/panels/modelica-scanner.js";
 
 describe("PolyglotDomainPanel Render & Variable Scope Integrity", () => {
@@ -498,5 +499,47 @@ end BadUnitsAndPendulum;
     assert.ok(html.includes("Bus_1"), "Missing Bus_1 terminal");
     assert.ok(html.includes("Line_1_2"), "Missing Line_1_2 branch");
     assert.ok(html.includes("Gen_1"), "Missing Gen_1 synchronous machine");
+  });
+
+  it("exposes Cross-Tool Power Flow Comparison in PowerGridInspector and Seasonal & Cross-Tool tab in RequirementsOntologyInspector", () => {
+    const rawCode = `0, 100.00, 33, 0, 1, 60.00
+TEST
+CASE
+1, 'SLACK', 230.0000, 3, 1, 1, 1, 1.02000, 0.0000
+0 / END OF BUS DATA
+Q`;
+    const gridHtml = renderToStaticMarkup(
+      React.createElement(PowerGridInspector, {
+        code: rawCode,
+        lines: rawCode.split("\n"),
+        colorMode: "dark",
+        dialect: "psse",
+      }),
+    );
+    assert.ok(
+      gridHtml.includes("Cross-Tool Power Flow Comparison"),
+      "PowerGridInspector should expose Cross-Tool Power Flow Comparison study mode",
+    );
+
+    const sysmlCode = `package SeasonalTest {
+  variation part def Seasons {
+    variant part SummerPeak { attribute season = "SummerPeak"; attribute ambientTempC = 40; }
+    variant part WinterPeak { attribute season = "WinterPeak"; attribute ambientTempC = 0; }
+  }
+  requirement def VoltageCheck {
+    require constraint { minVmPu >= 0.95 }
+  }
+}`;
+    const reqHtml = renderToStaticMarkup(
+      React.createElement(RequirementsOntologyInspector, {
+        code: sysmlCode,
+        lines: sysmlCode.split("\n"),
+        colorMode: "dark",
+      }),
+    );
+    assert.ok(
+      reqHtml.includes("Seasonal &amp; Cross-Tool (2 variants)"),
+      "RequirementsOntologyInspector should expose Seasonal & Cross-Tool tab with detected variant count",
+    );
   });
 });

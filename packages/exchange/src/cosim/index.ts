@@ -29,6 +29,7 @@ export * from "./olga-cosim-master.js";
 export * from "./orchestrator.js";
 export * from "./participant.js";
 export * from "./phasor-emt-types.js";
+export * from "./powerflow-comparison.js";
 export * from "./realtime.js";
 export * from "./session.js";
 export * from "./stateless-predictor.js";

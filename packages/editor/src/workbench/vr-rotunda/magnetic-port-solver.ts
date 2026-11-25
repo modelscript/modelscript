@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { evaluateModelScriptPortCompatibility } from "@modelscript/diagram/protocol";
 import * as THREE from "three";
-import type { SpatialDiagramPort3D, SpatialPortDomain } from "./spatial-diagram-state.js";
+import type { SpatialDiagramPort3D } from "./spatial-diagram-state.js";
 
 /**
- * Pure 3D Magnetic Port Capture Solver, Physical Domain Plug-Compatibility Matrix,
+ * Pure 3D Magnetic Port Capture Solver, Canonical ModelScript Port-Compatibility Bridge,
  * and Infinite-Length 3D Cubic Bézier + Catenary Cable Geometry Evaluator.
  */
 
@@ -61,62 +62,44 @@ export function makeUndirectedConnectionKey(nodeA: string, portA: string, nodeB:
   return kA < kB ? `${kA}|${kB}` : `${kB}|${kA}`;
 }
 
-const DOMAIN_DISPLAY_LABELS: Record<SpatialPortDomain, string> = {
-  electrical: "Electrical",
-  power: "Power Grid",
-  mechanical: "Mechanical",
-  thermal: "Thermal",
-  fluid: "Fluid",
-  signal: "Control Signal",
-  systems: "Systems",
-  generic: "Generic",
-};
-
 /**
- * Evaluates physical-domain plug compatibility between two 3D diagram ports.
- * Mirrors Modelica/ModelScript physical connector rules:
- *  - Identical physical domains are always plug-compatible.
- *  - Electrical ↔ Power Grid are compatible.
- *  - Generic / Systems wildcards connect cleanly to any domain.
- *  - Causal signal ports reject output→output and input→input collisions.
- *  - Cross-physics mismatches (e.g. Electrical ↔ Thermal, Fluid ↔ Mechanical) are rejected.
+ * Evaluates plug compatibility between two 3D diagram ports by delegating directly
+ * to ModelScript's canonical `@modelscript/diagram/protocol` port compatibility API
+ * (`evaluateModelScriptPortCompatibility`), ensuring 100% parity between 2D Diagram
+ * mode and VR 3D Diagram mode.
  */
 export function evaluatePortCompatibility(
-  source: Pick<SpatialDiagramPort3D, "nodeId" | "portId" | "domain" | "polarity">,
-  target: Pick<SpatialDiagramPort3D, "nodeId" | "portId" | "domain" | "polarity">,
+  source: Pick<SpatialDiagramPort3D, "nodeId" | "portId" | "domain" | "polarity"> & {
+    readonly connectorType?: string | undefined;
+    readonly isConjugated?: boolean | undefined;
+  },
+  target: Pick<SpatialDiagramPort3D, "nodeId" | "portId" | "domain" | "polarity"> & {
+    readonly connectorType?: string | undefined;
+    readonly isConjugated?: boolean | undefined;
+  },
   allowSameNode = false,
+  languageId?: string,
 ): PortCompatibilityResult {
-  if (source.nodeId === target.nodeId && source.portId === target.portId) {
-    return { compatible: false, reason: "Cannot connect a port to itself" };
-  }
-  if (!allowSameNode && source.nodeId === target.nodeId) {
-    return { compatible: false, reason: "Same component" };
-  }
-
-  const dA = source.domain;
-  const dB = target.domain;
-
-  const wildcard = dA === "generic" || dB === "generic" || dA === "systems" || dB === "systems";
-  const elecPower = (dA === "electrical" && dB === "power") || (dA === "power" && dB === "electrical");
-
-  if (!wildcard && dA !== dB && !elecPower) {
-    return {
-      compatible: false,
-      reason: `Incompatible: ${DOMAIN_DISPLAY_LABELS[dA]} ↔ ${DOMAIN_DISPLAY_LABELS[dB]}`,
-    };
-  }
-
-  // Causal signal direction check (prevent connecting two outputs or two inputs directly)
-  if (dA === "signal" && dB === "signal") {
-    if (source.polarity === "output" && target.polarity === "output") {
-      return { compatible: false, reason: "Output → Output conflict" };
-    }
-    if (source.polarity === "input" && target.polarity === "input") {
-      return { compatible: false, reason: "Input → Input conflict" };
-    }
-  }
-
-  return { compatible: true };
+  const result = evaluateModelScriptPortCompatibility(
+    {
+      nodeId: source.nodeId,
+      portId: source.portId,
+      domain: source.domain,
+      direction: source.polarity,
+      connectorType: source.connectorType,
+      isConjugated: source.isConjugated,
+    },
+    {
+      nodeId: target.nodeId,
+      portId: target.portId,
+      domain: target.domain,
+      direction: target.polarity,
+      connectorType: target.connectorType,
+      isConjugated: target.isConjugated,
+    },
+    { allowSameNode, languageId },
+  );
+  return result.compatible ? { compatible: true } : { compatible: false, reason: result.reason };
 }
 
 /**

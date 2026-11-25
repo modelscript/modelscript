@@ -142,6 +142,7 @@ function collectSchematic(
   instances: ModelInstance[],
   wires: ModelWire[],
   catalogPorts?: (defn: string) => ModelPort[] | undefined,
+  wireCounter: { next: number } = { next: 1 },
 ): void {
   for (const c of el.children) {
     const clsAttr = attr(c, "classid");
@@ -169,11 +170,13 @@ function collectSchematic(
       const cls = attr(c, "classid");
       if (cls === "Branch") {
         // `Branch` wires wrap nested components; descend.
-        collectSchematic(c, instances, wires, catalogPorts);
+        collectSchematic(c, instances, wires, catalogPorts, wireCounter);
       } else if (cls !== "Bus") {
         const ox = num(attr(c, "x"));
         const oy = num(attr(c, "y"));
-        const verts = childrenNamed(c, "vertex").map((v) => ({ x: ox + num(attr(v, "x")), y: oy + num(attr(v, "y")) }));
+        const verts = c.children
+          .filter((v) => v.name.toLowerCase() === "vertex")
+          .map((v) => ({ x: ox + num(attr(v, "x")), y: oy + num(attr(v, "y")) }));
         if (verts.length === 0) {
           const x1Raw = attr(c, "x1") ?? attr(c, "x");
           const y1Raw = attr(c, "y1") ?? attr(c, "y");
@@ -191,12 +194,12 @@ function collectSchematic(
         }
         if (verts.length >= 2) {
           wires.push({
-            id: attr(c, "id") ?? "",
+            id: attr(c, "id") || `wire_${wireCounter.next++}`,
             vertices: verts,
             element: c,
           });
         } else {
-          collectSchematic(c, instances, wires, catalogPorts);
+          collectSchematic(c, instances, wires, catalogPorts, wireCounter);
         }
       }
     }

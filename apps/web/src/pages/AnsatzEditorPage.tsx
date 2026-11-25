@@ -3,7 +3,11 @@
 import AnsatzEditor from "@modelscript/editor/workbench/AnsatzEditor";
 import { AnsatzEditorLoadingScreen } from "@modelscript/editor/workbench/AnsatzEditorLoadingScreen";
 import { ANSATZ_LANGUAGE_MAP, getDefaultLanguageView, getLanguageInfo } from "@modelscript/editor/workbench/constants";
-import { getLatestPsseStudySnapshot } from "@modelscript/editor/workbench/panels/inspectors/PowerGridInspector";
+import {
+  getLatestPowerFlowComparisonSnapshot,
+  getLatestPsseStudySnapshot,
+} from "@modelscript/editor/workbench/panels/inspectors/PowerGridInspector";
+import { getLatestSeasonalVerificationMatrix } from "@modelscript/editor/workbench/panels/inspectors/RequirementsOntologyInspector";
 import {
   extractPrimaryModelicaClassName,
   installDependency,
@@ -1182,6 +1186,8 @@ export const AnsatzEditorPage: React.FC = () => {
     try {
       const isMulti = Boolean(projectFiles && Object.keys(projectFiles).length > 1);
       const psseSnapshot = currentLang === "psse" ? getLatestPsseStudySnapshot() : null;
+      const pfComparison = getLatestPowerFlowComparisonSnapshot();
+      const seasonalVerification = getLatestSeasonalVerificationMatrix();
       const created = await createArtifactView({
         artifact_type: currentLang === "modelica" ? "modelica-diagram" : currentLang,
         dialect: currentLang,
@@ -1193,6 +1199,8 @@ export const AnsatzEditorPage: React.FC = () => {
           view: currentView,
           ...(isMulti && projectFiles ? { files: projectFiles } : {}),
           ...(psseSnapshot ?? {}),
+          ...(pfComparison ? { powerFlowComparison: pfComparison } : {}),
+          ...(seasonalVerification ? { seasonalVerification } : {}),
         }),
       });
       if (created?.id) {

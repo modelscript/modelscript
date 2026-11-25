@@ -1896,6 +1896,75 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
           </CodePane>
         )}
       </ContentGrid>
+      {(Boolean(viewConfig?.powerFlowComparison) || Boolean(viewConfig?.seasonalVerification)) &&
+        (() => {
+          const pf = viewConfig?.powerFlowComparison as
+            | { overallStatus?: string; maxDeltaVmPu?: number; maxDeltaVaDeg?: number; solversCompared?: string[] }
+            | undefined;
+          const sv = viewConfig?.seasonalVerification as
+            | {
+                overallPassed?: boolean;
+                passedVariants?: number;
+                totalVariants?: number;
+                variants?: Array<{ name: string; allSatisfied: boolean }>;
+              }
+            | undefined;
+          return (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: 12,
+                padding: "6px 12px",
+                borderTop: "1px solid var(--color-border-default, rgba(255,255,255,0.1))",
+                background: "var(--color-canvas-subtle, rgba(15, 23, 42, 0.85))",
+                fontSize: 11,
+                fontFamily: "var(--font-mono, monospace)",
+              }}
+            >
+              {pf && (
+                <span>
+                  Powerflow Parity:{" "}
+                  <strong
+                    style={{
+                      color:
+                        pf.overallStatus === "PASS" ? "#3fb950" : pf.overallStatus === "WARN" ? "#d29922" : "#f85149",
+                    }}
+                  >
+                    {pf.overallStatus ?? "UNKNOWN"}
+                  </strong>
+                  {typeof pf.maxDeltaVmPu === "number" ? ` (max |ΔV|=${pf.maxDeltaVmPu.toFixed(4)} pu` : ""}
+                  {typeof pf.maxDeltaVaDeg === "number" ? `, max |Δθ|=${pf.maxDeltaVaDeg.toFixed(2)}°)` : ""}
+                </span>
+              )}
+              {sv && (
+                <span style={{ display: "inline-flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                  <span>
+                    Seasonal Sweep:{" "}
+                    <strong style={{ color: sv.overallPassed ? "#3fb950" : "#f85149" }}>
+                      {sv.passedVariants ?? 0}/{sv.totalVariants ?? 0} PASS
+                    </strong>
+                  </span>
+                  {Array.isArray(sv.variants) &&
+                    sv.variants.map((v) => (
+                      <span
+                        key={v.name}
+                        style={{
+                          padding: "1px 6px",
+                          borderRadius: 4,
+                          border: `1px solid ${v.allSatisfied ? "rgba(63,185,80,0.4)" : "rgba(248,81,73,0.4)"}`,
+                          color: v.allSatisfied ? "#3fb950" : "#f85149",
+                        }}
+                      >
+                        {v.name}: {v.allSatisfied ? "PASS" : "FAIL"}
+                      </span>
+                    ))}
+                </span>
+              )}
+            </div>
+          );
+        })()}
     </Container>
   );
 };

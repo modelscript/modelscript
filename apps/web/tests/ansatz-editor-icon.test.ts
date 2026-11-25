@@ -167,8 +167,8 @@ describe("Primer Standard CodeSquareIcon & Ansatz Integration", () => {
       "AnsatzModals.tsx must render AnsatzEditorLoadingScreen",
     );
     assert.ok(
-      loaderSrc.includes("/brand-dark.png") && loaderSrc.includes("/brand.png"),
-      "AnsatzEditorLoadingScreen.tsx loader must render /brand-dark.png and /brand.png",
+      loaderSrc.includes("/ansatz-logo.svg"),
+      "AnsatzEditorLoadingScreen.tsx loader must render /ansatz-logo.svg",
     );
     assert.ok(
       loaderSrc.includes('id="ansatz-app-loader"'),

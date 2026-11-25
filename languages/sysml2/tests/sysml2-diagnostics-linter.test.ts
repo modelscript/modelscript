@@ -738,9 +738,12 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
       return { startIndex: prefixLen, oldEndIndex: oldSuffix, newEndIndex: newSuffix };
     };
 
+    const normalizeRootSpan = (s: string) =>
+      s.replace(/^\(RootNamespace \[0, 0\] - \[\d+, \d+\]/, "(RootNamespace [0, 0] - [EOF]");
+
     const uri = "file:///workspace/VehicleSystem.sysml";
     const tree1 = parser.parse(text1)!;
-    const sexpr1 = facade.getAstSExpr(tree1.rootPtr, true);
+    const sexpr1 = normalizeRootSpan(facade.getAstSExpr(tree1.rootPtr, true));
     assert.deepStrictEqual(facade.getDiagnostics(tree1.rootPtr), []);
 
     // Edit 1: Integer -> Integer2
@@ -748,13 +751,16 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
     const edit1 = computeEdit(text1, text2);
     const tree2 = parser.parse(text2, tree1, edit1.startIndex, edit1.oldEndIndex, edit1.newEndIndex, uri)!;
     const freshTree2 = freshParser.parse(text2)!;
-    assert.strictEqual(facade.getAstSExpr(tree2.rootPtr, true), freshFacade.getAstSExpr(freshTree2.rootPtr, true));
+    assert.strictEqual(
+      normalizeRootSpan(facade.getAstSExpr(tree2.rootPtr, true)),
+      normalizeRootSpan(freshFacade.getAstSExpr(freshTree2.rootPtr, true)),
+    );
     assert.deepStrictEqual(facade.getDiagnostics(tree2.rootPtr), []);
 
     // Edit 2: Integer2 -> Integer (must not produce false 'Syntax Error: Missing ;' on line 31)
     const edit2 = computeEdit(text2, text1);
     const tree3 = parser.parse(text1, tree2, edit2.startIndex, edit2.oldEndIndex, edit2.newEndIndex, uri)!;
-    assert.strictEqual(facade.getAstSExpr(tree3.rootPtr, true), sexpr1);
+    assert.strictEqual(normalizeRootSpan(facade.getAstSExpr(tree3.rootPtr, true)), sexpr1);
     assert.deepStrictEqual(facade.getDiagnostics(tree3.rootPtr), []);
 
     // Verify incremental S2002 diagnostics through a polyglot UnifiedWorkspace

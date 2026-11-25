@@ -256,6 +256,67 @@ export interface RotundaState {
   diagramWaferStyle: ExtrudedWaferStyle;
   /** Controls visibility of the wrist-summoned world-locked floating 2D component library panel. */
   wristPaletteOpen: boolean;
+  /** Primary VR workstation view matching the host Ansatz Editor view (`"3d"`, `"diagram"`, `"inspector"`, `"code"`). */
+  activeView: RotundaActiveView;
+  /** Floating 3D syntax-highlighted code text panel overlaid over any VR view (mirrors 2D code overlay). */
+  codeOverlayOpen: boolean;
+  /** Floating 3D engineering inspector panel showing live parameters, properties, and diagnostics. */
+  inspectorOverlayOpen: boolean;
+  /** Curved 3D workspace file switcher carousel showing all available Ansatz project files. */
+  fileCarouselOpen: boolean;
+  /** Curved 3D VR Simulation & Multi-Channel Oscilloscope Theater panel. */
+  simulationPanelOpen: boolean;
+}
+
+/** Primary VR workstation view modes matching Ansatz Editor views. */
+export type RotundaActiveView = "3d" | "diagram" | "simulation" | "inspector" | "code";
+
+/** Live simulation runner & multi-channel oscilloscope data bridged from Ansatz Editor. */
+export interface RotundaSimulationData {
+  readonly onRunSimulation?: (() => void) | undefined;
+  readonly status?:
+    | {
+        readonly status: "pending" | "processing" | "completed" | "failed" | "running" | "error" | "idle";
+        readonly error?: string | null | undefined;
+        readonly progress?: number | undefined;
+        readonly message?: string | undefined;
+      }
+    | null
+    | undefined;
+  readonly variables?: readonly string[] | undefined;
+  readonly selectedVariables?: readonly string[] | undefined;
+  readonly onToggleVariable?: ((variable: string) => void) | undefined;
+  readonly rows?: readonly Record<string, number | string>[] | null | undefined;
+}
+
+/** Workspace file descriptor displayed in the VR 3D File Switcher Carousel. */
+export interface RotundaWorkspaceFile {
+  readonly path: string;
+  readonly name: string;
+  readonly languageId: string;
+  readonly diagramType?: string | undefined;
+  readonly dirty?: boolean | undefined;
+}
+
+/** Live model & component inspector payload rendered in the VR 3D Inspector Panel. */
+export interface RotundaInspectorData {
+  readonly selectedComponent?: string | null | undefined;
+  readonly parameters?:
+    | readonly {
+        readonly name: string;
+        readonly value: string;
+        readonly unit?: string | undefined;
+        readonly description?: string | undefined;
+      }[]
+    | undefined;
+  readonly diagnostics?:
+    | readonly {
+        readonly severity: "error" | "warning" | "info";
+        readonly line: number;
+        readonly message: string;
+      }[]
+    | undefined;
+  readonly summary?: string | undefined;
 }
 
 /** Default drafting desk sheet presentation theme (spread cyanotype architectural blueprint). */
@@ -312,11 +373,22 @@ export type RotundaAction =
   | { type: "toggleDiagramWaferStyle" }
   | { type: "setWristPaletteOpen"; open: boolean }
   | { type: "toggleWristPalette" }
+  | { type: "setActiveView"; view: RotundaActiveView }
+  | { type: "toggleCodeOverlay" }
+  | { type: "setCodeOverlayOpen"; open: boolean }
+  | { type: "toggleInspectorOverlay" }
+  | { type: "setInspectorOverlayOpen"; open: boolean }
+  | { type: "toggleFileCarousel" }
+  | { type: "setFileCarouselOpen"; open: boolean }
+  | { type: "toggleSimulationPanel" }
+  | { type: "setSimulationPanelOpen"; open: boolean }
   | { type: "resetPlinthView" };
 
 const SNAP_MODE_ORDER: readonly SpatialDiagramSnapMode[] = ["free-3d", "domain-layers", "grid-5cm", "flat-2d"];
 
 export function createInitialRotundaState(overrides?: Partial<RotundaState>): RotundaState {
+  const initialActiveView: RotundaActiveView =
+    overrides?.activeView ?? (overrides?.diagramEditorEnabled ? "diagram" : "3d");
   return {
     environment: DEFAULT_ROTUNDA_ENVIRONMENT,
     activeModelIndex: 0,
@@ -347,11 +419,16 @@ export function createInitialRotundaState(overrides?: Partial<RotundaState>): Ro
     autoTurntable: false,
     telemetryWingEnabled: false,
     studioSsaoEnabled: false,
-    diagramEditorEnabled: false,
+    diagramEditorEnabled: initialActiveView === "diagram",
     activeDiagramTileId: null,
     diagramSnapMode: "free-3d",
     diagramWaferStyle: "tactile-tile",
     wristPaletteOpen: false,
+    activeView: initialActiveView,
+    codeOverlayOpen: initialActiveView === "code",
+    inspectorOverlayOpen: initialActiveView === "inspector",
+    fileCarouselOpen: false,
+    simulationPanelOpen: initialActiveView === "simulation",
     ...overrides,
   };
 }
@@ -505,6 +582,7 @@ export function rotundaReducer(state: RotundaState, action: RotundaAction): Rotu
       return {
         ...state,
         diagramEditorEnabled: nextEnabled,
+        activeView: nextEnabled ? "diagram" : "3d",
         wristPaletteOpen: nextEnabled ? state.wristPaletteOpen : false,
       };
     }
@@ -512,6 +590,7 @@ export function rotundaReducer(state: RotundaState, action: RotundaAction): Rotu
       return {
         ...state,
         diagramEditorEnabled: action.enabled,
+        activeView: action.enabled ? "diagram" : state.activeView === "diagram" ? "3d" : state.activeView,
         activeDiagramTileId: action.tileId !== undefined ? action.tileId : state.activeDiagramTileId,
         wristPaletteOpen: action.enabled ? state.wristPaletteOpen : false,
       };
@@ -535,8 +614,37 @@ export function rotundaReducer(state: RotundaState, action: RotundaAction): Rotu
       return {
         ...state,
         diagramEditorEnabled: true,
+        activeView: "diagram",
         wristPaletteOpen: !state.wristPaletteOpen,
       };
+    case "setActiveView": {
+      const nextView = action.view;
+      return {
+        ...state,
+        activeView: nextView,
+        diagramEditorEnabled: nextView === "diagram",
+        wristPaletteOpen: nextView === "diagram" ? state.wristPaletteOpen : false,
+        codeOverlayOpen: nextView === "code" ? true : state.codeOverlayOpen,
+        inspectorOverlayOpen: nextView === "inspector" ? true : nextView === "3d" ? false : state.inspectorOverlayOpen,
+        simulationPanelOpen: nextView === "simulation" ? true : state.simulationPanelOpen,
+      };
+    }
+    case "toggleCodeOverlay":
+      return { ...state, codeOverlayOpen: !state.codeOverlayOpen };
+    case "setCodeOverlayOpen":
+      return { ...state, codeOverlayOpen: action.open };
+    case "toggleInspectorOverlay":
+      return { ...state, inspectorOverlayOpen: !state.inspectorOverlayOpen };
+    case "setInspectorOverlayOpen":
+      return { ...state, inspectorOverlayOpen: action.open };
+    case "toggleFileCarousel":
+      return { ...state, fileCarouselOpen: !state.fileCarouselOpen };
+    case "setFileCarouselOpen":
+      return { ...state, fileCarouselOpen: action.open };
+    case "toggleSimulationPanel":
+      return { ...state, simulationPanelOpen: !state.simulationPanelOpen };
+    case "setSimulationPanelOpen":
+      return { ...state, simulationPanelOpen: action.open };
     case "resetPlinthView":
       return {
         ...state,
@@ -1178,6 +1286,26 @@ export interface EngineeringRotundaProps {
   topOverlayInset?: number | undefined;
   /** Open the 3D Volumetric Schematic Diagram Editor automatically on mount. */
   initialDiagramEditorEnabled?: boolean | undefined;
+  /** Initial VR workstation view matching the host Ansatz Editor view (`"3d"`, `"diagram"`, `"inspector"`, `"code"`). */
+  initialActiveView?: RotundaActiveView | undefined;
+  /** Open the floating 3D syntax-highlighted code text panel automatically on mount. */
+  initialCodeOverlayOpen?: boolean | undefined;
+  /** Active engineering language / dialect (e.g. `"modelica"`, `"sysml2"`, `"spice"`, `"scad"`). */
+  languageId?: string | undefined;
+  /** Optional diagram subtype (e.g. `"diagram"`, `"bdd"`, `"ibd"`, `"oneline"`). */
+  diagramType?: string | undefined;
+  /** Live source code text of the active file rendered in the VR floating code panel. */
+  sourceCode?: string | undefined;
+  /** All available files in the current Ansatz workspace for the VR 3D File Switcher Carousel. */
+  workspaceFiles?: readonly RotundaWorkspaceFile[] | undefined;
+  /** Path of the currently active workspace file. */
+  activeFilePath?: string | undefined;
+  /** Callback invoked when the engineer selects a file from the VR 3D File Carousel. */
+  onSelectWorkspaceFile?: ((filePath: string) => void) | undefined;
+  /** Live inspector payload (parameters, selected component, diagnostics) for the VR Inspector Panel. */
+  inspectorData?: RotundaInspectorData | undefined;
+  /** Live simulation runner & multi-channel oscilloscope data for the VR Simulation Panel. */
+  simulationData?: RotundaSimulationData | undefined;
   /** Optional custom or LSP-hydrated component library catalog powering the VR Wrist Floating Library Panel. */
   libraryCatalog?: readonly GalleryComponentItem[] | undefined;
   /** Canonical bidirectional write-back callback for 3D diagram node moves, spawns, deletes, and magnetic port connections. */

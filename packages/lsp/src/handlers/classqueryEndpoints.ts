@@ -385,6 +385,9 @@ export function registerClassQueryEndpoints(context: LspContext) {
               aliases.some((a) => a.toLowerCase().includes(query));
             if (!matches) continue;
             seenFqns.add(id);
+            const diagSpec =
+              globalLibraryRegistry.getDiagramSpec("pscad", id) ??
+              globalLibraryRegistry.getDiagramSpec("pscad", sym.name);
             results.push({
               id,
               name: sym.name,
@@ -392,6 +395,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
               classKind: "class",
               description: label || undefined,
               icon: "circuit-board",
+              iconSvg: diagSpec?.svg,
               hasChildren: false,
               language: "pscad",
             });

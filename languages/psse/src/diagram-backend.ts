@@ -106,22 +106,19 @@ export function createPsseDiagramBackend(backends: DiagramBackendHost): DiagramB
 
   const computeMinimalPsseTextEdits = async (before: string, after: string): Promise<TextEdit[]> => {
     if (before === after) return [];
-    const { parsePsseCstDocument } = await import("@modelscript/psse");
-    const oldLines = parsePsseCstDocument(before).lines;
-    const newLines = parsePsseCstDocument(after).lines;
+    const oldLines = before.split("\n");
+    const newLines = after.split("\n");
 
     if (oldLines.length === newLines.length) {
       const edits: TextEdit[] = [];
       for (let i = 0; i < oldLines.length; i++) {
-        const ol = oldLines[i]!;
-        const nl = newLines[i]!;
-        if (ol.line !== nl.line) {
+        if (oldLines[i] !== newLines[i]) {
           edits.push({
             range: {
-              start: { line: ol.row, character: 0 },
-              end: { line: ol.row, character: ol.line.length },
+              start: { line: i, character: 0 },
+              end: { line: i, character: oldLines[i]!.length },
             },
-            newText: nl.line,
+            newText: newLines[i]!,
           });
         }
       }
@@ -130,35 +127,79 @@ export function createPsseDiagramBackend(backends: DiagramBackendHost): DiagramB
 
     let prefix = 0;
     const minLen = Math.min(oldLines.length, newLines.length);
-    while (prefix < minLen && oldLines[prefix]!.line === newLines[prefix]!.line) prefix++;
+    while (prefix < minLen && oldLines[prefix] === newLines[prefix]) prefix++;
 
     let oldSuffix = oldLines.length;
     let newSuffix = newLines.length;
-    while (
-      oldSuffix > prefix &&
-      newSuffix > prefix &&
-      oldLines[oldSuffix - 1]!.line === newLines[newSuffix - 1]!.line
-    ) {
+    while (oldSuffix > prefix && newSuffix > prefix && oldLines[oldSuffix - 1] === newLines[newSuffix - 1]) {
       oldSuffix--;
       newSuffix--;
     }
 
-    const startLine = prefix < oldLines.length ? oldLines[prefix]!.row : Math.max(0, oldLines.length - 1);
-    const endIdx = Math.max(prefix, oldSuffix - 1);
-    const endLine = oldLines[endIdx]?.row ?? startLine;
-    const endChar = oldLines[endIdx]?.line.length ?? 0;
-    const replacement = newLines
-      .slice(prefix, newSuffix)
-      .map((l) => l.line)
-      .join("\n");
+    // Pure insertion (0 old lines replaced)
+    if (oldSuffix === prefix) {
+      const inserted = newLines.slice(prefix, newSuffix).join("\n");
+      if (prefix < oldLines.length) {
+        return [
+          {
+            range: {
+              start: { line: prefix, character: 0 },
+              end: { line: prefix, character: 0 },
+            },
+            newText: `${inserted}\n`,
+          },
+        ];
+      }
+      const lastLine = Math.max(0, oldLines.length - 1);
+      const lastChar = oldLines[lastLine]?.length ?? 0;
+      return [
+        {
+          range: {
+            start: { line: lastLine, character: lastChar },
+            end: { line: lastLine, character: lastChar },
+          },
+          newText: `\n${inserted}`,
+        },
+      ];
+    }
 
+    // Pure deletion (0 new lines inserted)
+    if (newSuffix === prefix) {
+      if (oldSuffix < oldLines.length) {
+        return [
+          {
+            range: {
+              start: { line: prefix, character: 0 },
+              end: { line: oldSuffix, character: 0 },
+            },
+            newText: "",
+          },
+        ];
+      }
+      if (prefix > 0) {
+        const prevLine = prefix - 1;
+        const lastLine = oldSuffix - 1;
+        return [
+          {
+            range: {
+              start: { line: prevLine, character: oldLines[prevLine]!.length },
+              end: { line: lastLine, character: oldLines[lastLine]!.length },
+            },
+            newText: "",
+          },
+        ];
+      }
+    }
+
+    // General replacement of oldLines[prefix..oldSuffix-1] with newLines[prefix..newSuffix-1]
+    const lastOldLine = oldSuffix - 1;
     return [
       {
         range: {
-          start: { line: startLine, character: 0 },
-          end: { line: endLine, character: endChar },
+          start: { line: prefix, character: 0 },
+          end: { line: lastOldLine, character: oldLines[lastOldLine]!.length },
         },
-        newText: replacement,
+        newText: newLines.slice(prefix, newSuffix).join("\n"),
       },
     ];
   };
@@ -247,7 +288,13 @@ export function createPsseDiagramBackend(backends: DiagramBackendHost): DiagramB
         if (edgeVerticesMap.size > 0) {
           for (const cell of graph.cells) {
             if (cell.shape === "edge") {
-              const pts = edgeVerticesMap.get(cell.id);
+              const srcCell = (cell as unknown as { source?: { cell?: string } }).source?.cell;
+              const tgtCell = (cell as unknown as { target?: { cell?: string } }).target?.cell;
+              const pts =
+                edgeVerticesMap.get(cell.id) ??
+                (srcCell && tgtCell
+                  ? (edgeVerticesMap.get(`${srcCell}__${tgtCell}`) ?? edgeVerticesMap.get(`${tgtCell}__${srcCell}`))
+                  : undefined);
               if (pts) {
                 (cell as unknown as { vertices?: Array<{ x: number; y: number }> }).vertices = pts;
               }
@@ -660,10 +707,10 @@ export function createPsseDiagramBackend(backends: DiagramBackendHost): DiagramB
           workingText = connectPsseDiagramBuses(workingText, act.source, act.target);
         } else if (act.type === "disconnect") {
           flushBatchedChanges();
-          workingText = disconnectPsseDiagramBuses(workingText, act.source, act.target);
+          workingText = disconnectPsseDiagramBuses(workingText, act.source, act.target, act.id);
         } else if (act.type === "reconnect") {
           flushBatchedChanges();
-          workingText = disconnectPsseDiagramBuses(workingText, act.oldSource, act.oldTarget);
+          workingText = disconnectPsseDiagramBuses(workingText, act.oldSource, act.oldTarget, act.edgeId);
           workingText = connectPsseDiagramBuses(workingText, act.newSource, act.newTarget);
         } else if (act.type === "moveEdge") {
           flushBatchedChanges();
@@ -675,7 +722,7 @@ export function createPsseDiagramBackend(backends: DiagramBackendHost): DiagramB
               .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
               .map((p) => `${Math.round(p.x)},${Math.round(p.y)}`)
               .join(";");
-            const edgeKey = `${srcBus}__${tgtBus}`;
+            const edgeKey = edge.id || `${srcBus}__${tgtBus}`;
             const edgeRegex = new RegExp(
               `^@!\\s*@edge\\s+${edgeKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+vertices=[^\\r\\n]*$`,
               "m",
@@ -692,7 +739,9 @@ export function createPsseDiagramBackend(backends: DiagramBackendHost): DiagramB
           }
         } else if (act.type === "move") {
           for (const item of act.items) {
-            const name = item.name;
+            // `connectedOnly` items are unmoved neighbors sent for Modelica Placement materialization.
+            if (item.connectedOnly) continue;
+            const name = item.id || item.name;
             let defaultW = 156;
             let defaultH = 40;
             if (name.startsWith("gen_")) {

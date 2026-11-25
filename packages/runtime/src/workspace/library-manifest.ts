@@ -415,6 +415,18 @@ export class LibraryPackageRegistry {
     return out;
   }
 
+  getAllPackages(): LoadedLibraryPackage[] {
+    const out: LoadedLibraryPackage[] = [];
+    const seen = new Set<LoadedLibraryPackage>();
+    for (const pkg of this.packages.values()) {
+      if (!seen.has(pkg)) {
+        seen.add(pkg);
+        out.push(pkg);
+      }
+    }
+    return out;
+  }
+
   getStandardPacks(): LoadedLibraryPackage[] {
     const out: LoadedLibraryPackage[] = [];
     const seen = new Set<LoadedLibraryPackage>();
@@ -500,6 +512,15 @@ export class LibraryPackageRegistry {
     const diagMap = this.diagramsByLang.get(language.toLowerCase());
     if (!diagMap) return undefined;
     return diagMap.get(nameOrAlias) ?? diagMap.get(nameOrAlias.toLowerCase());
+  }
+
+  getDiagramSpecAnyLanguage(nameOrAlias: string): { language: string; spec: DiagramComponentSpec } | undefined {
+    const lower = nameOrAlias.toLowerCase();
+    for (const [language, diagMap] of this.diagramsByLang.entries()) {
+      const spec = diagMap.get(nameOrAlias) ?? diagMap.get(lower);
+      if (spec) return { language, spec };
+    }
+    return undefined;
   }
 
   materializeSymbolIndex(language: string, target?: SymbolIndex): SymbolIndex {

@@ -48,7 +48,7 @@ function buildTiledIeee118(nAreas: number) {
         ...bus,
         i: bNum + off,
         name: `A${area}_${bus.name}`.slice(0, 12),
-        ide: bus.ide === 3 ? 2 : bus.ide,
+        ide: bus.ide === 3 && area % 25 !== 0 ? 2 : bus.ide,
         area: area + 1,
       });
     }

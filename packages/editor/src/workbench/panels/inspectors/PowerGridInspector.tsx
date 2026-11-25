@@ -54,9 +54,15 @@ export interface PsseStudyArtifactSnapshot {
 }
 
 let latestPsseStudySnapshot: PsseStudyArtifactSnapshot | null = null;
+let latestPowerFlowComparisonSnapshot: import("@modelscript/exchange").PowerFlowComparisonReport | null = null;
 
 export function getLatestPsseStudySnapshot(): PsseStudyArtifactSnapshot | null {
   return latestPsseStudySnapshot;
+}
+
+export function getLatestPowerFlowComparisonSnapshot():
+  import("@modelscript/exchange").PowerFlowComparisonReport | null {
+  return latestPowerFlowComparisonSnapshot;
 }
 
 export interface PowerGridInspectorProps {
@@ -1494,6 +1500,11 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
         baselineLabel={baselineLabel}
         channelPrefix={chnfPrefix}
         onChannelPrefixChange={setChnfPrefix}
+        projectFiles={projectFiles}
+        onComparisonReport={(report) => {
+          latestPowerFlowComparisonSnapshot = report;
+        }}
+        onRevealLine={onRevealLine}
         colorMode={colorMode}
         onStatusChange={setStudyStatus}
       />

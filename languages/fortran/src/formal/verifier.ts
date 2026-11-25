@@ -157,10 +157,10 @@ function seedArraysFromSignature(state: ReducedProductState, sig: FortranRoutine
         arrUpper,
         new ArraySegmentState(
           NumericalInterval.const(totalLen),
-          NumericalInterval.ZERO,
-          NumericalInterval.ZERO,
-          NumericalInterval.ZERO,
-          NumericalInterval.ZERO,
+          NumericalInterval.TOP,
+          NumericalInterval.TOP,
+          NumericalInterval.TOP,
+          NumericalInterval.TOP,
           dimIvs,
         ),
       );

@@ -1974,6 +1974,11 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4, partPr
     }
 
     case SolidKind.Union: {
+      const isSimpleBoxSolid = (s: Solid): boolean => {
+        if (s.kind === SolidKind.Box) return true;
+        if (s.kind === SolidKind.Transform) return isSimpleBoxSolid(s.child);
+        return false;
+      };
       const leftBox = computeSolidAABB(solid.left);
       const rightBox = computeSolidAABB(solid.right);
       const overlaps =
@@ -1983,7 +1988,7 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4, partPr
         leftBox.max[1] >= rightBox.min[1] - 1e-4 &&
         leftBox.min[2] <= rightBox.max[2] + 1e-4 &&
         leftBox.max[2] >= rightBox.min[2] - 1e-4;
-      if (overlaps) {
+      if (overlaps && isSimpleBoxSolid(solid.left) && isSimpleBoxSolid(solid.right)) {
         const brepRef = buildEvaluatedSolidBrep(ctx, solid, parentMatrix, partPrefix);
         if (brepRef) return [brepRef];
       }

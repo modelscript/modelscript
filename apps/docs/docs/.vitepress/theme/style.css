@@ -386,7 +386,7 @@ body {
 }
 
 /* Stage 2 compacting (<= 1040px, or <= 1160px with sidebar):
-   hide 'Ctrl K' keycaps and shorten 'Explore Ansatz Network' -> 'Ansatz Network' */
+   hide 'Ctrl K' keycaps and compact 'Ansatz Editor' pill */
 @media (min-width: 768px) and (max-width: 1040px) {
   .VPNavBar:not(.has-sidebar) .wrapper {
     padding: 0 20px !important;

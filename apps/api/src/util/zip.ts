@@ -3,6 +3,7 @@
 import { detectAndAdaptArchiveManifest, readZipTextEntries } from "@modelscript/exchange";
 import fs from "node:fs";
 import path from "node:path";
+import { parse as parseYaml } from "yaml";
 import yauzl from "yauzl";
 
 const MAX_ZIP_ENTRIES = 50_000;
@@ -204,6 +205,7 @@ export async function extractZipToDir(buffer: Buffer, targetDir: string): Promis
 }
 
 const RECOGNIZED_NATIVE_MANIFEST_FILES = new Set([
+  "modelscript.yaml",
   "package.json",
   "modelscript.json",
   "package.mo",
@@ -224,7 +226,7 @@ const RECOGNIZED_NATIVE_MANIFEST_FILES = new Set([
 ]);
 
 /**
- * Extract manifest (`package.json`, `modelscript.json`, `package.mo`, or adapted native manifest
+ * Extract manifest (`modelscript.yaml`, `package.json`, `modelscript.json`, `package.mo`, or adapted native manifest
  * from `.kpar`, `.fmu`, `.ssp`, `.ddp`, `.aasx`, `.omex`, `.reqifz`, `.slx`, ROS `package.xml`, `fpm.toml`, etc.)
  * from a zip buffer.
  */
@@ -239,6 +241,7 @@ export async function extractManifestFromZip(
         return;
       }
 
+      let bestYaml: { depth: number; entry: yauzl.Entry } | null = null;
       let bestJson: { depth: number; entry: yauzl.Entry } | null = null;
       let bestMo: { depth: number; entry: yauzl.Entry } | null = null;
       let hasNativeIndicator = false;
@@ -256,7 +259,11 @@ export async function extractManifestFromZip(
         const baseName = segments[segments.length - 1] ?? "";
         const depth = segments.length;
 
-        if (baseName === "package.json" || baseName === "modelscript.json") {
+        if (baseName === "modelscript.yaml") {
+          if (!bestYaml || depth < bestYaml.depth) {
+            bestYaml = { depth, entry };
+          }
+        } else if (baseName === "package.json" || baseName === "modelscript.json") {
           if (!bestJson || depth < bestJson.depth) {
             bestJson = { depth, entry };
           }
@@ -279,7 +286,7 @@ export async function extractManifestFromZip(
       });
 
       zipfile.on("end", () => {
-        const target = bestJson ?? bestMo;
+        const target = bestYaml ?? bestJson ?? bestMo;
         if (!target) {
           if (hasNativeIndicator) {
             try {
@@ -301,13 +308,14 @@ export async function extractManifestFromZip(
           }
           reject(
             new Error(
-              "No package.json, modelscript.json, package.mo, or supported native package manifest (.kpar, .fmu, .ssp, .ddp, .aasx, .omex, .reqifz, .slx, package.xml, fpm.toml) found in the zip archive",
+              "No modelscript.yaml, package.json, modelscript.json, package.mo, or supported native package manifest (.kpar, .fmu, .ssp, .ddp, .aasx, .omex, .reqifz, .slx, package.xml, fpm.toml) found in the zip archive",
             ),
           );
           return;
         }
 
-        const manifestType: "json" | "mo" = bestJson ? "json" : "mo";
+        const isYaml = Boolean(bestYaml);
+        const manifestType: "json" | "mo" = bestYaml || bestJson ? "json" : "mo";
 
         zipfile.openReadStream(target.entry, (err, readStream) => {
           if (err || !readStream) {
@@ -326,7 +334,17 @@ export async function extractManifestFromZip(
             chunks.push(chunk);
           });
           readStream.on("end", () => {
-            resolve({ type: manifestType, content: Buffer.concat(chunks).toString("utf-8") });
+            const raw = Buffer.concat(chunks).toString("utf-8");
+            if (isYaml) {
+              try {
+                const parsed = parseYaml(raw);
+                resolve({ type: "json", content: JSON.stringify(parsed ?? {}, null, 2), format: "modelscript.yaml" });
+              } catch (yamlErr) {
+                reject(yamlErr);
+              }
+              return;
+            }
+            resolve({ type: manifestType, content: raw });
           });
           readStream.on("error", reject);
         });

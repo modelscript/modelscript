@@ -2181,6 +2181,8 @@ export class ValidationService {
     }
   }
 
+  private pendingCascadeUri: string | null = null;
+
   /**
    * Coalesces rapid multi-file opens/edits into a single asynchronous cross-language peer
    * revalidation pass so initial diagram/editor requests are never starved by O(N^2) cascades.
@@ -2190,10 +2192,34 @@ export class ValidationService {
     if (this.revalidationTimer) {
       clearTimeout(this.revalidationTimer);
     }
+    this.pendingCascadeUri = sourceEffectiveUri;
     this.revalidationTimer = setTimeout(() => {
       this.revalidationTimer = null;
-      void this.revalidateCrossLanguageDependents(sourceEffectiveUri);
+      const uri = this.pendingCascadeUri;
+      this.pendingCascadeUri = null;
+      if (uri) {
+        void this.revalidateCrossLanguageDependents(uri);
+      }
     }, 120);
+  }
+
+  /**
+   * Immediately executes any debounced cross-language peer revalidation and awaits all in-flight validations.
+   */
+  public async flushPendingRevalidations(): Promise<void> {
+    if (this.revalidationTimer) {
+      clearTimeout(this.revalidationTimer);
+      this.revalidationTimer = null;
+    }
+    const uri = this.pendingCascadeUri;
+    this.pendingCascadeUri = null;
+    if (uri) {
+      await this.revalidateCrossLanguageDependents(uri);
+    }
+    const pending = Array.from(this.activeValidationPromises.values());
+    if (pending.length > 0) {
+      await Promise.allSettled(pending);
+    }
   }
 
   /**

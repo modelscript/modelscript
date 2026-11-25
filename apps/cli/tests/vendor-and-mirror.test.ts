@@ -153,16 +153,10 @@ describe("Air-Gap Offline Tooling: msx vendor & msx mirror", () => {
       });
     });
 
-    // Create package.json in workspace referencing @org/power-grid
+    // Create modelscript.yaml in workspace referencing @org/power-grid
     fs.writeFileSync(
-      path.join(workspaceDir, "package.json"),
-      JSON.stringify({
-        name: "test-workspace",
-        version: "0.1.0",
-        dependencies: {
-          "@org/power-grid": "^1.2.0",
-        },
-      }),
+      path.join(workspaceDir, "modelscript.yaml"),
+      `name: test-workspace\nversion: "0.1.0"\ndependencies:\n  "@org/power-grid": "^1.2.0"\n`,
       "utf-8",
     );
   });

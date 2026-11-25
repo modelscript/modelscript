@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { createCanonicalPolyglotDemoBoard } from "@modelscript/canvas";
+import { evaluateModelScriptPortCompatibility } from "@modelscript/diagram/protocol";
 import { GALLERY_COMPONENTS } from "@modelscript/editor/workbench/componentGalleryCatalog.js";
 import {
   applyAutoDomainLayerLayout,
@@ -17,6 +18,7 @@ import {
   computeGrabOffset,
   computeInfiniteWireControlPoints,
   computeMatrixEntranceState,
+  computeSeriesYBounds,
   computeSmoothingAlpha,
   computeStockroomSlotPose,
   createDynamicWireTubeBuffer,
@@ -29,11 +31,15 @@ import {
   evaluateMaterializeTransition,
   evaluatePortCompatibility,
   evaluateWristPalmVisibility,
+  extractVrSimulationDataset,
   ExtrudedIconCache,
   filterLibraryCatalog,
+  formatEngineeringValue,
   generateUniqueComponentName,
   hitTestLibraryPanel,
+  hitTestVrSimulationPanel,
   inferCatalogItemPorts,
+  INITIAL_STOCKROOM_MAGNET_STATE,
   isInsideDeleteRing,
   makePortKey,
   makeUndirectedConnectionKey,
@@ -41,11 +47,14 @@ import {
   parseSvgTransform,
   REALISTIC_COMPONENT_KINDS,
   redoSpatialDiagram,
+  resolveDiagramLanguageTheme,
   resolveRealisticComponentKind,
   resolveStockroomSlotItem,
   rotundaReducer,
+  sampleSeriesAtTime,
   sampleWireSplineAt,
   stage3DToDiagram2D,
+  stepStockroomMagnetLock,
   stepStockroomScroll,
   STOCKROOM_VISIBLE_COLS,
   STOCKROOM_VISIBLE_ROWS,
@@ -621,5 +630,201 @@ describe("3D WebXR Spatial Diagram Editor — Pure Engines & Integration", () =>
       realisticCount >= 9 && realisticCount < GALLERY_COMPONENTS.length,
       `Expected a mix of realistic 3D models and extruded cards, got ${realisticCount}/${GALLERY_COMPONENTS.length}`,
     );
+  });
+
+  test("evaluateModelScriptPortCompatibility enforces real Modelica/SysML2 connector rules identically in 2D and VR", () => {
+    // Modelica complementary physical connectors match
+    const pinPair = evaluateModelScriptPortCompatibility(
+      { nodeId: "R1", portId: "p", connectorType: "Modelica.Electrical.Analog.Interfaces.PositivePin" },
+      { nodeId: "C1", portId: "n", connectorType: "Modelica.Electrical.Analog.Interfaces.NegativePin" },
+    );
+    assert.equal(pinPair.compatible, true);
+    assert.equal(pinPair.rule, "connector-type-match");
+
+    // Cross-domain connector types (Electrical Pin vs Thermal HeatPort) are rejected
+    const crossPhysics = evaluateModelScriptPortCompatibility(
+      { nodeId: "R1", portId: "p", connectorType: "Modelica.Electrical.Analog.Interfaces.PositivePin" },
+      { nodeId: "H1", portId: "port", connectorType: "Modelica.Thermal.HeatTransfer.Interfaces.HeatPort_a" },
+    );
+    assert.equal(crossPhysics.compatible, false);
+    assert.equal(crossPhysics.rule, "connector-type-mismatch");
+
+    // Causal RealOutput -> RealOutput conflict rejected
+    const outOut = evaluateModelScriptPortCompatibility(
+      { nodeId: "S1", portId: "y", connectorType: "Modelica.Blocks.Interfaces.RealOutput" },
+      { nodeId: "S2", portId: "y", connectorType: "Modelica.Blocks.Interfaces.RealOutput" },
+    );
+    assert.equal(outOut.compatible, false);
+    assert.equal(outOut.rule, "causality-conflict");
+
+    // SysML v2 conjugation requires complementary (~) port pairing
+    const sysmlMismatch = evaluateModelScriptPortCompatibility(
+      { nodeId: "A", portId: "pwr", connectorType: "PowerPort", isConjugated: false },
+      { nodeId: "B", portId: "pwr", connectorType: "PowerPort", isConjugated: false },
+      { languageId: "sysml2" },
+    );
+    assert.equal(sysmlMismatch.compatible, false);
+    assert.equal(sysmlMismatch.rule, "sysml2-conjugation-mismatch");
+
+    const sysmlMatch = evaluateModelScriptPortCompatibility(
+      { nodeId: "A", portId: "pwr", connectorType: "PowerPort", isConjugated: false },
+      { nodeId: "B", portId: "pwr", connectorType: "PowerPort", isConjugated: true },
+      { languageId: "sysml2" },
+    );
+    assert.equal(sysmlMatch.compatible, true);
+
+    // VR magnetic-port-solver delegates directly to the exact same canonical rules
+    const vrReject = evaluatePortCompatibility(
+      {
+        nodeId: "R1",
+        portId: "p",
+        domain: "electrical",
+        polarity: "positive",
+        connectorType: "Modelica.Electrical.Analog.Interfaces.PositivePin",
+      },
+      {
+        nodeId: "H1",
+        portId: "port",
+        domain: "thermal",
+        polarity: "neutral",
+        connectorType: "Modelica.Thermal.HeatTransfer.Interfaces.HeatPort_a",
+      },
+    );
+    assert.equal(vrReject.compatible, false);
+  });
+
+  test("stepStockroomMagnetLock stabilizes shelf grabs with sticky hold, dwell switch, and scroll brake", () => {
+    // 1. Immediate latch onto bay 7 with scroll brake engaged
+    const s1 = stepStockroomMagnetLock(INITIAL_STOCKROOM_MAGNET_STATE, 7, 0.016, 0.1);
+    assert.equal(s1.next.lockedSlotIndex, 7);
+    assert.equal(s1.justLocked, true);
+    assert.ok(s1.scrollBrake < 0.5, "Magnetic lock should damp micro-scroll tremors while aiming");
+
+    // 2. Ray slips into gap (null) for 100ms during trigger pull -> stays locked on bay 7!
+    const s2 = stepStockroomMagnetLock(s1.next, null, 0.1, 0);
+    assert.equal(s2.next.lockedSlotIndex, 7);
+
+    // 3. Brief 30ms brush over neighbor bay 8 does not prematurely steal lock
+    const s3 = stepStockroomMagnetLock(s2.next, 8, 0.03, 0);
+    assert.equal(s3.next.lockedSlotIndex, 7);
+
+    // 4. Sustained dwell (>= 75ms) cleanly switches magnetic lock to bay 8
+    const s4 = stepStockroomMagnetLock(s3.next, 8, 0.06, 0);
+    assert.equal(s4.next.lockedSlotIndex, 8);
+    assert.equal(s4.justLocked, true);
+
+    // 5. Intentional fast thumbstick flick (> 0.52) releases lock & restores full scroll speed
+    const s5 = stepStockroomMagnetLock(s4.next, 8, 0.016, 0.85);
+    assert.equal(s5.next.lockedSlotIndex, null);
+    assert.equal(s5.scrollBrake, 1);
+  });
+
+  test("Diagram language theme, VR entry views (3d/diagram/inspector/code), code overlay, and file carousel work cleanly in SSR", () => {
+    const moTheme = resolveDiagramLanguageTheme("modelica");
+    const sysmlTheme = resolveDiagramLanguageTheme("sysml2", "ibd");
+    const spiceTheme = resolveDiagramLanguageTheme("spice");
+    assert.equal(moTheme.badgeLabel, "MODELICA");
+    assert.equal(sysmlTheme.badgeLabel, "SysML v2");
+    assert.ok(sysmlTheme.diagramKindLabel.includes("IBD"));
+    assert.notEqual(moTheme.accentColor, sysmlTheme.accentColor);
+    assert.equal(spiceTheme.badgeLabel, "SPICE");
+
+    // Reducer view/overlay/file-carousel transitions
+    let s = createInitialRotundaState({ activeView: "code" });
+    assert.equal(s.activeView, "code");
+    assert.equal(s.codeOverlayOpen, true);
+    s = rotundaReducer(s, { type: "setActiveView", view: "inspector" });
+    assert.equal(s.activeView, "inspector");
+    assert.equal(s.inspectorOverlayOpen, true);
+    s = rotundaReducer(s, { type: "toggleFileCarousel" });
+    assert.equal(s.fileCarouselOpen, true);
+    s = rotundaReducer(s, { type: "setActiveView", view: "diagram" });
+    assert.equal(s.diagramEditorEnabled, true);
+
+    const doc = createCanonicalPolyglotDemoBoard();
+    const html = renderToStaticMarkup(
+      React.createElement(EngineeringRotunda, {
+        document: doc,
+        mode: "spatial-3d",
+        languageId: "sysml2",
+        diagramType: "bdd",
+        initialActiveView: "diagram",
+        initialCodeOverlayOpen: true,
+        sourceCode: "package Vehicle {\n  part def Battery;\n}\n",
+        activeFilePath: "Vehicle.sysml",
+        workspaceFiles: [
+          { path: "Vehicle.sysml", name: "Vehicle.sysml", languageId: "sysml2" },
+          { path: "Powertrain.mo", name: "Powertrain.mo", languageId: "modelica" },
+        ],
+      }),
+    );
+    assert.ok(html.includes('data-active-view="diagram"'));
+    assert.ok(html.includes('data-language-id="sysml2"'));
+    assert.ok(html.includes('data-testid="rotunda-language-badge"'));
+    assert.ok(html.includes("SysML v2"));
+    assert.ok(html.includes('data-testid="rotunda-toggle-code-overlay"'));
+    assert.ok(html.includes('data-testid="rotunda-toggle-inspector-overlay"'));
+    assert.ok(html.includes('data-testid="rotunda-toggle-file-carousel"'));
+    assert.ok(html.includes("Files (2)"));
+  });
+
+  test("VR Simulation & Multi-Channel Oscilloscope Theater extracts series, interpolates playhead, hit-tests channels, and renders in SSR", () => {
+    const rows = [
+      { time: 0, v_bus1: 1.0, i_line: 0.0, freq_hz: 60.0 },
+      { time: 0.5, v_bus1: 0.92, i_line: 120.5, freq_hz: 59.85 },
+      { time: 1.0, v_bus1: 0.98, i_line: 85.0, freq_hz: 59.95 },
+    ];
+
+    const ds = extractVrSimulationDataset(rows, ["v_bus1", "i_line", "freq_hz"], ["v_bus1", "i_line"]);
+    assert.equal(ds.times.length, 3);
+    assert.equal(ds.tMin, 0);
+    assert.equal(ds.tMax, 1.0);
+    assert.deepEqual(ds.allVariables, ["v_bus1", "i_line", "freq_hz"]);
+    assert.equal(ds.series.length, 2);
+
+    // Midpoint linear interpolation at t = 0.25s
+    const midV = sampleSeriesAtTime(ds.times, ds.series[0]!.values, 0.25);
+    assert.ok(Math.abs(midV - 0.96) < 1e-6, `Expected 0.96, got ${midV}`);
+
+    const bounds = computeSeriesYBounds(ds.series);
+    assert.ok(bounds.yMin < 0 && bounds.yMax > 120.5);
+    assert.equal(formatEngineeringValue(0), "0");
+    assert.equal(formatEngineeringValue(12500), "12.5k");
+
+    // Interactive 3D oscilloscope panel hit-testing
+    assert.deepEqual(hitTestVrSimulationPanel(850, 50, ds.allVariables, 0), { kind: "run" });
+    assert.deepEqual(hitTestVrSimulationPanel(1150, 50, ds.allVariables, 0), { kind: "toggle-layout" });
+    assert.deepEqual(hitTestVrSimulationPanel(1340, 50, ds.allVariables, 0), { kind: "close" });
+    assert.deepEqual(hitTestVrSimulationPanel(1080, 195, ds.allVariables, 0), {
+      kind: "toggle-var",
+      variable: "v_bus1",
+    });
+    assert.deepEqual(hitTestVrSimulationPanel(1080, 250, ds.allVariables, 0), {
+      kind: "toggle-var",
+      variable: "i_line",
+    });
+    const scrub = hitTestVrSimulationPanel(524, 400, ds.allVariables, 0);
+    assert.equal(scrub?.kind, "scrub-plot");
+    assert.ok(scrub && scrub.kind === "scrub-plot" && Math.abs(scrub.normT - 0.5) < 0.01);
+
+    // SSR rendering when entering VR directly from Simulation Results view
+    const doc = createCanonicalPolyglotDemoBoard();
+    const simHtml = renderToStaticMarkup(
+      React.createElement(EngineeringRotunda, {
+        document: doc,
+        mode: "spatial-3d",
+        languageId: "pscad",
+        initialActiveView: "simulation",
+        simulationData: {
+          variables: ["v_bus1", "i_line", "freq_hz"],
+          selectedVariables: ["v_bus1", "i_line"],
+          rows,
+          status: { status: "completed" },
+        },
+      }),
+    );
+    assert.ok(simHtml.includes('data-active-view="simulation"'));
+    assert.ok(simHtml.includes('data-language-id="pscad"'));
+    assert.ok(simHtml.includes('data-testid="rotunda-toggle-simulation-panel"'));
   });
 });

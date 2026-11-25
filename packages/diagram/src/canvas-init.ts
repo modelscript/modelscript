@@ -40,6 +40,7 @@ import { ensureDiagramStyles, isEphemeralDiagramNode } from "./drop-placeholder.
 import { isGraphLayoutEditable } from "./graph-state.js";
 import { groupSelectedNodesOnGraph, ungroupSelectedNodesOnGraph, type GroupableGraphLike } from "./group-actions.js";
 import { destroyMinimapHud, ensureMinimapHud, updateMinimapHud } from "./minimap.js";
+import { evaluateModelScriptPortCompatibility } from "./port-compatibility.js";
 import {
   alignNodeSelectionBox,
   getEdgeToolConfig,
@@ -224,8 +225,22 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       },
       validateConnection: (
         args: {
-          sourceCell?: { id: string } | null | undefined;
-          targetCell?: { id: string } | null | undefined;
+          sourceCell?:
+            | {
+                id: string;
+                getData?: () => Record<string, unknown> | undefined;
+                getPort?: (portId: string) => Record<string, unknown> | undefined;
+              }
+            | null
+            | undefined;
+          targetCell?:
+            | {
+                id: string;
+                getData?: () => Record<string, unknown> | undefined;
+                getPort?: (portId: string) => Record<string, unknown> | undefined;
+              }
+            | null
+            | undefined;
           sourceMagnet?: Element | null | undefined;
           targetMagnet?: Element | null | undefined;
           sourcePort?: string | null | undefined;
@@ -234,13 +249,64 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       ) => {
         const { sourceCell, targetCell, sourceMagnet, targetMagnet, sourcePort, targetPort } = args;
         if (!sourceCell || !targetCell) return false;
-        if (sourceCell.id === targetCell.id) {
-          const sPort = sourcePort ?? sourceMagnet?.getAttribute("port") ?? sourceMagnet?.getAttribute("port-id");
-          const tPort = targetPort ?? targetMagnet?.getAttribute("port") ?? targetMagnet?.getAttribute("port-id");
-          if (!sPort || !tPort || sPort === tPort) return false;
+        const sPort = sourcePort ?? sourceMagnet?.getAttribute("port") ?? sourceMagnet?.getAttribute("port-id") ?? "";
+        const tPort = targetPort ?? targetMagnet?.getAttribute("port") ?? targetMagnet?.getAttribute("port-id") ?? "";
+        if (sourceCell.id === targetCell.id && (!sPort || !tPort || sPort === tPort)) {
+          return false;
         }
         if (isEphemeralDiagramNode(sourceCell.id) || isEphemeralDiagramNode(targetCell.id)) return false;
-        return true;
+
+        const srcData = sourceCell.getData?.() ?? {};
+        const tgtData = targetCell.getData?.() ?? {};
+        const srcPortMeta = sPort ? sourceCell.getPort?.(sPort) : undefined;
+        const tgtPortMeta = tPort ? targetCell.getPort?.(tPort) : undefined;
+
+        const compat = evaluateModelScriptPortCompatibility(
+          {
+            nodeId: sourceCell.id,
+            portId: sPort || "out",
+            connectorType:
+              typeof srcPortMeta?.["connectorType"] === "string" ? srcPortMeta["connectorType"] : undefined,
+            domain: typeof srcPortMeta?.["domain"] === "string" ? srcPortMeta["domain"] : undefined,
+            direction:
+              typeof srcPortMeta?.["direction"] === "string"
+                ? srcPortMeta["direction"]
+                : typeof srcPortMeta?.["group"] === "string"
+                  ? srcPortMeta["group"]
+                  : undefined,
+            isConjugated: typeof srcPortMeta?.["isConjugated"] === "boolean" ? srcPortMeta["isConjugated"] : undefined,
+            nodeClassName:
+              typeof (srcData["properties"] as Record<string, unknown> | undefined)?.["className"] === "string"
+                ? String((srcData["properties"] as Record<string, unknown>)["className"])
+                : typeof srcData["className"] === "string"
+                  ? srcData["className"]
+                  : undefined,
+            nodeLabel: typeof srcData["label"] === "string" ? srcData["label"] : undefined,
+          },
+          {
+            nodeId: targetCell.id,
+            portId: tPort || "in",
+            connectorType:
+              typeof tgtPortMeta?.["connectorType"] === "string" ? tgtPortMeta["connectorType"] : undefined,
+            domain: typeof tgtPortMeta?.["domain"] === "string" ? tgtPortMeta["domain"] : undefined,
+            direction:
+              typeof tgtPortMeta?.["direction"] === "string"
+                ? tgtPortMeta["direction"]
+                : typeof tgtPortMeta?.["group"] === "string"
+                  ? tgtPortMeta["group"]
+                  : undefined,
+            isConjugated: typeof tgtPortMeta?.["isConjugated"] === "boolean" ? tgtPortMeta["isConjugated"] : undefined,
+            nodeClassName:
+              typeof (tgtData["properties"] as Record<string, unknown> | undefined)?.["className"] === "string"
+                ? String((tgtData["properties"] as Record<string, unknown>)["className"])
+                : typeof tgtData["className"] === "string"
+                  ? tgtData["className"]
+                  : undefined,
+            nodeLabel: typeof tgtData["label"] === "string" ? tgtData["label"] : undefined,
+          },
+          { allowSameNode: true },
+        );
+        return compat.compatible;
       },
       validateEdge: () => true,
       createEdge: (): ReturnType<Graph["createEdge"]> => {

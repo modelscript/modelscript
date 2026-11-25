@@ -196,7 +196,7 @@ describe("Phase 2: Reactive Salsa 3.0, Incremental Editing & Polyglot Vectors", 
     // Re-evaluation produces the exact same Merkle hash -> backdating succeeds
     const backdated = facade.salsaBackdateQuery(q4, merkleLow, merkleHigh);
     expect(backdated).toBe(true);
-    expect(facade.queryGetRevision(q4)).toBe(rev2);
+    expect(facade.queryGetRevision(q4)).toBe(rev1);
 
     // Different Merkle hash -> backdating returns false (value changed)
     const backdatedChanged = facade.salsaBackdateQuery(q4, 0x99999999 >>> 0, 0x88888888 >>> 0);

@@ -384,6 +384,24 @@ function getRootChildIds(index: HierarchySymbolIndexLike | null | undefined): nu
   return Array.from(ids);
 }
 
+function resolveCleanroomDiagramSvg(
+  language: string | undefined,
+  primaryName: string | undefined,
+  fallbackName?: string | undefined,
+): string | undefined {
+  if (!primaryName && !fallbackName) return undefined;
+  if (language) {
+    const spec =
+      (primaryName ? globalLibraryRegistry.getDiagramSpec(language, primaryName) : undefined) ??
+      (fallbackName ? globalLibraryRegistry.getDiagramSpec(language, fallbackName) : undefined);
+    if (spec?.svg) return spec.svg;
+  }
+  const anyHit =
+    (primaryName ? globalLibraryRegistry.getDiagramSpecAnyLanguage(primaryName) : undefined) ??
+    (fallbackName ? globalLibraryRegistry.getDiagramSpecAnyLanguage(fallbackName) : undefined);
+  return anyHit?.spec.svg;
+}
+
 export async function getTreeChildrenFast(
   index: HierarchySymbolIndexLike,
   parentId?: string,
@@ -428,24 +446,29 @@ export async function getTreeChildrenFast(
       const libName = colonIdx >= 0 ? rest.slice(0, colonIdx) : rest;
       const category = colonIdx >= 0 ? rest.slice(colonIdx + 1) : "";
       const normLib = normalizeLibraryName(libName);
-      for (const pkg of globalLibraryRegistry.getPackagesForLanguage("pscad")) {
+      for (const pkg of globalLibraryRegistry.getAllPackages()) {
         if (normalizeLibraryName(pkg.packageName) !== normLib) continue;
+        const pkgLang = pkg.manifest.language ?? pkg.languages[0] ?? "modelica";
         for (const sym of pkg.symbols) {
-          const symCat = String((sym.metadata as Record<string, unknown> | undefined)?.["category"] ?? "Components");
+          const meta = sym.metadata as Record<string, unknown> | undefined;
+          const symCat = String(meta?.["category"] ?? "Components");
           if (symCat !== category) continue;
           const id = sym.namePath || sym.name;
           if (seen.has(id)) continue;
           seen.add(id);
-          const label = (sym.metadata as Record<string, unknown> | undefined)?.["label"];
+          const label = meta?.["label"];
+          const metaIconSvg = typeof meta?.["iconSvg"] === "string" ? meta["iconSvg"] : undefined;
+          const iconSvg = metaIconSvg ?? resolveCleanroomDiagramSvg(pkgLang, id, sym.name);
           nodes.push({
             id,
             name: sym.name,
             compositeName: id,
             classKind: "class",
             description: typeof label === "string" ? label : undefined,
-            icon: "circuit-board",
+            icon: pkgLang === "pscad" ? "circuit-board" : "symbol-class",
+            iconSvg,
             hasChildren: false,
-            language: "pscad",
+            language: pkgLang,
           });
         }
       }
@@ -494,7 +517,7 @@ export async function getTreeChildrenFast(
           classKind: kind,
           description: `${kind} · workspace`,
           icon: iconFromEntry(entry),
-          iconSvg: entry.metadata?.iconSvg,
+          iconSvg: entry.metadata?.iconSvg ?? resolveCleanroomDiagramSvg(entry.language, compositeName, entry.name),
           hasChildren: hasClassChildren(index, id, compositeName, workspace),
           language: entry.language,
           uri: entry.resourceId,
@@ -568,29 +591,35 @@ export async function getTreeChildrenFast(
     // Return root children belonging to this library (supporting legacy stdlib aliases)
     const libName = normalizeLibraryName(parentId.substring("__LIB__:".length));
 
-    // Check if this library is a package.json#modelscript symbol bundle (e.g. PSCAD MASTER)
-    const pscadPkgs = globalLibraryRegistry
-      .getPackagesForLanguage("pscad")
-      .filter((p) => normalizeLibraryName(p.packageName) === libName);
-    if (pscadPkgs.length > 0) {
-      const categories = new Map<string, number>();
-      for (const pkg of pscadPkgs) {
+    // Check if this library is a registered cleanroom symbol bundle (e.g. PSCAD MASTER, PSS/E std-lib, Simulink, etc.)
+    const registryPkgs = globalLibraryRegistry
+      .getAllPackages()
+      .filter((p) => normalizeLibraryName(p.packageName) === libName && p.symbols.length > 0);
+    if (registryPkgs.length > 0) {
+      const categories = new Map<string, { count: number; language: string }>();
+      for (const pkg of registryPkgs) {
+        const pkgLang = pkg.manifest.language ?? pkg.languages[0] ?? "modelica";
         for (const sym of pkg.symbols) {
           const cat = String((sym.metadata as Record<string, unknown> | undefined)?.["category"] ?? "Components");
-          categories.set(cat, (categories.get(cat) ?? 0) + 1);
+          const existing = categories.get(cat);
+          if (existing) {
+            existing.count += 1;
+          } else {
+            categories.set(cat, { count: 1, language: pkgLang });
+          }
         }
       }
-      for (const [cat, count] of categories.entries()) {
+      for (const [cat, info] of categories.entries()) {
         const catId = `__LIB_CAT__:${libName}:${cat}`;
         nodes.push({
           id: catId,
           name: cat,
           compositeName: catId,
           classKind: "package",
-          description: `${count} components`,
+          description: `${info.count} components`,
           icon: "package",
           hasChildren: true,
-          language: "pscad",
+          language: info.language,
         });
       }
       return nodes;
@@ -612,7 +641,7 @@ export async function getTreeChildrenFast(
           compositeName,
           classKind: classKindFromEntry(entry),
           icon: iconFromEntry(entry),
-          iconSvg: entry.metadata?.iconSvg,
+          iconSvg: entry.metadata?.iconSvg ?? resolveCleanroomDiagramSvg(entry.language, compositeName, entry.name),
           hasChildren: hasClassChildren(index, id, compositeName, workspace),
           language: entry.language,
           uri: entry.resourceId,
@@ -650,7 +679,7 @@ export async function getTreeChildrenFast(
           compositeName,
           classKind: classKindFromEntry(entry),
           icon: iconFromEntry(entry),
-          iconSvg: entry.metadata?.iconSvg,
+          iconSvg: entry.metadata?.iconSvg ?? resolveCleanroomDiagramSvg(entry.language, compositeName, entry.name),
           hasChildren: hasClassChildren(index, id, compositeName, workspace),
           language: entry.language,
           uri: entry.resourceId,

@@ -810,6 +810,11 @@ export function buildPolyglotIndex(
     if (stat.isDirectory()) {
       const entries = fs.readdirSync(targetPath);
       for (const entry of entries) {
+        if (entry === ".modelscript") {
+          const pkgsDir = path.join(targetPath, ".modelscript", "packages");
+          if (fs.existsSync(pkgsDir)) collect(pkgsDir);
+          continue;
+        }
         if (entry.startsWith(".") || entry === "node_modules" || entry === "dist") continue;
         collect(path.join(targetPath, entry));
       }

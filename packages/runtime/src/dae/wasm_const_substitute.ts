@@ -12,7 +12,6 @@ import {
   type ArenaFoldParamLookup,
   type DAEBuilderFoldExtensions,
   arrayValueToArenaExpr,
-  isArenaComplexValue,
   isLiteralMinusOne,
   isLiteralOne,
   isLiteralZero,
@@ -652,14 +651,6 @@ export function substituteArenaConstants(
         return arena.addCallExpr("Modelica.Mechanics.MultiBody.Frames.Orientation", [matT, vecW]);
       }
       const folded = evaluateConstantArenaExpression(arena, callId, constMap, nameToIdx, 0, undefined, undefined, true);
-      if (
-        isArenaComplexValue(folded) &&
-        Number.isFinite(folded.re) &&
-        Number.isFinite(folded.im) &&
-        (fnName === "Complex.'constructor'.fromReal" || fnName.endsWith(".Complex.'constructor'.fromReal"))
-      ) {
-        return arena.addCallExpr("Complex", [arena.addRealLiteral(folded.re), arena.addRealLiteral(folded.im)]);
-      }
       if (
         Array.isArray(folded) &&
         (fnName === "Modelica.Math.Vectors.normalize" ||

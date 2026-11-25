@@ -472,7 +472,7 @@ export class ModelicaFlattener {
             dae.getExprData1(fixedAttr) === 0;
           if (!hasBindingOrStart && !isFixedFalse) {
             const vName = dae.getVarName(i);
-            if (isCoveredByEquationLhs(vName)) continue;
+            if (!dae.isVarFlow(i) && isCoveredByEquationLhs(vName)) continue;
             let range = dae.getVarSourceRange(i);
             const sym = this.db.childrenOf(rootClassId).find((c) => c.name === vName);
             if (sym) {

@@ -24,7 +24,7 @@ const hostLabel = computed(() => {
   }
 });
 
-const exploreHref = computed(() => `${ansatzOrigin.value}/explore`);
+const editorHref = computed(() => `${ansatzOrigin.value}/editor`);
 
 let openTimer: ReturnType<typeof setTimeout> | undefined;
 let closeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -129,7 +129,7 @@ onBeforeUnmount(() => {
   <!-- Mobile / tablet screen drawer navigation -->
   <div v-if="props.screenMenu" class="ansatz-screen-item">
     <a
-      :href="exploreHref"
+      :href="editorHref"
       target="_blank"
       rel="noopener noreferrer"
       class="VPNavScreenMenuLink ansatz-screen-link"
@@ -138,11 +138,11 @@ onBeforeUnmount(() => {
       <div class="ansatz-screen-row">
         <span class="ansatz-screen-title">
           <span class="ansatz-screen-pip" aria-hidden="true" />
-          <span>Explore Ansatz Network</span>
+          <span>Ansatz Editor</span>
         </span>
         <span class="ansatz-screen-arrow" aria-hidden="true">↗</span>
       </div>
-      <p class="ansatz-screen-desc">Federated engineering network &amp; package registry</p>
+      <p class="ansatz-screen-desc">Zero-install web modeling, schematics &amp; live simulation</p>
     </a>
   </div>
 
@@ -156,7 +156,7 @@ onBeforeUnmount(() => {
     @focusout="onFocusOut"
   >
     <a
-      :href="exploreHref"
+      :href="editorHref"
       target="_blank"
       rel="noopener noreferrer"
       class="VPNavBarMenuLink ansatz-nav-pill"
@@ -164,9 +164,7 @@ onBeforeUnmount(() => {
       aria-describedby="ansatz-nav-tooltip"
     >
       <span class="ansatz-pip" aria-hidden="true" />
-      <span class="ansatz-label"
-        ><span class="ansatz-label-prefix">Explore </span>Ansatz<span class="ansatz-label-suffix"> Network</span></span
-      >
+      <span class="ansatz-label">Ansatz<span class="ansatz-label-suffix"> Editor</span></span>
       <svg
         class="ansatz-external"
         viewBox="0 0 24 24"
@@ -196,11 +194,11 @@ onBeforeUnmount(() => {
         <div class="ansatz-tooltip-arrow" aria-hidden="true" />
 
         <div class="ansatz-tooltip-header">
-          <span class="ansatz-tooltip-title">Ansatz</span>
+          <span class="ansatz-tooltip-title">Ansatz Editor</span>
           <span class="ansatz-tooltip-host">{{ hostLabel }}</span>
         </div>
 
-        <p class="ansatz-tooltip-desc">Federated engineering network and package registry powered by ModelScript.</p>
+        <p class="ansatz-tooltip-desc">Zero-install web modeling, schematics, and live simulation powered by ModelScript.</p>
       </div>
     </Transition>
   </div>

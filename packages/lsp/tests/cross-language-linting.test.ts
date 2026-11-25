@@ -147,10 +147,7 @@ async function createPolyglotHarness() {
   }
 
   async function waitForAllPendingValidations(): Promise<void> {
-    const pending = Array.from(validationService.activeValidationPromises.values());
-    if (pending.length > 0) {
-      await Promise.allSettled(pending);
-    }
+    await validationService.flushPendingRevalidations();
   }
 
   return {

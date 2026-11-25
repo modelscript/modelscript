@@ -292,8 +292,45 @@ describe("LSP Tree Hierarchy & OWL 2 Tree Utilities", () => {
         assert.ok(source3, "master:source3 must appear under Sources & Rotating Machines");
         assert.strictEqual(source3.language, "pscad");
         assert.strictEqual(source3.hasChildren, false);
+        assert.ok(source3.iconSvg?.includes("<svg"), "master:source3 must carry cleanroom iconSvg");
       } finally {
         globalLibraryRegistry.unregisterPackage("@modelscript/pscad-master-lib");
+      }
+    });
+
+    it("surfaces @modelscript/psse-std-lib and other cleanroom stdlibs with categories and iconSvg", async () => {
+      const { registerBuiltInPsseLibrarySync } = await import("@modelscript/psse");
+      const { globalLibraryRegistry } = await import("@modelscript/runtime");
+      registerBuiltInPsseLibrarySync();
+      mountedLibraryMetadata.set("@modelscript/psse-std-lib", {
+        name: "@modelscript/psse-std-lib",
+        version: "0.1.0",
+        language: "psse",
+      });
+
+      const emptyIndex = { symbols: new Map(), childrenOf: new Map() };
+      try {
+        const roots = await getTreeChildrenFast(emptyIndex);
+        const psseRoot = roots.find((r) => r.id === "__LIB__:@modelscript/psse-std-lib");
+        assert.ok(psseRoot, "@modelscript/psse-std-lib must appear in getTreeChildrenFast()");
+        assert.strictEqual(psseRoot.language, "psse");
+        assert.strictEqual(psseRoot.hasChildren, true);
+
+        const categories = await getTreeChildrenFast(emptyIndex, psseRoot.id);
+        assert.ok(categories.length > 0, "@modelscript/psse-std-lib must expand into categories");
+        const genCat = categories.find((c) => c.name === "generator");
+        assert.ok(genCat, "generator category must exist");
+        assert.strictEqual(genCat.hasChildren, true);
+
+        const leaves = await getTreeChildrenFast(emptyIndex, genCat.id);
+        const genrou = leaves.find((l) => l.compositeName === "psse:GENROU" || l.name === "GENROU");
+        assert.ok(genrou, "GENROU must appear under generator category");
+        assert.strictEqual(genrou.language, "psse");
+        assert.strictEqual(genrou.hasChildren, false);
+        assert.ok(genrou.iconSvg?.includes("<svg"), "psse:GENROU must carry cleanroom iconSvg");
+      } finally {
+        mountedLibraryMetadata.delete("@modelscript/psse-std-lib");
+        globalLibraryRegistry.unregisterPackage("@modelscript/psse-std-lib");
       }
     });
   });

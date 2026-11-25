@@ -120,7 +120,10 @@ end ChildSim;`;
   // 1. Flatten with unqualified name "ChildSim"
   const flatRes1 = await modelicaActionHandlers.flatten(execContext, { name: "ChildSim" });
   assert.ok(flatRes1.text.includes("ChildSim"), "DAE should include ChildSim");
-  assert.ok(flatRes1.text.includes("der(x) = (-c) * x"), "DAE should resolve inherited Base equation");
+  assert.ok(
+    flatRes1.text.includes("der(x) = -c * x") || flatRes1.text.includes("der(x) = (-c) * x"),
+    `DAE should resolve inherited Base equation, got:\n${flatRes1.text}`,
+  );
 
   // 2. Flatten with omitted name (extracts from documentText + within)
   const flatRes2 = await modelicaActionHandlers.flatten(execContext, {});

@@ -2647,20 +2647,24 @@ export function deletePsseDiagramComponents(sourceText: string, cellIds: string[
       addSpan(sw?.span);
     } else if (cellId.startsWith("branch_") || cellId.startsWith("line_")) {
       const parts = cellId.split("_");
-      const iBus = Number.parseInt(parts[1] ?? "0", 10);
-      const jBus = Number.parseInt(parts[2] ?? "0", 10);
+      const iBus = Math.abs(Number.parseInt(parts[1] ?? "0", 10));
+      const jBus = Math.abs(Number.parseInt(parts[2] ?? "0", 10));
       const ckt = parts[3]?.trim();
       const br = psseCase.branches.find(
-        (b) => b.i === iBus && Math.abs(b.j) === jBus && (!ckt || b.ckt.trim() === ckt),
+        (b) =>
+          ((b.i === iBus && Math.abs(b.j) === jBus) || (b.i === jBus && Math.abs(b.j) === iBus)) &&
+          (!ckt || b.ckt.trim() === ckt),
       );
       addSpan(br?.span);
     } else if (cellId.startsWith("xfmr_")) {
       const parts = cellId.split("_");
-      const iBus = Number.parseInt(parts[1] ?? "0", 10);
-      const jBus = Number.parseInt(parts[2] ?? "0", 10);
+      const iBus = Math.abs(Number.parseInt(parts[1] ?? "0", 10));
+      const jBus = Math.abs(Number.parseInt(parts[2] ?? "0", 10));
       const ckt = parts[3]?.trim();
       const xf = psseCase.transformers.find(
-        (x) => x.i === iBus && (x.j === jBus || x.k === jBus) && (!ckt || x.ckt.trim() === ckt),
+        (x) =>
+          ((x.i === iBus && (x.j === jBus || x.k === jBus)) || (x.j === iBus && (x.i === jBus || x.k === jBus))) &&
+          (!ckt || x.ckt.trim() === ckt),
       );
       addSpan(xf?.span);
     }
@@ -2675,6 +2679,23 @@ export function deletePsseDiagramComponents(sourceText: string, cellIds: string[
     if (out[end] === "\n") end++;
     out = out.slice(0, sp.startOffset) + out.slice(end);
   }
+
+  // Strip stale `@! @edge <key> vertices=...` annotations referencing deleted cells/edges
+  const deletedKeys = new Set<string>([...cellIds, ...normalizedIds]);
+  if (out.includes("@edge")) {
+    out = out
+      .split("\n")
+      .filter((line) => {
+        const m = /^@!\s*@edge\s+(\S+)\s+vertices=/i.exec(line.trim());
+        if (!m) return true;
+        const key = m[1]!;
+        if (deletedKeys.has(key)) return false;
+        const parts = key.split("__");
+        if (parts.length === 2 && (deletedKeys.has(parts[0]!) || deletedKeys.has(parts[1]!))) return false;
+        return true;
+      })
+      .join("\n");
+  }
   return out;
 }
 
@@ -2682,8 +2703,10 @@ export function deletePsseDiagramComponents(sourceText: string, cellIds: string[
  * Adds an AC branch connecting two buses in a PSS/E `.raw` document.
  */
 export function connectPsseDiagramBuses(sourceText: string, sourceCellId: string, targetCellId: string): string {
-  const iBus = sourceCellId.startsWith("bus_") ? Number.parseInt(sourceCellId.slice(4), 10) : NaN;
-  const jBus = targetCellId.startsWith("bus_") ? Number.parseInt(targetCellId.slice(4), 10) : NaN;
+  const srcBase = sourceCellId.split(".")[0] ?? sourceCellId;
+  const tgtBase = targetCellId.split(".")[0] ?? targetCellId;
+  const iBus = srcBase.startsWith("bus_") ? Number.parseInt(srcBase.slice(4), 10) : NaN;
+  const jBus = tgtBase.startsWith("bus_") ? Number.parseInt(tgtBase.slice(4), 10) : NaN;
   if (!Number.isFinite(iBus) || !Number.isFinite(jBus) || iBus === jBus) return sourceText;
 
   const psseCase = parseRaw(sourceText);
@@ -2704,12 +2727,44 @@ export function connectPsseDiagramBuses(sourceText: string, sourceCellId: string
   );
 }
 
+const isPsseEdgeCellId = (id: string): boolean =>
+  id.startsWith("branch_") || id.startsWith("line_") || id.startsWith("xfmr_") || id.startsWith("wire_");
+
+const isPsseAttachedEquipmentId = (id: string): boolean =>
+  id.startsWith("gen_") || id.startsWith("load_") || id.startsWith("shunt_") || id.startsWith("swshunt_");
+
 /**
- * Removes AC branches/transformers connecting two buses in a PSS/E `.raw` document.
+ * Removes AC branches/transformers (or a specific edge/equipment lead) in a PSS/E `.raw` document.
  */
-export function disconnectPsseDiagramBuses(sourceText: string, sourceCellId: string, targetCellId: string): string {
-  const iBus = sourceCellId.startsWith("bus_") ? Number.parseInt(sourceCellId.slice(4), 10) : NaN;
-  const jBus = targetCellId.startsWith("bus_") ? Number.parseInt(targetCellId.slice(4), 10) : NaN;
+export function disconnectPsseDiagramBuses(
+  sourceText: string,
+  sourceCellId: string,
+  targetCellId: string,
+  edgeId?: string,
+): string {
+  const directEdgeId =
+    edgeId && isPsseEdgeCellId(edgeId)
+      ? edgeId
+      : isPsseEdgeCellId(sourceCellId)
+        ? sourceCellId
+        : isPsseEdgeCellId(targetCellId)
+          ? targetCellId
+          : undefined;
+  if (directEdgeId) {
+    return deletePsseDiagramComponents(sourceText, [directEdgeId]);
+  }
+
+  const srcBase = sourceCellId.split(".")[0] ?? sourceCellId;
+  const tgtBase = targetCellId.split(".")[0] ?? targetCellId;
+  if (isPsseAttachedEquipmentId(srcBase) && tgtBase.startsWith("bus_")) {
+    return deletePsseDiagramComponents(sourceText, [srcBase]);
+  }
+  if (isPsseAttachedEquipmentId(tgtBase) && srcBase.startsWith("bus_")) {
+    return deletePsseDiagramComponents(sourceText, [tgtBase]);
+  }
+
+  const iBus = srcBase.startsWith("bus_") ? Number.parseInt(srcBase.slice(4), 10) : NaN;
+  const jBus = tgtBase.startsWith("bus_") ? Number.parseInt(tgtBase.slice(4), 10) : NaN;
   if (!Number.isFinite(iBus) || !Number.isFinite(jBus)) return sourceText;
 
   const psseCase = parseRaw(sourceText);

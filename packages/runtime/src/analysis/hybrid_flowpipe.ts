@@ -476,11 +476,13 @@ export class HybridFlowpipeSolver {
             1e-5,
           );
 
+          const endStepDomain = [new Interval(currentDt, currentDt), ...stepDomain.slice(1)];
+          const endGuardRange = guardTM.withDomain(endStepDomain).evaluateRange();
           enabledTransitions.push({
             tr,
             crossingDeltaInterval: refinedLocalDt,
             crossingTimeInterval: new Interval(currentTime + refinedLocalDt.lo, currentTime + refinedLocalDt.hi),
-            mustJump: guardRange.hi <= 0,
+            mustJump: guardRange.hi <= 0 || endGuardRange.hi <= 0,
           });
         }
       }

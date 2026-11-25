@@ -199,7 +199,14 @@ async function ensureWabtRuntimeSources(version: string): Promise<void> {
       continue;
     }
     const url = `https://raw.githubusercontent.com/WebAssembly/wabt/${version}/wasm2c/${file}`;
-    await downloadFile(url, path.join(RUNTIME_DIR, file));
+    try {
+      await downloadFile(url, path.join(RUNTIME_DIR, file));
+    } catch (err) {
+      if (file === "wasm-rt-impl-tableops.inc" && String(err).includes("HTTP 404")) {
+        continue;
+      }
+      throw err;
+    }
   }
   fs.writeFileSync(versionStamp, version, "utf8");
 }

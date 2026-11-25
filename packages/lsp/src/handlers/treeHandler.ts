@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { loadPrebakedMslIcons } from "@modelscript/modelica/diagram";
-import type { TreeNodeInfo } from "@modelscript/runtime";
+import { globalLibraryRegistry, type TreeNodeInfo } from "@modelscript/runtime";
 import { LspContext } from "../lsp-context.js";
 import {
   fqnCacheState,
@@ -102,10 +102,19 @@ export function registerTreeHandlers(context: LspContext) {
           if (direct) {
             node.iconSvg = direct;
           } else {
-            for (const [key, svg] of iconCache) {
-              if (svg && !key.includes(":") && (key === lookupName || key.endsWith("." + lookupName))) {
-                node.iconSvg = svg;
-                break;
+            const diagSpec = node.language
+              ? (globalLibraryRegistry.getDiagramSpec(node.language, lookupName) ??
+                globalLibraryRegistry.getDiagramSpec(node.language, node.name))
+              : (globalLibraryRegistry.getDiagramSpecAnyLanguage(lookupName)?.spec ??
+                globalLibraryRegistry.getDiagramSpecAnyLanguage(node.name)?.spec);
+            if (diagSpec?.svg) {
+              node.iconSvg = diagSpec.svg;
+            } else {
+              for (const [key, svg] of iconCache) {
+                if (svg && !key.includes(":") && (key === lookupName || key.endsWith("." + lookupName))) {
+                  node.iconSvg = svg;
+                  break;
+                }
               }
             }
           }
@@ -303,8 +312,18 @@ export function registerTreeHandlers(context: LspContext) {
             return svg;
           }
           const entryLang = String(entry?.language ?? entry?.metadata?.["language"] ?? "").toLowerCase();
+          if (entryLang && entryLang !== "modelica" && entryLang !== "modelscript") {
+            const diagSpec =
+              globalLibraryRegistry.getDiagramSpec(entryLang, cleanName) ??
+              globalLibraryRegistry.getDiagramSpec(entryLang, className);
+            if (diagSpec?.svg) {
+              iconCache.set(className, diagSpec.svg);
+              iconCache.set(cleanName, diagSpec.svg);
+              return diagSpec.svg;
+            }
+          }
           if (entryLang === "pscad" || entry?.ruleName?.startsWith("pscad")) {
-            // PSCAD project, case study, or library container
+            // PSCAD project, case study, or library container without cleanroom diagram icon
             iconCache.set(className, null);
             iconCache.set(cleanName, null);
             return null;
@@ -321,6 +340,16 @@ export function registerTreeHandlers(context: LspContext) {
           return null;
         }
       }
+    }
+
+    // Check cleanroom standard library diagram specs across all registered languages
+    const registryHit =
+      globalLibraryRegistry.getDiagramSpecAnyLanguage(cleanName) ??
+      globalLibraryRegistry.getDiagramSpecAnyLanguage(className);
+    if (registryHit?.spec.svg) {
+      iconCache.set(className, registryHit.spec.svg);
+      iconCache.set(cleanName, registryHit.spec.svg);
+      return registryHit.spec.svg;
     }
 
     if (isNonModelicaUri) {

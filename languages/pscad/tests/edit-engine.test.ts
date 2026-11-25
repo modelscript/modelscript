@@ -242,3 +242,118 @@ describe("pscad diagram actions (corpus)", () => {
     }
   });
 });
+
+function applyTextEdits(
+  text: string,
+  edits: {
+    range: { start: { line: number; character: number }; end: { line: number; character: number } };
+    newText: string;
+  }[],
+): string {
+  const lines = text.split("\n");
+  const off = (p: { line: number; character: number }) =>
+    lines.slice(0, p.line).reduce((n, l) => n + l.length + 1, 0) + p.character;
+  let out = text;
+  for (const e of [...edits].sort((a, b) => off(b.range.start) - off(a.range.start))) {
+    out = out.slice(0, off(e.range.start)) + e.newText + out.slice(off(e.range.end));
+  }
+  return out;
+}
+
+describe("pscad diagram actions (delete, reconnect, id-less wires, buses)", () => {
+  const rlSwitchingPath = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../examples/01-rl-switching-circuit/rl_switching.pscx",
+  );
+  const rlText = readFileSync(rlSwitchingPath, "utf8");
+
+  it("removes attached id-less wires when deleting a component and reconnects cleanly", () => {
+    const before = parsePscx(rlText).rootModule;
+    assert.equal(before.wires.length, 5);
+
+    // 1. Delete MainBreaker (BRK1) — should remove BRK1 and its two attached id-less wires
+    const delPlan = planDiagramActions(rlText, [{ type: "deleteComponents", names: ["MainBreaker"] }]);
+    assert.deepEqual(delPlan.unresolved, []);
+    const afterDeleteText = applyTextEdits(rlText, delPlan.edits);
+    const afterDelete = parsePscx(afterDeleteText).rootModule;
+    assert.equal(
+      afterDelete.components.find((c) => c.id === "BRK1"),
+      undefined,
+    );
+    assert.equal(afterDelete.wires.length, 3, "only the 3 unrelated wires remain");
+    assert.equal(
+      afterDelete.wires.filter((w) => !w.startPortId || !w.endPortId).length,
+      0,
+      "no orphaned/floating wires remain",
+    );
+
+    // 2. Reconnect Bus_Source right port (B1.B1_out) directly to Load_R left port (R1.R1_in)
+    const connPlan = planDiagramActions(afterDeleteText, [
+      { type: "connect", source: "B1.B1_out", target: "R1.R1_in" },
+    ]);
+    assert.deepEqual(connPlan.unresolved, []);
+    const afterConnText = applyTextEdits(afterDeleteText, connPlan.edits);
+    const afterConn = parsePscx(afterConnText).rootModule;
+    assert.equal(afterConn.wires.length, 4, "exactly one new wire was added");
+    const newWire = afterConn.wires[afterConn.wires.length - 1]!;
+    assert.deepEqual(newWire.vertices[0], { x: 180, y: 160 }, "starts at Bus_Source right port (B1_out)");
+    assert.deepEqual(newWire.vertices[newWire.vertices.length - 1], { x: 320, y: 160 }, "ends at Load_R left port");
+  });
+
+  it("ignores connectedOnly neighbors and preserves Bus centerline Y on move", () => {
+    // Moving SRC1 down by 24px with Bus_Source included as connectedOnly: true (matching X6 node:moved)
+    const movePlan = planDiagramActions(rlText, [
+      {
+        type: "move",
+        items: [
+          { name: "SRC1", x: 56, y: 164, width: 48, height: 40, rotation: 0 } as never,
+          { name: "Bus_Source", x: 140, y: 153, width: 40, height: 14, rotation: 0, connectedOnly: true } as never,
+        ],
+      },
+    ]);
+    assert.deepEqual(movePlan.unresolved, []);
+    const out = applyTextEdits(rlText, movePlan.edits);
+    const afterModel = buildProjectModel(out);
+    assert.equal(afterModel.errors.length, 0, "edited XML must remain well-formed");
+    const after = parsePscx(out).rootModule;
+    const bus = after.buses.find((b) => b.id === "B1")!;
+    assert.equal(bus.position.y, 160, "unmoved Bus_Source must not drift upward");
+    const w1 = after.wires[0]!;
+    assert.equal(w1.startPortId, "SRC1_out", "wire 1 stays attached to moved SRC1");
+    assert.equal(w1.endPortId, "B1", "wire 1 stays attached to Bus_Source");
+  });
+
+  it("moves Bus_Source using centerline Y and stretches its attached wires", () => {
+    // Visual top-left y = 173 with height = 14 => centerline y = 180 (moved down by +20px)
+    const moveBusPlan = planDiagramActions(rlText, [
+      {
+        type: "move",
+        items: [{ name: "B1", x: 140, y: 173, width: 40, height: 14 }],
+      },
+    ]);
+    assert.deepEqual(moveBusPlan.unresolved, []);
+    const out = applyTextEdits(rlText, moveBusPlan.edits);
+    const after = parsePscx(out).rootModule;
+    const bus = after.buses.find((b) => b.id === "B1")!;
+    assert.equal(bus.position.x, 140);
+    assert.equal(bus.position.y, 180);
+    assert.equal(after.wires[0]!.endPortId, "B1", "wire 1 stays attached to moved Bus_Source");
+    assert.equal(after.wires[1]!.startPortId, "B1", "wire 2 stays attached to moved Bus_Source");
+  });
+
+  it("disconnects only the targeted wire in a multi-wire net", () => {
+    const discPlan = planDiagramActions(rlText, [{ type: "disconnect", source: "B1.B1_out", target: "BRK1.BRK1_in" }]);
+    assert.deepEqual(discPlan.unresolved, []);
+    const out = applyTextEdits(rlText, discPlan.edits);
+    const after = parsePscx(out).rootModule;
+    assert.equal(after.wires.length, 4);
+    assert.ok(
+      after.wires.some((w) => w.startPortId === "SRC1_out" && w.endPortId === "B1"),
+      "SRC1 -> B1 wire must remain intact",
+    );
+    assert.ok(
+      !after.wires.some((w) => w.startPortId === "B1" && w.endPortId === "BRK1_in"),
+      "B1 -> BRK1 wire must be removed",
+    );
+  });
+});

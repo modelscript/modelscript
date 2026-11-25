@@ -269,6 +269,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
               actions = [
                 {
                   type: "reconnect",
+                  ...(message.edgeId ? { edgeId: message.edgeId } : {}),
                   oldSource: message.oldSource,
                   oldTarget: message.oldTarget,
                   newSource: message.newSource,
@@ -283,7 +284,14 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
               break;
             case "disconnect":
             case "deleteEdge":
-              actions = [{ type: "disconnect", source: message.source, target: message.target }];
+              actions = [
+                {
+                  type: "disconnect",
+                  ...(message.id ? { id: message.id } : {}),
+                  source: message.source,
+                  target: message.target,
+                },
+              ];
               break;
             case "deleteComponents":
               actions = [{ type: "deleteComponents", names: message.names }];

@@ -3138,7 +3138,13 @@ const LegacyPolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
       ) : effectiveSubTab === "cae" ? (
         <CaeContinuumInspector code={code} lines={lines} colorMode={colorMode} onRevealLine={onRevealLine} />
       ) : effectiveSubTab === "requirements" ? (
-        <RequirementsOntologyInspector code={code} lines={lines} colorMode={colorMode} onRevealLine={onRevealLine} />
+        <RequirementsOntologyInspector
+          code={code}
+          lines={lines}
+          colorMode={colorMode}
+          projectFiles={projectFiles}
+          onRevealLine={onRevealLine}
+        />
       ) : effectiveSubTab === "biochem" ? (
         <BiochemInspector code={code} lines={lines} colorMode={colorMode} dialect={d} onRevealLine={onRevealLine} />
       ) : effectiveSubTab === "automation" ? (

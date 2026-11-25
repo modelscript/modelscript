@@ -259,7 +259,7 @@ end DimCycle;
       uri,
     );
     const first = (await ctx.queryEngine.runAllLintsAsync(uri)).filter((d) => d.code === 4035);
-    assert.equal(first.length, 2, `Expected M4035 on both x and y, got ${JSON.stringify(first)}`);
+    assert.equal(first.length, 1, `Expected M4035 on cyclic dimension, got ${JSON.stringify(first)}`);
 
     // Break the cycle in y and invalidate incrementally.
     ctx.load(

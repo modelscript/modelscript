@@ -254,3 +254,108 @@ export function computeStockroomSlotPose(
     edgeScale,
   };
 }
+
+/** Sticky magnetic hold duration (seconds) after the pointer leaves a bay so VR trigger jitter never misses. */
+export const STOCKROOM_MAGNET_HOLD_SEC = 0.24;
+/** Brief dwell time (seconds) before switching magnetic lock directly to an adjacent bay. */
+export const STOCKROOM_MAGNET_SWITCH_DWELL_SEC = 0.075;
+
+export interface StockroomMagnetState {
+  /** Currently magnetized slot index (`0..29`, or `null` when unlocked). */
+  readonly lockedSlotIndex: number | null;
+  /** Remaining sticky-hold grace time (seconds) when pointer slips off into a gap. */
+  readonly holdRemainingSec: number;
+  /** Candidate slot index trying to steal magnetic lock during dwell. */
+  readonly pendingSlotIndex: number | null;
+  /** Accumulated dwell time on `pendingSlotIndex`. */
+  readonly pendingDwellSec: number;
+}
+
+export const INITIAL_STOCKROOM_MAGNET_STATE: StockroomMagnetState = {
+  lockedSlotIndex: null,
+  holdRemainingSec: 0,
+  pendingSlotIndex: null,
+  pendingDwellSec: 0,
+};
+
+/**
+ * Magnetic target-lock filter for Matrix Stockroom shelves:
+ *  - Latches immediately onto the first hovered bay.
+ *  - Holds the magnetic lock for `STOCKROOM_MAGNET_HOLD_SEC` if the ray drifts into
+ *    the gap between bays during a trigger pull.
+ *  - Requires a short `STOCKROOM_MAGNET_SWITCH_DWELL_SEC` dwell to switch between
+ *    adjacent bays, eliminating edge-flutter in VR.
+ *  - Returns a `scrollBrake` multiplier (`0.25` for subtle stick tremors while locked,
+ *    `1.0` for intentional flicks) so shelves stay rock-steady during grab.
+ */
+export function stepStockroomMagnetLock(
+  state: StockroomMagnetState,
+  rawHoveredSlotIndex: number | null,
+  dtSec: number,
+  stickMagnitude = 0,
+): { readonly next: StockroomMagnetState; readonly scrollBrake: number; readonly justLocked: boolean } {
+  const dt = Math.max(0, Math.min(0.1, dtSec));
+
+  // Strong intentional thumbstick flick immediately releases magnetic lock so fast scrolling stays snappy
+  if (stickMagnitude > 0.52) {
+    return {
+      next: INITIAL_STOCKROOM_MAGNET_STATE,
+      scrollBrake: 1,
+      justLocked: false,
+    };
+  }
+
+  let locked = state.lockedSlotIndex;
+  let hold = state.holdRemainingSec;
+  let pending = state.pendingSlotIndex;
+  let dwell = state.pendingDwellSec;
+  let justLocked = false;
+
+  if (rawHoveredSlotIndex !== null) {
+    if (locked === null) {
+      locked = rawHoveredSlotIndex;
+      hold = STOCKROOM_MAGNET_HOLD_SEC;
+      pending = null;
+      dwell = 0;
+      justLocked = true;
+    } else if (rawHoveredSlotIndex === locked) {
+      hold = STOCKROOM_MAGNET_HOLD_SEC;
+      pending = null;
+      dwell = 0;
+    } else {
+      if (pending === rawHoveredSlotIndex) {
+        dwell += dt;
+      } else {
+        pending = rawHoveredSlotIndex;
+        dwell = dt;
+      }
+      if (dwell >= STOCKROOM_MAGNET_SWITCH_DWELL_SEC) {
+        locked = rawHoveredSlotIndex;
+        hold = STOCKROOM_MAGNET_HOLD_SEC;
+        pending = null;
+        dwell = 0;
+        justLocked = true;
+      }
+    }
+  } else if (locked !== null) {
+    pending = null;
+    dwell = 0;
+    hold = Math.max(0, hold - dt);
+    if (hold <= 0) {
+      locked = null;
+    }
+  }
+
+  const scrollBrake = locked !== null && stickMagnitude < 0.42 ? 0.22 : 1;
+
+  return {
+    next: {
+      lockedSlotIndex: locked,
+      holdRemainingSec: hold,
+      pendingSlotIndex: pending,
+      pendingDwellSec: dwell,
+    },
+    scrollBrake,
+    justLocked,
+  };
+}

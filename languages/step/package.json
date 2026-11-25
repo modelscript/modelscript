@@ -69,7 +69,8 @@
   "dependencies": {
     "@modelscript/dsl": "workspace:*",
     "@modelscript/modelica": "workspace:*",
-    "@modelscript/runtime": "workspace:*"
+    "@modelscript/runtime": "workspace:*",
+    "occt-import-js": "^0.0.23"
   },
   "devDependencies": {
     "@types/react": "^19.2.7"

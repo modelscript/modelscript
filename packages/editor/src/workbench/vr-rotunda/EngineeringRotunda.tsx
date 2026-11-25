@@ -22,6 +22,7 @@ import { SimulatorTelemetryHud } from "../cad-viewer/SimulatorTelemetryHud.js";
 import type { GalleryComponentItem } from "../componentGalleryCatalog.js";
 import { RotundaAmbientSoundscape } from "./ambient-audio.js";
 import { paintBoardToTextureCanvas } from "./board-painter.js";
+import { resolveDiagramLanguageTheme } from "./diagram-language-theme.js";
 import { DraftingPodium } from "./DraftingPodium.js";
 import { getEnvironmentSceneBackdrop, RotundaEnvironment } from "./environments.js";
 import { FloatingToolWings } from "./FloatingToolWings.js";
@@ -55,10 +56,15 @@ import {
   type RotundaAnimationControllerLike,
   type RotundaCaeOverlay,
   type RotundaEnvironmentId,
+  type RotundaInspectorData,
   type RotundaModelEntry,
   type RotundaScenarioPreset,
+  type RotundaSimulationData,
   type RotundaState,
+  type RotundaWorkspaceFile,
 } from "./types.js";
+import { VrSimulationPanel3D } from "./VrSimulationPanel3D.js";
+import { FloatingCodePanel3D, VrFileCarousel3D, VrInspectorPanel3D } from "./VrWorkspacePanels3D.js";
 import { XrControllerBindings, XrLocomotionRig } from "./xr-gestures.js";
 import {
   enterXrSession,
@@ -223,6 +229,14 @@ interface RotundaSceneContentsProps {
   onCue: (kind: RotundaCueKind) => void;
   onExitVr?: (() => void) | undefined;
   onSelectEnvironment?: ((env: RotundaEnvironmentId) => void) | undefined;
+  languageId?: string | undefined;
+  diagramType?: string | undefined;
+  sourceCode?: string | undefined;
+  workspaceFiles?: readonly RotundaWorkspaceFile[] | undefined;
+  activeFilePath?: string | undefined;
+  onSelectWorkspaceFile?: ((filePath: string) => void) | undefined;
+  inspectorData?: RotundaInspectorData | undefined;
+  simulationData?: RotundaSimulationData | undefined;
   libraryCatalog?: readonly GalleryComponentItem[] | undefined;
   onDiagramEdit?:
     | ((
@@ -268,6 +282,14 @@ function RotundaSceneContents({
   onCue,
   onExitVr,
   onSelectEnvironment,
+  languageId,
+  diagramType,
+  sourceCode,
+  workspaceFiles,
+  activeFilePath,
+  onSelectWorkspaceFile,
+  inspectorData,
+  simulationData,
   libraryCatalog,
   onDiagramEdit,
   onExposeDiagramActions,
@@ -618,6 +640,9 @@ function RotundaSceneContents({
             wristPaletteOpen={state.wristPaletteOpen}
             isPlaying={state.isPlaying}
             dark={!backdrop.isLight}
+            languageId={languageId}
+            diagramType={diagramType}
+            activeFileName={activeFilePath}
             libraryCatalog={libraryCatalog}
             interactionLockRef={diagramInteractionLockRef}
             onInteractionLockChange={isInXr ? undefined : setDiagramLocked}
@@ -633,6 +658,57 @@ function RotundaSceneContents({
           />
         </group>
       </group>
+
+      {/* Floating 3D Syntax-Highlighted Code Text Overlay (mirrors 2D floating code overlay) */}
+      <FloatingCodePanel3D
+        visible={state.codeOverlayOpen}
+        code={sourceCode ?? ""}
+        fileName={activeFilePath ?? activeModel?.title ?? "model.mo"}
+        theme={resolveDiagramLanguageTheme(languageId, diagramType)}
+        centered={state.activeView === "code"}
+        onClose={() => dispatch({ type: "setCodeOverlayOpen", open: false })}
+        onCue={onCue}
+      />
+
+      {/* Floating 3D Engineering Inspector Panel (Parameters, Selected Component & Diagnostics) */}
+      <VrInspectorPanel3D
+        visible={state.inspectorOverlayOpen}
+        fileName={activeFilePath ?? activeModel?.title ?? "model.mo"}
+        theme={resolveDiagramLanguageTheme(languageId, diagramType)}
+        inspectorData={inspectorData}
+        centered={state.activeView === "inspector"}
+        onClose={() => dispatch({ type: "setInspectorOverlayOpen", open: false })}
+        onCue={onCue}
+      />
+
+      {/* Animated Curved 3D Workspace File Switcher Carousel */}
+      <VrFileCarousel3D
+        visible={state.fileCarouselOpen}
+        files={workspaceFiles ?? []}
+        activeFilePath={activeFilePath}
+        onSelectFile={(path) => onSelectWorkspaceFile?.(path)}
+        onClose={() => dispatch({ type: "setFileCarouselOpen", open: false })}
+        onCue={onCue}
+      />
+
+      {/* Curved 3D VR Simulation & Multi-Channel Oscilloscope Theater */}
+      <VrSimulationPanel3D
+        visible={state.simulationPanelOpen}
+        fileName={activeFilePath ?? activeModel?.title ?? "model.mo"}
+        theme={resolveDiagramLanguageTheme(languageId, diagramType)}
+        simulationData={simulationData}
+        simulationTime={effectiveSimTime}
+        isPlaying={state.isPlaying}
+        centered={state.activeView === "simulation"}
+        onTogglePlaying={handleTogglePlaying}
+        onSeekSimulationTime={(t) => {
+          liveSimTimeRef.current = t;
+          dispatch({ type: "setSimulationTime", time: t });
+          onSimulationTimeChange?.(t);
+        }}
+        onClose={() => dispatch({ type: "setSimulationPanelOpen", open: false })}
+        onCue={onCue}
+      />
 
       {/* Remote Multiplayer VR Engineer Avatars & Live Podium/Plinth Laser Pointers */}
       {peers && peers.length > 0 && (
@@ -741,9 +817,20 @@ export function EngineeringRotunda({
   hideDesktopHud = false,
   topOverlayInset = 12,
   initialDiagramEditorEnabled = false,
+  initialActiveView,
+  initialCodeOverlayOpen,
+  languageId,
+  diagramType,
+  sourceCode,
+  workspaceFiles,
+  activeFilePath,
+  onSelectWorkspaceFile,
+  inspectorData,
+  simulationData,
   libraryCatalog,
   onDiagramEdit,
 }: EngineeringRotundaProps): React.ReactElement {
+  const langTheme = useMemo(() => resolveDiagramLanguageTheme(languageId, diagramType), [languageId, diagramType]);
   const [internalScenarioId, setInternalScenarioId] = useState<string | undefined>(
     () => activeScenarioId ?? scenarios?.[0]?.id,
   );
@@ -789,7 +876,7 @@ export function EngineeringRotunda({
     setTilePositionOverrides({});
     setLocalAddedWires({});
     setLocalDiagramOverrides({});
-  }, [baseDoc.id]);
+  }, [baseDoc.id, activeFilePath]);
 
   const doc = useMemo<CanvasDocument>(() => {
     const hasPosOverrides = Object.keys(tilePositionOverrides).length > 0;
@@ -919,6 +1006,8 @@ export function EngineeringRotunda({
 
   const initialTelemetryEnabled = activeScenario?.id === "subsea-octopus" || models[0]?.kind === "octopus-rov";
 
+  const resolvedInitialView = initialActiveView ?? (initialDiagramEditorEnabled ? "diagram" : "3d");
+
   const [state, dispatch] = useReducer(
     rotundaReducer,
     {
@@ -926,7 +1015,11 @@ export function EngineeringRotunda({
       deskTheme: initialDeskTheme,
       simulationTime: controlledSimulationTime ?? 0,
       telemetryWingEnabled: initialTelemetryEnabled,
-      diagramEditorEnabled: Boolean(initialDiagramEditorEnabled),
+      activeView: resolvedInitialView,
+      diagramEditorEnabled: resolvedInitialView === "diagram",
+      codeOverlayOpen: initialCodeOverlayOpen ?? resolvedInitialView === "code",
+      inspectorOverlayOpen: resolvedInitialView === "inspector",
+      simulationPanelOpen: resolvedInitialView === "simulation",
     },
     (init) => createInitialRotundaState(init),
   );
@@ -1257,6 +1350,8 @@ export function EngineeringRotunda({
       data-focused-tile={state.focusedTileId ?? ""}
       data-diagram-editor={state.diagramEditorEnabled ? "open" : "closed"}
       data-wrist-palette={state.wristPaletteOpen ? "open" : "closed"}
+      data-active-view={state.activeView}
+      data-language-id={langTheme.languageId}
       {...(activeScenario ? { "data-active-scenario": activeScenario.id } : {})}
       style={{
         position: "relative",
@@ -1311,6 +1406,14 @@ export function EngineeringRotunda({
                       onCue={triggerCue}
                       onExitVr={handleExitVr}
                       onSelectEnvironment={handleSelectEnvironment}
+                      languageId={languageId}
+                      diagramType={diagramType}
+                      sourceCode={sourceCode}
+                      workspaceFiles={workspaceFiles}
+                      activeFilePath={activeFilePath}
+                      onSelectWorkspaceFile={onSelectWorkspaceFile}
+                      inspectorData={inspectorData}
+                      simulationData={simulationData}
                       libraryCatalog={libraryCatalog}
                       onDiagramEdit={handleDiagramEdit}
                       onExposeDiagramActions={setDiagramHudApi}
@@ -2018,6 +2121,105 @@ export function EngineeringRotunda({
           >
             {state.diagramEditorEnabled ? "✦ Diagram Mode" : "◈ 3D Model"}
           </button>
+          <button
+            type="button"
+            data-testid="rotunda-toggle-code-overlay"
+            title="Toggle floating 3D syntax-highlighted code text overlay"
+            onClick={() => {
+              dispatch({ type: "toggleCodeOverlay" });
+              triggerCue("click");
+            }}
+            style={{
+              padding: "3px 8px",
+              borderRadius: 6,
+              border: state.codeOverlayOpen ? `1px solid ${langTheme.secondaryColor}` : "1px solid #334155",
+              background: state.codeOverlayOpen ? "rgba(56, 189, 248, 0.2)" : "transparent",
+              color: state.codeOverlayOpen ? "#e0f2fe" : "#94a3b8",
+              fontSize: 11,
+              cursor: "pointer",
+            }}
+          >
+            Code
+          </button>
+          <button
+            type="button"
+            data-testid="rotunda-toggle-inspector-overlay"
+            title="Toggle floating 3D Engineering Inspector panel (parameters & diagnostics)"
+            onClick={() => {
+              dispatch({ type: "toggleInspectorOverlay" });
+              triggerCue("click");
+            }}
+            style={{
+              padding: "3px 8px",
+              borderRadius: 6,
+              border: state.inspectorOverlayOpen ? "1px solid #a855f7" : "1px solid #334155",
+              background: state.inspectorOverlayOpen ? "rgba(168, 85, 247, 0.2)" : "transparent",
+              color: state.inspectorOverlayOpen ? "#f3e8ff" : "#94a3b8",
+              fontSize: 11,
+              cursor: "pointer",
+            }}
+          >
+            Inspector
+          </button>
+          <button
+            type="button"
+            data-testid="rotunda-toggle-simulation-panel"
+            title="Toggle curved 3D Simulation & Multi-Channel Oscilloscope Theater (run solver & toggle variables)"
+            onClick={() => {
+              dispatch({ type: "toggleSimulationPanel" });
+              triggerCue("click");
+            }}
+            style={{
+              padding: "3px 8px",
+              borderRadius: 6,
+              border: state.simulationPanelOpen ? "1px solid #10b981" : "1px solid #334155",
+              background: state.simulationPanelOpen ? "rgba(16, 185, 129, 0.22)" : "transparent",
+              color: state.simulationPanelOpen ? "#a7f3d0" : "#94a3b8",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Sim Plots
+          </button>
+          {workspaceFiles && workspaceFiles.length > 0 && (
+            <button
+              type="button"
+              data-testid="rotunda-toggle-file-carousel"
+              title="Open animated 3D Workspace File Carousel to switch files inside VR"
+              onClick={() => {
+                dispatch({ type: "toggleFileCarousel" });
+                triggerCue("page");
+              }}
+              style={{
+                padding: "3px 8px",
+                borderRadius: 6,
+                border: state.fileCarouselOpen ? `1px solid ${langTheme.accentColor}` : "1px solid #334155",
+                background: state.fileCarouselOpen ? "rgba(37, 99, 235, 0.25)" : "transparent",
+                color: state.fileCarouselOpen ? "#ffffff" : "#cbd5e1",
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Files ({workspaceFiles.length})
+            </button>
+          )}
+          <span
+            data-testid="rotunda-language-badge"
+            title={langTheme.diagramKindLabel}
+            style={{
+              padding: "2px 7px",
+              borderRadius: 5,
+              background: langTheme.accentColor,
+              color: "#ffffff",
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: "0.04em",
+            }}
+          >
+            {langTheme.badgeLabel}
+          </span>
           <button
             type="button"
             data-testid="rotunda-toggle-ao"

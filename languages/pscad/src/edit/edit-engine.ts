@@ -912,7 +912,26 @@ export function planPscadEdits(
     splices.some((r) => r.text === "" && r.start <= s.start && s.end <= r.end && r !== s);
   for (const s of attrWrites.values()) if (!inRemoved(s)) splices.push(s);
 
-  return { text: applySplices(text, splices), splices, createdIds, errors };
+  // Merge coincident zero-length insertions (e.g. multiple new attributes added to a bare <Wire>)
+  // so downstream LSP/VS Code TextEdit application never sees overlapping inserts at the same offset.
+  const mergedSplices: Splice[] = [];
+  const insertAt = new Map<number, Splice>();
+  for (const s of splices) {
+    if (s.start === s.end) {
+      const existing = insertAt.get(s.start);
+      if (existing) {
+        existing.text += s.text;
+        continue;
+      }
+      const copy: Splice = { ...s };
+      insertAt.set(s.start, copy);
+      mergedSplices.push(copy);
+    } else {
+      mergedSplices.push(s);
+    }
+  }
+
+  return { text: applySplices(text, mergedSplices), splices: mergedSplices, createdIds, errors };
 }
 
 /** Converts offset splices to LSP-style text edits (0-based line/character). */

@@ -658,7 +658,7 @@ export function createNodeEditingController(params: {
     const cells = targetGraph.getSelectedCells();
     if (cells.length === 0) return;
 
-    const edgesToDelete: { source: string; target: string }[] = [];
+    const edgesToDelete: { id?: string | undefined; source: string; target: string }[] = [];
     const componentNames: string[] = [];
 
     cells.forEach((cell: Cell) => {
@@ -666,14 +666,16 @@ export function createNodeEditingController(params: {
         const source = cell.getSource();
         const target = cell.getTarget();
         const wireId = cell.getData()?.wireId;
+        const idStr = wireId || cell.id ? String(wireId || cell.id) : undefined;
         if (source?.cell && source?.port && target?.cell && target?.port) {
           edgesToDelete.push({
+            ...(idStr ? { id: idStr } : {}),
             source: `${source.cell}.${source.port}`,
             target: `${target.cell}.${target.port}`,
           });
-        } else if (wireId || cell.id) {
-          const idStr = String(wireId || cell.id);
+        } else if (idStr) {
           edgesToDelete.push({
+            id: idStr,
             source: idStr,
             target: idStr,
           });

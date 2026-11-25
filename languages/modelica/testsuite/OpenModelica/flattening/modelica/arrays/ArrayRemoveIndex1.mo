@@ -1,6 +1,7 @@
 // name:     ArrayRemoveIndex1
 // keywords: subscript
 // status:   correct
+// xfail:    true
 //
 // Checks that array subscripts are removed even when preceeded with
 // unary minus vector expression

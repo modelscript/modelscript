@@ -48,9 +48,8 @@ async function main() {
 
   console.log("Compiling AssemblyScript to WASM via asc...");
   childProcess.execFileSync(
-    "node",
+    ascPath,
     [
-      ascPath,
       path.join(tmpDir, "parser.ts"),
       "--target",
       "release",

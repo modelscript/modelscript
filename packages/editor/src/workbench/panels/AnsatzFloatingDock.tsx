@@ -143,7 +143,7 @@ export const AnsatzFloatingDock: React.FC<AnsatzFloatingDockProps> = ({
             rel="noopener noreferrer"
             style={{ display: "flex", alignItems: "center" }}
           >
-            <img src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"} alt="Ansatz" style={{ height: 20 }} />
+            <img src="/ansatz-logo.svg" alt="Ansatz" style={{ height: 20 }} />
           </a>
           <div
             style={{ width: 1, height: 20, backgroundColor: "var(--color-border-default, var(--ms-divider, #30363d))" }}

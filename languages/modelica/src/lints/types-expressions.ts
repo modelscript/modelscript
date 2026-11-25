@@ -687,7 +687,12 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       if (lhs != 0 && rhs != 0) {
         const lhsType = inferExprType(db, lhs, $);
         const rhsType = inferExprType(db, rhs, $);
-        if (lhsType != TYPE_UNKNOWN && rhsType != TYPE_UNKNOWN && lhsType < 4 && rhsType < 4) {
+        const bothPrim = lhsType < 4 && rhsType < 4;
+        const classEqPrimLiteral =
+          lhsType >= 0x8000 &&
+          rhsType < 4 &&
+          (rhsType == TYPE_BOOLEAN || rhsType == TYPE_STRING || isSimpleNumericLiteral(db, rhs, $));
+        if (lhsType != TYPE_UNKNOWN && rhsType != TYPE_UNKNOWN && (bothPrim || classEqPrimLiteral)) {
           const allowIntEnum = isIntEnumConversionActive(db, $);
           if (!isTypeCompatible(rhsType, lhsType, allowIntEnum) && !isTypeCompatible(lhsType, rhsType, allowIntEnum)) {
             const isOldFrontend: u32 = isOldFrontendActive(db, $) ? 1 : 0;

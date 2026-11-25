@@ -69,7 +69,7 @@ export type DiagramAction =
       points?: Pt[];
       section?: string;
     }
-  | { type: "disconnect"; source: string; target: string }
+  | { type: "disconnect"; id?: string; edgeId?: string; source: string; target: string }
   | { type: "moveEdge"; edges: DiagramEdge[] }
   | {
       type: "reconnect";
@@ -277,7 +277,16 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
     const cmp = legacyCmps.find((c) => c.id === id || c.id === endpoint || c.instanceName === endpoint);
     if (!cmp) {
       const bus = findBus(cell ?? endpoint);
-      return bus ? { x: bus.position.x, y: bus.position.y } : undefined;
+      if (!bus) return undefined;
+      const want = (port ?? dotted ?? "").toLowerCase();
+      const len = bus.length ?? 80;
+      if (want === `${bus.id.toLowerCase()}_out` || want === "out") {
+        return { x: Math.round(bus.position.x + len), y: Math.round(bus.position.y) };
+      }
+      if (want === `${bus.id.toLowerCase()}_mid` || want === "mid") {
+        return { x: Math.round(bus.position.x + len / 2), y: Math.round(bus.position.y) };
+      }
+      return { x: Math.round(bus.position.x), y: Math.round(bus.position.y) };
     }
     const want = port ?? dotted;
     const p =
@@ -300,6 +309,28 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
     }
     return [...t];
   };
+  const portMatchesEndpoint = (portId: string | undefined, ep: string): boolean => {
+    if (!portId) return false;
+    const raw = ep.trim();
+    if (raw.includes(".")) {
+      const [c, p] = raw.split(".", 2);
+      const cleanC = c ? stripPrefix(c) : "";
+      if (p && (portId === p || (cleanC && portId === `${cleanC}_${p}`))) return true;
+      // Buses store bus.id as startPortId/endPortId while diagram endpoints use busId.busId_in|out|mid
+      if (c && (portId === c || portId === cleanC)) return true;
+      return false;
+    }
+    const clean = stripPrefix(raw);
+    return portId === raw || portId === clean || portId.startsWith(`${clean}_`);
+  };
+  const wireMatchesDirectEndpoints = (wid: string, source: string, target: string): boolean => {
+    const lw = legacyWires.find((w) => w.id === wid);
+    if (!lw) return false;
+    return (
+      (portMatchesEndpoint(lw.startPortId, source) && portMatchesEndpoint(lw.endPortId, target)) ||
+      (portMatchesEndpoint(lw.startPortId, target) && portMatchesEndpoint(lw.endPortId, source))
+    );
+  };
   const wireTouches = (wid: string, ep: string): boolean => {
     const lw = legacyWires.find((w) => w.id === wid);
     if (!lw) return false;
@@ -313,6 +344,8 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
     }
     const direct = wireIndex(e.source);
     if (direct) return direct;
+    const exact = wires.find(({ w }) => wireMatchesDirectEndpoints(w.id, e.source, e.target));
+    if (exact) return exact;
     return wires.find(({ w }) => wireTouches(w.id, e.source) && wireTouches(w.id, e.target));
   };
   const setPoints = (wid: string, pts: Pt[], customObstacles?: ObstacleBox[]) => {
@@ -327,6 +360,89 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
     const rotIdx = deg % 90 === 0 ? (deg / 90) % 4 : deg;
     return mirror && rotIdx < 4 ? rotIdx + 4 : rotIdx;
   };
+  const stretchAttachedWires = (
+    dx: number,
+    dy: number,
+    isAttached: (portId: string | undefined) => boolean,
+    excludeObstacleId?: string,
+  ) => {
+    for (const lw of legacyWires) {
+      if (touchedWires.has(lw.id)) continue;
+      const startAttached = isAttached(lw.startPortId);
+      const endAttached = isAttached(lw.endPortId);
+      if (!startAttached && !endAttached) continue;
+      let pts = lw.vertices.map((v) => ({ x: v.x, y: v.y }));
+      if (pts.length < 2) continue;
+
+      if (startAttached && endAttached) {
+        pts = pts.map((p) => ({ x: p.x + dx, y: p.y + dy }));
+      } else if (startAttached) {
+        const oldStart = { ...pts[0]! };
+        pts[0] = { x: oldStart.x + dx, y: oldStart.y + dy };
+        if (pts.length === 2) {
+          const wasHoriz = oldStart.y === pts[1]!.y;
+          const wasVert = oldStart.x === pts[1]!.x;
+          if (wasHoriz && pts[0]!.y !== pts[1]!.y && pts[0]!.x !== pts[1]!.x) {
+            const midX = Math.round((pts[0]!.x + pts[1]!.x) / 2 / 18) * 18;
+            if (midX === pts[0]!.x) {
+              pts = [pts[0]!, { x: pts[0]!.x, y: pts[1]!.y }, pts[1]!];
+            } else if (midX === pts[1]!.x) {
+              pts = [pts[0]!, { x: pts[1]!.x, y: pts[0]!.y }, pts[1]!];
+            } else {
+              pts = [pts[0]!, { x: midX, y: pts[0]!.y }, { x: midX, y: pts[1]!.y }, pts[1]!];
+            }
+          } else if (wasVert && pts[0]!.x !== pts[1]!.x && pts[0]!.y !== pts[1]!.y) {
+            const midY = Math.round((pts[0]!.y + pts[1]!.y) / 2 / 18) * 18;
+            if (midY === pts[0]!.y) {
+              pts = [pts[0]!, { x: pts[1]!.x, y: pts[0]!.y }, pts[1]!];
+            } else if (midY === pts[1]!.y) {
+              pts = [pts[0]!, { x: pts[0]!.x, y: pts[1]!.y }, pts[1]!];
+            } else {
+              pts = [pts[0]!, { x: pts[0]!.x, y: midY }, { x: pts[1]!.x, y: midY }, pts[1]!];
+            }
+          }
+        } else {
+          if (pts[1]!.x === oldStart.x) pts[1]!.x = pts[0]!.x;
+          else if (pts[1]!.y === oldStart.y) pts[1]!.y = pts[0]!.y;
+        }
+      } else if (endAttached) {
+        const lastIdx = pts.length - 1;
+        const oldEnd = { ...pts[lastIdx]! };
+        pts[lastIdx] = { x: oldEnd.x + dx, y: oldEnd.y + dy };
+        if (pts.length === 2) {
+          const wasHoriz = pts[0]!.y === oldEnd.y;
+          const wasVert = pts[0]!.x === oldEnd.x;
+          if (wasHoriz && pts[0]!.y !== pts[1]!.y && pts[0]!.x !== pts[1]!.x) {
+            const midX = Math.round((pts[0]!.x + pts[1]!.x) / 2 / 18) * 18;
+            if (midX === pts[0]!.x) {
+              pts = [pts[0]!, { x: pts[0]!.x, y: pts[1]!.y }, pts[1]!];
+            } else if (midX === pts[1]!.x) {
+              pts = [pts[0]!, { x: pts[1]!.x, y: pts[0]!.y }, pts[1]!];
+            } else {
+              pts = [pts[0]!, { x: midX, y: pts[0]!.y }, { x: midX, y: pts[1]!.y }, pts[1]!];
+            }
+          } else if (wasVert && pts[0]!.x !== pts[1]!.x && pts[0]!.y !== pts[1]!.y) {
+            const midY = Math.round((pts[0]!.y + pts[1]!.y) / 2 / 18) * 18;
+            if (midY === pts[0]!.y) {
+              pts = [pts[0]!, { x: pts[1]!.x, y: pts[0]!.y }, pts[1]!];
+            } else if (midY === pts[1]!.y) {
+              pts = [pts[0]!, { x: pts[0]!.x, y: pts[1]!.y }, pts[1]!];
+            } else {
+              pts = [pts[0]!, { x: pts[0]!.x, y: midY }, { x: pts[1]!.x, y: midY }, pts[1]!];
+            }
+          }
+        } else {
+          const prevIdx = lastIdx - 1;
+          if (pts[prevIdx]!.x === oldEnd.x) pts[prevIdx]!.x = pts[lastIdx]!.x;
+          else if (pts[prevIdx]!.y === oldEnd.y) pts[prevIdx]!.y = pts[lastIdx]!.y;
+        }
+      }
+      if (wireIndex(lw.id)) {
+        const relevantObstacles = excludeObstacleId ? obstacles.filter((b) => b.id !== excludeObstacleId) : obstacles;
+        setPoints(lw.id, pts, relevantObstacles);
+      }
+    }
+  };
 
   for (const action of actions) {
     switch (action.type) {
@@ -337,21 +453,37 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
             id?: string;
             flipX?: boolean;
             flipY?: boolean;
+            connectedOnly?: boolean;
           }
         >) {
+          // `connectedOnly` items are unmoved neighbors sent for Modelica Placement materialization.
+          if (item.connectedOnly) continue;
           const targetKey = item.id || item.name;
           const busHit = findBus(stripPrefix(targetKey)) ?? findBus(stripPrefix(item.name));
           if (targetKey.startsWith("bus_") || item.name.startsWith("bus_") || busHit) {
             const busId = busHit?.id ?? stripPrefix(targetKey.startsWith("bus_") ? targetKey : item.name);
+            const nx = Math.round(item.x);
+            const ny = Math.round(item.height > 0 ? item.y + item.height / 2 : item.y);
             ops.push({
               type: "resizeBus",
               id: busId,
-              x: Math.round(item.x),
-              y: Math.round(item.y),
-              ...(item.width > 0 ? { w: Math.round(item.width) } : {}),
-              ...(item.height > 0 ? { h: Math.round(item.height) } : {}),
+              x: nx,
+              y: ny,
             });
             renderHint = "immediate";
+            if (item.edges?.length) {
+              for (const edge of item.edges) {
+                const w = edge.points && edge.points.length >= 2 ? matchWire(edge) : undefined;
+                if (w && edge.points) setPoints(w.w.id, edge.points);
+              }
+            }
+            if (busHit) {
+              const dx = nx - busHit.position.x;
+              const dy = ny - busHit.position.y;
+              if (dx !== 0 || dy !== 0) {
+                stretchAttachedWires(dx, dy, (pid) => pid === busId);
+              }
+            }
             continue;
           }
           const stickyHit = modules
@@ -401,84 +533,7 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
             }
             const lc = legacyCmps.find((c) => c.id === hit.i.id);
             const ids = new Set(lc?.ports.map((p) => p.id) ?? []);
-            for (const lw of legacyWires) {
-              if (touchedWires.has(lw.id)) continue;
-              const startAttached = Boolean(lw.startPortId && ids.has(lw.startPortId));
-              const endAttached = Boolean(lw.endPortId && ids.has(lw.endPortId));
-              if (!startAttached && !endAttached) continue;
-              let pts = lw.vertices.map((v) => ({ x: v.x, y: v.y }));
-              if (pts.length < 2) continue;
-
-              if (startAttached && endAttached) {
-                // Both ends attached to moved component: translate entire wire
-                pts = pts.map((p) => ({ x: p.x + dx, y: p.y + dy }));
-              } else if (startAttached) {
-                const oldStart = { ...pts[0]! };
-                pts[0] = { x: oldStart.x + dx, y: oldStart.y + dy };
-                if (pts.length === 2) {
-                  const wasHoriz = oldStart.y === pts[1]!.y;
-                  const wasVert = oldStart.x === pts[1]!.x;
-                  if (wasHoriz && pts[0]!.y !== pts[1]!.y && pts[0]!.x !== pts[1]!.x) {
-                    const midX = Math.round((pts[0]!.x + pts[1]!.x) / 2 / 18) * 18;
-                    if (midX === pts[0]!.x) {
-                      pts = [pts[0]!, { x: pts[0]!.x, y: pts[1]!.y }, pts[1]!];
-                    } else if (midX === pts[1]!.x) {
-                      pts = [pts[0]!, { x: pts[1]!.x, y: pts[0]!.y }, pts[1]!];
-                    } else {
-                      pts = [pts[0]!, { x: midX, y: pts[0]!.y }, { x: midX, y: pts[1]!.y }, pts[1]!];
-                    }
-                  } else if (wasVert && pts[0]!.x !== pts[1]!.x && pts[0]!.y !== pts[1]!.y) {
-                    const midY = Math.round((pts[0]!.y + pts[1]!.y) / 2 / 18) * 18;
-                    if (midY === pts[0]!.y) {
-                      pts = [pts[0]!, { x: pts[1]!.x, y: pts[0]!.y }, pts[1]!];
-                    } else if (midY === pts[1]!.y) {
-                      pts = [pts[0]!, { x: pts[0]!.x, y: pts[1]!.y }, pts[1]!];
-                    } else {
-                      pts = [pts[0]!, { x: pts[0]!.x, y: midY }, { x: pts[1]!.x, y: midY }, pts[1]!];
-                    }
-                  }
-                } else {
-                  // Adjust adjacent elbow so the interior segment stays orthogonal
-                  if (pts[1]!.x === oldStart.x) pts[1]!.x = pts[0]!.x;
-                  else if (pts[1]!.y === oldStart.y) pts[1]!.y = pts[0]!.y;
-                }
-              } else if (endAttached) {
-                const lastIdx = pts.length - 1;
-                const oldEnd = { ...pts[lastIdx]! };
-                pts[lastIdx] = { x: oldEnd.x + dx, y: oldEnd.y + dy };
-                if (pts.length === 2) {
-                  const wasHoriz = pts[0]!.y === oldEnd.y;
-                  const wasVert = pts[0]!.x === oldEnd.x;
-                  if (wasHoriz && pts[0]!.y !== pts[1]!.y && pts[0]!.x !== pts[1]!.x) {
-                    const midX = Math.round((pts[0]!.x + pts[1]!.x) / 2 / 18) * 18;
-                    if (midX === pts[0]!.x) {
-                      pts = [pts[0]!, { x: pts[0]!.x, y: pts[1]!.y }, pts[1]!];
-                    } else if (midX === pts[1]!.x) {
-                      pts = [pts[0]!, { x: pts[1]!.x, y: pts[0]!.y }, pts[1]!];
-                    } else {
-                      pts = [pts[0]!, { x: midX, y: pts[0]!.y }, { x: midX, y: pts[1]!.y }, pts[1]!];
-                    }
-                  } else if (wasVert && pts[0]!.x !== pts[1]!.x && pts[0]!.y !== pts[1]!.y) {
-                    const midY = Math.round((pts[0]!.y + pts[1]!.y) / 2 / 18) * 18;
-                    if (midY === pts[0]!.y) {
-                      pts = [pts[0]!, { x: pts[1]!.x, y: pts[0]!.y }, pts[1]!];
-                    } else if (midY === pts[1]!.y) {
-                      pts = [pts[0]!, { x: pts[0]!.x, y: pts[1]!.y }, pts[1]!];
-                    } else {
-                      pts = [pts[0]!, { x: pts[0]!.x, y: midY }, { x: pts[1]!.x, y: midY }, pts[1]!];
-                    }
-                  }
-                } else {
-                  const prevIdx = lastIdx - 1;
-                  if (pts[prevIdx]!.x === oldEnd.x) pts[prevIdx]!.x = pts[lastIdx]!.x;
-                  else if (pts[prevIdx]!.y === oldEnd.y) pts[prevIdx]!.y = pts[lastIdx]!.y;
-                }
-              }
-              if (wireIndex(lw.id)) {
-                const relevantObstacles = obstacles.filter((b) => b.id !== hit.i.id);
-                setPoints(lw.id, pts, relevantObstacles);
-              }
-            }
+            stretchAttachedWires(dx, dy, (pid) => Boolean(pid && ids.has(pid)), hit.i.id);
           }
         }
         break;
@@ -488,7 +543,9 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
         const resizeItems = a.items ?? (a.item ? [a.item] : []);
         for (const item of resizeItems) {
           const cleanId = stripPrefix(item.name);
+          const busHit = findBus(cleanId) ?? findBus(item.name);
           const isBus =
+            Boolean(busHit) ||
             item.name.startsWith("bus_") ||
             [...model.definitions.values()].some((d) =>
               d.wires.some((w) => (w.id === cleanId || w.id === item.name) && w.element.name === "Bus"),
@@ -496,9 +553,9 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
           if (isBus) {
             ops.push({
               type: "resizeBus",
-              id: cleanId,
+              id: busHit?.id ?? cleanId,
               x: Math.round(item.x),
-              y: Math.round(item.y),
+              y: Math.round(item.height > 0 ? item.y + item.height / 2 : item.y),
               ...(item.width > 0 ? { w: Math.round(item.width) } : {}),
               ...(item.height > 0 ? { h: Math.round(item.height) } : {}),
             });
@@ -671,18 +728,40 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
           const hit = findInst(n);
           if (hit) {
             ops.push({ type: "removeComponent", id: hit.i.id });
+            const lc = legacyCmps.find((c) => c.id === hit.i.id);
+            const portIds = new Set(lc?.ports.map((p) => p.id) ?? []);
+            for (const lw of legacyWires) {
+              if (touchedWires.has(lw.id)) continue;
+              const attached =
+                (lw.startPortId !== undefined && portIds.has(lw.startPortId)) ||
+                (lw.endPortId !== undefined && portIds.has(lw.endPortId));
+              if (attached && wireIndex(lw.id)) {
+                touchedWires.add(lw.id);
+                ops.push({ type: "removeWire", id: lw.id });
+              }
+            }
             renderHint = "immediate";
             continue;
           }
           const bus = findBus(n);
           if (bus) {
             ops.push({ type: "removeWire", id: bus.id });
+            for (const lw of legacyWires) {
+              if (touchedWires.has(lw.id)) continue;
+              if ((lw.startPortId === bus.id || lw.endPortId === bus.id) && wireIndex(lw.id)) {
+                touchedWires.add(lw.id);
+                ops.push({ type: "removeWire", id: lw.id });
+              }
+            }
             renderHint = "immediate";
             continue;
           }
           const wire = wireIndex(n);
           if (wire) {
-            ops.push({ type: "removeWire", id: wire.w.id });
+            if (!touchedWires.has(wire.w.id)) {
+              touchedWires.add(wire.w.id);
+              ops.push({ type: "removeWire", id: wire.w.id });
+            }
             renderHint = "immediate";
             continue;
           }
@@ -712,12 +791,15 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
       }
       case "disconnect": {
         const a = action as Extract<DiagramAction, { type: "disconnect" }>;
-        const w = matchWire(a);
+        const w = matchWire({ id: a.id ?? a.edgeId, source: a.source, target: a.target });
         if (!w) {
           unresolved.push(`${a.source}->${a.target}`);
           break;
         }
-        ops.push({ type: "removeWire", id: w.w.id });
+        if (!touchedWires.has(w.w.id)) {
+          touchedWires.add(w.w.id);
+          ops.push({ type: "removeWire", id: w.w.id });
+        }
         renderHint = "immediate";
         break;
       }

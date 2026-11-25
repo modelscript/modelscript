@@ -18,6 +18,7 @@ export {
   type VrDiagramEdgeLike,
   type VrDiagramNodeLike,
 } from "./board-painter.js";
+export { resolveDiagramLanguageTheme, type DiagramLanguageTheme } from "./diagram-language-theme.js";
 export { DraftingPodium, type DraftingPodiumProps } from "./DraftingPodium.js";
 export {
   EngineeringRotunda,
@@ -63,12 +64,15 @@ export {
   type WorldPortCandidate,
 } from "./magnetic-port-solver.js";
 export {
+  INITIAL_STOCKROOM_MAGNET_STATE,
   STOCKROOM_CARD_H,
   STOCKROOM_CARD_W,
   STOCKROOM_CENTER_Y,
   STOCKROOM_CENTER_Z,
   STOCKROOM_COL_SPACING,
   STOCKROOM_ENTRANCE_DURATION_SEC,
+  STOCKROOM_MAGNET_HOLD_SEC,
+  STOCKROOM_MAGNET_SWITCH_DWELL_SEC,
   STOCKROOM_ROW_SPACING,
   STOCKROOM_TOTAL_VISIBLE_SLOTS,
   STOCKROOM_VISIBLE_COLS,
@@ -77,9 +81,11 @@ export {
   computeMatrixEntranceState,
   computeStockroomSlotPose,
   resolveStockroomSlotItem,
+  stepStockroomMagnetLock,
   stepStockroomScroll,
   wrapPositiveMod,
   type StockroomEntranceState,
+  type StockroomMagnetState,
   type StockroomScrollInput,
   type StockroomScrollState,
   type StockroomScrollStepResult,
@@ -275,6 +281,7 @@ export {
   type EngineeringRotundaProps,
   type PodiumUiRect,
   type RotundaAction,
+  type RotundaActiveView,
   type RotundaAnimationControllerLike,
   type RotundaCadPartInput,
   type RotundaCaeOverlay,
@@ -283,15 +290,47 @@ export {
   type RotundaDeskLayout,
   type RotundaEnvironmentId,
   type RotundaEnvironmentMeta,
+  type RotundaInspectorData,
   type RotundaModelEntry,
   type RotundaModelKind,
   type RotundaPlinthPresentation,
   type RotundaRenderStyle,
   type RotundaScaleMode,
   type RotundaScenarioPreset,
+  type RotundaSimulationData,
   type RotundaState,
+  type RotundaWorkspaceFile,
 } from "./types.js";
 export { VerletCableSim, type VerletCableOptions } from "./verlet-cable.js";
+export {
+  SIMULATION_TRACE_PALETTE,
+  VR_SIM_CANVAS_H,
+  VR_SIM_CANVAS_W,
+  VR_SIM_PLOT_RECT,
+  VR_SIM_RACK_RECT,
+  VR_SIM_VAR_ROWS_PER_PAGE,
+  computeSeriesYBounds,
+  extractVrSimulationDataset,
+  formatEngineeringValue,
+  getSimulationVariableColor,
+  hitTestVrSimulationPanel,
+  sampleSeriesAtTime,
+  type VrSimHitTarget,
+  type VrSimPlotLayout,
+  type VrSimulationDataset,
+  type VrSimulationSeries,
+} from "./vr-simulation-logic.js";
+export { VrSimulationPanel3D, type VrSimulationPanel3DProps } from "./VrSimulationPanel3D.js";
+export {
+  DiagramTypeBanner3D,
+  FloatingCodePanel3D,
+  VrFileCarousel3D,
+  VrInspectorPanel3D,
+  type DiagramTypeBanner3DProps,
+  type FloatingCodePanel3DProps,
+  type VrFileCarousel3DProps,
+  type VrInspectorPanel3DProps,
+} from "./VrWorkspacePanels3D.js";
 export {
   LIBRARY_GRID_COLS,
   LIBRARY_GRID_ROWS,

@@ -67,7 +67,8 @@
   "devDependencies": {
     "@types/vscode": "^1.72.0",
     "esbuild": "^0.28.1",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vscode-uri": "^3.2.0"
   },
   "modelscript": {
     "tier": "beta",

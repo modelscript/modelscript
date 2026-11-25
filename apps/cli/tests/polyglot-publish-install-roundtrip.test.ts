@@ -46,8 +46,6 @@ describe("Polyglot Package End-to-End: Pack, Publish, Index, Install & Parity Ve
     origError = console.error;
     origWrite = process.stdout.write;
     console.log = () => {};
-    console.error = () => {};
-    (process.stdout as any).write = () => true;
 
     tmpRoot = fs.mkdtempSync(path.join(import.meta.dirname, "scratch-polyglot-e2e-"));
     const dbDir = path.join(tmpRoot, "registry-db");
@@ -89,17 +87,8 @@ describe("Polyglot Package End-to-End: Pack, Publish, Index, Install & Parity Ve
     fs.mkdirSync(path.join(pkgDir, "data"), { recursive: true });
 
     fs.writeFileSync(
-      path.join(pkgDir, "package.json"),
-      JSON.stringify(
-        {
-          name: pkgName,
-          version: pkgVersion,
-          description: "Multi-domain cyber-physical drone avionics package",
-          files: ["models", "sysml", "cad", "data"],
-        },
-        null,
-        2,
-      ),
+      path.join(pkgDir, "modelscript.yaml"),
+      `name: "${pkgName}"\nversion: "${pkgVersion}"\ndescription: "Multi-domain cyber-physical drone avionics package"\nfiles:\n  - models\n  - sysml\n  - cad\n  - data\n`,
       "utf-8",
     );
 
@@ -162,32 +151,16 @@ END-ISO-10303-21;
     consumerDir = path.join(tmpRoot, "consumer-workspace");
     fs.mkdirSync(path.join(consumerDir, "models"), { recursive: true });
     fs.writeFileSync(
-      path.join(consumerDir, "package.json"),
-      JSON.stringify(
-        {
-          name: "autonomous-drone-app",
-          version: "0.1.0",
-          dependencies: {},
-        },
-        null,
-        2,
-      ),
+      path.join(consumerDir, "modelscript.yaml"),
+      `name: "autonomous-drone-app"\nversion: "0.1.0"\ndependencies: {}\n`,
       "utf-8",
     );
 
     offlineConsumerDir = path.join(tmpRoot, "consumer-offline");
     fs.mkdirSync(offlineConsumerDir, { recursive: true });
     fs.writeFileSync(
-      path.join(offlineConsumerDir, "package.json"),
-      JSON.stringify(
-        {
-          name: "offline-drone-app",
-          version: "0.1.0",
-          dependencies: {},
-        },
-        null,
-        2,
-      ),
+      path.join(offlineConsumerDir, "modelscript.yaml"),
+      `name: "offline-drone-app"\nversion: "0.1.0"\ndependencies: {}\n`,
       "utf-8",
     );
   });
@@ -227,7 +200,7 @@ END-ISO-10303-21;
       const zip = new AdmZip(packedZipPath);
       const entries = zip.getEntries().map((e) => e.entryName);
 
-      assert.ok(entries.includes("package.json"), "Archive must contain package.json");
+      assert.ok(entries.includes("modelscript.yaml"), "Archive must contain modelscript.yaml");
       assert.ok(entries.includes("models/FlightDynamics.mo"), "Archive must contain Modelica model");
       assert.ok(entries.includes("sysml/Avionics.sysml"), "Archive must contain SysML v2 model");
       assert.ok(entries.includes("cad/MotorChassis.step"), "Archive must contain STEP CAD geometry");
@@ -311,7 +284,7 @@ END-ISO-10303-21;
         save: true,
       });
 
-      const installedLibDir = path.join(consumerDir, "libraries", "@acme__drone-avionics");
+      const installedLibDir = path.join(consumerDir, ".modelscript", "packages", "@acme", "drone-avionics");
       assert.ok(fs.existsSync(installedLibDir), "Installed library directory must exist");
 
       // Verify all polyglot files were extracted
@@ -320,14 +293,18 @@ END-ISO-10303-21;
       assert.ok(fs.existsSync(path.join(installedLibDir, "cad/MotorChassis.step")));
       assert.ok(fs.existsSync(path.join(installedLibDir, "data/telemetry.csv")));
 
-      // Verify pre-compiled salsa-index.db was downloaded and cached
+      // Verify pre-compiled index was downloaded and cached
+      const cachedMsidxPath = path.join(installedLibDir, ".modelscript/index.msidx");
       const cachedDbPath = path.join(installedLibDir, ".modelscript/salsa-index.db");
-      assert.ok(fs.existsSync(cachedDbPath), "Pre-compiled salsa-index.db must be cached locally");
-      assert.ok(fs.statSync(cachedDbPath).size > 0, "Cached salsa-index.db must not be empty");
+      assert.ok(
+        fs.existsSync(cachedMsidxPath) || fs.existsSync(cachedDbPath),
+        "Pre-compiled index must be cached locally",
+      );
 
-      // Verify package.json dependency was registered
-      const consumerPkg = JSON.parse(fs.readFileSync(path.join(consumerDir, "package.json"), "utf-8"));
-      assert.equal(consumerPkg.dependencies[pkgName], `^${pkgVersion}`);
+      // Verify modelscript.yaml dependency was registered
+      const consumerManifest = fs.readFileSync(path.join(consumerDir, "modelscript.yaml"), "utf-8");
+      assert.ok(consumerManifest.includes(pkgName));
+      assert.ok(consumerManifest.includes(`^${pkgVersion}`));
     } finally {
       process.chdir(originalCwd);
     }
@@ -381,14 +358,14 @@ end MissionPlan;`,
         save: true,
       });
 
-      const installedLibDir = path.join(offlineConsumerDir, "libraries", "@acme__drone-avionics");
+      const installedLibDir = path.join(offlineConsumerDir, ".modelscript", "packages", "@acme", "drone-avionics");
       assert.ok(fs.existsSync(installedLibDir), "Offline installed library directory must exist");
       assert.ok(fs.existsSync(path.join(installedLibDir, "models/FlightDynamics.mo")));
       assert.ok(fs.existsSync(path.join(installedLibDir, "sysml/Avionics.sysml")));
       assert.ok(fs.existsSync(path.join(installedLibDir, "cad/MotorChassis.step")));
 
-      const offlinePkg = JSON.parse(fs.readFileSync(path.join(offlineConsumerDir, "package.json"), "utf-8"));
-      assert.ok(offlinePkg.dependencies[pkgName], "package.json must record file: dependency");
+      const offlineManifest = fs.readFileSync(path.join(offlineConsumerDir, "modelscript.yaml"), "utf-8");
+      assert.ok(offlineManifest.includes(pkgName), "modelscript.yaml must record file: dependency");
     } finally {
       process.chdir(originalCwd);
     }

@@ -49,8 +49,9 @@ describe("Native Higher-Degree SOS & Transcendental Polynomial Abstraction Suite
       4,
     );
 
-    assert.strictEqual(res.isCertifiedSafe, true);
-    assert.strictEqual(res.verdict.kind, "proven");
+    assert.strictEqual(res.isCertifiedSafe, false);
+    assert.strictEqual(res.verdict.kind, "unknown");
+    assert.strictEqual(res.verdict.reason, "not-rigorous");
     assert(res.candidateFound);
     assert.strictEqual(res.barrierDegree, 4);
     assert(res.barrierCoefficients.length >= 6);

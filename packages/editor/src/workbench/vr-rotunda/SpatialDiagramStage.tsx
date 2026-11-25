@@ -7,6 +7,7 @@ import { useXR, useXRInputSourceState } from "@react-three/xr";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { GalleryComponentItem } from "../componentGalleryCatalog.js";
+import { resolveDiagramLanguageTheme } from "./diagram-language-theme.js";
 import { MaterializingComponentPreview } from "./FloatingLibraryPanel3D.js";
 import {
   evaluateMagneticPortSnap,
@@ -53,6 +54,7 @@ import {
 import { SpatialDiagramNode3D, type PortVisualHighlightState } from "./SpatialDiagramNode3D.js";
 import { SpatialMagneticWires, type ActiveWireDragVisualState } from "./SpatialMagneticWires.js";
 import type { ExtrudedWaferStyle } from "./svg-extruder.js";
+import { DiagramTypeBanner3D } from "./VrWorkspacePanels3D.js";
 import { evaluateMaterializeTransition } from "./wrist-palette-logic.js";
 import { evaluatePinchState } from "./xr-gestures.js";
 import {
@@ -93,6 +95,12 @@ export interface SpatialDiagramStageProps {
   wristPaletteOpen: boolean;
   isPlaying: boolean;
   dark: boolean;
+  /** Active engineering language / dialect (e.g. `"modelica"`, `"sysml2"`, `"spice"`). */
+  languageId?: string | undefined;
+  /** Optional diagram subtype (e.g. `"diagram"`, `"bdd"`, `"ibd"`). */
+  diagramType?: string | undefined;
+  /** Active workspace filename shown in the 3D diagram header banner. */
+  activeFileName?: string | undefined;
   libraryCatalog?: readonly GalleryComponentItem[] | undefined;
   /** Shared ref signaling active 3D diagram grab/wiring lock so OrbitControls & CAD explode yield cleanly. */
   interactionLockRef: React.MutableRefObject<SpatialInteractionLock>;
@@ -227,6 +235,9 @@ export function SpatialDiagramStage({
   wristPaletteOpen,
   isPlaying,
   dark,
+  languageId,
+  diagramType,
+  activeFileName,
   libraryCatalog,
   interactionLockRef,
   onInteractionLockChange,
@@ -248,19 +259,43 @@ export function SpatialDiagramStage({
   const rightController = useXRInputSourceState("controller", "right");
   const leftController = useXRInputSourceState("controller", "left");
 
+  const langTheme = useMemo(() => resolveDiagramLanguageTheme(languageId, diagramType), [languageId, diagramType]);
+
   const tileKey = tile?.id ?? "__default_schematic__";
   const [diagramState, setDiagramState] = useState<SpatialDiagramState>(() => createSpatialDiagramStateFromTile(tile));
   const diagramStateRef = useRef(diagramState);
   diagramStateRef.current = diagramState;
 
-  // Re-initialize only when switching to a different schematic tile ID
-  const lastTileKeyRef = useRef(tileKey);
+  // Lightweight structural signature so 2D code edits or VR file switches resync the 3D diagram live
+  const externalDiagramSig = useMemo(() => {
+    const dd = tile?.viewState?.["diagramData"] as { nodes?: unknown[]; edges?: unknown[] } | undefined;
+    const nodeIds = Array.isArray(dd?.nodes)
+      ? dd.nodes
+          .map((n) => {
+            const obj = n as { id?: string; label?: string; x?: number; y?: number };
+            return `${obj.id ?? ""}:${obj.label ?? ""}:${Math.round(obj.x ?? 0)},${Math.round(obj.y ?? 0)}`;
+          })
+          .join("|")
+      : "";
+    const edgeIds = Array.isArray(dd?.edges)
+      ? dd.edges
+          .map((e) => {
+            const obj = e as { id?: string; source?: unknown; target?: unknown };
+            return `${obj.id ?? ""}:${JSON.stringify(obj.source ?? "")}->${JSON.stringify(obj.target ?? "")}`;
+          })
+          .join("|")
+      : "";
+    return `${tileKey}::${activeFileName ?? ""}::${nodeIds}::${edgeIds}`;
+  }, [tileKey, tile?.viewState, activeFileName]);
+
+  const lastExternalSigRef = useRef(externalDiagramSig);
   useEffect(() => {
-    if (lastTileKeyRef.current !== tileKey) {
-      lastTileKeyRef.current = tileKey;
-      setDiagramState(createSpatialDiagramStateFromTile(tile));
-    }
-  }, [tileKey, tile]);
+    if (lastExternalSigRef.current === externalDiagramSig) return;
+    // Defer resync if the user is mid-grab or mid-wire drag so live 90Hz motion never snaps
+    if (nodeGrabRef.current || wireSessionRef.current || palettePullRef.current) return;
+    lastExternalSigRef.current = externalDiagramSig;
+    setDiagramState(createSpatialDiagramStateFromTile(tile));
+  }, [externalDiagramSig, tile]);
 
   const stageGroupRef = useRef<THREE.Group | null>(null);
   const nodeGroupRefs = useRef<Map<string, THREE.Group>>(new Map());
@@ -1791,10 +1826,19 @@ export function SpatialDiagramStage({
             </group>
           ))}
 
+        {/* Prominent Language & Diagram Paradigm Banner (Modelica, SysML v2, SPICE, etc.) */}
+        <DiagramTypeBanner3D
+          theme={langTheme}
+          fileName={activeFileName ?? tile?.title}
+          nodeCount={diagramState.nodes.length}
+          edgeCount={diagramState.edges.length}
+          position={[0, hy + 0.14, 0.01]}
+        />
+
         {/* Optional 5 cm Spatial Precision Grid Plane (shown in "grid-5cm" or "flat-2d" mode) */}
         {(snapMode === "grid-5cm" || snapMode === "flat-2d") && (
           <gridHelper
-            args={[hx * 2, 30, dark ? "#22d3ee" : "#0284c7", dark ? "#1e293b" : "#94a3b8"]}
+            args={[hx * 2, 30, langTheme.gridTint, dark ? "#1e293b" : "#94a3b8"]}
             rotation={[Math.PI / 2, 0, 0]}
             position={[0, 0, -0.006]}
           />

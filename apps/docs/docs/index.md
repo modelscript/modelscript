@@ -16,12 +16,12 @@ hero:
       text: Get Started
       link: /guide/getting-started
     - theme: alt
-      text: Try Ansatz
+      text: Ansatz Editor
       link: https://ansatz.social/editor
       target: _blank
       rel: noopener noreferrer
     - theme: alt
-      text: Launch Studio
+      text: Ansatz Studio
       link: https://ansatz.social/studio
       target: _blank
       rel: noopener noreferrer

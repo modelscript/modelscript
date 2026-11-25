@@ -61,6 +61,16 @@ export {
   isEphemeralDiagramNode,
   type DropPlaceholderOptions,
 } from "./drop-placeholder.js";
+export {
+  evaluateModelScriptPortCompatibility,
+  inferCanonicalPortDomain,
+  normalizeConnectorTypeFamily,
+  type CanonicalPortDomain,
+  type CanonicalPortPolarity,
+  type ModelScriptPortCompatibilityOptions,
+  type ModelScriptPortCompatibilityResult,
+  type ModelScriptPortDescriptor,
+} from "./port-compatibility.js";
 export { translateConnectedEdgeStubs } from "./port-router.js";
 export {
   alignNodeSelectionBox,

@@ -111,5 +111,22 @@ test("test-tree-handler-batch-icons", async () => {
     assert(modelicaRoot.iconSvg, "Modelica root node iconSvg must be pre-populated from iconCache");
   }
 
+  // Test cleanroom stdlib icon resolution via getClassIcons (PSCAD + PSS/E)
+  const { ensureBuiltInPscadLibraryRegistered } = await import("@modelscript/pscad");
+  const { registerBuiltInPsseLibrarySync } = await import("@modelscript/psse");
+  const { globalLibraryRegistry } = await import("@modelscript/runtime");
+  ensureBuiltInPscadLibraryRegistered();
+  registerBuiltInPsseLibrarySync();
+  try {
+    const cleanroomIcons = await getClassIcons({
+      classNames: ["master:source3", "psse:GENROU"],
+    });
+    assert(cleanroomIcons["master:source3"]?.includes("<svg"), "master:source3 must resolve cleanroom SVG icon");
+    assert(cleanroomIcons["psse:GENROU"]?.includes("<svg"), "psse:GENROU must resolve cleanroom SVG icon");
+  } finally {
+    globalLibraryRegistry.unregisterPackage("@modelscript/pscad-master-lib");
+    globalLibraryRegistry.unregisterPackage("@modelscript/psse-std-lib");
+  }
+
   console.log("test-tree-handler-batch-icons passed successfully!");
 });

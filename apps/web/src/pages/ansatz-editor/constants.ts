@@ -1124,6 +1124,144 @@ end ThermalPlant;`,
     },
   },
   {
+    id: "seasonal-powerflow-comparison-sysml",
+    title: "Seasonal Multi-Tool Powerflow Comparison: SysML v2 + PSS/E + PSCAD + OpenDSS",
+    category: "Power Grids & EMT",
+    domain: "Power Grids",
+    description:
+      "SysML v2 Integration Umbrella defining SummerPeak and WinterPeak seasonal variants with ambient DLR thermal envelopes, comparing steady-state powerflow across PSS/E (.raw), PSCAD EMT steady-state, and OpenDSS (.dss).",
+    tags: ["Polyglot", "SysML v2", "PSS/E", "PSCAD", "OpenDSS", "Seasonal", "Power Flow"],
+    lang: "sysml2",
+    activeFile: "SeasonalUmbrella.sysml",
+    code: `package SeasonalPowerFlowUmbrella {
+  part def BulkTransmissionPsse {
+    attribute solver = "psse";
+    attribute source = "SummerPeak.raw";
+  }
+
+  part def EmtNetworkPscad {
+    attribute solver = "pscad";
+  }
+
+  part def FeederOpenDss {
+    attribute solver = "opendss";
+    attribute source = "Feeder.dss";
+  }
+
+  variation part def SeasonalCases {
+    variant part SummerPeak {
+      attribute season = "SummerPeak";
+      attribute rawFile = "SummerPeak.raw";
+      attribute ambientTempC = 40;
+      attribute windSpeedMs = 0.61;
+    }
+
+    variant part WinterPeak {
+      attribute season = "WinterPeak";
+      attribute rawFile = "WinterPeak.raw";
+      attribute ambientTempC = 0;
+      attribute windSpeedMs = 1.8;
+    }
+  }
+
+  requirement def SummerVoltageAndThermalEnvelope {
+    assume constraint { season == "SummerPeak" }
+    require constraint { minVmPu >= 0.90 and convergedPowerFlow == true and dlrRatingFactor >= 0.70 }
+  }
+
+  requirement def WinterVoltageAndThermalEnvelope {
+    assume constraint { season == "WinterPeak" }
+    require constraint { minVmPu >= 0.95 and convergedPowerFlow == true and dlrRatingFactor >= 1.15 }
+  }
+}`,
+    files: {
+      "SeasonalUmbrella.sysml": `package SeasonalPowerFlowUmbrella {
+  part def BulkTransmissionPsse {
+    attribute solver = "psse";
+    attribute source = "SummerPeak.raw";
+  }
+
+  part def EmtNetworkPscad {
+    attribute solver = "pscad";
+  }
+
+  part def FeederOpenDss {
+    attribute solver = "opendss";
+    attribute source = "Feeder.dss";
+  }
+
+  variation part def SeasonalCases {
+    variant part SummerPeak {
+      attribute season = "SummerPeak";
+      attribute rawFile = "SummerPeak.raw";
+      attribute ambientTempC = 40;
+      attribute windSpeedMs = 0.61;
+    }
+
+    variant part WinterPeak {
+      attribute season = "WinterPeak";
+      attribute rawFile = "WinterPeak.raw";
+      attribute ambientTempC = 0;
+      attribute windSpeedMs = 1.8;
+    }
+  }
+
+  requirement def SummerVoltageAndThermalEnvelope {
+    assume constraint { season == "SummerPeak" }
+    require constraint { minVmPu >= 0.90 and convergedPowerFlow == true and dlrRatingFactor >= 0.70 }
+  }
+
+  requirement def WinterVoltageAndThermalEnvelope {
+    assume constraint { season == "WinterPeak" }
+    require constraint { minVmPu >= 0.95 and convergedPowerFlow == true and dlrRatingFactor >= 1.15 }
+  }
+}`,
+      "SummerPeak.raw": `0, 100.00, 33, 0, 1, 60.00
+SEASONAL STUDY - SUMMER PEAK
+CASE
+1, 'SLACK', 230.0000, 3, 1, 1, 1, 1.02000, 0.0000
+2, 'GEN2',  230.0000, 2, 1, 1, 1, 1.01000, -2.0000
+3, 'POI3',  230.0000, 1, 1, 1, 1, 1.00000, -4.0000
+0 / END OF BUS DATA
+3, '1 ', 1, 1, 1, 75.0, 25.0, 0.0, 0.0, 0.0, 0.0, 1
+0 / END OF LOAD DATA
+0 / END OF FIXED SHUNT DATA
+1, '1 ', 45.0, 10.0, 100.0, -100.0, 1.020, 0, 100.0, 0.003, 0.18, 0, 0, 1, 1, 100, 200, 0
+2, '1 ', 30.0, 5.0, 100.0, -100.0, 1.010, 0, 100.0, 0.003, 0.20, 0, 0, 1, 1, 100, 200, 0
+0 / END OF GENERATOR DATA
+1, 2, '1 ', 0.010, 0.080, 0.04, 150, 150, 150, 0, 0, 0, 0, 1, 1, 10
+1, 3, '1 ', 0.012, 0.100, 0.05, 150, 150, 150, 0, 0, 0, 0, 1, 1, 10
+2, 3, '1 ', 0.015, 0.120, 0.06, 150, 150, 150, 0, 0, 0, 0, 1, 1, 10
+0 / END OF BRANCH DATA
+0 / END OF TRANSFORMER DATA
+Q`,
+      "WinterPeak.raw": `0, 100.00, 33, 0, 1, 60.00
+SEASONAL STUDY - WINTER PEAK
+CASE
+1, 'SLACK', 230.0000, 3, 1, 1, 1, 1.02000, 0.0000
+2, 'GEN2',  230.0000, 2, 1, 1, 1, 1.01000, -2.0000
+3, 'POI3',  230.0000, 1, 1, 1, 1, 1.00000, -4.0000
+0 / END OF BUS DATA
+3, '1 ', 1, 1, 1, 45.0, 12.0, 0.0, 0.0, 0.0, 0.0, 1
+0 / END OF LOAD DATA
+0 / END OF FIXED SHUNT DATA
+1, '1 ', 25.0, 6.0, 100.0, -100.0, 1.020, 0, 100.0, 0.003, 0.18, 0, 0, 1, 1, 100, 200, 0
+2, '1 ', 20.0, 4.0, 100.0, -100.0, 1.010, 0, 100.0, 0.003, 0.20, 0, 0, 1, 1, 100, 200, 0
+0 / END OF GENERATOR DATA
+1, 2, '1 ', 0.010, 0.080, 0.04, 150, 150, 150, 0, 0, 0, 0, 1, 1, 10
+1, 3, '1 ', 0.012, 0.100, 0.05, 150, 150, 150, 0, 0, 0, 0, 1, 1, 10
+2, 3, '1 ', 0.015, 0.120, 0.06, 150, 150, 150, 0, 0, 0, 0, 1, 1, 10
+0 / END OF BRANCH DATA
+0 / END OF TRANSFORMER DATA
+Q`,
+      "Feeder.dss": `Clear
+New Circuit.PoiFeeder basekv=230 pu=1.02 phases=3 bus1=1
+New Line.L13 phases=3 bus1=1 bus2=3 r1=6.35 x1=52.9 length=1
+New Load.Load3 bus1=3 phases=3 kv=230 kw=75000 kvar=25000
+Solve`,
+    },
+  },
+  {
     id: "polyglot-power-grid-comtrade-calibration",
     title: "Polyglot Power Grid: SysML v2 + PSS/E + PSCAD + Fortran + Modelica + COMTRADE",
     category: "Power Grids & EMT",

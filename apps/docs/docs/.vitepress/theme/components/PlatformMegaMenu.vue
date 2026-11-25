@@ -24,7 +24,7 @@ const columns = computed<MegaMenuColumn[]>(() => [
     label: "Workbenches & Surfaces",
     items: [
       {
-        name: "Ansatz",
+        name: "Ansatz Editor",
         tagline: "Zero-install drafting, schematics & live simulator",
         href: `${ansatzOrigin.value}/editor`,
         icon: "play",
@@ -32,7 +32,7 @@ const columns = computed<MegaMenuColumn[]>(() => [
         target: "_blank",
       },
       {
-        name: "Studio",
+        name: "Ansatz Studio",
         tagline: "VS Code workbench with schematics, 3D CAD & plots",
         href: `${ansatzOrigin.value}/studio`,
         icon: "layers",

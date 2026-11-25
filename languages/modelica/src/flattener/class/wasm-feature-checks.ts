@@ -40,6 +40,8 @@ export const UNSUPPORTED_WASM_IDENTIFIERS = new Set([
   "diagonal",
   "StateSelect",
   "Connections",
+  "inStream",
+  "actualStream",
 ]);
 
 export function classHasRedeclare(
@@ -201,6 +203,10 @@ export function classHasUnsupportedWasmFeatures(
     return true;
   }
   if (cstNode && cstContainsAnyIdentifier(cstNode, UNSUPPORTED_WASM_IDENTIFIERS)) {
+    cache.set(classId, true);
+    return true;
+  }
+  if (cstNode?.text && /\bder\s*\(\s*(?:if\b|[^)]*[+\-*/^])/.test(cstNode.text)) {
     cache.set(classId, true);
     return true;
   }

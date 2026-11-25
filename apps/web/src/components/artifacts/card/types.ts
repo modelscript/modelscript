@@ -67,6 +67,24 @@ export interface ArtifactViewConfig {
   upstreamArtifactId?: number | string | undefined;
   modifiedParametersCount?: number | undefined;
   parameterDeltas?: unknown[] | undefined;
+  files?: Record<string, string> | undefined;
+  powerFlowComparison?:
+    | {
+        overallStatus?: "PASS" | "WARN" | "FAIL" | undefined;
+        maxDeltaVmPu?: number | undefined;
+        maxDeltaVaDeg?: number | undefined;
+        solversCompared?: string[] | undefined;
+        [key: string]: unknown;
+      }
+    | undefined;
+  seasonalVerification?:
+    | {
+        overallPassed?: boolean | undefined;
+        totalVariants?: number | undefined;
+        passedVariants?: number | undefined;
+        [key: string]: unknown;
+      }
+    | undefined;
   [key: string]: unknown;
 }
 

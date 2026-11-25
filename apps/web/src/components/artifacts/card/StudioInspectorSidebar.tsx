@@ -268,6 +268,76 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
           </>
         )}
 
+        {(viewConfig.powerFlowComparison ||
+          viewConfig.seasonalVerification ||
+          (viewConfig.files && Object.keys(viewConfig.files).some((f) => /\.(raw|pscx|dss|sysml)$/i.test(f)))) && (
+          <Box mt={2} p={2} borderRadius={6} border="1px solid rgba(56,189,248,0.22)" bg="rgba(56,189,248,0.06)">
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+              <Text style={{ fontSize: "11px", fontWeight: 700, color: "#38bdf8" }}>
+                Multi-Tool Powerflow &amp; Seasonal
+              </Text>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const rawUrl = buildEditorUrlForArtifact({
+                    artifactId,
+                    viewType: artifact?.view_type,
+                    viewConfig,
+                    title: artifact?.title || artifact?.name || viewConfig?.title,
+                  });
+                  const sep = rawUrl.includes("?") ? "&" : "?";
+                  const deepUrl = `${rawUrl}${sep}study=compare&subTab=seasonal`;
+                  const safeUrl = sanitizeHttpUrl(deepUrl, { allowRelative: true });
+                  if (safeUrl && (safeUrl.startsWith("/") || safeUrl.startsWith("#")) && !safeUrl.startsWith("//")) {
+                    navigate(safeUrl);
+                  } else {
+                    handleOpenEditor(e);
+                  }
+                }}
+                style={{
+                  background: "transparent",
+                  border: "1px solid rgba(56,189,248,0.35)",
+                  color: "#38bdf8",
+                  borderRadius: 4,
+                  fontSize: "10px",
+                  padding: "2px 6px",
+                  cursor: "pointer",
+                }}
+              >
+                Open Comparison
+              </button>
+            </Box>
+            {viewConfig.powerFlowComparison && (
+              <Box fontSize={11} color="var(--color-fg-muted)">
+                Parity:{" "}
+                <strong
+                  style={{
+                    color:
+                      viewConfig.powerFlowComparison.overallStatus === "PASS"
+                        ? "#3fb950"
+                        : viewConfig.powerFlowComparison.overallStatus === "WARN"
+                          ? "#d29922"
+                          : "#f85149",
+                  }}
+                >
+                  {viewConfig.powerFlowComparison.overallStatus}
+                </strong>{" "}
+                (max |ΔV|={Number(viewConfig.powerFlowComparison.maxDeltaVmPu ?? 0).toFixed(4)} pu)
+              </Box>
+            )}
+            {viewConfig.seasonalVerification && (
+              <Box fontSize={11} color="var(--color-fg-muted)" mt={1}>
+                Seasonal Sweep:{" "}
+                <strong style={{ color: viewConfig.seasonalVerification.overallPassed ? "#3fb950" : "#f85149" }}>
+                  {viewConfig.seasonalVerification.passedVariants ?? 0}/
+                  {viewConfig.seasonalVerification.totalVariants ?? 0} PASS
+                </strong>
+              </Box>
+            )}
+          </Box>
+        )}
+
         {["ssp", "ssd", "ssp-topology"].includes(artifact.view_type?.toLowerCase()) && (
           <>
             <Box display="flex" justifyContent="space-between" py={1} borderBottom="1px solid rgba(255,255,255,0.06)">

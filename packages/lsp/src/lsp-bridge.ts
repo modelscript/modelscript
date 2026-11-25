@@ -2,7 +2,7 @@
 
 import type { SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/runtime";
 import type { QueryEngine } from "@modelscript/runtime/wasm_query_engine.js";
-import type { BridgeContext } from "./bridge/bridge-context.js";
+import { findEntryAtOffset, findScopeAtOffset, type BridgeContext } from "./bridge/bridge-context.js";
 import { computeCompletion } from "./bridge/completion.js";
 import { computeDocumentSymbols } from "./bridge/document-symbols.js";
 import { computeHover } from "./bridge/hover.js";
@@ -16,12 +16,12 @@ import {
 } from "./bridge/navigation.js";
 import { PositionIndex, resolvePositionIndexArg } from "./bridge/position-index.js";
 import {
+  LSPSymbolKind,
   type LSPCompletionItem,
   type LSPDocumentSymbol,
   type LSPHover,
   type LSPLocation,
   type LSPRange,
-  LSPSymbolKind,
 } from "./bridge/types.js";
 
 export {
@@ -146,6 +146,16 @@ export class LSPBridge {
   /** Returns the URI of the document bound to this bridge. */
   public getDocumentUri(): string {
     return this.documentUri;
+  }
+
+  /** Finds the narrowest symbol entry containing `offset` in the bound document. */
+  public findEntryAtOffset(offset: number): SymbolEntry | null {
+    return findEntryAtOffset(this.ctx, offset);
+  }
+
+  /** Finds the innermost scope-creating symbol containing `offset` in the bound document. */
+  public findScopeAtOffset(offset: number): SymbolEntry | null {
+    return findScopeAtOffset(this.ctx, offset);
   }
 
   // =========================================================================

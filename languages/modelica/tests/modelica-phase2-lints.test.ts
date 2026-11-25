@@ -147,7 +147,7 @@ model HighIdx
   Real x(start = 1.0);
   Real y(start = 0.0);
 equation
-  x = y;
+  x = 1.0;
   der(x) = -y;
 end HighIdx;
 

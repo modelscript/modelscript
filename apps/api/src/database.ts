@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type Database from "better-sqlite3";
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -3119,14 +3118,7 @@ export class LibraryDatabase {
     title?: string | null,
     creatorId?: number | null,
   ): string {
-    const id = crypto.randomBytes(6).toString("hex");
-    this.#db
-      .prepare(
-        `INSERT INTO ansatz_snippets (id, payload_json, dialect, title, creator_id)
-         VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(id, payloadJson, dialect, title ?? null, creatorId ?? null);
-    return id;
+    return this.jobs.saveAnsatzSnippet(payloadJson, dialect, title, creatorId);
   }
 
   getAnsatzSnippet(id: string):

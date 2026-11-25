@@ -364,4 +364,114 @@ describe("PSS/E LSP Services & DAE Lowering (@modelscript/psse)", () => {
     assert.equal(afterBusCase.loads.length, 0);
     assert.equal(afterBusCase.branches.length, 0);
   });
+
+  it("handles edge-ID disconnect, parallel circuit preservation, stale @edge cleanup, and connectedOnly moves", async () => {
+    const { createPsseDiagramBackend } = await import("../src/diagram-backend.js");
+    const baseRaw = [
+      "0, 100.00, 33, 0, 1, 60.00",
+      "PARALLEL BRANCH TEST",
+      "",
+      "1, 'SLACK       ', 138.000, 3, 1, 1, 1, 1.0200, 0.0000",
+      "2, 'LOADBUS     ', 138.000, 1, 1, 1, 1, 1.0000, 0.0000",
+      "3, 'AUXBUS      ', 138.000, 1, 1, 1, 1, 1.0000, 0.0000",
+      "0 / END OF BUS DATA, BEGIN LOAD DATA",
+      "2, '1 ', 1, 1, 1, 50.000, 10.000, 0.000, 0.000, 0.000, 0.000, 1",
+      "0 / END OF LOAD DATA, BEGIN FIXED SHUNT DATA",
+      "0 / END OF FIXED SHUNT DATA, BEGIN GENERATOR DATA",
+      "0 / END OF GENERATOR DATA, BEGIN BRANCH DATA",
+      "1, 2, '1 ', 0.01000, 0.05000, 0.02000, 100.00, 120.00, 140.00, 0.00000, 0.00000, 0.00000, 0.00000, 1, 1, 0.00",
+      "1, 2, '2 ', 0.01000, 0.05000, 0.02000, 100.00, 120.00, 140.00, 0.00000, 0.00000, 0.00000, 0.00000, 1, 1, 0.00",
+      "0 / END OF BRANCH DATA, BEGIN TRANSFORMER DATA",
+      "0 / END OF TRANSFORMER DATA",
+      "Q",
+      "@! @edge branch_1_2_1 vertices=150,200;250,200",
+      "",
+    ].join("\n");
+
+    // 1. Disconnect a single parallel circuit by edge ID (as canvas-node-editing.ts sends for portless edges)
+    const afterSingleDisc = disconnectPsseDiagramBuses(baseRaw, "branch_1_2_1", "branch_1_2_1");
+    const parsedSingle = parseRaw(afterSingleDisc);
+    assert.equal(parsedSingle.branches.length, 1, "only circuit 1 should be deleted");
+    assert.equal(parsedSingle.branches[0]!.ckt.trim(), "2", "sibling circuit 2 must remain");
+    assert.ok(
+      !afterSingleDisc.includes("@edge branch_1_2_1"),
+      "stale @edge comment for deleted branch must be removed",
+    );
+
+    // 2. Disconnect a bus-to-load lead by wire ID
+    const afterLoadWireDisc = disconnectPsseDiagramBuses(baseRaw, "wire_bus_2_to_load_2_1", "wire_bus_2_to_load_2_1");
+    assert.equal(parseRaw(afterLoadWireDisc).loads.length, 0, "load lead disconnect removes the load");
+
+    // 3. Backend move skips connectedOnly neighbors, and moveEdge persists vertices keyed by edge.id
+    let currentDoc = baseRaw;
+    const uri = "file:///test/parallel.raw";
+    const backend = createPsseDiagramBackend({
+      getDocumentText: (u: string) => (u === uri ? currentDoc : undefined),
+    } as never);
+
+    const applyEditsToString = (
+      doc: string,
+      edits: Array<{
+        range: { start: { line: number; character: number }; end: { line: number; character: number } };
+        newText: string;
+      }>,
+    ) => {
+      const lines = doc.split("\n");
+      const off = (p: { line: number; character: number }) =>
+        lines.slice(0, p.line).reduce((n, l) => n + l.length + 1, 0) + p.character;
+      let out = doc;
+      for (const e of [...edits].sort((a, b) => off(b.range.start) - off(a.range.start))) {
+        out = out.slice(0, off(e.range.start)) + e.newText + out.slice(off(e.range.end));
+      }
+      return out;
+    };
+
+    const moveRes = await backend.applyEdits!({
+      uri,
+      seq: 1,
+      actions: [
+        {
+          type: "move",
+          items: [
+            { id: "bus_1", name: "bus_1", x: 100, y: 200, width: 156, height: 40 },
+            { id: "bus_2", name: "bus_2", x: 400, y: 200, width: 156, height: 40, connectedOnly: true } as never,
+          ],
+        },
+      ],
+    });
+    currentDoc = applyEditsToString(currentDoc, moveRes.edits);
+    const bus1Line = currentDoc.split("\n").find((l) => l.startsWith("1, 'SLACK"))!;
+    const bus2Line = currentDoc.split("\n").find((l) => l.startsWith("2, 'LOADBUS"))!;
+    assert.ok(bus1Line.includes("@pos(178, 220)"), "moved bus_1 receives @pos");
+    assert.ok(!bus2Line.includes("@pos("), "connectedOnly bus_2 must not be modified");
+
+    // 4. moveEdge keyed by edge.id round-trips through getData
+    const edgeMoveRes = await backend.applyEdits!({
+      uri,
+      seq: 2,
+      actions: [
+        {
+          type: "moveEdge",
+          edges: [
+            {
+              id: "branch_1_2_2",
+              source: "bus_1",
+              target: "bus_2",
+              points: [
+                { x: 178, y: 220 },
+                { x: 300, y: 260 },
+                { x: 478, y: 220 },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    currentDoc = applyEditsToString(currentDoc, edgeMoveRes.edits);
+    assert.ok(currentDoc.includes("@! @edge branch_1_2_2 vertices=300,260"));
+    const diag = await backend.getData({ uri, documentText: currentDoc });
+    const br2Edge = diag?.edges.find((e) => e.id === "branch_1_2_2") as
+      { vertices?: { x: number; y: number }[] } | undefined;
+    assert.deepEqual(br2Edge?.vertices, [{ x: 300, y: 260 }]);
+  });
 });

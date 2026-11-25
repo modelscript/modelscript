@@ -1,12 +1,33 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { PowerFlowSnapshot } from "@modelscript/exchange";
+import {
+  ensurePsseWasmParser,
+  parseDyr,
+  parseRaw,
+  pssePowerFlowToSnapshot,
+  solvePowerFlowAsync,
+} from "@modelscript/psse";
+import {
+  extractSysML2SeasonalSpec,
+  runSysML2SeasonalVerificationSweep,
+  type SeasonalVerificationMatrix,
+} from "@modelscript/sysml2";
 import React, { useMemo, useState } from "react";
 import { InspectorTabs } from "./InspectorTabs.js";
+import { collectComparatorPowerFlowSnapshots } from "./powerflow-adapters.js";
+
+let latestSeasonalVerificationMatrix: SeasonalVerificationMatrix | null = null;
+
+export function getLatestSeasonalVerificationMatrix(): SeasonalVerificationMatrix | null {
+  return latestSeasonalVerificationMatrix;
+}
 
 export interface RequirementsOntologyInspectorProps {
   code: string;
   lines: string[];
   colorMode: "dark" | "light";
+  projectFiles?: Record<string, string> | undefined;
   onRevealLine?: ((line: number, identifier?: string) => void) | undefined;
 }
 
@@ -242,16 +263,85 @@ export const RequirementsOntologyInspector: React.FC<RequirementsOntologyInspect
   code,
   lines,
   colorMode,
+  projectFiles,
   onRevealLine,
 }) => {
   const isDark = colorMode === "dark";
-  const [subView, setSubView] = useState<"matrix" | "owl" | "compliance">("matrix");
+  const [subView, setSubView] = useState<"matrix" | "seasonal" | "owl" | "compliance">(() => {
+    if (typeof window !== "undefined") {
+      const q = new URLSearchParams(window.location.search).get("subTab");
+      if (q === "seasonal") return "seasonal";
+    }
+    return "matrix";
+  });
+  const [sweepRunning, setSweepRunning] = useState(false);
+  const [sweepError, setSweepError] = useState<string | null>(null);
+  const [sweepMatrix, setSweepMatrix] = useState<SeasonalVerificationMatrix | null>(null);
 
   const borderCol = isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.12)";
   const cardBg = isDark ? "rgba(30, 30, 34, 0.75)" : "rgba(255, 255, 255, 0.9)";
   const textMuted = isDark ? "#8b949e" : "#59636e";
 
   const { requirements, owl, oscal } = useMemo(() => analyzeRequirementsOntology(code, lines), [code, lines]);
+  const seasonalSpec = useMemo(() => extractSysML2SeasonalSpec(code), [code]);
+
+  const runSeasonalSweep = async () => {
+    setSweepRunning(true);
+    setSweepError(null);
+    try {
+      await ensurePsseWasmParser();
+      const files = projectFiles ?? {};
+      const matrix = await runSysML2SeasonalVerificationSweep(code, async (variant) => {
+        const rawKey =
+          (typeof variant.attributes["rawFile"] === "string" && variant.attributes["rawFile"]) ||
+          Object.keys(files).find((k) => k.toLowerCase().endsWith(".raw"));
+        const dyrKey =
+          (typeof variant.attributes["dyrFile"] === "string" && variant.attributes["dyrFile"]) ||
+          Object.keys(files).find((k) => k.toLowerCase().endsWith(".dyr"));
+
+        let baseline: PowerFlowSnapshot | undefined;
+        let psseCase;
+        const metrics: Record<string, number | boolean | string> = {};
+
+        if (rawKey && files[rawKey]) {
+          psseCase = parseRaw(files[rawKey]!);
+          if (dyrKey && files[dyrKey]) psseCase.dyr = parseDyr(files[dyrKey]!);
+          const pf = await solvePowerFlowAsync(psseCase);
+          baseline = pssePowerFlowToSnapshot(psseCase, pf, variant.name);
+
+          let minVmPu = Infinity;
+          let maxVmPu = -Infinity;
+          for (const b of baseline.buses) {
+            if (b.vmPu < minVmPu) minVmPu = b.vmPu;
+            if (b.vmPu > maxVmPu) maxVmPu = b.vmPu;
+          }
+          if (Number.isFinite(minVmPu)) metrics["minVmPu"] = minVmPu;
+          if (Number.isFinite(maxVmPu)) metrics["maxVmPu"] = maxVmPu;
+          metrics["convergedPowerFlow"] = pf.converged;
+        }
+
+        const comparators = await collectComparatorPowerFlowSnapshots(
+          files,
+          psseCase,
+          baseline?.frequencyHz ?? 60,
+          baseline?.sbaseMva ?? 100,
+        );
+
+        return {
+          baseline,
+          comparators,
+          comparisonOptions: { vmTolerancePu: 0.01, vaToleranceDeg: 3.0 },
+          metrics,
+        };
+      });
+      latestSeasonalVerificationMatrix = matrix;
+      setSweepMatrix(matrix);
+    } catch (err) {
+      setSweepError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSweepRunning(false);
+    }
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -261,6 +351,7 @@ export const RequirementsOntologyInspector: React.FC<RequirementsOntologyInspect
         onChange={(id) => setSubView(id as typeof subView)}
         tabs={[
           { id: "matrix", label: `🎯 Traceability Matrix (${requirements.length} reqs)` },
+          { id: "seasonal", label: `🌦️ Seasonal & Cross-Tool (${seasonalSpec.variants.length} variants)` },
           { id: "owl", label: `🧠 OWL2 Description Logic (${owl.classes.length} classes)` },
           { id: "compliance", label: `🛡️ OSCAL Controls (${oscal.controls.length})` },
         ]}
@@ -401,6 +492,83 @@ export const RequirementsOntologyInspector: React.FC<RequirementsOntologyInspect
                   </span>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {subView === "seasonal" && (
+        <div style={{ padding: 14, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
+          <div
+            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 10 }}
+          >
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 12 }}>
+                SysML v2 Seasonal Variants & Cross-Tool Powerflow Sweep
+              </div>
+              <div style={{ fontSize: 11, color: textMuted }}>
+                {seasonalSpec.variants.length > 0
+                  ? `Detected ${seasonalSpec.variants.length} variant(s): ${seasonalSpec.variants.map((v) => v.name).join(", ")}`
+                  : "No `variation`/`variant` blocks detected; sweep will run against default scenario."}
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={sweepRunning}
+              onClick={runSeasonalSweep}
+              style={{
+                padding: "5px 12px",
+                fontSize: 11,
+                fontWeight: 600,
+                borderRadius: 5,
+                border: `1px solid ${borderCol}`,
+                backgroundColor: isDark ? "#238636" : "#1f883d",
+                color: "#fff",
+                cursor: sweepRunning ? "wait" : "pointer",
+              }}
+            >
+              {sweepRunning ? "Running Sweep..." : "Run Seasonal & Cross-Tool Sweep"}
+            </button>
+          </div>
+          {sweepError && (
+            <div style={{ fontSize: 11, color: "#f85149", marginBottom: 8 }}>Sweep error: {sweepError}</div>
+          )}
+          {sweepMatrix && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: sweepMatrix.overallPassed ? "#3fb950" : "#f85149" }}>
+                Overall: {sweepMatrix.overallPassed ? "PASS" : "FAIL"} ({sweepMatrix.passedVariants}/
+                {sweepMatrix.totalVariants} variants satisfied)
+              </div>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "monospace" }}>
+                <thead>
+                  <tr style={{ borderBottom: `1px solid ${borderCol}`, color: textMuted, textAlign: "left" }}>
+                    <th style={{ padding: "5px 6px" }}>Variant / Season</th>
+                    <th style={{ padding: "5px 6px" }}>Powerflow Parity</th>
+                    <th style={{ padding: "5px 6px" }}>Max |ΔV| (pu)</th>
+                    <th style={{ padding: "5px 6px" }}>Requirements</th>
+                    <th style={{ padding: "5px 6px" }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sweepMatrix.variants.map((v) => (
+                    <tr key={v.name} style={{ borderBottom: `1px solid ${borderCol}` }}>
+                      <td style={{ padding: "5px 6px", fontWeight: 600 }}>{v.name}</td>
+                      <td style={{ padding: "5px 6px" }}>{v.powerFlowComparison?.overallStatus ?? "N/A"}</td>
+                      <td style={{ padding: "5px 6px" }}>
+                        {v.powerFlowComparison ? v.powerFlowComparison.maxDeltaVmPu.toFixed(4) : "—"}
+                      </td>
+                      <td style={{ padding: "5px 6px" }}>
+                        {v.verification.results.filter((r) => r.satisfied).length}/{v.verification.results.length}
+                      </td>
+                      <td
+                        style={{ padding: "5px 6px", color: v.allSatisfied ? "#3fb950" : "#f85149", fontWeight: 700 }}
+                      >
+                        {v.allSatisfied ? "PASS" : "FAIL"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

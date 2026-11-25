@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { comparePowerFlowSnapshots, type PowerFlowComparisonReport } from "@modelscript/exchange";
 import {
   analyzeN1Contingencies,
   analyzeSmallSignalStability,
@@ -8,6 +9,7 @@ import {
   ensurePsseWasmParser,
   parseDyr,
   parseRaw,
+  pssePowerFlowToSnapshot,
   solveContinuationPowerFlow,
   solvePowerFlowAsync,
   type CpfResult,
@@ -21,12 +23,13 @@ import {
 } from "@modelscript/psse";
 import { solveAcOpf, solveDcOpf, type OpfSolution } from "@modelscript/simulate/opf";
 import React, { useMemo, useState } from "react";
+import { collectComparatorPowerFlowSnapshots } from "./powerflow-adapters.js";
 
 const SimulationResults = React.lazy(() =>
   import("../../SimulationResults.js").then((m) => ({ default: m.SimulationResults })),
 );
 
-export type PsseStudyKind = "powerflow" | "accc" | "cpf" | "opf" | "fault" | "modes" | "gic";
+export type PsseStudyKind = "powerflow" | "compare" | "accc" | "cpf" | "opf" | "fault" | "modes" | "gic";
 
 export interface PsseStudyPanelProps {
   code: string;
@@ -36,6 +39,9 @@ export interface PsseStudyPanelProps {
   baselineLabel?: string | undefined;
   channelPrefix?: string | undefined;
   onChannelPrefixChange?: ((prefix: string) => void) | undefined;
+  projectFiles?: Record<string, string> | undefined;
+  onComparisonReport?: ((report: PowerFlowComparisonReport) => void) | undefined;
+  onRevealLine?: ((line: number, identifier?: string) => void) | undefined;
   colorMode: "dark" | "light";
   onStatusChange?: ((status: string) => void) | undefined;
 }
@@ -48,6 +54,9 @@ export const PsseStudyPanel: React.FC<PsseStudyPanelProps> = ({
   baselineLabel,
   channelPrefix: controlledPrefix,
   onChannelPrefixChange,
+  projectFiles,
+  onComparisonReport,
+  onRevealLine,
   colorMode,
   onStatusChange,
 }) => {
@@ -57,7 +66,15 @@ export const PsseStudyPanel: React.FC<PsseStudyPanelProps> = ({
   const textPrimary = isDark ? "#e6edf3" : "#1f2328";
   const textMuted = isDark ? "#8b949e" : "#59636e";
 
-  const [studyKind, setStudyKind] = useState<PsseStudyKind>("powerflow");
+  const [studyKind, setStudyKind] = useState<PsseStudyKind>(() => {
+    if (typeof window !== "undefined") {
+      const q = new URLSearchParams(window.location.search).get("study");
+      if (q === "compare") return "compare";
+    }
+    return "powerflow";
+  });
+  const [vmTolPu, setVmTolPu] = useState(0.01);
+  const [vaTolDeg, setVaTolDeg] = useState(2.5);
   const [pfAlg, setPfAlg] = useState<NonNullable<PowerFlowOptions["algorithm"]>>("newton_raphson");
   const [adjustTaps, setAdjustTaps] = useState(true);
   const [adjustSwitchedShunts, setAdjustSwitchedShunts] = useState(true);
@@ -83,6 +100,7 @@ export const PsseStudyPanel: React.FC<PsseStudyPanelProps> = ({
   const [scResult, setScResult] = useState<ShortCircuitAnalysisResult | null>(null);
   const [modalResult, setModalResult] = useState<ModalAnalysisResult | null>(null);
   const [gicResult, setGicResult] = useState<GicAnalysisResult | null>(null);
+  const [compareResult, setCompareResult] = useState<PowerFlowComparisonReport | null>(null);
 
   const runSelectedStudy = async () => {
     setRunning(true);
@@ -107,6 +125,31 @@ export const PsseStudyPanel: React.FC<PsseStudyPanelProps> = ({
               ? `Power Flow (${pfAlg}): converged in ${res.iterations} iters, losses ${res.totalLossMw.toFixed(2)} MW`
               : `Power Flow (${pfAlg}): did not converge (${res.iterations} iters)`,
           );
+          break;
+        }
+        case "compare": {
+          const pf = await solvePowerFlowAsync(parsed, {
+            algorithm: pfAlg,
+            adjustTaps,
+            adjustSwitchedShunts,
+            distributedSlack,
+            areaInterchange,
+            remoteVoltageControl,
+          });
+          const psseSnap = pssePowerFlowToSnapshot(parsed, pf);
+          const comparators = await collectComparatorPowerFlowSnapshots(
+            projectFiles,
+            parsed,
+            psseSnap.frequencyHz,
+            psseSnap.sbaseMva,
+          );
+          const report = comparePowerFlowSnapshots(psseSnap, comparators, {
+            vmTolerancePu: vmTolPu,
+            vaToleranceDeg: vaTolDeg,
+          });
+          setCompareResult(report);
+          onComparisonReport?.(report);
+          onStatusChange?.(report.summaryText);
           break;
         }
         case "accc": {
@@ -257,6 +300,9 @@ export const PsseStudyPanel: React.FC<PsseStudyPanelProps> = ({
           Study
           <select value={studyKind} onChange={(e) => setStudyKind(e.target.value as PsseStudyKind)} style={selectStyle}>
             <option value="powerflow">AC Power Flow</option>
+            <option value="compare">
+              Cross-Tool Power Flow Comparison (PSS/E ↔ PSCAD / OpenDSS / PSLF / MATPOWER / PF / CGMES)
+            </option>
             <option value="accc">ACCC (N-1 Contingency)</option>
             <option value="cpf">CPF (PV Nose Curve)</option>
             <option value="opf">Optimal Power Flow (OPF)</option>
@@ -265,6 +311,33 @@ export const PsseStudyPanel: React.FC<PsseStudyPanelProps> = ({
             <option value="gic">GIC / TPL-007</option>
           </select>
         </label>
+
+        {studyKind === "compare" && (
+          <>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: textMuted }}>
+              ΔV tol (pu)
+              <input
+                type="number"
+                step="0.001"
+                min="0.0001"
+                value={vmTolPu}
+                onChange={(e) => setVmTolPu(Math.max(0.0001, Number(e.target.value) || 0.01))}
+                style={{ ...selectStyle, width: 64 }}
+              />
+            </label>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: textMuted }}>
+              Δθ tol (°)
+              <input
+                type="number"
+                step="0.1"
+                min="0.05"
+                value={vaTolDeg}
+                onChange={(e) => setVaTolDeg(Math.max(0.05, Number(e.target.value) || 2.5))}
+                style={{ ...selectStyle, width: 56 }}
+              />
+            </label>
+          </>
+        )}
 
         {studyKind === "powerflow" && (
           <>
@@ -746,6 +819,91 @@ export const PsseStudyPanel: React.FC<PsseStudyPanelProps> = ({
           <span style={{ color: textMuted }}>Total Q_loss: {gicResult.totalSystemGicLossMvar.toFixed(2)} MVAr</span>
           <span style={{ color: textMuted }}>Max Eff. GIC: {gicResult.maxTransformerEffectiveGicAmp.toFixed(1)} A</span>
           <span style={{ color: textMuted }}>Violations: {gicResult.tpl007ViolationsCount}</span>
+        </div>
+      )}
+
+      {studyKind === "compare" && compareResult && (
+        <div
+          style={{
+            padding: "10px 12px",
+            borderRadius: 6,
+            border: `1px solid ${borderCol}`,
+            backgroundColor: cardBg,
+            fontSize: 11,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+            <strong
+              style={{
+                color:
+                  compareResult.overallStatus === "PASS"
+                    ? "#3fb950"
+                    : compareResult.overallStatus === "WARN"
+                      ? "#d29922"
+                      : "#f85149",
+              }}
+            >
+              Powerflow Parity: {compareResult.overallStatus}
+            </strong>
+            <span style={{ color: textMuted }}>Solvers: {compareResult.solversCompared.join(" vs ")}</span>
+            <span style={{ color: textMuted }}>Max |ΔV|: {compareResult.maxDeltaVmPu.toFixed(4)} pu</span>
+            <span style={{ color: textMuted }}>Max |Δθ|: {compareResult.maxDeltaVaDeg.toFixed(2)}°</span>
+          </div>
+          {compareResult.pairs.map((pair) => (
+            <div key={pair.comparatorSolver} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ fontWeight: 600, color: textPrimary }}>
+                {pair.baselineSolver} ↔ {pair.comparatorSolver} ({pair.matchedBuses} matched buses, RMSE ΔV=
+                {pair.rmseDeltaVmPu.toFixed(4)} pu)
+              </div>
+              {pair.busDeltas.length > 0 && (
+                <div style={{ maxHeight: 180, overflowY: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                    <thead>
+                      <tr style={{ color: textMuted, textAlign: "left", borderBottom: `1px solid ${borderCol}` }}>
+                        <th style={{ padding: "3px 6px" }}>Bus</th>
+                        <th style={{ padding: "3px 6px" }}>{pair.baselineSolver} V (pu)</th>
+                        <th style={{ padding: "3px 6px" }}>{pair.comparatorSolver} V (pu)</th>
+                        <th style={{ padding: "3px 6px" }}>|ΔV| (pu)</th>
+                        <th style={{ padding: "3px 6px" }}>|Δθ| (°)</th>
+                        <th style={{ padding: "3px 6px" }}>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pair.busDeltas.slice(0, 50).map((b) => (
+                        <tr
+                          key={b.busId}
+                          onClick={() => {
+                            if (!onRevealLine) return;
+                            const idx = code
+                              .split(/\r?\n/)
+                              .findIndex((ln) => new RegExp(`^\\s*${b.busId}\\s*,`).test(ln));
+                            if (idx >= 0) onRevealLine(idx + 1, b.busId);
+                          }}
+                          style={{
+                            borderBottom: `1px solid ${borderCol}`,
+                            cursor: onRevealLine ? "pointer" : "default",
+                          }}
+                          title={onRevealLine ? `Click to jump to Bus ${b.busId}` : undefined}
+                        >
+                          <td style={{ padding: "3px 6px", fontFamily: "monospace" }}>{b.busId}</td>
+                          <td style={{ padding: "3px 6px", fontFamily: "monospace" }}>{b.baselineVmPu.toFixed(4)}</td>
+                          <td style={{ padding: "3px 6px", fontFamily: "monospace" }}>{b.comparatorVmPu.toFixed(4)}</td>
+                          <td style={{ padding: "3px 6px", fontFamily: "monospace" }}>{b.deltaVmPu.toFixed(4)}</td>
+                          <td style={{ padding: "3px 6px", fontFamily: "monospace" }}>{b.deltaVaDeg.toFixed(2)}</td>
+                          <td style={{ padding: "3px 6px", color: b.withinTolerance ? "#3fb950" : "#f85149" }}>
+                            {b.withinTolerance ? "OK" : "DIFF"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 

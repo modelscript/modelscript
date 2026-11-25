@@ -204,7 +204,7 @@ test("End-to-end closed-loop PSS/E <-> PSCAD co-simulation (direct and FMI 3.0 m
 });
 
 test("Real EmtSolver Picard rollback, exact .seq zero-sequence network, multi-freq Y_bus(jw) FDNE scan, and multi-port coupling", async () => {
-  const { scanExternalNetworkAdmittance } = await import("../src/index.js");
+  const { scanExternalNetworkAdmittance } = await import("@modelscript/psse");
   const { EmtSolver } = await import("@modelscript/pscad");
   const psseCase = parseRaw(THREE_BUS_RAW);
   const dyrCase = parseDyr(THREE_BUS_DYR);
@@ -356,7 +356,7 @@ test("Real EmtSolver Picard rollback, exact .seq zero-sequence network, multi-fr
 });
 
 test("Sparse Kron reduction & 24-frequency FDNE scan scale cleanly on a 500-bus meshed grid", async () => {
-  const { scanExternalNetworkAdmittance } = await import("../src/index.js");
+  const { scanExternalNetworkAdmittance } = await import("@modelscript/psse");
   const nBuses = 500;
   const lines: string[] = ["0, 100.00, 33, 0, 1, 60.00", "500-BUS SPARSE KRON BENCHMARK", "CASE"];
   for (let i = 1; i <= nBuses; i++) {

@@ -219,8 +219,8 @@ export const DslSimulationCardsStrip: React.FC<DslSimulationCardsStripProps> = (
   code,
 }) => {
   const matchingCards = useMemo(() => {
+    if (!dialect) return [];
     const cards = getEditorLanguageUi().simulationCards;
-    if (!dialect) return cards;
     return cards.filter((c) => c.languageId === dialect);
   }, [dialect]);
 

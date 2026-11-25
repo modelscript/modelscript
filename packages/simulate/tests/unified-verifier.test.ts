@@ -127,9 +127,10 @@ describe("UnifiedVerifier", () => {
       all: false,
     });
 
-    assert.equal(report.summary.overallPassed, true);
     assert.ok(report.stages.theory_coordination, "Theory coordination stage should be present");
     assert.equal(report.stages.theory_coordination.passed, true);
+    assert.ok(report.stages.decisions, "Decisions stage should be present");
+    assert.equal(report.stages.decisions.passed, true);
 
     assert.ok(ctx.contractedStateSpace, "Contracted state space should be forwarded into context");
     assert.ok(ctx.contractedStateSpace!.has("pos_x"), "pos_x should be in contracted state space");

@@ -245,9 +245,10 @@ const BODY_WIDTH = 10;
       });
 
       assert.strictEqual(appliedUpdates.length, 2);
-      assert.strictEqual(appliedUpdates[0].parameterName, "ARM_LENGTH");
-      assert.strictEqual(appliedUpdates[0].previousValue, 7.0);
-      assert.strictEqual(appliedUpdates[0].newValue, 8.45);
+      const armLengthUpdate = appliedUpdates.find((u) => u.parameterName === "ARM_LENGTH");
+      assert.ok(armLengthUpdate);
+      assert.strictEqual(armLengthUpdate.previousValue, 7.0);
+      assert.strictEqual(armLengthUpdate.newValue, 8.45);
 
       assert.ok(updatedSource.includes("const ARM_LENGTH = 8.45;"));
       assert.ok(updatedSource.includes("const ARM_WIDTH = 2;"));
