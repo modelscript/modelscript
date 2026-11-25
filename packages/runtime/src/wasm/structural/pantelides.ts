@@ -1278,13 +1278,18 @@ export function dae_swapDynamicState(pantPtr: u32, oldVar: u32, newVar: u32): bo
 
 @inline
 function isPantStructuralZero(dae: DaeBuilder, exprId: u32): boolean {
-  if (exprId >= dae.exprCount) return false;
-  let k = dae.getExprKind(exprId);
-  if (k == ExprKind.RealLiteral) return dae.getExprRealValue(exprId) == 0.0;
-  if (k == ExprKind.IntLiteral) return (dae.getExprData1(exprId) as i32) == 0;
-  if (k == ExprKind.Negate) {
-    let l = dae.getExprLeft(exprId);
-    return isPantStructuralZero(dae, l != 0xffffffff ? l : dae.getExprData1(exprId));
+  let cur = exprId;
+  for (let depth: u32 = 0; depth < 16; depth++) {
+    if (cur >= dae.exprCount) return false;
+    let k = dae.getExprKind(cur);
+    if (k == ExprKind.RealLiteral) return dae.getExprRealValue(cur) == 0.0;
+    if (k == ExprKind.IntLiteral) return (dae.getExprData1(cur) as i32) == 0;
+    if (k == ExprKind.Negate) {
+      let l = dae.getExprLeft(cur);
+      cur = l != 0xffffffff ? l : dae.getExprData1(cur);
+      continue;
+    }
+    return false;
   }
   return false;
 }
