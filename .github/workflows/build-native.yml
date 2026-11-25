@@ -50,19 +50,19 @@ jobs:
             os: windows-latest
             hpc: false
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js & pnpm
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v4
 
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Cache WABT, SIMDe & Dawn
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             .cache/wabt-*
@@ -156,7 +156,7 @@ jobs:
           test -f "dist/release-artifacts/modelscript-${{ matrix.target }}.vsix"
 
       - name: Upload platform artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-native-${{ matrix.target }}
           path: dist/release-artifacts/*
@@ -166,12 +166,12 @@ jobs:
     name: Build Pure-WASM Web VSIX (web)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v4
 
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
@@ -209,7 +209,7 @@ jobs:
             -o "../../../../dist/release-artifacts/modelscript-web.vsix"
 
       - name: Upload web VSIX artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-native-web
           path: dist/release-artifacts/modelscript-web.vsix
@@ -221,7 +221,7 @@ jobs:
     container:
       image: nvidia/cuda:12.6.3-devel-ubuntu24.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install build prerequisites
         run: |
@@ -256,7 +256,7 @@ jobs:
             -C packages/native/build-cuda msx-hpc-worker
 
       - name: Upload CUDA HPC worker artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-native-linux-x64-cuda
           path: dist/release-artifacts/msx-hpc-worker-linux-x64-cuda.tar.gz
