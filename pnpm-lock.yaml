@@ -5198,6 +5198,9 @@ importers:
 
   packages/ide:
     dependencies:
+      '@antv/layout':
+        specifier: ^0.3.25
+        version: 0.3.25(dagre@0.8.5)
       '@mlc-ai/web-llm':
         specifier: ^0.2.85
         version: 0.2.89
@@ -5294,6 +5297,12 @@ importers:
       pako:
         specifier: ^2.1.0
         version: 2.2.0
+      react:
+        specifier: ^19.2.7
+        version: 19.3.1
+      react-dom:
+        specifier: ^19.2.7
+        version: 19.3.1(react@19.3.1)
       three:
         specifier: ^0.184.0
         version: 0.184.0

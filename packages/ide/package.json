@@ -30,6 +30,7 @@
     ]
   },
   "dependencies": {
+    "@antv/layout": "^0.3.25",
     "@mlc-ai/web-llm": "^0.2.85",
     "@modelscript/c": "workspace:*",
     "@modelscript/cad": "workspace:*",
@@ -62,6 +63,8 @@
     "dompurify": "^3.4.17",
     "fflate": "^0.8.3",
     "pako": "^2.1.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "three": "^0.184.0",
     "vscode-languageclient": "^9.0.1"
   },
