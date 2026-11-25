@@ -176,7 +176,7 @@ async function ensureWasm2c(): Promise<string> {
   await downloadFile(url, archivePath);
 
   fs.mkdirSync(CACHE_DIR, { recursive: true });
-  execFileSync("tar", ["-xzf", archivePath, "-C", CACHE_DIR], { stdio: "inherit" });
+  execFileSync("tar", ["-xzf", path.basename(archivePath)], { cwd: CACHE_DIR, stdio: "inherit" });
 
   if (!fs.existsSync(cachedBin)) {
     throw new Error(`Expected wasm2c binary at ${cachedBin} after extracting ${archivePath}`);
@@ -252,7 +252,7 @@ async function ensureSimdeHeaders(): Promise<string> {
   console.log(`[wasm2c] Downloading header-only SIMDe v${SIMDE_VERSION}...`);
   await downloadFile(url, archivePath);
   fs.mkdirSync(SIMDE_DIR, { recursive: true });
-  execFileSync("tar", ["-xzf", archivePath, "-C", SIMDE_DIR], { stdio: "inherit" });
+  execFileSync("tar", ["-xzf", path.basename(archivePath)], { cwd: SIMDE_DIR, stdio: "inherit" });
   return simdeIncludeRoot;
 }
 
