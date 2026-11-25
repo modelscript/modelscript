@@ -1339,6 +1339,7 @@ export async function fetchBenchmark(entry: BenchmarkEntry, options: FetchOption
 
   // 2. Download from upstream or fallback URLs (skip only in explicit --synthetic offline mode unless --force)
   let downloaded = false;
+  let downloadedUrl = "";
   if (!options.offlineFallback || options.force) {
     const urls = [entry.upstream?.url, entry.upstream?.fallbackUrl, ...(entry.upstream?.mirrorUrls || [])].filter(
       Boolean,
@@ -1349,6 +1350,7 @@ export async function fetchBenchmark(entry: BenchmarkEntry, options: FetchOption
         console.log(`[fetch-benchmarks] Downloading from ${url}...`);
         await downloadFile(url, archivePath);
         downloaded = true;
+        downloadedUrl = url;
         console.log(`[fetch-benchmarks] Successfully downloaded ${entry.filename}`);
         break;
       } catch (err: unknown) {
@@ -1371,6 +1373,18 @@ export async function fetchBenchmark(entry: BenchmarkEntry, options: FetchOption
     }
 
     try {
+      const fd = fs.openSync(archivePath, "r");
+      const magic = Buffer.alloc(2);
+      fs.readSync(fd, magic, 0, 2, 0);
+      fs.closeSync(fd);
+      const isZipMagic = magic[0] === 0x50 && magic[1] === 0x4b;
+      if (!isZipMagic && downloadedUrl && !/\.(zip|tar\.gz|tgz)$/i.test(downloadedUrl)) {
+        const targetName = path.basename(downloadedUrl.split("?")[0] || entry.filename);
+        fs.mkdirSync(extractDir, { recursive: true });
+        fs.copyFileSync(archivePath, path.join(extractDir, targetName));
+        console.log(`[fetch-benchmarks] Saved single-file fixture ${targetName} to ${extractDir}.`);
+        return true;
+      }
       console.log(`[fetch-benchmarks] Extracting ${entry.filename} to ${extractDir}...`);
       execSync(`unzip -q -o "${archivePath}" -d "${extractDir}"`, { stdio: "pipe" });
       if (entry.upstream?.extractSubpath) {
