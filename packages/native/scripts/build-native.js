@@ -21,7 +21,11 @@ const hpcNativeArch = args.includes("--hpc-native-arch") || process.env["MS_HPC_
 
 function run(cmd, cmdArgs, cwd = PKG_ROOT) {
   console.log(`[native] $ ${cmd} ${cmdArgs.join(" ")}`);
-  execFileSync(cmd, cmdArgs, { cwd, stdio: "inherit" });
+  execFileSync(cmd, cmdArgs, {
+    cwd,
+    stdio: "inherit",
+    shell: process.platform === "win32" && cmd === "npx",
+  });
 }
 
 if (!skipCodegen) {

@@ -458,6 +458,7 @@ async function main(): Promise<void> {
         execFileSync("pnpm", ["--filter", target.packageFilter, "run", target.ascScript], {
           cwd: REPO_ROOT,
           stdio: "inherit",
+          shell: process.platform === "win32",
         });
       }
     }
