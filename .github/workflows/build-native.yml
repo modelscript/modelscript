@@ -246,7 +246,11 @@ jobs:
             -DMS_BUILD_HPC_WORKER=ON \
             -DMS_ENABLE_CUDA=ON
           cmake --build packages/native/build-cuda --parallel
-          ./packages/native/build-cuda/msx-hpc-worker --version --info --selftest
+          STUB_DIR="/usr/local/cuda/lib64/stubs"
+          if [ -f "$STUB_DIR/libcuda.so" ] && [ ! -e "$STUB_DIR/libcuda.so.1" ]; then
+            ln -s libcuda.so "$STUB_DIR/libcuda.so.1"
+          fi
+          LD_LIBRARY_PATH="$STUB_DIR:${LD_LIBRARY_PATH:-}" ./packages/native/build-cuda/msx-hpc-worker --version --info --selftest
           mkdir -p dist/release-artifacts
           tar -czf dist/release-artifacts/msx-hpc-worker-linux-x64-cuda.tar.gz \
             -C packages/native/build-cuda msx-hpc-worker
