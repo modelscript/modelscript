@@ -52,6 +52,7 @@ import {
   type AnsatzDecodedPayload,
   type HeroExample,
 } from "./ansatz-editor";
+import { EXAMPLE_INDEX, EXAMPLE_INDEX_BY_ID, loadExampleById } from "./ansatz-editor/generated/example-loader";
 
 function sanitizeModelFileName(title: string): string {
   const leaf = title.includes(".") ? title.slice(title.lastIndexOf(".") + 1) : title;
@@ -833,30 +834,66 @@ export const AnsatzEditorPage: React.FC = () => {
     const effectiveModelOrTemplate = templateParam || memfsTemplateId || modelParam;
     if (effectiveModelOrTemplate) {
       const normalizedKey = TEMPLATE_ALIASES[effectiveModelOrTemplate.toLowerCase()] || effectiveModelOrTemplate;
-      const match =
-        HERO_EXAMPLES.find(
-          (ex) =>
-            ex.id.toLowerCase() === normalizedKey.toLowerCase() ||
-            ex.id.toLowerCase() === effectiveModelOrTemplate.toLowerCase() ||
-            ex.title.toLowerCase().includes(effectiveModelOrTemplate.toLowerCase()),
-        ) ?? HERO_EXAMPLES[0];
-      if (match) {
-        baselineCodeRef.current = match.code;
+      const lowerNorm = normalizedKey.toLowerCase();
+      const lowerRaw = effectiveModelOrTemplate.toLowerCase();
+      const heroMatch = HERO_EXAMPLES.find(
+        (ex) =>
+          ex.id.toLowerCase() === lowerNorm ||
+          ex.id.toLowerCase() === lowerRaw ||
+          ex.title.toLowerCase().includes(lowerRaw),
+      );
+      const indexMatch = !heroMatch
+        ? EXAMPLE_INDEX.find(
+            (ex) =>
+              ex.id.toLowerCase() === lowerNorm ||
+              ex.id.toLowerCase() === lowerRaw ||
+              ex.title.toLowerCase().includes(lowerRaw),
+          )
+        : undefined;
+
+      const applyMatched = (match: HeroExample) => {
+        const nextFiles = match.files ? { ...match.files } : null;
+        const nextActive = nextFiles ? (match.activeFile ?? Object.keys(nextFiles)[0] ?? null) : null;
+        const initialCode = nextFiles && nextActive ? (nextFiles[nextActive] ?? match.code) : match.code;
+        baselineCodeRef.current = initialCode;
         setIsDirty(false);
-        setProjectFiles(null);
-        setActiveFile(null);
-        setCurrentCode(match.code);
+        setProjectFiles(nextFiles);
+        setActiveFile(nextActive);
+        setCurrentCode(initialCode);
         setCurrentTitle(match.title);
         setCurrentLang(match.lang);
         setPayload({
           v: 1,
           lang: match.lang,
-          code: match.code,
+          code: initialCode,
           title: match.title,
+          ...(nextFiles ? { files: nextFiles, activeFile: nextActive ?? undefined, isMultiFile: true } : {}),
         });
         clearAnsatzEditorUrl(location.pathname);
+      };
+
+      if (heroMatch) {
+        applyMatched(heroMatch);
+      } else if (indexMatch) {
+        setLoadingTemplateTitle(indexMatch.title);
+        void loadExampleById(indexMatch.id)
+          .then((loaded) => {
+            if (cancelled) return;
+            if (loaded) {
+              applyMatched(loaded);
+            } else if (HERO_EXAMPLES[0]) {
+              applyMatched(HERO_EXAMPLES[0]);
+            }
+          })
+          .finally(() => {
+            if (!cancelled) setLoadingTemplateTitle(null);
+          });
+      } else if (HERO_EXAMPLES[0]) {
+        applyMatched(HERO_EXAMPLES[0]);
       }
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
 
     // 6. If only ?lang= or ?title= was passed
@@ -1487,6 +1524,19 @@ export const AnsatzEditorPage: React.FC = () => {
   };
 
   const handleAddModelFromTemplate = (ex: HeroExample) => {
+    if (EXAMPLE_INDEX_BY_ID.has(ex.id) && (ex.fileCount ?? 1) > 1 && !ex.files) {
+      setLoadingTemplateTitle(ex.title);
+      void loadExampleById(ex.id)
+        .then((loaded) => {
+          if (loaded) {
+            handleAddModelFromTemplate(loaded);
+          }
+        })
+        .finally(() => {
+          setLoadingTemplateTitle(null);
+        });
+      return;
+    }
     const { files: incomingFiles, activeFile: incomingActiveFile } = resolveTemplateFiles(ex);
     const baseFiles: Record<string, string> =
       projectFiles !== null

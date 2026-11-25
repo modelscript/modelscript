@@ -18,9 +18,14 @@ export const gpssLanguage = language({
     fileExtensions: [".gps", ".gpss", ".sim"],
   },
   errorCodes: GpssErrorCode,
+  extras: ($) => [/[ \t]+/, $["Comment"]!],
 
   rules: {
-    Program: ($) => repeat(choice($["Statement"]!, $["FunctionDataLine"]!, $["Comment"]!)),
+    Program: ($) =>
+      seq(
+        repeat(choice(seq(choice($["Statement"]!, $["FunctionDataLine"]!), $["Newline"]!), $["Newline"]!)),
+        optional(choice($["Statement"]!, $["FunctionDataLine"]!)),
+      ),
 
     Statement: ($) =>
       seq(
@@ -78,6 +83,7 @@ export const gpssLanguage = language({
     SnaRef: () => /(?:FR|SR|FN|Q|F|S|R|P)\$[A-Za-z_][A-Za-z0-9_]*/,
     NumberLiteral: () => /[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/,
     Identifier: () => /[A-Za-z_][A-Za-z0-9_]*/,
+    Newline: () => /\r?\n/,
     Comment: () => /(?:;[^\r\n]*|\*[^\r\n]*)/,
   },
 });

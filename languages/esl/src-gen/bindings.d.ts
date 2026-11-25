@@ -1463,11 +1463,11 @@ export declare enum SyntaxKind {
   PrimaryExpr = 84,
   START = 85,
   _START = 85,
-  Prime = 131,
-  Identifier = 132,
-  NumberLiteral = 133,
-  StringLiteral = 134,
-  Comment = 135,
+  Prime = 129,
+  Identifier = 130,
+  NumberLiteral = 131,
+  StringLiteral = 132,
+  Comment = 133,
   EOF = 1023,
 }
 

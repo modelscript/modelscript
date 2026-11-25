@@ -1465,9 +1465,9 @@ export declare enum SyntaxKind {
   _START = 55,
   KeywordSection = 58,
   EndSection = 59,
-  Identifier = 69,
-  NumberLiteral = 70,
-  Comment = 71,
+  Identifier = 68,
+  NumberLiteral = 69,
+  Comment = 70,
   EOF = 1023,
 }
 

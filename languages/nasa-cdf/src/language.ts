@@ -96,7 +96,7 @@ export const nasaCdfLanguage = language({
     VariablesSection: ($) => seq(choice("#variables", "#zVariables"), repeat($["VariableBlock"]!)),
 
     VariableBlock: ($) =>
-      seq($["VariableHeader"]!, repeat(choice($["VariableAttributeBinding"]!, $["RecordAssignment"]!)), optional(".")),
+      seq($["VariableHeader"]!, repeat(choice($["VariableAttributeBinding"]!, $["RecordAssignment"]!)), "."),
 
     VariableHeader: ($) =>
       seq(

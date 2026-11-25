@@ -3,14 +3,11 @@
 import { computed, ref } from "vue";
 import type { IconName } from "../data/icons";
 import { LANGUAGE_COUNT } from "../data/languages";
-import lintRulesData from "../data/lint-rules.generated.json";
+import languagesData from "../data/languages.generated.json";
 import mcpData from "../data/mcp-tools.generated.json";
 import MsIcon from "./MsIcon.vue";
 
-const totalLintRules = (lintRulesData as { rules?: unknown[] }[]).reduce(
-  (sum, entry) => sum + (entry.rules?.length ?? 0),
-  0,
-);
+const totalLintRules = languagesData.reduce((sum, lang) => sum + lang.ruleCount, 0);
 
 interface Feature {
   icon: IconName;

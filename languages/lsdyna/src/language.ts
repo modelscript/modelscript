@@ -84,7 +84,7 @@ export const lsdynaLanguage = language({
     ControlTimestepCard: ($) => seq("*CONTROL_TIMESTEP", repeat($["DataRow"]!)),
     DatabaseGlstatCard: ($) => seq("*DATABASE_GLSTAT", repeat($["DataRow"]!)),
 
-    DataRow: ($) => seq($["NumberLiteral"]!, repeat(seq(optional(","), $["NumberLiteral"]!))),
+    DataRow: ($) => seq($["NumberLiteral"]!, optional(",")),
 
     Identifier: () => /[A-Za-z_][A-Za-z0-9_.-]*/,
     NumberLiteral: () => /[+-]?(?:\d+\.?\d*|\.\d+)(?:[eEdD][+-]?\d+)?/,

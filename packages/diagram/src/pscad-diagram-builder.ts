@@ -1684,35 +1684,35 @@ export function buildPscadDiagram(
       left: {
         position: "left",
         attrs: {
-          circle: { r: 2.2, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1, magnet: true },
+          circle: { r: 3.5, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1, magnet: true },
         },
         label: { position: { name: "left", args: { x: -2, y: -8 } } },
       },
       right: {
         position: "right",
         attrs: {
-          circle: { r: 2.2, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1, magnet: true },
+          circle: { r: 3.5, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1, magnet: true },
         },
         label: { position: { name: "right", args: { x: 2, y: -8 } } },
       },
       top: {
         position: "top",
         attrs: {
-          circle: { r: 2.2, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1, magnet: true },
+          circle: { r: 3.5, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1, magnet: true },
         },
         label: { position: { name: "top", args: { y: -6 } } },
       },
       bottom: {
         position: "bottom",
         attrs: {
-          circle: { r: 2.2, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1, magnet: true },
+          circle: { r: 3.5, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1, magnet: true },
         },
         label: { position: { name: "bottom", args: { y: 6 } } },
       },
       exact: {
         position: { name: "absolute" },
         attrs: {
-          circle: { r: 2.2, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1, magnet: true },
+          circle: { r: 3.5, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1, magnet: true },
         },
       },
     };
@@ -1760,8 +1760,8 @@ export function buildPscadDiagram(
           ...(hasExactPos ? { args: { x: Math.round(width / 2 + lx), y: Math.round(height / 2 + ly) } } : {}),
           attrs: {
             circle: isSignalPort
-              ? { r: 2.2, fill: "#7c3aed", stroke: "#1e1b4b", strokeWidth: 1, magnet: true }
-              : { r: 2.2, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1, magnet: true },
+              ? { r: 3.5, fill: "#7c3aed", stroke: "#1e1b4b", strokeWidth: 1, magnet: true }
+              : { r: 3.5, fill: "#0284c7", stroke: "#0f172a", strokeWidth: 1, magnet: true },
             text: {
               text: showPortText ? p.name : "",
               fill: "var(--vscode-editor-foreground, var(--vscode-foreground, #0f172a))",

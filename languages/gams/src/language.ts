@@ -44,11 +44,7 @@ export const gamsLanguage = language({
       ),
 
     SetSection: ($) =>
-      seq(
-        choice("Sets", "Set", "SETS", "SET", "sets", "set"),
-        repeat(seq($["SetDeclaration"]!, optional(","))),
-        optional(";"),
-      ),
+      seq(choice("Sets", "Set", "SETS", "SET", "sets", "set"), repeat(seq($["SetDeclaration"]!, optional(","))), ";"),
 
     SetDeclaration: ($) => seq(field("name", $["Identifier"]!), optional($["DomainSpec"]!), optional($["SlashData"]!)),
 
@@ -66,14 +62,14 @@ export const gamsLanguage = language({
       seq(
         choice("Parameters", "Parameter", "PARAMETERS", "PARAMETER", "parameters", "parameter"),
         repeat(seq($["ParameterDeclaration"]!, optional(","))),
-        optional(";"),
+        ";",
       ),
 
     ScalarSection: ($) =>
       seq(
         choice("Scalars", "Scalar", "SCALARS", "SCALAR", "scalars", "scalar"),
         repeat(seq($["ParameterDeclaration"]!, optional(","))),
-        optional(";"),
+        ";",
       ),
 
     ParameterDeclaration: ($) =>
@@ -111,7 +107,7 @@ export const gamsLanguage = language({
         ),
         choice("Variables", "Variable", "VARIABLES", "VARIABLE", "variables", "variable"),
         repeat(seq($["VariableDeclaration"]!, optional(","))),
-        optional(";"),
+        ";",
       ),
 
     VariableDeclaration: ($) => seq(field("name", $["Identifier"]!), optional($["DomainSpec"]!)),
@@ -120,7 +116,7 @@ export const gamsLanguage = language({
       seq(
         choice("Equations", "Equation", "EQUATIONS", "EQUATION", "equations", "equation"),
         repeat(seq($["EquationDeclaration"]!, optional(","))),
-        optional(";"),
+        ";",
       ),
 
     EquationDeclaration: ($) => seq(field("name", $["Identifier"]!), optional($["DomainSpec"]!)),
@@ -128,8 +124,8 @@ export const gamsLanguage = language({
     EquationDefinition: ($) =>
       seq(
         field("name", $["Identifier"]!),
-        optional($["DomainSpec"]!),
-        optional(seq("$", $["DollarCondition"]!)),
+        $["OptIndexList"]!,
+        $["OptDollarCondition"]!,
         "..",
         field("lhs", $["Expr"]!),
         field("relation", $["RelOp"]!),
@@ -138,14 +134,25 @@ export const gamsLanguage = language({
       ),
 
     AssignmentStatement: ($) =>
-      seq(
-        field("target", $["Identifier"]!),
-        optional(seq(".", field("suffix", $["Identifier"]!))),
-        optional($["IndexList"]!),
-        optional(seq("$", $["DollarCondition"]!)),
-        "=",
-        field("value", $["Expr"]!),
-        ";",
+      choice(
+        seq(
+          field("target", $["Identifier"]!),
+          ".",
+          field("suffix", $["Identifier"]!),
+          $["OptIndexList"]!,
+          $["OptDollarCondition"]!,
+          "=",
+          field("value", $["Expr"]!),
+          ";",
+        ),
+        seq(
+          field("target", $["Identifier"]!),
+          $["OptIndexList"]!,
+          $["OptDollarCondition"]!,
+          "=",
+          field("value", $["Expr"]!),
+          ";",
+        ),
       ),
 
     ModelStatement: ($) =>
@@ -171,12 +178,16 @@ export const gamsLanguage = language({
       seq(
         choice("Display", "DISPLAY", "display"),
         repeat(seq($["Identifier"]!, optional(seq(".", $["Identifier"]!)), optional(","))),
-        optional(";"),
+        ";",
       ),
 
     DomainSpec: ($) => seq("(", $["Identifier"]!, repeat(seq(",", $["Identifier"]!)), ")"),
 
     IndexList: ($) => seq("(", $["Expr"]!, repeat(seq(",", $["Expr"]!)), ")"),
+
+    OptIndexList: ($) => optional($["IndexList"]!),
+
+    OptDollarCondition: ($) => optional(seq("$", $["DollarCondition"]!)),
 
     SlashData: ($) =>
       seq("/", repeat(choice($["Identifier"]!, $["NumberLiteral"]!, $["StringLiteral"]!, ",", ".")), "/"),

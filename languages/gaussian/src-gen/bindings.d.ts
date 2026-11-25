@@ -1437,31 +1437,32 @@ export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: str
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  Document = 18,
-  Link0Command = 19,
-  RouteSection = 20,
-  MethodBasis = 21,
-  RouteKeyword = 22,
-  OptionGroup = 23,
-  OptionItem = 24,
-  ChargeMultiplicity = 25,
-  AtomSpec = 26,
-  CoordValue = 27,
-  VariableAssignment = 28,
-  START = 29,
-  _START = 29,
-  Link1Separator = 32,
-  Link0Directive = 34,
-  Link0Value = 35,
-  RoutePrefix = 38,
-  VariablesHeader = 47,
-  ConstantsHeader = 48,
-  ElementSymbol = 50,
-  BasisToken = 51,
-  Identifier = 52,
-  IntegerLiteral = 53,
-  NumberLiteral = 54,
-  Comment = 55,
+  Document = 19,
+  JobStep = 20,
+  Link0Command = 21,
+  RouteSection = 22,
+  MethodBasis = 23,
+  RouteKeyword = 24,
+  OptionGroup = 25,
+  OptionItem = 26,
+  ChargeMultiplicity = 27,
+  AtomSpec = 28,
+  CoordValue = 29,
+  VariableAssignment = 30,
+  START = 31,
+  _START = 31,
+  Link1Separator = 40,
+  Link0Directive = 42,
+  Link0Value = 43,
+  RoutePrefix = 46,
+  VariablesHeader = 55,
+  ConstantsHeader = 56,
+  ElementSymbol = 58,
+  BasisToken = 59,
+  Identifier = 60,
+  IntegerLiteral = 61,
+  NumberLiteral = 62,
+  Comment = 63,
   EOF = 1023,
 }
 
@@ -1517,6 +1518,10 @@ export interface DocumentNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Document;
 }
 export declare function isDocument(node: SyntaxNode | null | undefined): node is DocumentNode;
+export interface JobStepNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.JobStep;
+}
+export declare function isJobStep(node: SyntaxNode | null | undefined): node is JobStepNode;
 export interface Link0CommandNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Link0Command;
 }
@@ -1612,6 +1617,11 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is DocumentNode;
+  };
+  export const JobStep: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is JobStepNode;
   };
   export const Link0Command: {
     readonly typeId: number;

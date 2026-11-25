@@ -757,6 +757,36 @@ export function buildPsseDiagram(
           textAnchor: "middle",
         },
       },
+      ...(isLowDetail
+        ? {}
+        : {
+            ports: {
+              groups: {
+                left: {
+                  position: "left",
+                  attrs: { circle: { r: 3.5, fill: strokeColor, stroke: "#0f172a", strokeWidth: 1, magnet: true } },
+                },
+                right: {
+                  position: "right",
+                  attrs: { circle: { r: 3.5, fill: strokeColor, stroke: "#0f172a", strokeWidth: 1, magnet: true } },
+                },
+                top: {
+                  position: "top",
+                  attrs: { circle: { r: 3.5, fill: strokeColor, stroke: "#0f172a", strokeWidth: 1, magnet: true } },
+                },
+                bottom: {
+                  position: "bottom",
+                  attrs: { circle: { r: 3.5, fill: strokeColor, stroke: "#0f172a", strokeWidth: 1, magnet: true } },
+                },
+              },
+              items: [
+                { id: "left", group: "left" },
+                { id: "right", group: "right" },
+                { id: "top", group: "top" },
+                { id: "bottom", group: "bottom" },
+              ],
+            },
+          }),
       data: {
         busNumber: b.i,
         busName: b.name.trim(),

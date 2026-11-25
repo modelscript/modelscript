@@ -23,19 +23,22 @@ export const gaussianLanguage = language({
   },
   errorCodes: GaussianErrorCode,
 
+  extras: ($) => [/\s/, $["Comment"]!],
+
   rules: {
-    Document: ($) =>
-      repeat(
-        choice(
-          $["Link1Separator"]!,
-          $["Link0Command"]!,
-          $["RouteSection"]!,
-          $["VariablesHeader"]!,
-          $["ConstantsHeader"]!,
-          $["VariableAssignment"]!,
-          $["AtomSpec"]!,
-          $["ChargeMultiplicity"]!,
-          $["Comment"]!,
+    Document: ($) => seq($["JobStep"]!, repeat(seq($["Link1Separator"]!, $["JobStep"]!))),
+
+    JobStep: ($) =>
+      seq(
+        repeat($["Link0Command"]!),
+        optional($["RouteSection"]!),
+        optional($["ChargeMultiplicity"]!),
+        repeat($["AtomSpec"]!),
+        repeat(
+          choice(
+            seq($["VariablesHeader"]!, repeat($["VariableAssignment"]!)),
+            seq($["ConstantsHeader"]!, repeat($["VariableAssignment"]!)),
+          ),
         ),
       ),
 

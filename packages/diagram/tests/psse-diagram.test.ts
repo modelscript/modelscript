@@ -225,3 +225,29 @@ test("PSCAD Scale: Viewport frustum culling and LOD mode in buildPscadDiagram", 
   assert.equal(culled.metadata.nodeCount, 2);
   assert.equal(culled.metadata.edgeCount, 1);
 });
+
+test("PSS/E Diagram: Bus nodes expose magnet ports for interactive wire dragging", () => {
+  const diag = buildPsseDiagram({
+    baseMva: 100,
+    buses: new Map([
+      [1, { i: 1, name: "BUS1", baseKv: 230, ide: 3, vm: 1.0, va: 0 }],
+      [2, { i: 2, name: "BUS2", baseKv: 230, ide: 1, vm: 0.99, va: -2 }],
+    ]),
+    loads: [],
+    generators: [],
+    fixedShunts: [],
+    switchedShunts: [],
+    branches: [],
+    transformers: [],
+  });
+  const bus1 = diag.cells.find((c) => c.id === "bus_1") as
+    | {
+        ports?: {
+          items?: Array<{ id?: string; group?: string }>;
+          groups?: Record<string, { attrs?: { circle?: { magnet?: boolean } } }>;
+        };
+      }
+    | undefined;
+  assert.ok(bus1?.ports?.items && bus1.ports.items.length >= 4, "bus_1 should have 4 connection ports");
+  assert.equal(bus1.ports?.groups?.left?.attrs?.circle?.magnet, true, "bus ports must be magnetic");
+});

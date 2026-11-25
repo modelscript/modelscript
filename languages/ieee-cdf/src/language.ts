@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { choice, field, language, optional, repeat, seq } from "@modelscript/dsl";
+import { choice, field, language, optional, prec, repeat, seq } from "@modelscript/dsl";
 import { registerBuiltInIeeeCdfLibrarySync } from "./catalog/library-package-adapter.js";
 import { IeeeCdfErrorCode } from "./errors.js";
 import { ieeeCdfIndexing } from "./indexing.js";
@@ -59,10 +59,13 @@ export const ieeeCdfLanguage = language({
     EndOfData: () => seq("END", "OF", "DATA"),
 
     BpaCard: ($) =>
-      choice(
-        seq(field("cardType", choice("BS", "BQ", "BE")), repeat($["BpaField"]!)),
-        seq(field("cardType", choice("B", "L", "T", "E", "R")), repeat($["BpaField"]!)),
-        $["BpaComment"]!,
+      prec.right(
+        1,
+        choice(
+          seq(field("cardType", choice("BS", "BQ", "BE")), repeat($["BpaField"]!)),
+          seq(field("cardType", choice("B", "L", "T", "E", "R")), repeat($["BpaField"]!)),
+          $["BpaComment"]!,
+        ),
       ),
 
     BpaField: ($) =>
@@ -82,9 +85,9 @@ export const ieeeCdfLanguage = language({
       ),
 
     DateLiteral: () => /\d{2}\/\d{2}\/\d{2,4}/,
-    NumberLiteral: () => /[+-]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][+-]?\d+)?/,
+    NumberLiteral: () => prec.right(1, /[+-]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][+-]?\d+)?/),
     StringLiteral: () => /"[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*'/,
-    Identifier: () => /[A-Za-z_][A-Za-z0-9_/-]*/,
+    Identifier: () => prec.right(1, /[A-Za-z_][A-Za-z0-9_/-]*/),
     BpaComment: () => /(?:C[ \t].*|\/\/.*|#.*)/,
   },
 });

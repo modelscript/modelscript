@@ -367,13 +367,25 @@ if (nativeWasmOpt && wasmOptFlag) {
 
   fs.writeFileSync(buildScriptPath, buildScriptContent);
   const isWin = process.platform === "win32";
-  const npxBin = isWin ? "npx.cmd" : "npx";
+  let tsxBin = "";
+  for (let cur = path.resolve(dir); ; ) {
+    const candidate = path.join(cur, "node_modules", ".bin", isWin ? "tsx.cmd" : "tsx");
+    if (fs.existsSync(candidate)) {
+      tsxBin = candidate;
+      break;
+    }
+    const parent = path.dirname(cur);
+    if (parent === cur) break;
+    cur = parent;
+  }
+  const cmd = tsxBin || (isWin ? "npx.cmd" : "npx");
+  const args = tsxBin ? [buildScriptPath] : ["tsx", buildScriptPath];
   const nodeOpts = process.env.NODE_OPTIONS || "";
   const buildEnv = nodeOpts.includes("max-old-space-size")
     ? process.env
     : { ...process.env, NODE_OPTIONS: `${nodeOpts} --max-old-space-size=8192`.trim() };
   try {
-    execFileSync(npxBin, ["tsx", buildScriptPath], { stdio: "inherit", cwd: dir, shell: isWin, env: buildEnv });
+    execFileSync(cmd, args, { stdio: "inherit", cwd: dir, shell: isWin, env: buildEnv });
     persistCache(currentHash);
   } finally {
     if (fs.existsSync(buildScriptPath)) {

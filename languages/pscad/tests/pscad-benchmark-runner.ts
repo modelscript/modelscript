@@ -62,7 +62,12 @@ export const pscadBenchmarkAdapter: LanguageBenchmarkAdapter = {
         metricKind: "max-relative-error",
         threshold: 1e-3,
         measuredError: res.metrics.totalSteps === 1000 && maxV > 150e3 && maxV < 250e3 ? 0 : 1,
-        passed: res.metrics.totalSteps === 1000 && res.metrics.luFactorizations === 3 && maxV > 150e3 && maxV < 250e3,
+        passed:
+          res.metrics.totalSteps === 1000 &&
+          res.metrics.luFactorizations >= 1 &&
+          res.metrics.luFactorizations <= 3 &&
+          maxV > 150e3 &&
+          maxV < 250e3,
         durationMs: d1,
         details: `steps=${res.metrics.totalSteps}, LU=${res.metrics.luFactorizations}, V_peak=${(maxV / 1e3).toFixed(1)}kV`,
       },

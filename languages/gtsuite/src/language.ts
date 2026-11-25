@@ -77,19 +77,13 @@ export const gtsuiteLanguage = language({
 
   errorCodes: GtSuiteErrorCode,
 
+  extras: ($) => [/\s+/, $["Comment"]!],
+
   rules: {
     Model: ($) =>
       seq(
         optional($["ModelHeader"]!),
-        repeat(
-          choice(
-            $["ComponentsSection"]!,
-            $["ConnectionsSection"]!,
-            $["MapSection"]!,
-            $["SimulationSection"]!,
-            $["Comment"]!,
-          ),
-        ),
+        repeat(choice($["ComponentsSection"]!, $["ConnectionsSection"]!, $["MapSection"]!, $["SimulationSection"]!)),
       ),
 
     ModelHeader: ($) =>
@@ -99,8 +93,7 @@ export const gtsuiteLanguage = language({
         seq("LAMBDA", ":", field("lambda", $["NumberLiteral"]!)),
       ),
 
-    ComponentsSection: ($) =>
-      seq(choice("COMPONENTS:", "COMPONENTS"), repeat(choice($["ComponentDeclaration"]!, $["Comment"]!))),
+    ComponentsSection: ($) => seq(choice("COMPONENTS:", "COMPONENTS"), repeat($["ComponentDeclaration"]!)),
 
     ComponentDeclaration: ($) =>
       seq(
@@ -117,8 +110,7 @@ export const gtsuiteLanguage = language({
         field("value", choice($["NumberLiteral"]!, $["StringLiteral"]!, $["Identifier"]!)),
       ),
 
-    ConnectionsSection: ($) =>
-      seq(choice("CONNECTIONS:", "CONNECTIONS"), repeat(choice($["ConnectionStatement"]!, $["Comment"]!))),
+    ConnectionsSection: ($) => seq(choice("CONNECTIONS:", "CONNECTIONS"), repeat($["ConnectionStatement"]!)),
 
     ConnectionStatement: ($) =>
       seq(
@@ -135,7 +127,7 @@ export const gtsuiteLanguage = language({
       seq(
         choice("MAP:", "TABLE:"),
         field("mapId", $["Identifier"]!),
-        repeat(choice($["NumberLiteral"]!, $["Identifier"]!, $["Comment"]!)),
+        repeat(choice($["NumberLiteral"]!, $["Identifier"]!)),
         choice("ENDMAP", "END"),
       ),
 

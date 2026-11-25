@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { choice, field, language, repeat, seq } from "@modelscript/dsl";
+import { choice, field, language, prec, repeat, seq } from "@modelscript/dsl";
 import { registerBuiltInJcampDxLibrarySync } from "./catalog/library-package-adapter.js";
 import { JcampDxErrorCode } from "./errors.js";
 import { jcampDxIndexing } from "./indexing.js";
@@ -78,10 +78,11 @@ export const jcampDxLanguage = language({
 
     GenericLdrRecord: ($) => seq(field("label", $["LdrHeader"]!), field("value", $["LdrText"]!)),
 
-    DataLine: ($) => seq(field("x", $["NumberToken"]!), repeat(choice($["AsdfToken"]!, $["NumberToken"]!, ",", ";"))),
+    DataLine: ($) =>
+      prec.right(1, seq(field("x", $["NumberToken"]!), repeat(choice($["AsdfToken"]!, $["NumberToken"]!, ",", ";")))),
 
     LdrHeader: () => /##[A-Za-z0-9 .$_\-/]+=/,
-    NumberToken: () => /[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/,
+    NumberToken: () => prec.right(1, /[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/),
     AsdfToken: () => /[@%A-Za-s][0-9.]*/,
     LdrText: () => /[^\r\n$]+/,
     Comment: () => /\$\$[^\r\n]*/,

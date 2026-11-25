@@ -409,13 +409,17 @@ export const modelscriptLanguage = language({
     IfStatement: ($) =>
       prec.right(
         PREC.IF,
-        seq(
-          "if",
-          "(",
-          field("condition", $["Expression"]!),
-          ")",
-          field("consequence", $["Statement"]!),
-          optional(seq("else", field("alternative", $["Statement"]!))),
+        choice(
+          seq(
+            "if",
+            "(",
+            field("condition", $["Expression"]!),
+            ")",
+            field("consequence", $["Statement"]!),
+            "else",
+            field("alternative", $["Statement"]!),
+          ),
+          seq("if", "(", field("condition", $["Expression"]!), ")", field("consequence", $["Statement"]!)),
         ),
       ),
 
@@ -488,7 +492,7 @@ export const modelscriptLanguage = language({
         optional(field("direction", choice("ascending", "descending", "asc", "desc"))),
       ),
 
-    ReturnClause: ($) => seq("return", field("value", $["Expression"]!)),
+    ReturnClause: ($) => prec.right(PREC.FLWOR, seq("return", field("value", $["Expression"]!))),
 
     BinaryExpression: ($) =>
       choice(

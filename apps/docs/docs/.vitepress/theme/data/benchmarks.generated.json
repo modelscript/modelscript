@@ -1,8 +1,8 @@
 {
   "schemaVersion": "1.0.0",
   "provenance": {
-    "gitSha": "ed23181e4",
-    "recordedAt": "2026-11-24T02:48:18.508Z",
+    "gitSha": "12853ca8e",
+    "recordedAt": "2026-11-25T22:15:31.131Z",
     "os": "linux 6.12.116+deb13-amd64",
     "arch": "x64",
     "cpuModel": "Intel(R) Core(TM) Ultra 9 285H",
@@ -17,8 +17,8 @@
     "preAlphaCount": 1,
     "languagesWithAdapters": 93,
     "totalCases": 285,
-    "passedCases": 284,
-    "overallPassRate": 99.65
+    "passedCases": 285,
+    "overallPassRate": 100
   },
   "catalogById": {
     "sbml-semantic-cases": {
@@ -4473,7 +4473,7 @@
         "hasLsp": true,
         "hasLspTests": true,
         "testFileCount": 45,
-        "testCaseCount": 244,
+        "testCaseCount": 249,
         "auditedTier": "beta",
         "currentDeclaredTier": "beta",
         "gaps": []
@@ -4502,7 +4502,7 @@
         "solve": {
           "status": "supported",
           "casesRun": 1,
-          "casesPassed": 0,
+          "casesPassed": 1,
           "referenceTool": "PSCAD/EMTDC Dommel Companion-Circuit",
           "metricKind": "max-relative-error",
           "tolerance": 0.001,
@@ -4517,29 +4517,29 @@
       "timings": {
         "parse": {
           "status": "supported",
-          "medianMs": 0.092,
-          "p95Ms": 0.121,
-          "throughputMbPerSec": 10.41,
+          "medianMs": 0.227,
+          "p95Ms": 0.322,
+          "throughputMbPerSec": 4.22,
           "iterations": 10
         },
         "lint": {
           "status": "supported",
-          "medianMs": 0.004,
-          "p95Ms": 0.011,
-          "throughputMbPerSec": 239.37,
+          "medianMs": 0.011,
+          "p95Ms": 0.024,
+          "throughputMbPerSec": 87.04,
           "iterations": 10
         },
         "lower": {
           "status": "supported",
-          "medianMs": 0.007,
-          "p95Ms": 0.021,
-          "throughputMbPerSec": 136.78,
+          "medianMs": 0.072,
+          "p95Ms": 0.085,
+          "throughputMbPerSec": 13.3,
           "iterations": 10
         },
         "solve": {
           "status": "supported",
-          "medianMs": 5.304,
-          "p95Ms": 5.304,
+          "medianMs": 13.875,
+          "p95Ms": 13.875,
           "iterations": 1
         }
       },
@@ -4553,7 +4553,7 @@
           "threshold": 1,
           "measuredError": 0,
           "passed": true,
-          "durationMs": 0.092,
+          "durationMs": 0.227,
           "details": "53 CST nodes"
         },
         {
@@ -4564,15 +4564,15 @@
           "metricKind": "max-relative-error",
           "threshold": 0.001,
           "measuredError": 0,
-          "passed": false,
-          "durationMs": 5.3043660000003,
+          "passed": true,
+          "durationMs": 13.875057000000197,
           "details": "steps=1000, LU=1, V_peak=188.5kV"
         }
       ],
       "summary": {
         "totalCases": 2,
-        "passedCases": 1,
-        "passRate": 50
+        "passedCases": 2,
+        "passRate": 100
       }
     },
     {

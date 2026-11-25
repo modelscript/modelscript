@@ -7,7 +7,7 @@
  * compiled into native WebAssembly GLR parse tables and linear-memory CST.
  */
 
-import { choice, field, language, optional, repeat, semanticToken, seq } from "@modelscript/dsl";
+import { choice, field, language, optional, prec, repeat, semanticToken, seq } from "@modelscript/dsl";
 
 export const powerworldGrammar = language({
   name: "PowerWorldAux",
@@ -17,6 +17,7 @@ export const powerworldGrammar = language({
     folding: ["DataSection", "ScriptBlock"],
     outline: ["DataSection", "ScriptBlock"],
   },
+  conflicts: ($) => [[$.DataRow, $.StringLiteral, $.NumberLiteral, $.Identifier]],
   rules: {
     AuxFile: ($) => repeat(choice($.DataSection, $.ScriptBlock)),
 
@@ -32,18 +33,15 @@ export const powerworldGrammar = language({
         optional(seq(",", $.Identifier, optional(seq(",", $.Identifier)))),
         ")",
         "{",
-        repeat($.DataRow),
+        repeat(seq($.DataRow, optional(";"))),
         "}",
       ),
 
     FieldName: ($) => choice($.Identifier, $.StringLiteral),
 
-    DataRow: ($) =>
-      seq(
-        choice($.StringLiteral, $.NumberLiteral, $.Identifier),
-        repeat(seq(optional(","), choice($.StringLiteral, $.NumberLiteral, $.Identifier))),
-        optional(";"),
-      ),
+    _DataValue: ($) => choice($.StringLiteral, $.NumberLiteral, $.Identifier),
+
+    DataRow: ($) => prec.right(seq($._DataValue, repeat(choice(seq(",", $._DataValue), $._DataValue)))),
 
     ScriptBlock: ($) =>
       seq(

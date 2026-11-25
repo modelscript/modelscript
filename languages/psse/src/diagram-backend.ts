@@ -761,17 +761,65 @@ export function createPsseDiagramBackend(backends: DiagramBackendHost): DiagramB
             bag["y"] = cy;
             batchedChanges.set(name, bag);
           }
+        } else if (act.type === "resize") {
+          const item = (
+            act as { item?: { id?: string; name: string; x: number; y: number; width?: number; height?: number } }
+          ).item;
+          if (item) {
+            const name = item.id || item.name;
+            const cx = Math.round(item.x + (item.width ?? 156) / 2);
+            const cy = Math.round(item.y + (item.height ?? 40) / 2);
+            const bag = batchedChanges.get(name) ?? {};
+            bag["x"] = cx;
+            bag["y"] = cy;
+            batchedChanges.set(name, bag);
+          }
+        } else if (act.type === "rotate") {
+          const item = (act as { item?: { id?: string; name: string; rotation?: number } }).item;
+          if (item) {
+            const name = item.id || item.name;
+            const deg = ((Math.round(item.rotation ?? 0) % 360) + 360) % 360;
+            const orient = deg === 90 || deg === 270 ? 90 : 0;
+            const bag = batchedChanges.get(name) ?? {};
+            bag["orientation"] = orient;
+            batchedChanges.set(name, bag);
+          }
+        } else if ((act as { type: string }).type === "toggleDisable") {
+          const td = act as unknown as { name: string; disabled?: boolean };
+          const bag = batchedChanges.get(td.name) ?? {};
+          const inService = td.disabled ? 0 : 1;
+          if (td.name.startsWith("bus_")) {
+            bag["ide"] = td.disabled ? 4 : 1;
+          } else {
+            bag["stat"] = inService;
+            bag["status"] = inService;
+            bag["st"] = inService;
+          }
+          batchedChanges.set(td.name, bag);
         }
       }
 
       flushBatchedChanges();
 
       const edits = await computeMinimalPsseTextEdits(initialText, workingText);
-      const isMoveOnly = params.actions.length > 0 && params.actions.every((a) => a.type === "move");
+      const isOptimisticOnly =
+        params.actions.length > 0 &&
+        params.actions.every((a) => {
+          const t = (a as { type: string }).type;
+          return (
+            t === "move" ||
+            t === "resize" ||
+            t === "rotate" ||
+            t === "toggleDisable" ||
+            t === "moveEdge" ||
+            t === "updateParameter" ||
+            t === "updateProperty"
+          );
+        });
       return {
         seq: params.seq,
         edits,
-        renderHint: edits.length > 0 && !isMoveOnly ? "immediate" : "none",
+        renderHint: edits.length > 0 && !isOptimisticOnly ? "immediate" : "none",
       };
     },
 

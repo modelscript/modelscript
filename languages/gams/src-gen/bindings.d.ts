@@ -1456,20 +1456,22 @@ export declare enum SyntaxKind {
   DisplayStatement = 132,
   DomainSpec = 133,
   IndexList = 134,
-  SlashData = 135,
-  DollarCondition = 136,
-  Expr = 137,
-  Term = 138,
-  Factor = 139,
-  IndexedOpExpr = 140,
-  START = 141,
-  _START = 141,
-  RelOp = 187,
-  Identifier = 188,
-  NumberLiteral = 189,
-  StringLiteral = 190,
-  BlockComment = 191,
-  LineComment = 192,
+  OptIndexList = 135,
+  OptDollarCondition = 136,
+  SlashData = 137,
+  DollarCondition = 138,
+  Expr = 139,
+  Term = 140,
+  Factor = 141,
+  IndexedOpExpr = 142,
+  START = 143,
+  _START = 143,
+  RelOp = 189,
+  Identifier = 190,
+  NumberLiteral = 191,
+  StringLiteral = 192,
+  BlockComment = 193,
+  LineComment = 194,
   EOF = 1023,
 }
 
@@ -1583,6 +1585,14 @@ export interface IndexListNode extends SyntaxNode {
   readonly typeId: SyntaxKind.IndexList;
 }
 export declare function isIndexList(node: SyntaxNode | null | undefined): node is IndexListNode;
+export interface OptIndexListNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.OptIndexList;
+}
+export declare function isOptIndexList(node: SyntaxNode | null | undefined): node is OptIndexListNode;
+export interface OptDollarConditionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.OptDollarCondition;
+}
+export declare function isOptDollarCondition(node: SyntaxNode | null | undefined): node is OptDollarConditionNode;
 export interface SlashDataNode extends SyntaxNode {
   readonly typeId: SyntaxKind.SlashData;
 }
@@ -1727,10 +1737,10 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is AssignmentStatementNode;
     target(node: SyntaxNode | null | undefined): SyntaxNode | null;
     targetList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    value(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
     suffix(node: SyntaxNode | null | undefined): SyntaxNode | null;
     suffixList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    value(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ModelStatement: {
     readonly typeId: number;
@@ -1766,6 +1776,16 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is IndexListNode;
+  };
+  export const OptIndexList: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is OptIndexListNode;
+  };
+  export const OptDollarCondition: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is OptDollarConditionNode;
   };
   export const SlashData: {
     readonly typeId: number;

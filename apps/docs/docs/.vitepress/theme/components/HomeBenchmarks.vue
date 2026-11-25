@@ -1,11 +1,18 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
 import benchmarksData from "../data/benchmarks.generated.json";
+import { LANGUAGE_COUNT } from "../data/languages";
 import MsIcon from "./MsIcon.vue";
 
 const { overallPassRate, passedCases, totalCases, languagesWithAdapters } = benchmarksData.aggregate;
 const { gitSha, recordedAt } = benchmarksData.provenance;
 const recordedDate = recordedAt.slice(0, 10);
+
+const adapterCases = benchmarksData.languages.flatMap((l) =>
+  l.cases.filter((c) => !c.id.endsWith("-parse-canonical")),
+);
+const adapterTotal = adapterCases.length;
+const adapterPassed = adapterCases.filter((c) => c.passed).length;
 
 const referenceSuites = [
   {
@@ -55,11 +62,12 @@ const referenceSuites = [
           <div class="bench-lead">
             <span class="bench-eyebrow">Verified Against Upstream Solvers</span>
             <h2 class="bench-title">
-              {{ overallPassRate }}% parity across {{ totalCases }} reference benchmark cases
+              {{ overallPassRate }}% pass rate across {{ totalCases }} automated benchmark cases
             </h2>
             <p class="bench-desc">
-              {{ passedCases }} of {{ totalCases }} automated parity checks pass across
-              {{ languagesWithAdapters }} languages with upstream solver adapters — comparing DAE flattening,
+              {{ passedCases }} of {{ totalCases }} automated checks pass ({{ adapterPassed }}/{{ adapterTotal }}
+              upstream solver parity cases across {{ languagesWithAdapters }} languages with reference adapters, plus
+              canonical parse checks across all {{ LANGUAGE_COUNT }} documented formats) — comparing DAE flattening,
               simulation trajectories, and static diagnostics against reference engines.
             </p>
           </div>

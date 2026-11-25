@@ -22,6 +22,8 @@ export const eslLanguage = language({
   },
   errorCodes: EslErrorCode,
 
+  conflicts: ($) => [[$["StudyBlock"]!, $["Identifier"]!], [$["BlockEnd"]!], [$["BlockEnd"]!, $["Identifier"]!]],
+
   rules: {
     Program: ($) => repeat(choice($["TopBlock"]!, $["Comment"]!)),
 
@@ -78,8 +80,14 @@ export const eslLanguage = language({
 
     BlockEnd: ($) =>
       seq(
-        choice("END", "END_STUDY", "END_MODEL", "END_SUBMODEL", "END_SEGMENT", "END_PACKAGE"),
-        optional(choice("STUDY", "MODEL", "SUBMODEL", "SEGMENT", "PACKAGE")),
+        choice(
+          seq("END", optional(choice("STUDY", "MODEL", "SUBMODEL", "SEGMENT", "PACKAGE"))),
+          "END_STUDY",
+          "END_MODEL",
+          "END_SUBMODEL",
+          "END_SEGMENT",
+          "END_PACKAGE",
+        ),
         optional(field("endName", $["Identifier"]!)),
         optional(";"),
       ),
@@ -108,12 +116,7 @@ export const eslLanguage = language({
 
     DeclItem: ($) => seq(field("name", $["Identifier"]!), optional(seq(choice("=", ":="), field("init", $["Expr"]!)))),
 
-    Section: ($) =>
-      seq(
-        field("kind", choice("INITIAL", "DYNAMIC", "STEP", "TERMINAL")),
-        optional(":"),
-        repeat(choice($["Statement"]!, $["Declaration"]!, $["Comment"]!)),
-      ),
+    Section: () => seq(field("kind", choice("INITIAL", "DYNAMIC", "STEP", "TERMINAL")), optional(":")),
 
     Statement: ($) =>
       choice(

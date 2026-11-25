@@ -32,8 +32,10 @@ import {
 } from "../constants";
 import {
   DIFFICULTY_LABELS,
+  EXAMPLE_INDEX_BY_ID,
   EXAMPLE_INDEX_BY_LANG,
   getCachedLanguageExamples,
+  loadExampleById,
   loadLanguageExamples,
   type ExampleDifficulty,
   type LoadedLanguageExample,
@@ -593,6 +595,42 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
       }
     },
     [ensurePackageMounted, onSelectTemplate, onSelectPendingTemplate, onClose],
+  );
+
+  const handleSelectCard = useCallback(
+    (ex: HeroExample) => {
+      const normLang = ex.lang.toLowerCase();
+      const isChunkLoaded = Boolean(loadedChunkByLang[normLang]?.some((item) => item.id === ex.id));
+      const needsChunkLoad = EXAMPLE_INDEX_BY_ID.has(ex.id) && !isChunkLoaded;
+      if (!needsChunkLoad) {
+        onSelectTemplate(ex);
+        onClose();
+        return;
+      }
+      const loadFullExample = async (): Promise<HeroExample | null> => {
+        const loaded = await loadExampleById(ex.id);
+        return loaded ? { ...loaded } : ex;
+      };
+      if (onSelectPendingTemplate) {
+        onClose();
+        onSelectPendingTemplate(ex.title, loadFullExample);
+        return;
+      }
+      setBusyId(ex.id);
+      setErrorMsg(null);
+      void loadFullExample()
+        .then((loaded) => {
+          onSelectTemplate(loaded ?? ex);
+          onClose();
+        })
+        .catch((err) => {
+          setErrorMsg(`Could not open '${ex.title}': ${err instanceof Error ? err.message : String(err)}`);
+        })
+        .finally(() => {
+          setBusyId(null);
+        });
+    },
+    [loadedChunkByLang, onSelectTemplate, onSelectPendingTemplate, onClose],
   );
 
   if (!isOpen || typeof document === "undefined") return null;
@@ -1422,18 +1460,15 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                           e.dataTransfer.effectAllowed = "copy";
                         }}
                         onClick={() => {
-                          onSelectTemplate(ex);
-                          onClose();
+                          handleSelectCard(ex);
                         }}
                         onDoubleClick={() => {
-                          onSelectTemplate(ex);
-                          onClose();
+                          handleSelectCard(ex);
                         }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
-                            onSelectTemplate(ex);
-                            onClose();
+                            handleSelectCard(ex);
                           }
                         }}
                         title={`${ex.title}\nClick to open or drag onto workspace`}

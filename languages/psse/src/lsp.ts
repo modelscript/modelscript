@@ -2434,20 +2434,24 @@ function insertRawRecordInSection(
  * Adds a PSS/E component (from the diagram palette or `PSSEDynamics` library)
  * to a `.raw` or `.dyr` document and returns the updated source text.
  */
-export function addPsseDiagramComponent(sourceText: string, className: string, _x?: number, _y?: number): string {
+export function addPsseDiagramComponent(sourceText: string, className: string, x?: number, y?: number): string {
   const cleanClass = className
     .replace(/^__LIB__:[^/]+\//, "")
     .replace(/^__LIB__:/, "")
     .replace(/^PSSEDynamics\./i, "")
     .trim();
   const lower = cleanClass.toLowerCase();
+  const hasPos = typeof x === "number" && Number.isFinite(x) && typeof y === "number" && Number.isFinite(y);
+  const rx = hasPos ? Math.round(x) : 0;
+  const ry = hasPos ? Math.round(y) : 0;
+  const posTag = hasPos ? `@pos(${rx}, ${ry})` : "";
 
   if (isLikelyDyrContent(sourceText)) {
     const modelName = cleanClass.replace(/^psse:/i, "").toUpperCase() || "GENROU";
     const dyr = parseDyr(sourceText);
     const busNum = dyr.records[0]?.ibus ?? 1;
     const sep = sourceText.endsWith("\n") || sourceText.length === 0 ? "" : "\n";
-    return `${sourceText}${sep}${busNum} '${modelName}' 1 5.0 0.05 0.1 5.0 0.5 1.8 1.7 0.3 0.5 0.25 0.1 0.3 / /* ${modelName} */\n`;
+    return `${sourceText}${sep}${busNum} '${modelName}' 1 5.0 0.05 0.1 5.0 0.5 1.8 1.7 0.3 0.5 0.25 0.1 0.3 / /* ${modelName} */${posTag ? ` ${posTag}` : ""}\n`;
   }
 
   const psseCase = parseRaw(sourceText);
@@ -2455,26 +2459,62 @@ export function addPsseDiagramComponent(sourceText: string, className: string, _
   const maxBusId = existingBusIds.length > 0 ? Math.max(...existingBusIds) : 0;
   const defaultBusId = existingBusIds[existingBusIds.length - 1] ?? 1;
 
+  const findNearestBus = (predicate?: (busId: number) => boolean): number => {
+    const candidates = predicate ? existingBusIds.filter(predicate) : existingBusIds;
+    const pool = candidates.length > 0 ? candidates : existingBusIds;
+    if (hasPos) {
+      let bestId: number | undefined;
+      let bestDist = Infinity;
+      for (const id of pool) {
+        const pos = psseCase.buses.get(id)?.position;
+        if (!pos) continue;
+        const d = Math.hypot(pos.x - rx, pos.y - ry);
+        if (d < bestDist) {
+          bestDist = d;
+          bestId = id;
+        }
+      }
+      if (bestId !== undefined) return bestId;
+    }
+    return pool[0] ?? defaultBusId;
+  };
+
+  const findNearestBuses = (count: number): number[] => {
+    if (hasPos) {
+      const withPos = existingBusIds
+        .map((id) => ({ id, pos: psseCase.buses.get(id)?.position }))
+        .filter((item): item is { id: number; pos: { x: number; y: number } } => Boolean(item.pos))
+        .sort((a, b) => Math.hypot(a.pos.x - rx, a.pos.y - ry) - Math.hypot(b.pos.x - rx, b.pos.y - ry))
+        .map((item) => item.id);
+      if (withPos.length >= count) return withPos.slice(0, count);
+    }
+    return existingBusIds.slice(0, count);
+  };
+
   if (lower === "psse:bus_pq" || lower === "psse:bus_pv" || lower === "psse:bus_slack" || lower === "bus") {
     const newBusId = maxBusId + 1;
     const ide = lower === "psse:bus_slack" ? 3 : lower === "psse:bus_pv" ? 2 : 1;
     const baseKv = psseCase.buses.get(defaultBusId)?.baseKv || 230.0;
-    const record = `${newBusId}, '${`BUS ${newBusId}`.padEnd(12)}', ${baseKv.toFixed(1)}, ${ide}, 1, 1, 1, 1.0000, 0.0000`;
+    const posSuffix = posTag ? ` / ${posTag}` : "";
+    const record = `${newBusId}, '${`BUS ${newBusId}`.padEnd(12)}', ${baseKv.toFixed(1)}, ${ide}, 1, 1, 1, 1.0000, 0.0000${posSuffix}`;
     return insertRawRecordInSection(sourceText, "BUS", /BEGIN BUS/i, /END OF BUS/i, record, true);
   }
 
   if (lower === "psse:load" || lower === "load") {
-    const targetBus = existingBusIds.find((id) => psseCase.buses.get(id)?.ide === 1) ?? defaultBusId;
+    const targetBus = findNearestBus((id) => psseCase.buses.get(id)?.ide === 1);
     const existingIds = new Set(psseCase.loads.filter((l) => l.i === targetBus).map((l) => l.id.trim()));
     let ckt = 1;
     while (existingIds.has(String(ckt))) ckt++;
-    const record = `${targetBus}, '${String(ckt).padEnd(2)}', 1, 1, 1, 50.0, 15.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 0`;
+    const posSuffix = posTag ? ` / ${posTag}` : "";
+    const record = `${targetBus}, '${String(ckt).padEnd(2)}', 1, 1, 1, 50.0, 15.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 0${posSuffix}`;
     return insertRawRecordInSection(sourceText, "LOAD", /BEGIN LOAD/i, /END OF LOAD/i, record);
   }
 
   if (lower === "psse:fixed_shunt" || lower === "fixed_shunt" || lower.includes("svc") || lower.includes("shunt")) {
+    const targetBus = findNearestBus();
     if (lower === "psse:switched_shunt" || lower === "switched_shunt") {
-      const record = `${defaultBusId}, 1, 1, 1, 1.0200, 0.9800, 0, 100.0, '', 0.000, 1, 25.000`;
+      const posSuffix = posTag ? ` / ${posTag}` : "";
+      const record = `${targetBus}, 1, 1, 1, 1.0200, 0.9800, 0, 100.0, '', 0.000, 1, 25.000${posSuffix}`;
       return insertRawRecordInSection(
         sourceText,
         "SWITCHED SHUNT",
@@ -2483,17 +2523,19 @@ export function addPsseDiagramComponent(sourceText: string, className: string, _
         record,
       );
     }
-    const existingIds = new Set(psseCase.fixedShunts.filter((s) => s.i === defaultBusId).map((s) => s.id.trim()));
+    const existingIds = new Set(psseCase.fixedShunts.filter((s) => s.i === targetBus).map((s) => s.id.trim()));
     let ckt = 1;
     while (existingIds.has(String(ckt))) ckt++;
     const comment = !lower.startsWith("psse:") ? ` /* ${cleanClass} */` : "";
-    const record = `${defaultBusId}, '${String(ckt).padEnd(2)}', 1, 0.000, 25.000${comment}`;
+    const posSuffix = posTag ? ` / ${posTag}` : "";
+    const record = `${targetBus}, '${String(ckt).padEnd(2)}', 1, 0.000, 25.000${posSuffix}${comment}`;
     return insertRawRecordInSection(sourceText, "FIXED SHUNT", /BEGIN FIXED SHUNT/i, /END OF FIXED SHUNT/i, record);
   }
 
   if (lower === "psse:branch" || lower === "branch") {
-    const busA = existingBusIds[0] ?? 1;
-    const busB = existingBusIds[1] ?? busA + 1;
+    const near = findNearestBuses(2);
+    const busA = near[0] ?? 1;
+    const busB = near[1] ?? busA + 1;
     const existingCkts = new Set(
       psseCase.branches.filter((b) => b.i === busA && Math.abs(b.j) === busB).map((b) => b.ckt.trim()),
     );
@@ -2510,9 +2552,10 @@ export function addPsseDiagramComponent(sourceText: string, className: string, _
   }
 
   if (lower === "psse:xfmr_2w" || lower === "psse:xfmr_3w") {
-    const busA = existingBusIds[0] ?? 1;
-    const busB = existingBusIds[1] ?? busA + 1;
-    const busK = lower === "psse:xfmr_3w" ? (existingBusIds[2] ?? busB + 1) : 0;
+    const near = findNearestBuses(lower === "psse:xfmr_3w" ? 3 : 2);
+    const busA = near[0] ?? 1;
+    const busB = near[1] ?? busA + 1;
+    const busK = lower === "psse:xfmr_3w" ? (near[2] ?? busB + 1) : 0;
     const recordLines = [
       `${busA}, ${busB}, ${busK}, '1 ', 1, 1, 1, 0.00000, 0.00000, 2, 'XFMR_${busA}_${busB}', 1, 1, 1.0000`,
       `0.00200, 0.08000, 100.00`,
@@ -2531,17 +2574,17 @@ export function addPsseDiagramComponent(sourceText: string, className: string, _
     );
   }
 
-  // Default for `psse:generator` or any PSSEDynamics.* model: add a generator on the first Slack/PV bus
-  const targetBus =
-    existingBusIds.find((id) => {
-      const ide = psseCase.buses.get(id)?.ide;
-      return ide === 3 || ide === 2;
-    }) ?? defaultBusId;
+  // Default for `psse:generator` or any PSSEDynamics.* model: add a generator on the nearest Slack/PV bus
+  const targetBus = findNearestBus((id) => {
+    const ide = psseCase.buses.get(id)?.ide;
+    return ide === 3 || ide === 2;
+  });
   const existingIds = new Set(psseCase.generators.filter((g) => g.i === targetBus).map((g) => g.id.trim()));
   let ckt = 1;
   while (existingIds.has(String(ckt))) ckt++;
   const modelComment = !lower.startsWith("psse:") ? ` /* ${cleanClass} */` : "";
-  const record = `${targetBus}, '${String(ckt).padEnd(2)}', 100.000, 0.000, 50.000, -50.000, 1.0000, 0, 100.00, 0.00000, 0.20000, 0.00000, 0.00000, 1.0000, 1, 100.0, 200.000, 0.000${modelComment}`;
+  const posSuffix = posTag ? ` / ${posTag}` : "";
+  const record = `${targetBus}, '${String(ckt).padEnd(2)}', 100.000, 0.000, 50.000, -50.000, 1.0000, 0, 100.00, 0.00000, 0.20000, 0.00000, 0.00000, 1.0000, 1, 100.0, 200.000, 0.000${posSuffix}${modelComment}`;
   return insertRawRecordInSection(sourceText, "GENERATOR", /BEGIN GENERATOR/i, /END OF GENERATOR/i, record);
 }
 

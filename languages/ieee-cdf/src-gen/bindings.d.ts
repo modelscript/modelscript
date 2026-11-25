@@ -1447,12 +1447,12 @@ export declare enum SyntaxKind {
   BpaCard = 38,
   BpaField = 39,
   DataToken = 40,
-  START = 41,
-  _START = 41,
-  DateLiteral = 55,
-  NumberLiteral = 56,
-  StringLiteral = 57,
-  Identifier = 58,
+  NumberLiteral = 41,
+  Identifier = 42,
+  START = 43,
+  _START = 43,
+  DateLiteral = 57,
+  StringLiteral = 58,
   BpaComment = 59,
   EOF = 1023,
 }
@@ -1515,22 +1515,22 @@ export interface DataTokenNode extends SyntaxNode {
   readonly typeId: SyntaxKind.DataToken;
 }
 export declare function isDataToken(node: SyntaxNode | null | undefined): node is DataTokenNode;
-export interface DateLiteralNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DateLiteral;
-}
-export declare function isDateLiteral(node: SyntaxNode | null | undefined): node is DateLiteralNode;
 export interface NumberLiteralNode extends SyntaxNode {
   readonly typeId: SyntaxKind.NumberLiteral;
 }
 export declare function isNumberLiteral(node: SyntaxNode | null | undefined): node is NumberLiteralNode;
-export interface StringLiteralNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.StringLiteral;
-}
-export declare function isStringLiteral(node: SyntaxNode | null | undefined): node is StringLiteralNode;
 export interface IdentifierNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Identifier;
 }
 export declare function isIdentifier(node: SyntaxNode | null | undefined): node is IdentifierNode;
+export interface DateLiteralNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DateLiteral;
+}
+export declare function isDateLiteral(node: SyntaxNode | null | undefined): node is DateLiteralNode;
+export interface StringLiteralNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.StringLiteral;
+}
+export declare function isStringLiteral(node: SyntaxNode | null | undefined): node is StringLiteralNode;
 export interface BpaCommentNode extends SyntaxNode {
   readonly typeId: SyntaxKind.BpaComment;
 }
@@ -1614,25 +1614,25 @@ export declare namespace Cst {
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is DataTokenNode;
   };
-  export const DateLiteral: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DateLiteralNode;
-  };
   export const NumberLiteral: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is NumberLiteralNode;
   };
-  export const StringLiteral: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is StringLiteralNode;
-  };
   export const Identifier: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is IdentifierNode;
+  };
+  export const DateLiteral: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DateLiteralNode;
+  };
+  export const StringLiteral: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is StringLiteralNode;
   };
   export const BpaComment: {
     readonly typeId: number;

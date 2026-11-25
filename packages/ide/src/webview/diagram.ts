@@ -182,6 +182,10 @@ function isPscadLanguage(lang?: string): boolean {
   return Boolean(lang && /^(pscad|pscx|pslx|pswx|psmx)$/i.test(lang));
 }
 
+function isPsseLanguage(lang?: string): boolean {
+  return Boolean(lang && /^(psse|raw|dyr|seq)$/i.test(lang));
+}
+
 // Global initialization
 function initDiagramBridge() {
   const container = document.getElementById("container");
@@ -398,11 +402,36 @@ function initDiagramBridge() {
 
   window.addEventListener("pointerup", onPointerUpOrMouseUp, false);
 
+  const baseDiagramOptions = {
+    container,
+    isDark,
+    disableBuiltinContextMenu: true,
+    onAction: enqueueDiagramAction,
+    onSelect: (id: string | null) => {
+      if (!id) {
+        document.getElementById("properties-panel")?.classList.remove("open");
+      }
+    },
+    onShowProperties: (nodeId: string, cachedProps?: ComponentPropertyData, isLoading?: boolean) => {
+      if (typeof nodeId === "string" && (nodeId === "__diagram_background__" || nodeId === "__diagram_axes__")) {
+        document.getElementById("properties-panel")?.classList.remove("open");
+        return;
+      }
+      showProperties({ id: nodeId, properties: cachedProps, isLoading });
+    },
+    onUndo: () => vscode.postMessage({ type: "undo" }),
+    onRedo: () => vscode.postMessage({ type: "redo" }),
+    onMessage: (msg: Record<string, unknown>) => vscode.postMessage(msg),
+  };
+
   // Handle messages forwarded from the top-level workbench or extension host
   window.addEventListener("message", (e) => {
     if (!e.data || typeof e.data !== "object") return;
     if (e.data.type === "setLanguage") {
       activeLanguage = e.data.language || "modelica";
+      const snap = getSnapGrid(activeLanguage);
+      setDiagramOptions({ ...baseDiagramOptions, snapGrid: snap });
+      getGraph()?.setGridSize?.(snap);
       const isPscad = isPscadLanguage(activeLanguage);
       const canvasHud = document.getElementById("canvas-hud");
       if (canvasHud) {
@@ -447,27 +476,7 @@ function initDiagramBridge() {
     }
   });
 
-  setDiagramOptions({
-    container,
-    isDark,
-    disableBuiltinContextMenu: true,
-    onAction: enqueueDiagramAction,
-    onSelect: (id: string | null) => {
-      if (!id) {
-        document.getElementById("properties-panel")?.classList.remove("open");
-      }
-    },
-    onShowProperties: (nodeId: string, cachedProps?: ComponentPropertyData, isLoading?: boolean) => {
-      if (typeof nodeId === "string" && (nodeId === "__diagram_background__" || nodeId === "__diagram_axes__")) {
-        document.getElementById("properties-panel")?.classList.remove("open");
-        return;
-      }
-      showProperties({ id: nodeId, properties: cachedProps, isLoading });
-    },
-    onUndo: () => vscode.postMessage({ type: "undo" }),
-    onRedo: () => vscode.postMessage({ type: "redo" }),
-    onMessage: (msg) => vscode.postMessage(msg),
-  });
+  setDiagramOptions({ ...baseDiagramOptions, snapGrid: getSnapGrid(activeLanguage) });
 
   initCanvasHud();
   initContextMenu();
@@ -553,6 +562,17 @@ const SPOTLIGHT_CATALOG = [
   { id: "sysml:requirement", name: "SysML v2 Requirement Definition (requirement def)", category: "SysML v2" },
   { id: "sysml:state", name: "SysML v2 State Definition (state def)", category: "SysML v2" },
   { id: "sysml:port", name: "SysML v2 Port Definition (port def)", category: "SysML v2" },
+  // PSS/E
+  { id: "psse:bus_pq", name: "PQ Load Bus (IDE=1)", category: "PSS/E Buses" },
+  { id: "psse:bus_pv", name: "PV Generator Bus (IDE=2)", category: "PSS/E Buses" },
+  { id: "psse:bus_slack", name: "Swing / Slack Bus (IDE=3)", category: "PSS/E Buses" },
+  { id: "psse:generator", name: "Synchronous Generator", category: "PSS/E Generation & Shunts" },
+  { id: "psse:load", name: "ZIP Load", category: "PSS/E Generation & Shunts" },
+  { id: "psse:fixed_shunt", name: "Fixed Shunt", category: "PSS/E Generation & Shunts" },
+  { id: "psse:switched_shunt", name: "Switched Shunt", category: "PSS/E Generation & Shunts" },
+  { id: "psse:branch", name: "AC Transmission Branch", category: "PSS/E Transmission" },
+  { id: "psse:xfmr_2w", name: "2-Winding Transformer", category: "PSS/E Transmission" },
+  { id: "psse:xfmr_3w", name: "3-Winding Transformer", category: "PSS/E Transmission" },
 ];
 
 let isWireModeActive = false;
@@ -1289,6 +1309,40 @@ function initContextMenu() {
             },
           },
         );
+      } else if (isPsseLanguage(activeLanguage)) {
+        menuItems.push(
+          { isDivider: true, label: "", action: () => {} },
+          {
+            label: "Insert PQ Bus",
+            action: () => {
+              diagramWindow.__startPlacement?.({ className: "psse:bus_pq", classKind: "Component" });
+            },
+          },
+          {
+            label: "Insert PV Bus",
+            action: () => {
+              diagramWindow.__startPlacement?.({ className: "psse:bus_pv", classKind: "Component" });
+            },
+          },
+          {
+            label: "Insert Generator",
+            action: () => {
+              diagramWindow.__startPlacement?.({ className: "psse:generator", classKind: "Component" });
+            },
+          },
+          {
+            label: "Insert Load",
+            action: () => {
+              diagramWindow.__startPlacement?.({ className: "psse:load", classKind: "Component" });
+            },
+          },
+          {
+            label: "Insert AC Branch",
+            action: () => {
+              diagramWindow.__startPlacement?.({ className: "psse:branch", classKind: "Component" });
+            },
+          },
+        );
       }
 
       menuItems.push(
@@ -1363,6 +1417,9 @@ function getEffectiveSpotlightCatalog(): { id: string; name: string; category: s
   }
   if (lang === "modelica" || lang === "mo" || lang === "modelscript" || lang === "msx") {
     return SPOTLIGHT_CATALOG.filter((c) => c.id.startsWith("Modelica."));
+  }
+  if (isPsseLanguage(lang)) {
+    return SPOTLIGHT_CATALOG.filter((c) => c.id.startsWith("psse:"));
   }
   if (lang === "sysml" || lang === "sysml2") {
     return SPOTLIGHT_CATALOG.filter((c) => c.id.startsWith("sysml:"));

@@ -1454,11 +1454,11 @@ export declare enum SyntaxKind {
   PeakTableRecord = 37,
   GenericLdrRecord = 38,
   DataLine = 39,
-  START = 40,
-  _START = 40,
-  EndRecord = 43,
-  LdrHeader = 46,
-  NumberToken = 47,
+  NumberToken = 40,
+  START = 41,
+  _START = 41,
+  EndRecord = 44,
+  LdrHeader = 47,
   AsdfToken = 48,
   LdrText = 49,
   Comment = 50,
@@ -1549,6 +1549,10 @@ export interface DataLineNode extends SyntaxNode {
   readonly typeId: SyntaxKind.DataLine;
 }
 export declare function isDataLine(node: SyntaxNode | null | undefined): node is DataLineNode;
+export interface NumberTokenNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.NumberToken;
+}
+export declare function isNumberToken(node: SyntaxNode | null | undefined): node is NumberTokenNode;
 export interface EndRecordNode extends SyntaxNode {
   readonly typeId: SyntaxKind.EndRecord;
 }
@@ -1557,10 +1561,6 @@ export interface LdrHeaderNode extends SyntaxNode {
   readonly typeId: SyntaxKind.LdrHeader;
 }
 export declare function isLdrHeader(node: SyntaxNode | null | undefined): node is LdrHeaderNode;
-export interface NumberTokenNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.NumberToken;
-}
-export declare function isNumberToken(node: SyntaxNode | null | undefined): node is NumberTokenNode;
 export interface AsdfTokenNode extends SyntaxNode {
   readonly typeId: SyntaxKind.AsdfToken;
 }
@@ -1695,6 +1695,11 @@ export declare namespace Cst {
     x(node: SyntaxNode | null | undefined): SyntaxNode | null;
     xList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
+  export const NumberToken: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is NumberTokenNode;
+  };
   export const EndRecord: {
     readonly typeId: number;
     readonly type: string;
@@ -1704,11 +1709,6 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is LdrHeaderNode;
-  };
-  export const NumberToken: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is NumberTokenNode;
   };
   export const AsdfToken: {
     readonly typeId: number;

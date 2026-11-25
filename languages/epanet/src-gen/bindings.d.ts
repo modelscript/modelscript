@@ -1445,9 +1445,9 @@ export declare enum SyntaxKind {
   IniString = 15,
   START = 16,
   _START = 16,
-  IniIdentifier = 21,
-  IniNumber = 22,
-  IniComment = 24,
+  IniIdentifier = 20,
+  IniNumber = 21,
+  IniComment = 23,
   EOF = 1023,
 }
 

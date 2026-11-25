@@ -474,4 +474,62 @@ describe("PSS/E LSP Services & DAE Lowering (@modelscript/psse)", () => {
       { vertices?: { x: number; y: number }[] } | undefined;
     assert.deepEqual(br2Edge?.vertices, [{ x: 300, y: 260 }]);
   });
+
+  it("places new buses at drop coordinates and attaches equipment to nearest bus", () => {
+    const baseRaw = [
+      "0, 100.00, 33, 0, 0, 60.00",
+      "TEST",
+      "CASE",
+      "1, 'BUS1        ', 230.000, 3, 1, 1, 1, 1.0000, 0.0000 / @pos(100, 100)",
+      "2, 'BUS2        ', 230.000, 1, 1, 1, 1, 1.0000, 0.0000 / @pos(500, 500)",
+      "0 / END OF BUS DATA, BEGIN LOAD DATA",
+      "0 / END OF LOAD DATA, BEGIN GENERATOR DATA",
+      "0 / END OF GENERATOR DATA",
+      "Q",
+    ].join("\n");
+
+    const withBus = addPsseDiagramComponent(baseRaw, "psse:bus_pq", 320, 240);
+    assert.ok(withBus.includes("@pos(320, 240)"), "dropped bus should record @pos(320, 240)");
+
+    const withLoadNearBus2 = addPsseDiagramComponent(baseRaw, "psse:load", 490, 510);
+    assert.ok(/2,\s*'1\s*',.*@pos\(490,\s*510\)/.test(withLoadNearBus2), "load should attach to nearest bus (2)");
+  });
+
+  it("supports rotate and toggleDisable via createPsseDiagramBackend", async () => {
+    const baseRaw = [
+      "0, 100.00, 33, 0, 0, 60.00",
+      "TEST",
+      "CASE",
+      "1, 'BUS1        ', 230.000, 3, 1, 1, 1, 1.0000, 0.0000 / @pos(100, 100)",
+      "2, 'BUS2        ', 230.000, 1, 1, 1, 1, 1.0000, 0.0000 / @pos(500, 500)",
+      "0 / END OF BUS DATA, BEGIN BRANCH DATA",
+      "1, 2, '1 ', 0.01000, 0.05000, 0.02000, 100.00, 120.00, 140.00, 0, 0, 0, 0, 1, 1, 0",
+      "0 / END OF BRANCH DATA",
+      "Q",
+    ].join("\n");
+    const uri = "file:///tmp/psse-rotate-disable.raw";
+    let currentDoc = baseRaw;
+    const { createPsseDiagramBackend } = await import("../src/diagram-backend.js");
+    const backend = createPsseDiagramBackend({ getDocumentText: (u) => (u === uri ? currentDoc : undefined) });
+
+    const res = await backend.applyEdits!({
+      uri,
+      seq: 1,
+      actions: [
+        { type: "rotate", item: { name: "bus_1", x: 100, y: 100, width: 156, height: 40, rotation: 90 } },
+        { type: "toggleDisable", name: "branch_1_2_1", disabled: true },
+      ],
+    });
+    assert.equal(res.renderHint, "none");
+    const lines = currentDoc.split("\n");
+    const toOffset = (pos: { line: number; character: number }) =>
+      lines.slice(0, pos.line).reduce((acc, l) => acc + l.length + 1, 0) + pos.character;
+    for (const ed of [...res.edits].sort((a, b) => toOffset(b.range.start) - toOffset(a.range.start))) {
+      currentDoc =
+        currentDoc.slice(0, toOffset(ed.range.start)) + ed.newText + currentDoc.slice(toOffset(ed.range.end));
+    }
+    assert.ok(currentDoc.includes("@orient(90)"), "bus_1 rotation should persist as @orient(90)");
+    const parsedAfter = parseRaw(currentDoc);
+    assert.equal(parsedAfter.branches[0]?.st, 0, "branch_1_2_1 should be disabled (st=0)");
+  });
 });

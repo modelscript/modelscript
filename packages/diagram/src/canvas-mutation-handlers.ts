@@ -568,6 +568,7 @@ export function attachDiagramMutationHandlers(params: {
               type: "moveEdge",
               edges: [
                 {
+                  id: edge.id,
                   source: srcStr,
                   target: tgtStr,
                   points,

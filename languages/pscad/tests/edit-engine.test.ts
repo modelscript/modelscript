@@ -356,4 +356,17 @@ describe("pscad diagram actions (delete, reconnect, id-less wires, buses)", () =
       "B1 -> BRK1 wire must be removed",
     );
   });
+
+  it("creates a Bus element when adding master:bus via addComponent", () => {
+    const busPlan = planDiagramActions(rlText, [
+      { type: "addComponent", className: "master:bus", name: "Bus_New", x: 360, y: 180 },
+    ]);
+    assert.deepEqual(busPlan.unresolved, []);
+    const out = applyTextEdits(rlText, busPlan.edits);
+    const after = parsePscx(out).rootModule;
+    const newBus = after.buses.find((b) => b.name === "Bus_New");
+    assert.ok(newBus, "master:bus must create a <Bus> element");
+    assert.equal(newBus.position.x, 360);
+    assert.equal(newBus.position.y, 180);
+  });
 });

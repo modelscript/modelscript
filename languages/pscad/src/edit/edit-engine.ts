@@ -531,7 +531,26 @@ export function planPscadEdits(
             text: `${open}${eol}${vText}${eol}${indent}</Wire>`,
           });
         } else {
-          errors.push(`Wire '${op.id}' has no vertices to replace (indent '${indent.length}').`);
+          writeAttr(el, "x", String(x0));
+          writeAttr(el, "y", String(y0));
+          writeAttr(el, "w", String(Math.max(...xs) - Math.min(...xs) + 10));
+          writeAttr(el, "h", String(Math.max(...ys) - Math.min(...ys) + 10));
+          const vText = op.points
+            .map((_, i) => `${indent}  <vertex x="${xs[i]! - x0}" y="${ys[i]! - y0}" />`)
+            .join(eol);
+          const closeIdx = text.lastIndexOf("</", el.end);
+          if (closeIdx > el.start) {
+            const openTagEnd = text.indexOf(">", el.start);
+            if (openTagEnd !== -1 && openTagEnd < closeIdx) {
+              splices.push({
+                start: openTagEnd + 1,
+                end: closeIdx,
+                text: `${eol}${vText}${eol}${indent}`,
+              });
+              break;
+            }
+          }
+          errors.push(`Wire '${op.id}' has no vertices to replace.`);
         }
         break;
       }

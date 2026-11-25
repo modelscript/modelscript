@@ -10,7 +10,7 @@
  */
 
 import type { RuleBuilder, RuleLike } from "./combinators.js";
-import { choice, field, optional, prec, repeat, seq, token } from "./combinators.js";
+import { choice, field, optional, repeat, seq, token } from "./combinators.js";
 import { language, type LanguageOptions } from "./language.js";
 
 export type SharedRuleMap<K extends string = string> = Record<K, RuleBuilder<K, string>>;
@@ -140,7 +140,7 @@ export const iniSectionRules = {
   Document: ($): RuleLike<string> => repeat(choice($.IniSectionHeader, $.IniKeyValue, $.IniRecord, $.IniComment)),
   IniSectionHeader: ($): RuleLike<string> => seq("[", field("sectionName", $.IniIdentifier), "]"),
   IniKeyValue: ($): RuleLike<string> => seq(field("key", $.IniIdentifier), "=", field("value", $.IniScalar)),
-  IniRecord: ($): RuleLike<string> => prec.left(1, seq(field("head", $.IniScalar), repeat($.IniScalar))),
+  IniRecord: ($): RuleLike<string> => field("head", $.IniScalar),
   IniScalar: ($): RuleLike<string> => choice($.IniNumber, $.IniString, $.IniIdentifier),
   IniIdentifier: (): RuleLike<string> => /[A-Za-z_][A-Za-z0-9_./:-]*/,
   IniNumber: (): RuleLike<string> => /[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/,

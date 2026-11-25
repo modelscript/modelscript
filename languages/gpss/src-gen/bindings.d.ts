@@ -1437,19 +1437,20 @@ export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: str
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  Program = 45,
-  Statement = 46,
-  Opcode = 47,
-  AuxOperator = 48,
-  OperandList = 49,
-  Operand = 50,
-  FunctionDataLine = 51,
-  START = 52,
-  _START = 52,
-  SnaRef = 66,
-  NumberLiteral = 67,
-  Identifier = 68,
-  Comment = 69,
+  Program = 47,
+  Statement = 48,
+  Opcode = 49,
+  AuxOperator = 50,
+  OperandList = 51,
+  Operand = 52,
+  FunctionDataLine = 53,
+  START = 54,
+  _START = 54,
+  SnaRef = 70,
+  NumberLiteral = 71,
+  Identifier = 72,
+  Newline = 73,
+  Comment = 74,
   EOF = 1023,
 }
 
@@ -1509,6 +1510,10 @@ export interface IdentifierNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Identifier;
 }
 export declare function isIdentifier(node: SyntaxNode | null | undefined): node is IdentifierNode;
+export interface NewlineNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Newline;
+}
+export declare function isNewline(node: SyntaxNode | null | undefined): node is NewlineNode;
 export interface CommentNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Comment;
 }
@@ -1573,6 +1578,11 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is IdentifierNode;
+  };
+  export const Newline: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is NewlineNode;
   };
   export const Comment: {
     readonly typeId: number;

@@ -706,6 +706,19 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
       }
       case "addComponent": {
         const a = action as Extract<DiagramAction, { type: "addComponent" }>;
+        if (a.className === "master:bus" || a.className === "Bus") {
+          ops.push({
+            type: "addBus",
+            ...(a.section ? { definition: a.section } : {}),
+            ...(a.name ? { name: a.name } : {}),
+            x: Math.round(a.x),
+            y: Math.round(a.y),
+            w: 0,
+            h: 72,
+          });
+          renderHint = "immediate";
+          break;
+        }
         const schema = getMasterComponentSchema(a.className);
         const params: Record<string, string> = {};
         for (const p of schema?.parameters ?? []) params[p.key] = String(p.defaultValue);

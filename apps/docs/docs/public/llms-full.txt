@@ -20,7 +20,7 @@ Welcome to **ModelScript**, the open-core **computable digital thread** platform
 
 ## What is the Computable Digital Thread?
 
-Modern cyber-physical systems — from electric vehicles, utility power grids, and satellites to surgical robots, proton therapy nozzles, and subsea flowlines — require tight coordination across **169 documented engineering formats** (**96 Beta, 72 Alpha, 1 Pre-Alpha**) spanning **12 industry verticals**:
+Modern cyber-physical systems — from electric vehicles, utility power grids, and satellites to surgical robots, proton therapy nozzles, and subsea flowlines — require tight coordination across **169 documented engineering formats** (**119 Beta, 47 Alpha, 3 Pre-Alpha**) spanning **12 industry verticals**:
 
 - **System Architecture, Requirements, Security & Ontologies** (`SysML v2`, `KerML`, `ReqIF`, `NIST OSCAL`, `OSLC 3.0`, `OWL2`, `AAS / DDP`)
 - **Multi-Domain Acausal, Optimization & Block-Diagram Simulation** (`Modelica 3.x`, `ModelScript .msx`, `AMPL`, `MATLAB Simulink`, `EASY5`, `FMI 2.0/3.0 FMU`, `SSP 1.0/2.0`)
@@ -59,7 +59,7 @@ flowchart LR
 
 ## Core Pillars of ModelScript
 
-### 1. Code-First Engineering Across 169 Documented Formats (96 Beta, 72 Alpha, 1 Pre-Alpha)
+### 1. Code-First Engineering Across 169 Documented Formats (119 Beta, 47 Alpha, 3 Pre-Alpha)
 
 Every model, schematic, requirement, netlist, and mesh configuration lives as clean text in Git. Engineers diff, review, merge, and gate physical hardware designs using standard pull requests, SARIF code scanning, and reproducible CI/CD pipelines.
 
@@ -1818,9 +1818,9 @@ The ModelScript engine is designed to be completely headless and can run inside 
 
 | Surface                  | Route               | Description                                                                                       |
 | :----------------------- | :------------------ | :------------------------------------------------------------------------------------------------ |
-| **Home & Feeds**         | `/home`, `/explore` | ActivityPub engineering posts, reproducible simulation models, and discussion threads.            |
-| **Ansatz**               | `/editor`           | Dual-pane Monaco editor and live simulation canvas powered by client-side WebAssembly.            |
-| **Ansatz Studio**        | `/studio`           | Web-native engineering IDE workbench with LSP intelligence and DAP simulation debugger.           |
+| **Home & Feeds**         | `/home`, `/explore` | ActivityPub engineering posts on Ansatz Network, reproducible simulation models, and discussions. |
+| **Ansatz Editor**        | `/editor`           | Dual-pane Monaco editor and live simulation canvas powered by client-side WebAssembly.            |
+| **Ansatz Studio**        | `/studio`           | VS Code Web & desktop extension workbench with LSP intelligence and DAP simulation debugger.      |
 | **Scholarly References** | `/references`       | OpenAlex / DOI / BibTeX citation manager and literature-to-model traceability graph.              |
 | **Package Registry**     | `/packages`         | Search, publish, and inspect versioned engineering libraries with dependency trees.               |
 | **Digital Thread**       | `/thread`           | Visual hypergraph explorer tracing requirements and Triple Graph Grammar correspondences.         |
@@ -2591,7 +2591,7 @@ ModelScript is built on a **data-oriented, WebAssembly-first compiler architectu
 
 ```mermaid
 flowchart TB
-    subgraph Languages["Polyglot Source Languages (169 Documented Formats — 96 Beta, 72 Alpha, 1 Pre-Alpha)"]
+    subgraph Languages["Polyglot Source Languages (169 Documented Formats — 119 Beta, 47 Alpha, 3 Pre-Alpha)"]
         direction TB
         MO[".mo (Modelica 3.x) / .mod (AMPL)"]
         SYS[".sysml / .kerml / .reqif / .oscal.json"]
@@ -2679,7 +2679,7 @@ Nineteen specialized **Domain Theory Oracles**—spanning OWL2 Description Logic
 | `@modelscript/lsp`           | `packages/lsp`           | Multi-language LSP server across all 105 documented languages, semantic tokens, hover, go-to-definition, code actions, background worker pool                                                           |
 | `@modelscript/mcp`           | `packages/mcp`           | Unified Model Context Protocol server exposing 105 core and 70+ domain-specific ModelScript compilation, simulation, verification, grid/water/telecom, and KG tools                                     |
 | `@modelscript/sdk`           | `packages/sdk`           | TypeScript and AssemblyScript SDK for authoring user-defined ModelScript capabilities, visual artifacts, and WASM kernels                                                                               |
-| `@modelscript/editor`        | `packages/editor`        | Host-agnostic visual modeling & code editor core, LSP transport abstraction, and host context adapter for web, embed, and ansatz environments                                                       |
+| `@modelscript/editor`        | `packages/editor`        | Host-agnostic visual modeling & code editor core, LSP transport abstraction, and host context adapter for web, embed, and ansatz environments                                                           |
 | `@modelscript/ide-client`    | `packages/ide`           | Reusable WebAssembly IDE client components, Monaco/CodeMirror language bindings, and dockable engineering viewports with 3D verification overlays                                                       |
 | `@modelscript/react`         | `packages/react`         | ModelScript & Ansatz React SDK and widgets — engineering UI primitives, WebAssembly solver hooks, and IDE bridges                                                                                       |
 | `@modelscript/embed`         | `packages/embed`         | ModelScript & Ansatz embed client SDK — iframe bridge, Web Component custom elements, and permalink codec                                                                                               |
@@ -6087,7 +6087,7 @@ The CLI parser (`apps/cli/src/main.ts`) intercepts global execution flags prior 
 | Variable                                     | Default                  | Description                                                                                                                                                                                    |
 | :------------------------------------------- | :----------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `NO_COLOR`                                   | Unset                    | When set to any non-empty value, disables ANSI color sequences in terminal diagnostics, tables, and diff output.                                                                               |
-| `ANSATZ_API_URL` / `MODELSCRIPT_API_URL`     | `http://localhost:3000`  | Base URL for the Ansatz Network, Package Registry, and Cloud HPC dispatch API (`~/.ansatzrc` / `~/.modelscriptrc` fallback).                                                                  |
+| `ANSATZ_API_URL` / `MODELSCRIPT_API_URL`     | `http://localhost:3000`  | Base URL for the Ansatz Network, Package Registry, and Cloud HPC dispatch API (`~/.ansatzrc` / `~/.modelscriptrc` fallback).                                                                   |
 | `ANSATZ_API_TOKEN` / `MODELSCRIPT_API_TOKEN` | Unset                    | Bearer token (`JWT` or `ms_bot_*` service token) used for non-interactive authentication against the Registry, Cloud HPC, and Hub APIs (also accepts `ANSATZ_TOKEN` or `MODELSCRIPT_TOKEN`).   |
 | `MSX_EDITION`                                | `ee`                     | Runtime edition selector (`ee` for Enterprise Edition, `ce` for pure `AGPL-3.0-or-later` Community Edition). Setting `MSX_EDITION=ce` disables all `@modelscript/ee` commands and subsystems.  |
 | `MSX_LICENSE_KEY`                            | Unset                    | Offline Ed25519-signed Enterprise license token (`msx_lic_<payload>.<sig>`) unlocking Enterprise CLI commands (`cloud`, `hil`, `attest`, `digital-twin`, `compliance`, `oslc`, `sysmlv2-api`). |
@@ -6111,7 +6111,7 @@ When `--daemon` is passed, `msx` connects to the local Unix domain socket (`~/.m
 
 ## Complete Command Reference by Category
 
-The `msx` CLI registers **146 commands** organized across **169 documented engineering formats** (96 Beta, 72 Alpha, 1 Pre-Alpha) and six functional domains. See [CLI Commands](./commands.md) for exhaustive flag tables and examples for every command.
+The `msx` CLI registers **146 commands** organized across **169 documented engineering formats** (119 Beta, 47 Alpha, 3 Pre-Alpha) and six functional domains. See [CLI Commands](./commands.md) for exhaustive flag tables and examples for every command.
 
 ### 1. Compilation, Simulation & Optimization
 
@@ -6258,7 +6258,7 @@ The `msx` CLI registers **146 commands** organized across **169 documented engin
 | [`init-kernel`](./commands.md#init-kernel) | —       | Scaffold a SysML v2 + AssemblyScript or TypeScript capability kernel package.                                |
 | [`language`](./commands.md#language)       | `lang`  | List, dynamically register, or unregister custom language plugins in the workspace registry.                 |
 | [`lsp`](./commands.md#lsp)                 | —       | Launch the multi-language ModelScript Language Server Protocol (LSP) server over `stdio` or TCP/IPC sockets. |
-| [`ansatz`](./commands.md#ansatz)   | —       | Start a local interactive web ansatz server for testing grammars, CSTs, and DAE compilation.             |
+| [`ansatz`](./commands.md#ansatz)           | —       | Start a local interactive web ansatz server for testing grammars, CSTs, and DAE compilation.                 |
 | [`sandbox`](./commands.md#sandbox)         | —       | Execute untrusted scripts or models inside a resource-capped, capability-isolated WebAssembly sandbox.       |
 
 ### 6. Package Registry, ALM Sync, Cloud HPC & Hub Administration
@@ -9099,7 +9099,7 @@ ModelScript is not a single-language compiler—it is a **polyglot systems engin
 
 ## Language Maturity Tiers
 
-Every language package under `languages/<slug>/` declares an explicit maturity tier in `package.json#modelscript.tier`, continuously audited in CI by `scripts/lint/lint-package-manifests.ts` and `scripts/lint/audit-language-maturity.ts` (**32 visible Beta** / 33 total workspace Beta, **72 Alpha**, **1 Pre-Alpha**):
+Every language package under `languages/<slug>/` declares an explicit maturity tier in `package.json#modelscript.tier`, continuously audited in CI by `scripts/lint/lint-package-manifests.ts` and `scripts/lint/audit-language-maturity.ts` (**118 visible Beta** / 119 total workspace Beta, **47 Alpha**, **3 Pre-Alpha**):
 
 | Tier          |    Badge    | Criteria & Guarantees                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | :------------ | :---------: | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -9129,49 +9129,49 @@ ModelScript supports 169 modeling, simulation, and engineering formats across 5 
 | NIST OSCAL | `alpha` | `.oscal.json` | Cyber-physical security controls & SP 800-53 assessment | ✓ | ✓ | — | — | ✓ |
 | SSP | `beta` | `.ssp` | FMU system structure & parameterization | ✓ | ✓ | ✓ | — | ✓ |
 | OWL2 | `beta` | `.owl` | Ontologies & description-logic reasoning | ✓ | ✓ | — | — | ✓ |
-| SPARQL 1.1 | `beta` | `.rq, .sparql` | RDF knowledge-graph & digital-thread semantic queries | ✓ | — | — | — | — |
+| SPARQL 1.1 | `alpha` | `.rq, .sparql` | RDF knowledge-graph & digital-thread semantic queries | ✓ | — | — | — | — |
 | STEP (ISO 10303) | `beta` | `.step` | B-Rep CAD assemblies & AP242 PMI | ✓ | ✓ | — | — | ✓ |
-| QIF (ISO 23952) | `alpha` | `.qif` | ASME Y14.5 / ISO 1101 GD&T metrology & SPC capability | ✓ | ✓ | ✓ | — | ✓ |
+| QIF (ISO 23952) | `beta` | `.qif` | ASME Y14.5 / ISO 1101 GD&T metrology & SPC capability | ✓ | ✓ | ✓ | — | ✓ |
 | OpenSCAD | `beta` | `.scad` | Parametric constructive solid geometry | ✓ | ✓ | — | — | ✓ |
 | CFD (SU2 / OpenFOAM) | `alpha` | `.su2` | Computational fluid dynamics meshes | ✓ | ✓ | ✓ | ✓ | ✓ |
 | FEA (CalculiX / Abaqus / NASTRAN) | `alpha` | `.inp` | Finite-element structural analysis | ✓ | ✓ | ✓ | ✓ | ✓ |
 | OpenUSD | `alpha` | `.usd / .usda / .usdz` | Universal Scene Description 3D stages & UsdPhysics digital twins | ✓ | ✓ | ✓ | — | ✓ |
 | CSV | `beta` | `.csv` | Time-series & sensor logs | ✓ | ✓ | — | — | ✓ |
-| C | `alpha` | `.c` | Numerical & embedded C integration | ✓ | ✓ | ✓ | — | ✓ |
+| C | `beta` | `.c` | Numerical & embedded C integration | ✓ | ✓ | ✓ | — | ✓ |
 | Fortran | `alpha` | `.f90` | Legacy scientific subroutines | ✓ | ✓ | ✓ | — | — |
-| JSBSim | `alpha` | `.xml` | 6-DOF flight dynamics | ✓ | ✓ | ✓ | ✓ | ✓ |
+| JSBSim | `beta` | `.xml` | 6-DOF flight dynamics | ✓ | ✓ | ✓ | ✓ | ✓ |
 | NASA ROCETS | `beta` | `.roc` | Liquid rocket engine transients | ✓ | ✓ | ✓ | ✓ | ✓ |
 | CCSDS | `beta` | `.xtce` | Astrodynamics & spacecraft telemetry | ✓ | ✓ | ✓ | ✓ | ✓ |
 | EASY5 | `beta` | `.ez5` | Dynamic simulation & linear control | ✓ | ✓ | ✓ | — | ✓ |
 | 20-sim | `beta` | `.emx` | Multi-domain Bond Graphs & SIDOPS simulation | ✓ | ✓ | ✓ | ✓ | ✓ |
 | AUTOSAR | `alpha` | `.arxml` | Classic & Adaptive software architecture | ✓ | ✓ | ✓ | ✓ | ✓ |
 | MATLAB Simulink | `beta` | `.slx` | Block diagrams & control systems | ✓ | ✓ | ✓ | — | ✓ |
-| GT-SUITE | `alpha` | `.gtm` | Engine, powertrain & thermal flow | ✓ | ✓ | ✓ | ✓ | ✓ |
+| GT-SUITE | `beta` | `.gtm` | Engine, powertrain & thermal flow | ✓ | ✓ | ✓ | ✓ | ✓ |
 | ASAM OpenDRIVE | `beta` | `.xodr` | Road network geometry | ✓ | ✓ | ✓ | — | ✓ |
-| ASAM OpenSCENARIO | `alpha` | `.xosc` | Driving scenarios & RSS safety margins | ✓ | ✓ | ✓ | ✓ | ✓ |
+| ASAM OpenSCENARIO | `beta` | `.xosc` | Driving scenarios & RSS safety margins | ✓ | ✓ | ✓ | ✓ | ✓ |
 | GTFS | `alpha` | `.gtfs, .zip` | Transit schedules & fleet electrification power | ✓ | ✓ | ✓ | ✓ | ✓ |
 | GENSYS | `beta` | `.calc` | Railway vehicle dynamics & track | ✓ | ✓ | ✓ | ✓ | ✓ |
-| SIMPACK | `alpha` | `.spck` | Spatial multibody dynamics | ✓ | ✓ | ✓ | ✓ | ✓ |
+| SIMPACK | `beta` | `.spck` | Spatial multibody dynamics | ✓ | ✓ | ✓ | ✓ | ✓ |
 | PSCAD / EMTDC | `beta` | `.pscx` | Electromagnetic transients (EMT) | ✓ | ✓ | — | ✓ | ✓ |
 | PSS/E | `beta` | `.raw, .dyr` | Transmission power flow & transient stability | ✓ | ✓ | ✓ | ✓ | ✓ |
 | DIgSILENT PowerFactory | `beta` | `.dz, .pfd, .dsl` | Node-breaker power flow, IEC 60909 short-circuit & RMS/EMT | ✓ | ✓ | ✓ | ✓ | ✓ |
-| GE Vernova PSLF | `alpha` | `.epc, .dyd` | WECC bulk transmission power flow & dynamic models | ✓ | ✓ | ✓ | ✓ | ✓ |
-| CIM / CGMES | `alpha` | `.xml, .rdf` | ENTSO-E IEC 61970 transmission grid exchange & topology | ✓ | ✓ | — | ✓ | ✓ |
+| GE Vernova PSLF | `beta` | `.epc, .dyd` | WECC bulk transmission power flow & dynamic models | ✓ | ✓ | ✓ | ✓ | ✓ |
+| CIM / CGMES | `beta` | `.xml, .rdf` | ENTSO-E IEC 61970 transmission grid exchange & topology | ✓ | ✓ | — | ✓ | ✓ |
 | OpenDSS | `alpha` | `.dss` | Unbalanced distribution & DER hosting | ✓ | ✓ | ✓ | ✓ | ✓ |
 | OCPP | `alpha` | `.ocpp, .json` | EV smart charging & transformer load management | ✓ | ✓ | ✓ | ✓ | ✓ |
 | OpenADR | `alpha` | `.oadr, .xml, .json` | Automated demand response & peak shaving | ✓ | ✓ | ✓ | ✓ | ✓ |
-| LBNL TOUGH | `alpha` | `.tgh, .dat` | Geothermal reservoir & wellbore flashing thermodynamics | ✓ | ✓ | ✓ | ✓ | ✓ |
+| LBNL TOUGH | `beta` | `.tgh, .dat` | Geothermal reservoir & wellbore flashing thermodynamics | ✓ | ✓ | ✓ | ✓ | ✓ |
 | MATPOWER | `alpha` | `.m` | Power flow & optimal power flow (OPF) | ✓ | ✓ | ✓ | ✓ | ✓ |
-| IEEE COMTRADE | `alpha` | `.cfg, .dat, .cff` | Digital fault recorder & transient disturbance analysis | ✓ | ✓ | ✓ | — | — |
-| IEC 61850 SCL | `alpha` | `.scd, .cid, .ssd, .xml` | Substation automation, GOOSE & Sampled Values dataflow | ✓ | ✓ | ✓ | — | — |
-| ATP-EMTP | `alpha` | `.atp, .dat` | Electromagnetic transient program card decks | ✓ | ✓ | ✓ | ✓ | — |
+| IEEE COMTRADE | `beta` | `.cfg, .dat, .cff` | Digital fault recorder & transient disturbance analysis | ✓ | ✓ | ✓ | — | — |
+| IEC 61850 SCL | `beta` | `.scd, .cid, .ssd, .xml` | Substation automation, GOOSE & Sampled Values dataflow | ✓ | ✓ | ✓ | — | — |
+| ATP-EMTP | `beta` | `.atp, .dat` | Electromagnetic transient program card decks | ✓ | ✓ | ✓ | ✓ | — |
 | IEEE 1815 / DNP3 | `alpha` | `.xml, .json, .dnp3` | Utility digital twin & SCADA deadband telemetry | ✓ | ✓ | ✓ | — | — |
-| ASPEN OneLiner / CAPE | `alpha` | `.olx, .dxt` | Short-circuit fault currents & TOC protection coordination | ✓ | ✓ | ✓ | — | — |
-| SEL Relay Settings | `alpha` | `.rdb, .rcf, .sel, .txt` | Schweitzer relay settings, SELogic & 50/51/21 protection | ✓ | ✓ | ✓ | — | — |
-| IEEE C37.118 Synchrophasor | `alpha` | `.c37118, .pmu` | Synchrophasor PMU streaming telemetry & wide-area monitoring | ✓ | — | ✓ | — | — |
+| ASPEN OneLiner / CAPE | `beta` | `.olx, .dxt` | Short-circuit fault currents & TOC protection coordination | ✓ | ✓ | ✓ | — | — |
+| SEL Relay Settings | `beta` | `.rdb, .rcf, .sel, .txt` | Schweitzer relay settings, SELogic & 50/51/21 protection | ✓ | ✓ | ✓ | — | — |
+| IEEE C37.118 Synchrophasor | `pre-alpha` | `.c37118, .pmu` | Synchrophasor PMU streaming telemetry & wide-area monitoring | ✓ | — | ✓ | — | — |
 | Eaton CYME | `alpha` | `.sxst, .cyme` | Distribution network load flow, hosting capacity & protection | ✓ | — | ✓ | — | — |
 | GridLAB-D | `alpha` | `.glm` | Agent-based distribution grid & transactive energy simulation | ✓ | — | ✓ | — | — |
-| IEC 60870-5-104 | `alpha` | `.iec104, .104` | Substation telecontrol & SCADA protocol telemetry | ✓ | — | ✓ | — | — |
+| IEC 60870-5-104 | `pre-alpha` | `.iec104, .104` | Substation telecontrol & SCADA protocol telemetry | ✓ | — | ✓ | — | — |
 | PLS-CADD | `alpha` | `.pol, .loa, .plscadd` | Overhead transmission line sag-tension & structure clearances | ✓ | — | ✓ | — | — |
 | PowerWorld Simulator | `alpha` | `.aux, .cdf` | Transmission power flow, contingency screening & OPF | ✓ | — | ✓ | — | — |
 | PyPSA | `alpha` | `.pypsa, .pypsa.json` | Sector-coupled power & energy system capacity expansion | ✓ | — | ✓ | — | — |
@@ -9186,8 +9186,8 @@ ModelScript supports 169 modeling, simulation, and engineering formats across 5 
 | atopile | `beta` | `.ato` | Code-first electronic hardware & PCB design | ✓ | ✓ | ✓ | — | — |
 | KiCad ECAD | `beta` | `.kicad_pcb, .kicad_sch, .kicad_sym, .kicad_mod` | PCB layouts, schematics, footprints & DRC/DFM verification | ✓ | ✓ | ✓ | — | ✓ |
 | Verilog-A / AMS | `alpha` | `.va, .vams` | Analog compact device models | ✓ | ✓ | ✓ | — | ✓ |
-| IBIS | `alpha` | `.ibs` | I/O buffer behavioral models | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Touchstone | `alpha` | `.sNp` | RF & signal-integrity S-parameters | ✓ | ✓ | ✓ | ✓ | ✓ |
+| IBIS | `beta` | `.ibs` | I/O buffer behavioral models | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Touchstone | `beta` | `.sNp` | RF & signal-integrity S-parameters | ✓ | ✓ | ✓ | ✓ | ✓ |
 | OpenROADM & Telcordia .sor | `alpha` | `.sor` | OTDR trace analytics & DWDM transmission | ✓ | ✓ | ✓ | ✓ | ✓ |
 | NSMA WG16 & Planet Antenna | `alpha` | `.adf, .pat` | Antenna 3D patterns, RF MPE safety & microwave links | ✓ | ✓ | ✓ | ✓ | ✓ |
 | TIA-598-D Outside Plant | `beta` | `.geojson` | Fiber strand tracing, NESC pole loading & OTDR GIS fault location | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -9195,31 +9195,31 @@ ModelScript supports 169 modeling, simulation, and engineering formats across 5 
 | PLCopen / IEC 61131-3 | `alpha` | `.st` | PLC control software | ✓ | ✓ | ✓ | ✓ | ✓ |
 | AutomationML (IEC 62714) | `alpha` | `.aml` | CAEX mechatronic plant hierarchy & virtual commissioning | ✓ | ✓ | ✓ | — | ✓ |
 | MSC Adams | `beta` | `.adm` | Mechanical system dynamics | ✓ | ✓ | ✓ | ✓ | ✓ |
-| EnergyPlus | `alpha` | `.idf` | Building energy & HVAC | ✓ | ✓ | ✓ | ✓ | ✓ |
+| EnergyPlus | `beta` | `.idf` | Building energy & HVAC | ✓ | ✓ | ✓ | ✓ | ✓ |
 | EPANET | `beta` | `.inp` | Pressurized water distribution | ✓ | ✓ | ✓ | ✓ | ✓ |
 | EPA SWMM | `beta` | `.inp` | Stormwater & urban drainage | ✓ | ✓ | ✓ | ✓ | ✓ |
 | USACE HEC-RAS | `alpha` | `.g01, .g02, .rasgeo` | River basin & open-channel hydraulics | ✓ | ✓ | ✓ | ✓ | ✓ |
 | USGS MODFLOW | `alpha` | `.dis, .dis6, .npf, .wel` | Regional groundwater aquifers & 3D Darcy flow | ✓ | ✓ | ✓ | ✓ | ✓ |
 | EPA LandGEM | `alpha` | `.landgem, .lfg, .biogas` | Solid waste methane decay & landfill biogas CHP | ✓ | ✓ | ✓ | ✓ | ✓ |
-| USACE HEC-HMS | `alpha` | `.basin, .hms` | Precipitation runoff, SCS-CN excess & Muskingum routing | ✓ | ✓ | ✓ | — | — |
-| OGC WaterML 2.0 | `alpha` | `.waterml, .wml2, .xml` | Streamflow telemetry & stage-discharge rating curves | ✓ | ✓ | ✓ | — | — |
-| IWA Activated Sludge Models | `alpha` | `.asm, .bsm, .wrrf` | Biokinetics, Petersen matrix & Takács clarifier settling | ✓ | ✓ | ✓ | — | — |
+| USACE HEC-HMS | `beta` | `.basin, .hms` | Precipitation runoff, SCS-CN excess & Muskingum routing | ✓ | ✓ | ✓ | — | — |
+| OGC WaterML 2.0 | `beta` | `.waterml, .wml2, .xml` | Streamflow telemetry & stage-discharge rating curves | ✓ | ✓ | ✓ | — | — |
+| IWA Activated Sludge Models | `beta` | `.asm, .bsm, .wrrf` | Biokinetics, Petersen matrix & Takács clarifier settling | ✓ | ✓ | ✓ | — | — |
 | Aspen Plus / HYSYS | `alpha` | `.bkp` | Chemical process flowsheets | ✓ | ✓ | ✓ | ✓ | ✓ |
 | gPROMS / PML | `alpha` | `.gproms` | Equation-oriented dynamic process & distributed PDEs | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Cantera | `beta` | `.yaml` | Gas-phase chemical kinetics & NASA-7 thermochemistry | ✓ | ✓ | ✓ | ✓ | ✓ |
 | PHREEQC | `alpha` | `.pqi` | Aqueous geochemistry, speciation & mineral saturation | ✓ | ✓ | ✓ | ✓ | ✓ |
-| SMILES / SDF | `alpha` | `.smi` | Molecular graph parsing & Joback property estimation | ✓ | ✓ | ✓ | ✓ | ✓ |
+| SMILES / SDF | `beta` | `.smi` | Molecular graph parsing & Joback property estimation | ✓ | ✓ | ✓ | ✓ | ✓ |
 | SBML | `alpha` | `.sbml` | Biochemical reaction networks | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Antimony | `alpha` | `.ant` | Modular human-readable systems biology models | ✓ | ✓ | ✓ | ✓ | ✓ |
 | BioNetGen (BNGL) | `alpha` | `.bngl` | Rule-based multiprotein signaling & reaction expansion | ✓ | ✓ | ✓ | ✓ | ✓ |
 | SBOL3 | `alpha` | `.sbol` | Synthetic biology genetic circuits & Hill kinetics | ✓ | ✓ | ✓ | ✓ | ✓ |
 | SED-ML | `alpha` | `.sedml` | COMBINE reproducible simulation experiment protocols | ✓ | ✓ | ✓ | ✓ | ✓ |
-| NMTRAN (NONMEM) | `alpha` | `.ctl` | Clinical PK/PD compartmental dosing & exposure | ✓ | ✓ | ✓ | ✓ | ✓ |
-| MLXTRAN (Monolix) | `alpha` | `.mlxtran` | Monolix PK/PD longitudinal & compartmental models | ✓ | ✓ | ✓ | ✓ | ✓ |
+| NMTRAN (NONMEM) | `beta` | `.ctl` | Clinical PK/PD compartmental dosing & exposure | ✓ | ✓ | ✓ | ✓ | ✓ |
+| MLXTRAN (Monolix) | `beta` | `.mlxtran` | Monolix PK/PD longitudinal & compartmental models | ✓ | ✓ | ✓ | ✓ | ✓ |
 | PDB / mmCIF | `alpha` | `.pdb` | 3D protein structures, Ramachandran & GNM dynamics | ✓ | ✓ | ✓ | ✓ | ✓ |
 | GenBank / FASTA | `alpha` | `.gb` | Annotated nucleotide sequences, ORFs & restriction maps | ✓ | ✓ | ✓ | ✓ | ✓ |
 | CellML | `alpha` | `.cellml` | Cellular electrophysiology & Physiome ODE models | ✓ | ✓ | ✓ | ✓ | ✓ |
-| NMODL (NEURON) | `alpha` | `.mod` | NEURON ion-channel & Hodgkin-Huxley membrane kinetics | ✓ | ✓ | ✓ | ✓ | ✓ |
+| NMODL (NEURON) | `beta` | `.mod` | NEURON ion-channel & Hodgkin-Huxley membrane kinetics | ✓ | ✓ | ✓ | ✓ | ✓ |
 | OpenSim | `alpha` | `.osim` | Musculoskeletal multibody & Hill-type muscle dynamics | ✓ | ✓ | ✓ | ✓ | ✓ |
 | FEBio / SOFA | `alpha` | `.feb` | Hyperelastic soft-tissue biomechanics & surgical scenes | ✓ | ✓ | ✓ | ✓ | ✓ |
 | DICOM-RT | `alpha` | `.rtplan` | Clinical radiotherapy plans, DVH metrics & BED/EQD2 | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -13825,12 +13825,12 @@ When opening any `*.psout` file in Studio or VS Code, the custom editor provides
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 50% (1/2) | Parse Latency: 0.09 ms (p95: 0.12 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.23 ms (p95: 0.32 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
 | Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
-| 230 kV 3-Phase Transmission Line Dommel EMT (50 us, CDA) | standard | PSCAD/EMTDC Dommel Companion-Circuit | `max-relative-error <= 0.001` | `0` | FAIL |
+| 230 kV 3-Phase Transmission Line Dommel EMT (50 us, CDA) | standard | PSCAD/EMTDC Dommel Companion-Circuit | `max-relative-error <= 0.001` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=pscad`
 
@@ -14052,10 +14052,10 @@ $$\begin{bmatrix} \Delta P \\ \Delta Q \end{bmatrix} = \begin{bmatrix} H & N \\ 
 | $\Delta P_i, \Delta Q_i, \Delta P, \Delta Q$    | Active and reactive power mismatch scalars and vectors                                                                                                              | $\text{p.u.}$     |
 | $H, N, M, L$                                    | Jacobian block submatrices ($\frac{\partial P}{\partial\theta}, V\frac{\partial P}{\partial V}, \frac{\partial Q}{\partial\theta}, V\frac{\partial Q}{\partial V}$) | $\text{p.u.}$     |
 
-- **$H_{ik} = \frac{\partial P_i}{\partial \theta_k} = V_i V_k (G_{ik} \sin\theta_{ik} - B_{ik} \cos\theta_{ik})$** ($k \ne i$), and $H_{ii} = -Q_i - B_{ii} V_i^2$.
-- **$N_{ik} = V_k \frac{\partial P_i}{\partial V_k} = V_i V_k (G_{ik} \cos\theta_{ik} + B_{ik} \sin\theta_{ik})$** ($k \ne i$), and $N_{ii} = P_i + G_{ii} V_i^2$.
-- **$M_{ik} = \frac{\partial Q_i}{\partial \theta_k} = -V_i V_k (G_{ik} \cos\theta_{ik} + B_{ik} \sin\theta_{ik})$** ($k \ne i$), and $M_{ii} = P_i - G_{ii} V_i^2$.
-- **$L_{ik} = V_k \frac{\partial Q_i}{\partial V_k} = V_i V_k (G_{ik} \sin\theta_{ik} - B_{ik} \cos\theta_{ik})$** ($k \ne i$), and $L_{ii} = Q_i - B_{ii} V_i^2$.
+- **$H\_{ik} = \frac{\partial P_i}{\partial \theta_k} = V_i V_k (G\_{ik} \sin\theta\_{ik} - B\_{ik} \cos\theta\_{ik})$** ($k \ne i$), and $H_{ii} = -Q_i - B_{ii} V_i^2$.
+- **$N\_{ik} = V_k \frac{\partial P_i}{\partial V_k} = V_i V_k (G\_{ik} \cos\theta\_{ik} + B\_{ik} \sin\theta\_{ik})$** ($k \ne i$), and $N_{ii} = P_i + G_{ii} V_i^2$.
+- **$M\_{ik} = \frac{\partial Q_i}{\partial \theta_k} = -V_i V_k (G\_{ik} \cos\theta\_{ik} + B\_{ik} \sin\theta\_{ik})$** ($k \ne i$), and $M_{ii} = P_i - G_{ii} V_i^2$.
+- **$L\_{ik} = V_k \frac{\partial Q_i}{\partial V_k} = V_i V_k (G\_{ik} \sin\theta\_{ik} - B\_{ik} \cos\theta\_{ik})$** ($k \ne i$), and $L_{ii} = Q_i - B_{ii} V_i^2$.
 
 ### Generator $Q$-Limit Clamping & PV-to-PQ Switching
 
@@ -32282,7 +32282,7 @@ This policy applies to all trademarks, service marks, and trade names owned by M
 ### Word Marks
 
 - **ModelScript™**
-- **Ansatz™** / **Ansatz Network™**
+- **Ansatz™** / **Ansatz Editor™** / **Ansatz Network™** / **Ansatz Studio™**
 - **msx™** (the ModelScript CLI)
 
 ### Domain Names

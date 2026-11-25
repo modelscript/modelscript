@@ -26,7 +26,7 @@ const { passedCases, totalCases, overallPassRate } = benchmarksData.aggregate;
           <strong>{{ LANGUAGE_COUNT }} polyglot formats</strong>
           <span class="whats-new-sep" aria-hidden="true">·</span>
           <span>
-            <strong>{{ overallPassRate }}%</strong> benchmark parity ({{ passedCases }}/{{ totalCases }} cases)
+            <strong>{{ overallPassRate }}%</strong> benchmark pass rate ({{ passedCases }}/{{ totalCases }} cases)
           </span>
           <span class="whats-new-sep" aria-hidden="true">·</span>
           <span>Ansatz Studio, VR 3D panels &amp; FMI 3.0 co-simulation</span>
