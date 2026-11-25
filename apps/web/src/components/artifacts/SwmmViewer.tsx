@@ -113,7 +113,7 @@ const StatusPill = styled.span<{ $danger?: boolean }>`
   border-radius: 999px;
   text-transform: uppercase;
   background: ${(p) => (p.$danger ? "rgba(218, 54, 51, 0.2)" : "rgba(35, 134, 54, 0.2)")};
-  color: ${(p) => (p.$danger ? "#f85149" : "#3fb950")};
+  color: ${(p) => (p.$danger ? "var(--ms-danger, #f85149)" : "var(--ms-success, #3fb950)")};
   border: 1px solid ${(p) => (p.$danger ? "rgba(218, 54, 51, 0.4)" : "rgba(35, 134, 54, 0.4)")};
 `;
 
@@ -419,7 +419,7 @@ export const SwmmViewer: React.FC<SwmmViewerProps> = ({ viewConfig, isFullScreen
             <CodeIcon />
           </Button>
           <Button size="small" variant="invisible" onClick={handleCopy} title="Copy SWMM Deck">
-            {copied ? <CheckIcon fill="#3fb950" /> : <CopyIcon />}
+            {copied ? <CheckIcon fill="var(--ms-success, #3fb950)" /> : <CopyIcon />}
           </Button>
           <Button size="small" variant="invisible" onClick={handleDownload} title="Export .inp">
             <DownloadIcon />

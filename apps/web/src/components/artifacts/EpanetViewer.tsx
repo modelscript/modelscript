@@ -303,7 +303,7 @@ export const EpanetViewer: React.FC<EpanetViewerProps> = ({ viewConfig, isFullSc
         totalDemandLps: 0,
       };
     }
-  }, [viewConfig.code]);
+  }, [localCode, viewConfig.code]);
 
   // Generate SVG markup
   const svgMarkup = useMemo(() => {

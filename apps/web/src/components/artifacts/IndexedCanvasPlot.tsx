@@ -105,7 +105,7 @@ export const IndexedCanvasPlot: React.FC<IndexedCanvasPlotProps> = ({
     if (viewport) ctrlRef.current.setViewport(viewport);
     if (cursors) ctrlRef.current.setCursors(cursors);
     redraw();
-  }, [dataset, redraw]);
+  }, [dataset, viewport, cursors, redraw]);
 
   useEffect(() => {
     if (viewport !== undefined) {
@@ -257,9 +257,9 @@ export const IndexedCanvasPlot: React.FC<IndexedCanvasPlotProps> = ({
             fontWeight: 600,
             padding: "2px 7px",
             borderRadius: 4,
-            border: `1px solid ${isDark ? "#30363d" : "#d0d7de"}`,
+            border: `1px solid ${isDark ? "var(--ms-border, #30363d)" : "#d0d7de"}`,
             background: isDark ? "rgba(22,27,34,0.85)" : "rgba(255,255,255,0.9)",
-            color: isDark ? "#e6edf3" : "#1f2328",
+            color: isDark ? "var(--ms-text-1, #e6edf3)" : "#1f2328",
             cursor: "pointer",
           }}
         >

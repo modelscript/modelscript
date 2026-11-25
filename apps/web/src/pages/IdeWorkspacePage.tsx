@@ -452,7 +452,7 @@ export const IdeWorkspacePage: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [effectiveArtifactId, fromArtifactParam, langParam, sourceParam, titleParam]);
+  }, [effectiveArtifactId, fromArtifactParam, langParam, sourceParam, titleParam, searchParams]);
 
   useEffect(() => {
     if (!hasRepos) {
@@ -705,7 +705,16 @@ export const IdeWorkspacePage: React.FC = () => {
 
       openCompose(composeInit);
     },
-    [artifactMetadata, displayTitle, editPostId, langParam, openCompose, replyToPostId, resolveForkedFromId],
+    [
+      artifactMetadata,
+      displayTitle,
+      editPostContent,
+      editPostId,
+      langParam,
+      openCompose,
+      replyToPostId,
+      resolveForkedFromId,
+    ],
   );
 
   // Listen to messages from standalone VS Code window via BroadcastChannel

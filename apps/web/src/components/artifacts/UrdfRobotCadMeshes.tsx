@@ -4,26 +4,7 @@ import type { DigitalTwinEnvironmentAsset, UrdfVisualPose3D } from "@modelscript
 import React, { useMemo } from "react";
 import * as THREE from "three";
 
-/**
- * Converts a URDF right-handed Z-up world position [x, y, z] and 3x3 rotation matrix
- * into Three.js right-handed Y-up coordinates:
- *   p_three = [x, z, -y]
- *   R_three = T * R_urdf * T^T, where T = [[1,0,0],[0,0,1],[0,-1,0]]
- */
-export function urdfPoseToThree(
-  pos: [number, number, number],
-  rot?: [number, number, number, number, number, number, number, number, number],
-): { position: [number, number, number]; quaternion: THREE.Quaternion } {
-  const position: [number, number, number] = [pos[0], pos[2], -pos[1]];
-  const quaternion = new THREE.Quaternion();
-  if (rot && rot.length === 9) {
-    const [r0, r1, r2, r3, r4, r5, r6, r7, r8] = rot;
-    const m4 = new THREE.Matrix4();
-    m4.set(r0, r2, -r1, 0, r6, r8, -r7, 0, -r3, -r5, r4, 0, 0, 0, 0, 1);
-    quaternion.setFromRotationMatrix(m4);
-  }
-  return { position, quaternion };
-}
+import { urdfPoseToThree } from "./urdf-pose";
 
 const UR_BLUE = "#3b97d3";
 const UR_SILVER = "#e2e8f0";

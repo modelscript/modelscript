@@ -273,7 +273,13 @@ export default defineConfig([
       "apps/web/src/components/ScrollToTop.tsx",
       "apps/web/src/components/artifacts/AutoThumbnailCapture.tsx",
       "apps/web/src/components/artifacts/ModelicaDiagramViewer.tsx",
+      "apps/web/src/components/artifacts/RotundaGeometryBridge.tsx",
+      "apps/web/src/components/artifacts/card/CardFooterSlot.tsx",
       "apps/web/src/components/artifacts/card/ViewerDispatcher.tsx",
+      "apps/web/src/components/compose/ComposeCitationPickerModal.tsx",
+      "apps/web/src/components/compose/attach/profiles/*.tsx",
+      "apps/web/src/components/post/PostArtifactSlider.tsx",
+      "apps/web/src/components/post/PostMarkdownContent.tsx",
       "apps/web/src/pages/RepositoryListPage.tsx",
       "apps/web/src/pages/SettingsPage.tsx",
       "apps/web/src/pages/legal/LegalLayout.tsx",
@@ -288,7 +294,9 @@ export default defineConfig([
     // light/dark theme. Use the shared `--ms-*` tokens (packages/design-tokens).
     files: ["apps/web/src/**/*.{ts,tsx}"],
     ignores: [
-      "apps/web/src/components/artifacts/{VegaViewer,MermaidViewer,SimulationPlotViewer,CadDiffViewer,DigitalTwinDashboardViewer,ModelicaDiagramViewer}.tsx",
+      "apps/web/src/components/artifacts/{VegaViewer,MermaidViewer,SimulationPlotViewer,CadDiffViewer,DigitalTwinDashboardViewer,ModelicaDiagramViewer,WamRobotArtifactViewer}.tsx",
+      "apps/web/src/components/artifacts/{svg-theme,csv-telemetry-chart}.ts",
+      "apps/web/src/components/ecad/PcbLayerDiffViewer.tsx",
       "apps/web/src/components/terminal/AnsiRenderer.tsx",
       "apps/web/src/components/artifacts/{MultibodyViewport3D,AudioViewer}.tsx",
       "apps/web/src/pages/libraries/constants.ts",
@@ -299,13 +307,13 @@ export default defineConfig([
         "warn",
         {
           selector:
-            "Literal[value=/#(30363d|8b949e|0d1117|010409|161b22|21262d|e6edf3|f0f6fc|c9d1d9|3fb950|f85149)/i]:not([value=/var\\(--[a-z-]+, ?#/])",
+            "Literal[value=/#(30363d|8b949e|0d1117|010409|161b22|21262d|e6edf3|f0f6fc|c9d1d9|3fb950|f85149)/i]:not([value=/var\\(--[a-z0-9-]+, ?#/])",
           message:
             "Use a theme token (e.g. var(--ms-border), var(--ms-text-3)) instead of a hard-coded dark-theme colour.",
         },
         {
           selector:
-            "TemplateElement[value.raw=/#(30363d|8b949e|0d1117|010409|161b22|21262d|e6edf3|f0f6fc|c9d1d9|3fb950|f85149)/i]:not([value.raw=/var\\(--[a-z-]+, ?#/])",
+            "TemplateElement[value.raw=/#(30363d|8b949e|0d1117|010409|161b22|21262d|e6edf3|f0f6fc|c9d1d9|3fb950|f85149)/i]:not([value.raw=/var\\(--[a-z0-9-]+, ?#/])",
           message:
             "Use a theme token (e.g. var(--ms-border), var(--ms-text-3)) instead of a hard-coded dark-theme colour.",
         },

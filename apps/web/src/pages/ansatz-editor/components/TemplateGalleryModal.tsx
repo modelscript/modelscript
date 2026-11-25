@@ -1255,7 +1255,7 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                       style={{
                         border: `1px solid ${active ? dom.accent : palette.border}`,
                         backgroundColor: active ? `${dom.accent}1f` : "transparent",
-                        color: active ? (isDark ? "#f0f6fc" : dom.accent) : palette.muted,
+                        color: active ? (isDark ? "var(--ms-text-heading, #f0f6fc)" : dom.accent) : palette.muted,
                         borderRadius: 999,
                         padding: "4px 10px",
                         fontSize: 11.5,

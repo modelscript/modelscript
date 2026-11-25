@@ -17,7 +17,8 @@ import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { resolveCssColor, useThemeTokens } from "../../theme-tokens";
 import { registerArtifactRotundaGeometry } from "./RotundaGeometryBridge";
 import SafeOrbitControls from "./SafeOrbitControls";
-import { DigitalTwinEnvironmentMesh, UrdfVisualMesh, urdfPoseToThree } from "./UrdfRobotCadMeshes";
+import { urdfPoseToThree } from "./urdf-pose";
+import { DigitalTwinEnvironmentMesh, UrdfVisualMesh } from "./UrdfRobotCadMeshes";
 import { XrSceneBridge, XrViewportOverlay } from "./XrViewportOverlay";
 
 export interface MultibodyNode3D {

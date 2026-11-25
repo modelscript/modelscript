@@ -335,7 +335,7 @@ export const PullRequestsTab: React.FC<PullRequestsTabProps> = ({ projectId, pro
     return () => {
       isCancelled = true;
     };
-  }, [selectedMr?.iid, prDiffViewMode, diffFiles, projectId, blobCache]);
+  }, [selectedMr, prDiffViewMode, diffFiles, projectId, blobCache]);
 
   return (
     <Box>

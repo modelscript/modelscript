@@ -634,7 +634,13 @@ export default defineConfig({
   build: {
     target: ["es2022", "safari15"],
     minify: "esbuild",
+    reportCompressedSize: false,
+    chunkSizeWarningLimit: 15000,
     rollupOptions: {
+      onwarn(warning, warn) {
+        if (warning.code === "INEFFECTIVE_DYNAMIC_IMPORT") return;
+        warn(warning);
+      },
       output: {
         manualChunks(id) {
           if (id.includes("packages/cad") || id.includes("@modelscript/cad") || id.includes("occt-import-js")) {

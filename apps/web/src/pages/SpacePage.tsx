@@ -280,7 +280,7 @@ export const SpacePage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [namespace, spaceSlug]);
+  }, [namespace, spaceSlug, searchParams]);
 
   useEffect(() => {
     void loadSpace();
@@ -296,21 +296,24 @@ export const SpacePage: React.FC = () => {
     }
   }, [user]);
 
+  const detailSpaceId = detail?.space.id;
+  const detailOwnerNamespace = detail?.space.owner_namespace;
+  const detailSpaceSlug = detail?.space.slug;
+  const activeChannelId = detail?.channels.find((c) => c.slug === activeChannelSlug)?.id;
+
   // Load messages when active channel changes
   useEffect(() => {
-    if (!detail || !activeChannelSlug) return;
-    void getSpaceChannelMessages(detail.space.owner_namespace, detail.space.slug, activeChannelSlug)
+    if (!detailOwnerNamespace || !detailSpaceSlug || !activeChannelSlug) return;
+    void getSpaceChannelMessages(detailOwnerNamespace, detailSpaceSlug, activeChannelSlug)
       .then((res) => {
         setMessages(res.messages);
       })
       .catch(() => {});
-  }, [detail?.space.id, activeChannelSlug]);
+  }, [detailOwnerNamespace, detailSpaceSlug, activeChannelSlug]);
 
   // Real-time WebSocket subscription for instant Slack-speed chat
   useEffect(() => {
-    if (!detail || typeof window === "undefined" || typeof WebSocket === "undefined") return;
-    const activeChannel = detail.channels.find((c) => c.slug === activeChannelSlug);
-    if (!activeChannel) return;
+    if (!detailSpaceId || !activeChannelId || typeof window === "undefined" || typeof WebSocket === "undefined") return;
 
     try {
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -322,7 +325,7 @@ export const SpacePage: React.FC = () => {
         ws.send(
           JSON.stringify({
             type: "chat:subscribe",
-            channelIds: [activeChannel.id, detail.space.id],
+            channelIds: [activeChannelId, detailSpaceId],
           }),
         );
       };
@@ -330,14 +333,14 @@ export const SpacePage: React.FC = () => {
       ws.onmessage = (ev) => {
         try {
           const data = JSON.parse(String(ev.data));
-          if (data.type === "chat:message" && data.channelId === activeChannel.id && data.message) {
+          if (data.type === "chat:message" && data.channelId === activeChannelId && data.message) {
             setMessages((prev) => {
               if (prev.some((m) => m.id === data.message.id)) return prev;
               return [...prev, data.message as SpaceMessageRecord];
             });
           } else if (
             (data.type === "chat:reaction" || data.type === "chat:promoted") &&
-            data.channelId === activeChannel.id &&
+            data.channelId === activeChannelId &&
             data.message
           ) {
             setMessages((prev) =>
@@ -355,7 +358,7 @@ export const SpacePage: React.FC = () => {
     } catch {
       return undefined;
     }
-  }, [detail?.space.id, activeChannelSlug]);
+  }, [detailSpaceId, activeChannelId]);
 
   const handleFollowToggle = async () => {
     if (!detail || !user) {

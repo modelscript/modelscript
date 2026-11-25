@@ -299,7 +299,7 @@ export function useClassSimulation({ libraryName, version, className, cls, activ
         setIsSimulating(false);
       }
     },
-    [isSimulating, documentUri, sourceCode, className, parameterOverrides, experimentConfig],
+    [isSimulating, documentUri, sourceCode, className, libraryName, version, parameterOverrides, experimentConfig],
   );
 
   // Auto-run once when tab becomes active

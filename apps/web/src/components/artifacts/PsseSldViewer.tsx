@@ -845,7 +845,7 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
         }
         if (highlightedBuses.length > 0) {
           const sel = highlightedBuses.map((b) => `g[data-bus="${b}"] rect, g[data-bus="${b}"] circle`).join(",");
-          const hlStyle = `<style>${sel}{stroke:#f85149 !important;stroke-width:3px !important;filter:drop-shadow(0 0 8px #f85149);}</style>`;
+          const hlStyle = `<style>${sel}{stroke:var(--ms-danger, #f85149) !important;stroke-width:3px !important;filter:drop-shadow(0 0 8px var(--ms-danger, #f85149));}</style>`;
           svgOut = svgOut.replace("</svg>", `${hlStyle}</svg>`);
         }
         return sanitizeSvgMarkup(svgOut, { isFullScreen, isDark });
@@ -1110,7 +1110,13 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
               {viewConfig.transientSummary?.stable !== undefined && (
                 <span>
                   Status:{" "}
-                  <strong style={{ color: viewConfig.transientSummary.stable ? "#3fb950" : "#f85149" }}>
+                  <strong
+                    style={{
+                      color: viewConfig.transientSummary.stable
+                        ? "var(--ms-success, #3fb950)"
+                        : "var(--ms-danger, #f85149)",
+                    }}
+                  >
                     {viewConfig.transientSummary.stable ? "STABLE" : "UNSTABLE"}
                   </strong>
                 </span>

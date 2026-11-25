@@ -74,9 +74,9 @@ const MetricCard = styled.div<{ $highlight?: "positive" | "negative" | "warning"
     font-weight: 700;
     color: ${({ $highlight }) =>
       $highlight === "negative"
-        ? "#f85149"
+        ? "var(--ms-danger, #f85149)"
         : $highlight === "positive"
-          ? "#3fb950"
+          ? "var(--ms-success, #3fb950)"
           : $highlight === "warning"
             ? "#d29922"
             : "var(--color-fg-default, #f0f6fc)"};
@@ -134,13 +134,13 @@ const RedlineTable = styled.table`
 
 const DiffText = styled.div`
   .old {
-    color: #f85149;
+    color: var(--ms-danger, #f85149);
     text-decoration: line-through;
     font-size: 11px;
     display: block;
   }
   .new {
-    color: #3fb950;
+    color: var(--ms-success, #3fb950);
     font-weight: 600;
     display: block;
   }

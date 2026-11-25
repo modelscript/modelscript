@@ -274,6 +274,7 @@ export default defineConfig({
     build: {
       target: ["es2020", "safari15"],
       reportCompressedSize: false,
+      chunkSizeWarningLimit: 5000,
     },
     esbuild: {
       target: ["es2020", "safari15"],

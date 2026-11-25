@@ -185,7 +185,7 @@ export const DigitalTwinDashboardViewer: React.FC<DigitalTwinDashboardViewerProp
     void loadTwinDetails();
   }, [explicitTwinId]);
 
-  const deltas = viewConfig.parameterDeltas ?? {};
+  const deltas = useMemo(() => viewConfig.parameterDeltas ?? {}, [viewConfig.parameterDeltas]);
   const healthScore = viewConfig.healthScore ?? twinData?.activeSession?.healthScore ?? 85.0;
   const rulHours = viewConfig.rulHours;
 

@@ -247,6 +247,8 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
     fetchClassDetail();
   }, [fetchClassDetail]);
 
+  const hasCls = Boolean(cls);
+
   useEffect(() => {
     if (!name || !version || jobStatusState === "completed" || jobStatusState === "failed") return;
 
@@ -262,7 +264,7 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
       } catch (err: unknown) {
         const errorObj = err as { response?: { status?: number | undefined } | undefined };
         if (errorObj?.response?.status === 404) {
-          setJobStatusState((prev) => (cls ? "completed" : prev === "processing" ? "failed" : null));
+          setJobStatusState((prev) => (hasCls ? "completed" : prev === "processing" ? "failed" : null));
         } else {
           console.error("Failed to check job status", err);
         }
@@ -272,7 +274,7 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
     checkStatus();
     const interval = setInterval(checkStatus, 3000);
     return () => clearInterval(interval);
-  }, [name, version, jobStatusState, fetchClassDetail]);
+  }, [name, version, jobStatusState, fetchClassDetail, hasCls]);
 
   const renderTypeCell = useCallback(
     (typeName: string) => {

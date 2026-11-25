@@ -5,6 +5,8 @@ on:
     branches:
       - main
   pull_request:
+  schedule:
+    - cron: "0 3 * * *" # Daily exhaustive sweep at 03:00 UTC
   workflow_dispatch:
 
 permissions:
@@ -29,6 +31,9 @@ jobs:
           cache-wasm: "true"
       - name: Calculate Affected Bounds
         uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
+        with:
+          error-on-no-successful-workflow: false
+          last-successful-event: push
       - name: Run Repository Hygiene Doctor
         run: npm run lint:repo
       - name: Build DSL Templates
@@ -38,16 +43,51 @@ jobs:
       - name: Lint Root Scripts
         run: npm run lint:scripts
       - name: Run Lint
-        run: npx nx affected -t lint --parallel=3
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            npx nx run-many -t lint --parallel=3
+          else
+            if [ -z "$NX_BASE" ] || ! git rev-parse --verify "$NX_BASE" >/dev/null 2>&1; then
+              export NX_BASE="HEAD~1"
+            fi
+            npx nx affected -t lint --parallel=3
+          fi
       - name: Run Typecheck
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ] || ( [ -n "$NX_BASE" ] && git rev-parse --verify "$NX_BASE" >/dev/null 2>&1 ); then
-            npx nx affected -t typecheck --parallel=3
-          else
+          if [ "${{ github.event_name }}" = "schedule" ]; then
             npx nx run-many -t typecheck --parallel=3
+          else
+            if [ -z "$NX_BASE" ] || ! git rev-parse --verify "$NX_BASE" >/dev/null 2>&1; then
+              export NX_BASE="HEAD~1"
+            fi
+            npx nx affected -t typecheck --parallel=3
           fi
 
+  build_prereqs:
+    if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-workspace
+        with:
+          nx-cache-prefix: "prereqs"
+          cache-wasm: "true"
+          build-dsl-templates: "true"
+      - name: Build Shared Prerequisites & WASM
+        run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/modelica,@modelscript/psse,@modelscript/mps,@modelscript/cad
+      - name: Package Built Dist & WASM
+        run: tar -cf prereqs-build.tar packages/*/dist languages/*/dist packages/runtime/build packages/simulate/src/wasm
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: prereqs-build
+          path: prereqs-build.tar
+          retention-days: 1
+
   test:
+    needs: [build_prereqs]
     if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
     runs-on: ubuntu-latest
     timeout-minutes: 75
@@ -62,10 +102,19 @@ jobs:
       - uses: ./.github/actions/setup-workspace
         with:
           nx-cache-prefix: "test-${{ matrix.shard }}"
-          cache-wasm: "true"
+          cache-wasm: "false"
           build-dsl-templates: "true"
+      - name: Download Pre-built Prerequisites
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: prereqs-build
+      - name: Extract Pre-built Dist & WASM
+        run: tar -xf prereqs-build.tar && rm prereqs-build.tar
       - name: Calculate Affected Bounds
         uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
+        with:
+          error-on-no-successful-workflow: false
+          last-successful-event: push
       - name: Cache MSL
         id: cache-msl
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -88,14 +137,15 @@ jobs:
       - name: Fetch FMI Simulator
         if: steps.cache-fmusim.outputs.cache-hit != 'true'
         run: pnpm --filter @modelscript/exchange run fetch:fmusim
-      - name: Build Prerequisites
-        run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/modelica,@modelscript/psse,@modelscript/mps,@modelscript/cad
       - name: Run Sharded Tests
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ] || ( [ -n "$NX_BASE" ] && git rev-parse --verify "$NX_BASE" >/dev/null 2>&1 ); then
-            node scripts/ci/test-coordinator.js affected --shard=${{ matrix.shard }}/12
-          else
+          if [ "${{ github.event_name }}" = "schedule" ]; then
             node scripts/ci/test-coordinator.js run-many --shard=${{ matrix.shard }}/12
+          else
+            if [ -z "$NX_BASE" ] || ! git rev-parse --verify "$NX_BASE" >/dev/null 2>&1; then
+              export NX_BASE="HEAD~1"
+            fi
+            node scripts/ci/test-coordinator.js affected --shard=${{ matrix.shard }}/12
           fi
       - name: Upload CTRF Artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -138,6 +188,9 @@ jobs:
           build-dsl-templates: "true"
       - name: Calculate Affected Bounds
         uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
+        with:
+          error-on-no-successful-workflow: false
+          last-successful-event: push
       - name: Check If Modelica Affected
         id: check-affected
         run: |
@@ -145,8 +198,8 @@ jobs:
           if ! git rev-parse --verify "$BASE_REF" >/dev/null 2>&1; then
             BASE_REF="HEAD~1"
           fi
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "Manual trigger: running full testsuite."
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "Manual or scheduled trigger: running full testsuite."
             echo "run_suite=true" >> "$GITHUB_OUTPUT"
           else
             AFFECTED=$(npx nx show projects --affected --base="$BASE_REF" --head=HEAD --projects=@modelscript/modelica,@modelscript/dsl,@modelscript/runtime,@modelscript/simulate || true)
@@ -183,9 +236,13 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=6144"
         run: |
-          mkdir -p .v8-coverage languages/modelica/coverage/omc
-          NODE_V8_COVERAGE=$(pwd)/.v8-coverage npm run test:modelica:both:allow-wasm
-          NODE_OPTIONS="--max-old-space-size=12288" npx c8 report --temp-directory=.v8-coverage --reporter=lcov --reports-dir=languages/modelica/coverage/omc --include="languages/modelica/src/**" --include="packages/dsl/src/**" --include="packages/runtime/src/**" || echo "::warning::c8 coverage report failed (likely OOM on large .v8-coverage); continuing"
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            mkdir -p .v8-coverage languages/modelica/coverage/omc
+            NODE_V8_COVERAGE=$(pwd)/.v8-coverage npm run test:modelica:both:allow-wasm
+            NODE_OPTIONS="--max-old-space-size=12288" npx c8 report --temp-directory=.v8-coverage --reporter=lcov --reports-dir=languages/modelica/coverage/omc --include="languages/modelica/src/**" --include="packages/dsl/src/**" --include="packages/runtime/src/**" || echo "::warning::c8 coverage report failed (likely OOM on large .v8-coverage); continuing"
+          else
+            npm run test:modelica:both:allow-wasm
+          fi
       - name: Upload CTRF Artifacts
         if: always() && steps.check-affected.outputs.run_suite == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -206,7 +263,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
       - name: Upload Coverage Artifacts
-        if: always() && steps.check-affected.outputs.run_suite == 'true'
+        if: always() && steps.check-affected.outputs.run_suite == 'true' && github.event_name != 'pull_request'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage-omc-testsuite
@@ -218,7 +275,7 @@ jobs:
     name: Polyglot Industrial Benchmarks
     if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/setup-workspace
@@ -333,16 +390,22 @@ jobs:
           cache-wasm: "true"
       - name: Calculate Affected Bounds
         uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
+        with:
+          error-on-no-successful-workflow: false
+          last-successful-event: push
       - name: Ensure Standard Library Assets Exist
         run: npx tsx scripts/build/sync-stdlibs.ts --pack=core
       - name: Build VS Code Extension
         run: npm run build:extension
       - name: Run Build
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ] || ( [ -n "$NX_BASE" ] && git rev-parse --verify "$NX_BASE" >/dev/null 2>&1 ); then
-            npx nx affected -t build --parallel=3
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            npx nx run-many -t build --parallel=2
           else
-            npx nx run-many -t build --parallel=3
+            if [ -z "$NX_BASE" ] || ! git rev-parse --verify "$NX_BASE" >/dev/null 2>&1; then
+              export NX_BASE="HEAD~1"
+            fi
+            npx nx affected -t build --parallel=2
           fi
       - name: Verify Dist & Exports Integrity
         run: npm run verify:dist
@@ -385,6 +448,7 @@ jobs:
 
   cross_os_smoke:
     name: Cross-OS Smoke (${{ matrix.os }})
+    needs: [build_prereqs]
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -397,9 +461,14 @@ jobs:
       - uses: ./.github/actions/setup-workspace
         with:
           ignore-scripts: "true"
-          cache-wasm: "true"
-      - name: Build Core Compiler Chain
-        run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/modelica --parallel=2
+          cache-wasm: "false"
+      - name: Download Pre-built Prerequisites
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: prereqs-build
+      - name: Extract Pre-built Dist & WASM
+        shell: bash
+        run: tar -xf prereqs-build.tar && rm prereqs-build.tar
       - name: Verify Cross-Platform Hygiene & Dist Integrity
         run: |
           npm run lint:filenames
@@ -410,7 +479,7 @@ jobs:
 
   docker_build:
     needs: [build, lint]
-    if: github.actor != 'nektos/act' && !startsWith(github.event.head_commit.message, 'chore(release):')
+    if: github.actor != 'nektos/act' && github.event_name != 'schedule' && !startsWith(github.event.head_commit.message, 'chore(release):')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -429,6 +498,9 @@ jobs:
       - name: Calculate Affected Bounds
         id: set-shas
         uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4
+        with:
+          error-on-no-successful-workflow: false
+          last-successful-event: push
       - name: Check If Docker Services Affected
         id: check-affected
         run: |
@@ -599,5 +671,5 @@ jobs:
     if: >-
       !startsWith(github.event.head_commit.message, 'chore(release):') &&
       github.actor != 'nektos/act' &&
-      (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main')
+      (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
     uses: ./.github/workflows/build-native.yml

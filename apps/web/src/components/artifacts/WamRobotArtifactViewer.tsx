@@ -106,7 +106,7 @@ const Badge = styled.span<{ $tone?: "cyan" | "green" | "amber" }>`
         : p.$tone === "amber"
           ? "rgba(210, 153, 34, 0.45)"
           : "rgba(56, 189, 248, 0.45)"};
-  color: ${(p) => (p.$tone === "green" ? "#3fb950" : p.$tone === "amber" ? "#d29922" : "#38bdf8")};
+  color: ${(p) => (p.$tone === "green" ? "var(--ms-success, #3fb950)" : p.$tone === "amber" ? "#d29922" : "#38bdf8")};
   background: ${(p) =>
     p.$tone === "green"
       ? "rgba(63, 185, 80, 0.12)"
@@ -312,45 +312,48 @@ const WamRobotArtifactViewer: React.FC<WamRobotArtifactViewerProps> = ({
     [activeTrajectory, playbackTime],
   );
 
-  const buildRobotPoseGeometry = (jointMap: Map<string, number>, linkColor: string) => {
-    const poses = computeForwardKinematics(robot, jointMap);
-    const visuals = computeRobotVisualAndCollisionPoses(robot, jointMap, poses).visuals;
-    const nodes: MultibodyNode3D[] = [];
-    const links: MultibodyLink3D[] = [];
-    const colors = ["#58a6ff", "#3fb950", "#d29922", "#bc8cff"];
-    let cIdx = 0;
+  const buildRobotPoseGeometry = useCallback(
+    (jointMap: Map<string, number>, linkColor: string) => {
+      const poses = computeForwardKinematics(robot, jointMap);
+      const visuals = computeRobotVisualAndCollisionPoses(robot, jointMap, poses).visuals;
+      const nodes: MultibodyNode3D[] = [];
+      const links: MultibodyLink3D[] = [];
+      const colors = ["#58a6ff", "#3fb950", "#d29922", "#bc8cff"];
+      let cIdx = 0;
 
-    for (const [name, link] of robot.links) {
-      const pose = poses.get(name);
-      const isBase = !pose?.parentName || name.includes("base") || name.includes("world");
-      nodes.push({
-        id: name,
-        name,
-        type: "body",
-        position: pose ? pose.position : [0, 0, 0],
-        rotationMatrix: pose?.rotation,
-        color: isBase ? "#8b949e" : colors[cIdx++ % colors.length],
-        dimensions: link.inertial?.mass ? [0.1, 0.1, 0.1] : [0.07, 0.07, 0.07],
-      });
-    }
-
-    for (const [name, joint] of robot.joints) {
-      const p1 = poses.get(joint.parentLink);
-      const p2 = poses.get(joint.childLink);
-      if (p1 && p2) {
-        links.push({
+      for (const [name, link] of robot.links) {
+        const pose = poses.get(name);
+        const isBase = !pose?.parentName || name.includes("base") || name.includes("world");
+        nodes.push({
           id: name,
           name,
-          type: "joint",
-          from: p1.position,
-          to: p2.position,
-          color: joint.type === "fixed" ? "#6e7681" : linkColor,
+          type: "body",
+          position: pose ? pose.position : [0, 0, 0],
+          rotationMatrix: pose?.rotation,
+          color: isBase ? "#8b949e" : colors[cIdx++ % colors.length],
+          dimensions: link.inertial?.mass ? [0.1, 0.1, 0.1] : [0.07, 0.07, 0.07],
         });
       }
-    }
 
-    return { nodes, links, visuals };
-  };
+      for (const [name, joint] of robot.joints) {
+        const p1 = poses.get(joint.parentLink);
+        const p2 = poses.get(joint.childLink);
+        if (p1 && p2) {
+          links.push({
+            id: name,
+            name,
+            type: "joint",
+            from: p1.position,
+            to: p2.position,
+            color: joint.type === "fixed" ? "#6e7681" : linkColor,
+          });
+        }
+      }
+
+      return { nodes, links, visuals };
+    },
+    [robot],
+  );
 
   const {
     nodes: nodes3D,
@@ -366,7 +369,7 @@ const WamRobotArtifactViewer: React.FC<WamRobotArtifactViewerProps> = ({
             ? "#d29922"
             : "#58a6ff",
       ),
-    [robot, activeJointMap, mode, hybridSim, modelicaWasmTraj],
+    [buildRobotPoseGeometry, activeJointMap, mode, hybridSim, modelicaWasmTraj],
   );
 
   const {
@@ -384,7 +387,7 @@ const WamRobotArtifactViewer: React.FC<WamRobotArtifactViewerProps> = ({
       links: geom.links,
       visuals: geom.visuals.map((v) => ({ ...v, color: "#38bdf8", opacity: 0.28 })),
     };
-  }, [showGhostBaseline, mode, robot, baselineSim.trajectory, playbackTime]);
+  }, [showGhostBaseline, mode, buildRobotPoseGeometry, baselineSim.trajectory, playbackTime]);
 
   const handleTrainWam = () => {
     if (workerRef.current) {
@@ -676,13 +679,18 @@ const WamRobotArtifactViewer: React.FC<WamRobotArtifactViewerProps> = ({
                   <path
                     d={trackingOverlayPaths.ref}
                     fill="none"
-                    stroke="#8b949e"
+                    stroke="var(--ms-text-3, #8b949e)"
                     strokeWidth="1.2"
                     strokeDasharray="3 3"
                   />
                   <path d={trackingOverlayPaths.base} fill="none" stroke="#58a6ff" strokeWidth="1.5" />
                   {trackingOverlayPaths.hybrid && (
-                    <path d={trackingOverlayPaths.hybrid} fill="none" stroke="#3fb950" strokeWidth="1.8" />
+                    <path
+                      d={trackingOverlayPaths.hybrid}
+                      fill="none"
+                      stroke="var(--ms-success, #3fb950)"
+                      strokeWidth="1.8"
+                    />
                   )}
                 </svg>
               </HudOverlay>

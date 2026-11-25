@@ -230,7 +230,6 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ viewConfig, isFullScreen }) => {
     setThumbFailed(false);
     setDynamicMeta(null);
     setUserOpenedPreview(false);
-    setInlinePreview(Boolean(isFullScreen));
   }, [url]);
 
   // Lazily fetch PDF metadata (.meta.json) for uploaded PDFs if pageCount isn't already in viewConfig

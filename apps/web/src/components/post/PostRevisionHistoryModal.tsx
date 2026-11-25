@@ -39,7 +39,7 @@ export interface PostRevisionHistoryModalProps {
   onClose: () => void;
 }
 
-export { computeSimpleLineDiff, type DiffLine } from "./diff";
+export type { DiffLine } from "./diff";
 
 export const PostRevisionHistoryModal: React.FC<PostRevisionHistoryModalProps> = ({ postId, displayPost, onClose }) => {
   const [loading, setLoading] = useState(true);
@@ -423,9 +423,9 @@ export const PostRevisionHistoryModal: React.FC<PostRevisionHistoryModalProps> =
                             : "transparent";
                       const color =
                         line.type === "added"
-                          ? "#3fb950"
+                          ? "var(--ms-success, #3fb950)"
                           : line.type === "removed"
-                            ? "#f85149"
+                            ? "var(--ms-danger, #f85149)"
                             : "var(--color-fg-default)";
                       const prefix = line.type === "added" ? "+" : line.type === "removed" ? "-" : " ";
                       return (

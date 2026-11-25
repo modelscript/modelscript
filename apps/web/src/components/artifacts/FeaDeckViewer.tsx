@@ -351,7 +351,7 @@ function computeElementAspectRatio(nodeIds: number[], nodeById: Map<number, Pars
   return +(maxEdge / minEdge).toFixed(2);
 }
 
-export function parseCalculixDeckClient(text: string): ParsedCalculixDeck {
+function parseCalculixDeckClient(text: string): ParsedCalculixDeck {
   const nodes: ParsedFeaNode[] = [];
   const nodeById = new Map<number, ParsedFeaNode>();
   const elements: ParsedFeaElement[] = [];

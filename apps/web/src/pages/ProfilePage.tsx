@@ -185,7 +185,7 @@ const ProfilePage: React.FC = () => {
       }
     }
     fetchProfile();
-  }, [username, token]);
+  }, [username, token, user]);
 
   const handleFollowToggle = (following: boolean) => {
     setIsFollowing(following);

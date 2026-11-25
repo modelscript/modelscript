@@ -50,7 +50,7 @@ import {
   type FileTreeNode,
 } from "../workspace/utils";
 
-export { buildFileTree, type FileTreeNode };
+export type { FileTreeNode };
 
 export interface SpaceCodeTabProps {
   detail: SpaceDetailResponse;
@@ -306,7 +306,7 @@ export interface CodeSymbolPill {
   value?: string;
 }
 
-export function extractCodeSymbols(code: string, _language?: string): CodeSymbolPill[] {
+function extractCodeSymbols(code: string, _language?: string): CodeSymbolPill[] {
   if (!code) return [];
   const lines = code.split("\n");
   const symbols: CodeSymbolPill[] = [];
@@ -747,8 +747,8 @@ export const SpaceCodeTab: React.FC<SpaceCodeTabProps> = ({ detail, viewerState 
         const refParam = searchParams.get("ref");
         if (!refParam) {
           const defaultB = b.find((x) => x.default)?.name || b[0]?.name;
-          if (defaultB && defaultB !== activeRef) {
-            setActiveRef(defaultB);
+          if (defaultB) {
+            setActiveRef((prev) => (defaultB !== prev ? defaultB : prev));
           }
         }
       })

@@ -746,7 +746,7 @@ export const SpaceChatPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, searchParams]);
 
   useEffect(() => {
     void loadSidebar();
@@ -758,31 +758,42 @@ export const SpaceChatPage: React.FC = () => {
     return () => window.removeEventListener("resize", updateScrollState);
   }, [updateScrollState, sidebarSpaces.length]);
 
+  const activeSpaceId = activeSpace?.id;
+  const activeSpaceOwner = activeSpace?.owner_namespace;
+  const activeSpaceSlug = activeSpace?.slug;
+  const activeChannelId = activeChannel?.id;
+  const activeChannelSlug = activeChannel?.slug;
+  const activeThreadId = activeThreadMessage?.id;
+  const messagesRef = useRef(messages);
   useEffect(() => {
-    if (!activeSpace || !activeChannel) return;
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    if (!activeSpaceId || !activeSpaceOwner || !activeSpaceSlug || !activeChannelSlug) return;
     setActiveThreadMessage(null);
     setThreadReplies([]);
-    void getSpaceChannelMessages(activeSpace.owner_namespace, activeSpace.slug, activeChannel.slug)
+    void getSpaceChannelMessages(activeSpaceOwner, activeSpaceSlug, activeChannelSlug)
       .then((res) => {
         setMessages(res.messages);
         setActiveChannel(res.channel);
         setTimeout(() => scrollToBottom(false), 50);
       })
       .catch(() => {});
-  }, [activeSpace?.id, activeChannel?.slug, scrollToBottom]);
+  }, [activeSpaceId, activeSpaceOwner, activeSpaceSlug, activeChannelSlug, scrollToBottom]);
 
   // Fetch thread replies whenever activeThreadMessage changes
   useEffect(() => {
-    if (!activeSpace || !activeChannel || !activeThreadMessage) {
+    if (!activeSpaceOwner || !activeSpaceSlug || !activeChannelSlug || !activeThreadId) {
       setThreadReplies([]);
       return;
     }
     let isMounted = true;
     setThreadLoading(true);
-    getSpaceChannelMessages(activeSpace.owner_namespace, activeSpace.slug, activeChannel.slug, activeThreadMessage.id)
+    getSpaceChannelMessages(activeSpaceOwner, activeSpaceSlug, activeChannelSlug, activeThreadId)
       .then((res) => {
         if (!isMounted) return;
-        const replies = (res.messages || []).filter((m) => m.id !== activeThreadMessage.id);
+        const replies = (res.messages || []).filter((m) => m.id !== activeThreadId);
         setThreadReplies(replies);
         setTimeout(() => {
           threadEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -790,7 +801,7 @@ export const SpaceChatPage: React.FC = () => {
       })
       .catch(() => {
         if (!isMounted) return;
-        const localReplies = messages.filter((m) => m.reply_to_id === activeThreadMessage.id);
+        const localReplies = messagesRef.current.filter((m) => m.reply_to_id === activeThreadId);
         setThreadReplies(localReplies);
       })
       .finally(() => {
@@ -800,11 +811,11 @@ export const SpaceChatPage: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [activeSpace?.owner_namespace, activeSpace?.slug, activeChannel?.slug, activeThreadMessage?.id]);
+  }, [activeSpaceOwner, activeSpaceSlug, activeChannelSlug, activeThreadId]);
 
   // Real-time WebSocket connection
   useEffect(() => {
-    if (!activeSpace || !activeChannel || typeof window === "undefined" || typeof WebSocket === "undefined") {
+    if (!activeSpaceId || !activeChannelId || typeof window === "undefined" || typeof WebSocket === "undefined") {
       return;
     }
     try {
@@ -815,14 +826,14 @@ export const SpaceChatPage: React.FC = () => {
         ws.send(
           JSON.stringify({
             type: "chat:subscribe",
-            channelIds: [activeChannel.id, activeSpace.id],
+            channelIds: [activeChannelId, activeSpaceId],
           }),
         );
       };
       ws.onmessage = (ev) => {
         try {
           const data = JSON.parse(String(ev.data));
-          if (data.type === "chat:message" && data.channelId === activeChannel.id && data.message) {
+          if (data.type === "chat:message" && data.channelId === activeChannelId && data.message) {
             const incomingMsg = data.message as SpaceMessageRecord;
             setMessages((prev) => {
               if (prev.some((m) => m.id === incomingMsg.id)) return prev;
@@ -851,7 +862,7 @@ export const SpaceChatPage: React.FC = () => {
     } catch {
       return undefined;
     }
-  }, [activeSpace?.id, activeChannel?.id, isScrolledUp, scrollToBottom, activeThreadMessage]);
+  }, [activeSpaceId, activeChannelId, isScrolledUp, scrollToBottom, activeThreadMessage]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();

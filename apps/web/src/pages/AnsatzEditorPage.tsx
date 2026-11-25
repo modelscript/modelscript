@@ -363,6 +363,14 @@ export const AnsatzEditorPage: React.FC = () => {
   }, [hasInitialTarget]);
 
   const hasHydratedFromUrlRef = useRef<boolean>(false);
+  const currentLangRef = useRef(currentLang);
+  const payloadDiagramTypeRef = useRef(payload?.diagramType);
+  useEffect(() => {
+    currentLangRef.current = currentLang;
+  }, [currentLang]);
+  useEffect(() => {
+    payloadDiagramTypeRef.current = payload?.diagramType;
+  }, [payload?.diagramType]);
 
   // Initialize from URL hash, query params, location.state, ?ansatz=<id>, or ?fromArtifact=<id>
   useEffect(() => {
@@ -768,7 +776,7 @@ export const AnsatzEditorPage: React.FC = () => {
             }
             const artifactDiagramType =
               diagramTypeParam ||
-              (typeof payload?.diagramType === "string" ? payload.diagramType : undefined) ||
+              (typeof payloadDiagramTypeRef.current === "string" ? payloadDiagramTypeRef.current : undefined) ||
               cfg.diagramType ||
               (cfg.diagramMode === "ibd" ? "IBD" : cfg.diagramMode === "bdd" ? "BDD" : undefined) ||
               (detectedLang === "sysml2" &&
@@ -894,7 +902,7 @@ export const AnsatzEditorPage: React.FC = () => {
       setCurrentTitle("Untitled Workspace");
       setPayload({
         v: 1,
-        lang: currentLang,
+        lang: currentLangRef.current,
         code: "",
         title: "Untitled Workspace",
       });
@@ -918,6 +926,9 @@ export const AnsatzEditorPage: React.FC = () => {
     viewParam,
     langParam,
     titleParam,
+    diagramTypeParam,
+    simVarsParam,
+    hasInitialTarget,
     editPostId,
     replyToPostId,
     hasIde,

@@ -162,7 +162,7 @@ export const SpaceIssuesTab: React.FC<SpaceIssuesTabProps> = ({
   const [jiraCustomField, setJiraCustomField] = useState(String(savedJira["modelCustomField"] ?? ""));
   const [isSyncingJira, setIsSyncingJira] = useState(false);
 
-  const issuesList = detail?.issues || [];
+  const issuesList = useMemo(() => detail?.issues || [], [detail?.issues]);
   const ecosList = detail?.ecos || [];
 
   // Metrics
@@ -230,7 +230,7 @@ export const SpaceIssuesTab: React.FC<SpaceIssuesTabProps> = ({
     return () => {
       isCurrent = false;
     };
-  }, [selectedIssueId, detail]);
+  }, [selectedIssueId, detail, toast]);
 
   const handleSelectIssue = (issueId: string) => {
     setSelectedIssueId(issueId);

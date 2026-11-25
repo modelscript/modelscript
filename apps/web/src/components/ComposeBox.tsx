@@ -430,7 +430,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
     notebook.setNotebookCompanionRepo("");
     notebook.setNotebookTopics([]);
     notebook.setNotebookCells([{ id: createCellId("md"), type: "markdown", content: "" }]);
-  }, [setContent, setArtifactId, notebook]);
+  }, [setContent, setArtifactId, setContentWarning, notebook]);
 
   const handleDraftsClick = useCallback(() => {
     if (onOpenDrafts) {

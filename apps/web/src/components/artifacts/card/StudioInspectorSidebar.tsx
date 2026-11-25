@@ -315,10 +315,10 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
                   style={{
                     color:
                       viewConfig.powerFlowComparison.overallStatus === "PASS"
-                        ? "#3fb950"
+                        ? "var(--ms-success, #3fb950)"
                         : viewConfig.powerFlowComparison.overallStatus === "WARN"
                           ? "#d29922"
-                          : "#f85149",
+                          : "var(--ms-danger, #f85149)",
                   }}
                 >
                   {viewConfig.powerFlowComparison.overallStatus}
@@ -329,7 +329,13 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
             {viewConfig.seasonalVerification && (
               <Box fontSize={11} color="var(--color-fg-muted)" mt={1}>
                 Seasonal Sweep:{" "}
-                <strong style={{ color: viewConfig.seasonalVerification.overallPassed ? "#3fb950" : "#f85149" }}>
+                <strong
+                  style={{
+                    color: viewConfig.seasonalVerification.overallPassed
+                      ? "var(--ms-success, #3fb950)"
+                      : "var(--ms-danger, #f85149)",
+                  }}
+                >
                   {viewConfig.seasonalVerification.passedVariants ?? 0}/
                   {viewConfig.seasonalVerification.totalVariants ?? 0} PASS
                 </strong>

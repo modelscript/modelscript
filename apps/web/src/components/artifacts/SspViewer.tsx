@@ -34,15 +34,7 @@ import {
   type SspViewConfigLike,
 } from "./ssp-client-parser.js";
 
-export {
-  parseSsdClientModel,
-  type SspClientModel,
-  type SspConnectionMeta,
-  type SspFmuComponentMeta,
-  type SspParamMeta,
-  type SspPortMeta,
-  type SspViewConfigLike,
-};
+export type { SspClientModel, SspConnectionMeta, SspFmuComponentMeta, SspParamMeta, SspPortMeta, SspViewConfigLike };
 
 export interface SspViewerProps {
   viewConfig: {

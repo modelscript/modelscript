@@ -5,7 +5,6 @@ import { Text } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import { VegaEmbed } from "react-vega";
 import styled from "styled-components";
-import { useTheme } from "../../theme";
 import { useThemeTokens } from "../../theme-tokens";
 import { getErrorMessage } from "../../util/error";
 import Box from "../Box";
@@ -141,7 +140,6 @@ const PlotContainer = styled.div`
 `;
 
 const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => {
-  const { theme } = useTheme();
   const tokens = useThemeTokens();
   const [spec, setSpec] = useState<VegaSpecLike | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -311,7 +309,7 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
         },
       },
     };
-  }, [tokens, theme]);
+  }, [tokens]);
 
   if (loading) {
     return (

@@ -1929,7 +1929,11 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
                   <strong
                     style={{
                       color:
-                        pf.overallStatus === "PASS" ? "#3fb950" : pf.overallStatus === "WARN" ? "#d29922" : "#f85149",
+                        pf.overallStatus === "PASS"
+                          ? "var(--ms-success, #3fb950)"
+                          : pf.overallStatus === "WARN"
+                            ? "#d29922"
+                            : "var(--ms-danger, #f85149)",
                     }}
                   >
                     {pf.overallStatus ?? "UNKNOWN"}
@@ -1942,7 +1946,9 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
                 <span style={{ display: "inline-flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
                   <span>
                     Seasonal Sweep:{" "}
-                    <strong style={{ color: sv.overallPassed ? "#3fb950" : "#f85149" }}>
+                    <strong
+                      style={{ color: sv.overallPassed ? "var(--ms-success, #3fb950)" : "var(--ms-danger, #f85149)" }}
+                    >
                       {sv.passedVariants ?? 0}/{sv.totalVariants ?? 0} PASS
                     </strong>
                   </span>
@@ -1954,7 +1960,7 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
                           padding: "1px 6px",
                           borderRadius: 4,
                           border: `1px solid ${v.allSatisfied ? "rgba(63,185,80,0.4)" : "rgba(248,81,73,0.4)"}`,
-                          color: v.allSatisfied ? "#3fb950" : "#f85149",
+                          color: v.allSatisfied ? "var(--ms-success, #3fb950)" : "var(--ms-danger, #f85149)",
                         }}
                       >
                         {v.name}: {v.allSatisfied ? "PASS" : "FAIL"}

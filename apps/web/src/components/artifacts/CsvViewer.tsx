@@ -76,7 +76,6 @@ export interface CsvViewerProps {
 }
 
 import { buildClientTelemetrySvg } from "./csv-telemetry-chart.js";
-export { buildClientTelemetrySvg };
 
 const TableWrapper = styled.div<{ $isFullScreen?: boolean | undefined }>`
   width: 100%;
@@ -829,6 +828,7 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({
   const totalPages = isVirtualized ? 1 : Math.ceil(totalRows / pageSize) || 1;
   const currentPage = Math.min(page, totalPages);
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual returns non-memoizable functions
   const rowVirtualizer = useVirtualizer({
     count: isVirtualized ? totalRows : 0,
     getScrollElement: () => tableContainerRef.current,

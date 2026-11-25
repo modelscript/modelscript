@@ -390,6 +390,12 @@ export const PostSignatureModal: React.FC<PostSignatureModalProps> = ({
     signedPayloadText,
     signatureScheme,
     displayPost.username,
+    displayPost.artifact_view_id,
+    displayPost.quote_post_id,
+    displayPost.reply_to_id,
+    metaObj?.proof_payload,
+    metaObj?.signedPayload,
+    proofObj,
     keyIdentifier,
   ]);
 

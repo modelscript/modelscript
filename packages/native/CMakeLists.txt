@@ -48,6 +48,7 @@ endif()
 
 # Optimization & SIMD flags
 if(MSVC)
+  add_compile_options($<$<COMPILE_LANGUAGE:C>:/experimental:c11atomics>)
   target_compile_options(modelscript_native_core PRIVATE /O2 /wd4244 /wd4267 /wd4146)
 else()
   target_compile_options(modelscript_native_core PRIVATE

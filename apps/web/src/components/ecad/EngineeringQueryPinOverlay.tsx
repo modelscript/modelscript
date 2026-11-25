@@ -23,8 +23,7 @@ export interface EngineeringQueryPinOverlayProps {
   onApproveDeviation?: ((queryId: string, notes: string) => Promise<void> | void) | undefined;
   onRejectQuery?: ((queryId: string, notes: string) => Promise<void> | void) | undefined;
   onCreateQuery?:
-    | ((newQuery: Omit<EngineeringQueryItem, "id" | "createdAt" | "updatedAt">) => Promise<void> | void)
-    | undefined;
+    ((newQuery: Omit<EngineeringQueryItem, "id" | "createdAt" | "updatedAt">) => Promise<void> | void) | undefined;
   allowCreatePin?: boolean | undefined;
   currentUser?: { id: string; name: string; role: "oem_engineer" | "cm_dfm" | "quality_lead" } | undefined;
 }
@@ -97,7 +96,7 @@ const PinMarker = styled.div<{
     border-radius: 3px;
     background: rgba(13, 17, 23, 0.9);
     border: 1px solid rgba(255, 255, 255, 0.2);
-    color: #f0f6fc;
+    color: var(--ms-text-heading, #f0f6fc);
     white-space: nowrap;
   }
 `;
@@ -168,7 +167,7 @@ export function EngineeringQueryPinOverlay({
   const getPinColor = (query: EngineeringQueryItem): string => {
     if (query.status === "approved_deviation") return "#2ea043"; // Green
     if (query.status === "rejected") return "#da3633"; // Red
-    if (query.status === "resolved") return "#8b949e"; // Muted gray
+    if (query.status === "resolved") return "var(--ms-text-3, #8b949e)"; // Muted gray
 
     switch (query.severity) {
       case "critical":
