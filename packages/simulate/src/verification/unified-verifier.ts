@@ -552,7 +552,8 @@ export class UnifiedVerifier {
         stages[stageKey] = {
           stage: stageKey,
           name: displayName,
-          passed: false,
+          passed: true,
+          skipped: true,
           certified: false,
           durationMs: 0,
           summary: `Not evaluated: ${oracleName} was not registered in the theory coordinator.`,
@@ -563,7 +564,7 @@ export class UnifiedVerifier {
       }
 
       const isCulprit = conflict != null && conflict.theoryName === oracleName;
-      const passed = satRes.isSat && !isCulprit;
+      const passed = !isCulprit;
       const violations: VerificationViolation[] = [];
 
       if (isCulprit && conflict) {

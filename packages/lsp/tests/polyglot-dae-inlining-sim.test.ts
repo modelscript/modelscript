@@ -29,6 +29,7 @@ import {
   Variability,
   VarType,
 } from "@modelscript/runtime";
+import { simulateArena } from "@modelscript/simulate";
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import { createModelicaInteropLibrary } from "../../../languages/modelica/src/interop.js";
@@ -36,7 +37,6 @@ import { createReqifInteropLibrary } from "../../../languages/reqif/src/interop.
 import { createSpiceInteropLibrary, getSpiceDomainId } from "../../../languages/spice/src/interop.js";
 import { createSysml2InteropLibrary } from "../../../languages/sysml2/src/interop.js";
 import { createVerilogAInteropLibrary, getVerilogADomainId } from "../../../languages/verilog-a/src/interop.js";
-import { simulateArena } from "../src/core/simulate-arena.js";
 
 describe("End-to-End Hybrid Simulation & 4-Language Pilot Interop (Workstreams A & D)", () => {
   it("coordinates all 4 pilot SymbolInteropLibraries (ReqIF, SysML v2, Modelica, SPICE) in one PolyglotEngine", () => {

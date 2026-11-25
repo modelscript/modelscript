@@ -6,6 +6,7 @@ import {
   EqKind,
   ExprKind,
   globalLibraryRegistry,
+  parseModelScriptYaml,
   parseSysmlRequirements,
   PressureVesselOracle,
   Variability,
@@ -80,10 +81,12 @@ describe("End-to-End Reference Standard Pack (@modelscript/asme-bpvc-viii-1)", (
   });
 
   it("mounts disk standard pack, scopes unrelated models, and proves UG-27/UG-32/UG-99/UG-125 compliance", () => {
-    const pkgJson = JSON.parse(fs.readFileSync(path.join(PACK_DIR, "package.json"), "utf8")) as {
-      name: string;
-      version: string;
-      modelscript: ModelscriptLibraryManifest;
+    const yamlPath = path.join(PACK_DIR, "modelscript.yaml");
+    const manifest = parseModelScriptYaml(fs.readFileSync(yamlPath, "utf8"), yamlPath);
+    const pkgJson = {
+      name: manifest.name,
+      version: manifest.version,
+      modelscript: manifest.library as ModelscriptLibraryManifest,
     };
     const stressTable = JSON.parse(
       fs.readFileSync(path.join(PACK_DIR, "tables/sa516-gr70-allowable-stress.json"), "utf8"),

@@ -968,6 +968,9 @@ importers:
       '@types/adm-zip':
         specifier: ^0.5.7
         version: 0.5.8
+      '@types/jsonwebtoken':
+        specifier: ^9.0.10
+        version: 9.0.10
       '@types/node':
         specifier: ^25.3.2
         version: 25.9.9
@@ -989,6 +992,9 @@ importers:
       eslint:
         specifier: ^10.12.0
         version: 10.15.0(jiti@2.7.0)
+      jsonwebtoken:
+        specifier: ^9.0.3
+        version: 9.0.3
       prettier:
         specifier: ^3.6.2
         version: 3.10.1
@@ -1019,6 +1025,9 @@ importers:
       '@types/three':
         specifier: ^0.184.0
         version: 0.184.1
+      '@webgpu/types':
+        specifier: ^0.1.74
+        version: 0.1.74
       markdown-it-mathjax3:
         specifier: ^4.3.2
         version: 4.3.2
@@ -5062,10 +5071,26 @@ importers:
         version: 6.1.4
 
   packages/editor:
+    dependencies:
+      '@react-three/drei':
+        specifier: ^10.7.7
+        version: 10.7.9(@react-three/fiber@9.8.2(@types/react@19.3.0)(immer@11.2.10)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.184.0))(@types/react@19.3.0)(@types/three@0.184.1)(immer@11.2.10)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.184.0)
+      '@react-three/fiber':
+        specifier: ^9.6.1
+        version: 9.8.2(@types/react@19.3.0)(immer@11.2.10)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.184.0)
+      '@react-three/xr':
+        specifier: ^6.6.29
+        version: 6.6.32(@react-three/fiber@9.8.2(@types/react@19.3.0)(immer@11.2.10)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.184.0))(@types/react@19.3.0)(immer@11.2.10)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.184.0)
+      three:
+        specifier: ^0.184.0
+        version: 0.184.0
     devDependencies:
       '@types/react':
         specifier: ^19.2.7
         version: 19.3.0
+      '@types/three':
+        specifier: ^0.184.0
+        version: 0.184.1
       react:
         specifier: ^19.2.7
         version: 19.3.1
@@ -5260,6 +5285,9 @@ importers:
       '@vscode/debugprotocol':
         specifier: ^1.68.0
         version: 1.68.0
+      dompurify:
+        specifier: ^3.4.17
+        version: 3.4.18
       fflate:
         specifier: ^0.8.3
         version: 0.8.3
@@ -5273,6 +5301,9 @@ importers:
         specifier: ^9.0.1
         version: 9.0.1
     devDependencies:
+      '@types/dompurify':
+        specifier: ^3.0.5
+        version: 3.2.0
       '@types/vscode':
         specifier: ^1.72.0
         version: 1.146.0
@@ -5841,6 +5872,9 @@ importers:
       '@types/sql.js':
         specifier: ^1.4.11
         version: 1.16.0
+      adm-zip:
+        specifier: ^0.6.1
+        version: 0.6.1
       rimraf:
         specifier: ^6.1.0
         version: 6.1.4
@@ -6072,6 +6106,9 @@ importers:
       assemblyscript:
         specifier: ^0.28.19
         version: 0.28.20
+      n3:
+        specifier: ^2.0.1
+        version: 2.13.12
       rimraf:
         specifier: ^6.1.0
         version: 6.1.4

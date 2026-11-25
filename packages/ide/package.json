@@ -59,12 +59,14 @@
     "@react-three/xr": "^6.6.29",
     "@vscode/debugadapter": "^1.68.0",
     "@vscode/debugprotocol": "^1.68.0",
+    "dompurify": "^3.4.17",
     "fflate": "^0.8.3",
     "pako": "^2.1.0",
     "three": "^0.184.0",
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
+    "@types/dompurify": "^3.0.5",
     "@types/vscode": "^1.72.0",
     "esbuild": "^0.28.1",
     "typescript": "^5.9.3",

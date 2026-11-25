@@ -29,6 +29,7 @@
     "@modelscript/design-tokens": "workspace:*",
     "@modelscript/diagram": "workspace:*",
     "@types/three": "^0.184.0",
+    "@webgpu/types": "^0.1.74",
     "markdown-it-mathjax3": "^4.3.2",
     "mermaid": "^11.16.1",
     "monaco-editor": "^0.55.1",

@@ -6,7 +6,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { before, describe, it } from "node:test";
 import { pathToFileURL } from "node:url";
-import { createDiagramDispatch, GenericDSLDiagramBackend } from "../../lsp/src/diagramApi.js";
+import {
+  createDiagramDispatch,
+  GenericDSLDiagramBackend,
+  type GenericDiagramConfigLike,
+} from "../../lsp/src/diagramApi.js";
 import { registerCodeLensProvider } from "../../lsp/src/providers/codeLensProvider.js";
 import { globalLanguageRegistry } from "../../lsp/src/registry/LanguageRegistry.js";
 import {
@@ -190,7 +194,7 @@ describe("End-to-End Verification of All 44 Language Example Workspaces", () => 
       getDocumentText: (uri: string) => docTexts.get(uri),
       getDiagramConfig: (uri: string) => {
         const plugin = globalLanguageRegistry.getPluginForUri(uri, docTexts.get(uri));
-        return plugin?.languageDef?.diagram;
+        return plugin?.languageDef?.diagram as GenericDiagramConfigLike | undefined;
       },
       fsBridge: {
         readFile: async (uri: string) => sidecars.get(uri) ?? null,

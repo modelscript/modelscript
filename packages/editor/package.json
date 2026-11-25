@@ -52,8 +52,15 @@
     "test": "node ../../scripts/ci/test-runner.js --tsconfig tsconfig.json",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
+    "@react-three/xr": "^6.6.29",
+    "three": "^0.184.0"
+  },
   "devDependencies": {
     "@types/react": "^19.2.7",
+    "@types/three": "^0.184.0",
     "react": "^19.2.7",
     "rimraf": "^6.1.0",
     "typescript": "^5.9.3"

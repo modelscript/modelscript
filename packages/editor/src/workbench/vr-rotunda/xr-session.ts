@@ -415,7 +415,6 @@ export function playRotundaCue(kind: RotundaCueKind): void {
         osc.stop(now + 0.06);
         break;
       }
-      case "whoosh":
       case "click":
       default: {
         osc.type = "sine";

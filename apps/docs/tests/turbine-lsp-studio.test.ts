@@ -310,7 +310,13 @@ describe("@modelscript/docs TurbineHero Live WASM LSP Studio", () => {
         return;
       }
 
-      const { chromium } = await import("playwright");
+      let chromium: (typeof import("playwright"))["chromium"];
+      try {
+        ({ chromium } = await import("playwright"));
+      } catch {
+        t.skip("playwright package not installed");
+        return;
+      }
       if (!fs.existsSync(chromium.executablePath())) {
         t.skip(`Playwright Chromium binary not installed at ${chromium.executablePath()}`);
         return;

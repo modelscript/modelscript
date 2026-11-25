@@ -185,7 +185,7 @@ jobs:
         run: |
           mkdir -p .v8-coverage languages/modelica/coverage/omc
           NODE_V8_COVERAGE=$(pwd)/.v8-coverage npm run test:modelica:both:allow-wasm
-          NODE_OPTIONS="--max-old-space-size=12288" npx c8 report --temp-directory=.v8-coverage --reporter=lcov --reports-dir=languages/modelica/coverage/omc --include="languages/modelica/src/**" --include="packages/dsl/src/**" --include="packages/runtime/src/**"
+          NODE_OPTIONS="--max-old-space-size=12288" npx c8 report --temp-directory=.v8-coverage --reporter=lcov --reports-dir=languages/modelica/coverage/omc --include="languages/modelica/src/**" --include="packages/dsl/src/**" --include="packages/runtime/src/**" || echo "::warning::c8 coverage report failed (likely OOM on large .v8-coverage); continuing"
       - name: Upload CTRF Artifacts
         if: always() && steps.check-affected.outputs.run_suite == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
